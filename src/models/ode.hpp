@@ -281,7 +281,7 @@ namespace ode
 		{
 			Matrix<Scalar, Dim, Dim> J = Matrix<Scalar, Dim, Dim>::Identity() - T * rightCoeff * f.Jacobian(y, x);
 			//Solve J * (Y[n+1] - Y[n]) = - Phi(Y[n])
-			StateVector<Scalar, Dim> increment = J.colPivHouseholderQr().solve(-phi);
+			StateVector<Scalar, Dim> increment = J.fullPivLu().solve(-phi);
 			if (increment.norm() <= BDFNewtonConstants<Scalar>::incrementEps)
 				break;
 			//if(increment(0) != increment(0))
