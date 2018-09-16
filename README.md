@@ -1,7 +1,7 @@
 
 # TriggerFish Elements plugins
 
-![Modules](doc/modules.png)
+<img src="doc/modules.png" width="600">
 
 ## Modules
 - [Slop and Slop 4](slop-and-slop-4)
@@ -43,6 +43,8 @@ Exponential is more snappy but linear is typically better for normal enveloppe s
 **cv curve** controls the curve of the exponential input - higher is more exponential and snappier.
 
 **output** controls the output level, higher values will cause saturation as the level approach +-12v
+
+**bleed** will send part of the input CV to the output to make it more clicky.
 
 The model use antialiased integration for the nonlinearities and the whole module runs at 2x oversampling for low aliasing. 
 Because of this the CPU useage is relatively high.
