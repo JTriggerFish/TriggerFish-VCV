@@ -131,20 +131,20 @@ struct TfSlop4Widget : ModuleWidget {
 		addChild(Widget::create<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
 
 		//Knobs
-        addParam(ParamWidget::create<TfCvKnob>(Vec(56, 66), module, TfSlop4::HUM_LEVEL, 0.0f, 1.0f, 0.10f));
-        addParam(ParamWidget::create<TfCvKnob>(Vec(11, 127), module, TfSlop4::COMMON_DRIFT_LEVEL, 0.0f, 1.0f, 0.20f));
-		addParam(ParamWidget::create<TfCvKnob>(Vec(100, 127), module, TfSlop4::INDIVIDUAL_DRIFT_LEVEL, 0.0f, 1.0f, 0.20f));
+        addParam(ParamWidget::create<TfCvKnob>(Vec(61, 66), module, TfSlop4::HUM_LEVEL, 0.0f, 1.0f, 0.10f));
+        addParam(ParamWidget::create<TfCvKnob>(Vec(16, 133), module, TfSlop4::COMMON_DRIFT_LEVEL, 0.0f, 1.0f, 0.20f));
+		addParam(ParamWidget::create<TfCvKnob>(Vec(105, 133), module, TfSlop4::INDIVIDUAL_DRIFT_LEVEL, 0.0f, 1.0f, 0.20f));
 
         //Tracking trimmers
-		auto leftMargin =11;
-		auto spacing = 33;
+		auto leftMargin = 13;
+		auto spacing = 35;
 		addParam(ParamWidget::create<TfTrimpot>(Vec(leftMargin, 223), module, TfSlop4::TRACK_SCALING1, 1.0f - 0.2f / 12, 1.0f, 1.0f));
         addParam(ParamWidget::create<TfTrimpot>(Vec(leftMargin + spacing, 223), module, TfSlop4::TRACK_SCALING2, 1.0f - 0.2f / 12, 1.0f, 1.0f));
         addParam(ParamWidget::create<TfTrimpot>(Vec(leftMargin + 2*spacing, 223), module, TfSlop4::TRACK_SCALING3, 1.0f - 0.2f / 12, 1.0f, 1.0f));
         addParam(ParamWidget::create<TfTrimpot>(Vec(leftMargin + 3*spacing, 223), module, TfSlop4::TRACK_SCALING4, 1.0f - 0.2f / 12, 1.0f, 1.0f));
 
 		//Input jacks
-		leftMargin =9;
+		leftMargin =10;
 		addInput(Port::create<PJ301MPort>(Vec(leftMargin, 283), Port::INPUT, module, TfSlop4::VOCT_INPUT1));
 		addInput(Port::create<PJ301MPort>(Vec(leftMargin + spacing, 283), Port::INPUT, module, TfSlop4::VOCT_INPUT2));
 		addInput(Port::create<PJ301MPort>(Vec(leftMargin + 2*spacing, 283), Port::INPUT, module, TfSlop4::VOCT_INPUT3));
