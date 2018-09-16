@@ -1,7 +1,8 @@
 
 # TriggerFish Elements plugins
 
-This packaga currently includes 4 modules.
+![Modules](doc/modules.png)
+This package currently includes 4 modules.
 
 Slop and Slop4 are utilities to add drift and hum to V/oct signals in order to add pleasant detuning to VCOs.
 Slop can add linear detuning ( Hz mode ) or proportional detuning ( cents mode ).
@@ -15,7 +16,7 @@ VCA is an analog modelled VCA that is loosely based on the minimoog VCA.
 Just like the original it includes 3 non linearities, once on the audio, one on the CV and one on the output.
 These use antialiased integration and the whole module 2x oversampling for low aliasing. Again CPU useage is relatively high.
 
-See https://vcvrack.com/manual/PluginDevelopmentTutorial.html for a development tutorial.
+
 
 ## Contributing
 
