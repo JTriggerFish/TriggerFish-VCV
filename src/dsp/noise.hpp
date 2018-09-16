@@ -1,8 +1,8 @@
 #pragma once
-
-#include "filters.hpp"
+#include <algorithm>
 #include <array>
 #include <random>
+#include "filters.hpp"
 
 
 /**
@@ -73,7 +73,7 @@ namespace dsp
 		{
 			static const double ln2 = std::log(2.0);
 			double v = det / f0 + std::exp(vOct * ln2);
-			v = std::max(1.0e-8, v);
+			v = std::max<double>(1.0e-8, v);
 			return std::log(v) / ln2;
 		}
 	};

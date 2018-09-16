@@ -1,3 +1,11 @@
+//#define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
+
+
+//Workaround for crappy numpy headers ??
+#define PyTuple_GET_SIZE PyTuple_Size
+#define PyTuple_GET_ITEM PyTuple_GetItem
+
+
 #include <Windows.h>
 #include <cmath>
 #include <Python.h>
@@ -184,8 +192,8 @@ PyObject* vca_Transistor_x4_cheby7(PyObject*, PyObject* args)
 }
 PyObject* vdpO(PyObject*, PyObject* args)
 {
-	VdpOscillator<dsp::X2Resampler_Order7, 3> vdp{dsp::CreateX2Resampler_Chebychev7};
-	return CallVdpO < dsp::X2Resampler_Order7, 3 > (args, vdp);
+	VdpOscillator<dsp::X4Resampler_Order7, 3> vdp{dsp::CreateX4Resampler_Cheby7};
+	return CallVdpO < dsp::X4Resampler_Order7, 3 > (args, vdp);
 }
 
 
