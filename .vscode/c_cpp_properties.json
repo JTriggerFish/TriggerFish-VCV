@@ -1,0 +1,67 @@
+{
+    "configurations": [
+        {
+            "name": "MingGW",
+            "intelliSenseMode": "clang-x64",
+            "cStandard": "c11",
+            "cppStandard": "c++17",
+            "compilerPath": "C:/msys64/mingw64/bin/gcc.exe",
+            "includePath": [
+                "${workspaceFolder}",
+                "${workspaceFolder}/*",
+                "${workspaceFolder}/../../include",
+                "${workspaceFolder}/../../dep/include",
+                "${workspaceFolder}/Eigen",
+                "${workspaceFolder}/Eigen/src/*"
+            ],
+            "defines": [
+                "_DEBUG",
+                "UNICODE"
+            ],
+            "browse": {
+                "path": [
+                    "${workspaceFolder}",
+                    "${workspaceFolder}/*",
+                    "${workspaceFolder}/dsp",
+                    "${workspaceFolder}/models",
+                    "${workspaceFolder}/dep",
+                    "${workspaceFolder}/Eigen",
+                    "${workspaceFolder}/Eigen/src/*",
+                    "${workspaceFolder}/../../*"
+                ],
+                "limitSymbolsToIncludedHeaders": true,
+                "databaseFilename": ""
+            }
+        },
+        {
+            "name": "Mac",
+            "intelliSenseMode": "clang-x64",
+            "includePath": [
+                "${workspaceFolder}",
+                "${workspaceFolder}/*",
+                "${workspaceFolder}/../../include",
+                "${workspaceFolder}/../../dep/include"
+            ],
+            "defines": [
+                "_DEBUG",
+                "UNICODE"
+            ],
+            "macFrameworkPath": [ "/System/Library/Frameworks" ],
+            "browse": {
+                "path": [
+                    "${workspaceFolder}",
+                    "${workspaceFolder}/*",
+                    "${workspaceFolder}/dsp",
+                    "${workspaceFolder}/models",
+                    "${workspaceFolder}/dep",
+                    "${workspaceFolder}/../../*"
+                ],
+                "limitSymbolsToIncludedHeaders": true,
+                "databaseFilename": ""
+            },
+            "cStandard": "c11",
+            "cppStandard": "c++17"
+        }
+    ],
+    "version": 4
+}

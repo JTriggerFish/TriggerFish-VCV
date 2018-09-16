@@ -1,0 +1,13 @@
+/build
+/tests/PythonTests/.vs
+/tests/PythonTests/Wrapper/Debug
+/tests/PythonTests/Wrapper/x64
+/tests/PythonTests/ConsoleApp/x64
+/tests/PythonTests/x64
+/dist
+/plugin.dylib
+/plugin.dll
+/plugin.so
+.DS_Store
+tests/PythonTests/PythonTests/*.html
+tests/PythonTests/PythonTests/__pycache__/

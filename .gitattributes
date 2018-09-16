@@ -1,0 +1,8 @@
+tests/PythonTests/ConsoleApp/* diff
+*.cpp diff
+*.h diff
+*.hpp diff
+*.c diff
+* text=auto
+
+
