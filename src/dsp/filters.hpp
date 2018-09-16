@@ -192,46 +192,5 @@ public:
     }
 };
 
-template<int width, int order, typename T> struct GaussianFilter
-{
-    GaussianFilter() : coeff(1.f / width)
-    {
-        static_assert(order >= 1);
-        static_assert(width >= 1);
-        reset();
-    }
-    T operator()(T x0)
-    {
-        T x = x0;
-        for(int j=0; j < order; ++j)
-            x = process(j, x);
-        
-        for(int j=0; j < order; ++j)
-        {
-            T* y = &prev[j*width];
-            for(int i=width-1; i > 0 ; --i)
-                y[i] = y[i-1];
-        }
-        return x;
-    }
-    inline T process(int n, T ix)
-    {
-        T* x = &prev[n*width];
-        x[0] = ix;
-        
-        T y = x[0];
-        for(int i =1; i < width; ++i)
-            y += x[i];
-        y *= coeff;
-        return y;
-    }
-    void reset()
-    {
-        std::fill_n(prev, width * order, 0.f);
-    }
-    T coeff;
-    //state:
-     T prev[width*order];
-};
 
 }
