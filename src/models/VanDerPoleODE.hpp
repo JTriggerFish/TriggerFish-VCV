@@ -32,14 +32,14 @@ namespace ode
         {
 			Matrix<Scalar, 2, 1> deriv;
 			deriv << y(1),
-				_mu * (1.0f - y(0)*y(0)) * y(1) * _w + _w * _w * (x - y(0));
+				_mu * (Scalar(1.0) - y(0)*y(0)) * y(1) * _w + _w * _w * (x - y(0));
 			return deriv;
 		}
         Matrix<Scalar, 2, 2> Jacobian(const Matrix<Scalar, 2, 1> &y, Scalar x) const
         {
 			Matrix<Scalar, 2, 2> J;
-			J << 0.0f, 1.0f,
-				-2.0f*_mu*y(0)*y(1)*_w - _w * _w, _mu * (1.0f - y(0)*y(0)) *_w;
+			J << Scalar(0.0), Scalar(1.0),
+				-Scalar(2.0)*_mu*y(0)*y(1)*_w - _w * _w, _mu * (Scalar(1.0) - y(0)*y(0)) *_w;
 			return J;
 		}
 	};
