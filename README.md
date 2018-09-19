@@ -11,8 +11,11 @@
 
 ### Slop and Slop 4
 Slop and Slop4 are utilities to add drift and hum to V/oct signals in order to add pleasant detuning to VCOs.
+
 Slop can add linear detuning ( Hz mode ) or proportional detuning ( cents mode ).
+
 In Slop4, the common detuning is in cents ( i.e. proportional ) and the individual detunings are linear to give a more stable and pleasant beating accross octaves.
+
 Hum adds 60hz frequency modulation to the V/Oct signals to replicate the power supply bleed and cross modulation in analog oscillators.
 
 
