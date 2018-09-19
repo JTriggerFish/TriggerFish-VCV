@@ -1,9 +1,10 @@
+#include "models/VCAcore.hpp"
+
 #include <memory>
 #include "TfElements.hpp"
 #include "components.hpp"
 #include "dsp/filters.hpp"
 #include "dsp/sampleRate.hpp"
-#include "models/VCAcore.hpp"
 
 
 // Analog modelled VCA with 2x oversampling
