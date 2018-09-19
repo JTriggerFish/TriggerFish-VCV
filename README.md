@@ -20,7 +20,7 @@ Hum adds 60hz frequency modulation to the V/Oct signals to replicate the power s
 
 
 ### VDPO
-VDPO or Van Der Pol oscillator is based on the classic differential equation ![wikipedia](https://en.wikipedia.org/wiki/Van_der_Pol_oscillator).
+VDPO or Van Der Pol oscillator is based on the classic differential equation ![wikipedia](http://en.wikipedia.org/wiki/Van_der_Pol_oscillator)
 
 While it can self oscillate, best results are obtained by feeding it another oscillator at the input and playing with the self-freq, damping and input level to go from harmonic to inharmonic and chaotic.
 
