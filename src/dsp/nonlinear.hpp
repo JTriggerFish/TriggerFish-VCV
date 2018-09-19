@@ -68,6 +68,7 @@ namespace DiscreteGradient2
 	private:
 		Eigen::Array<Float, blockSize, 1>  _x1;
 	public:
+		EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 		TanhBlock()
 		{
 			_x1 = Eigen::Array<Float, blockSize, 1>::Zero();
