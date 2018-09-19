@@ -4,8 +4,6 @@
 #include "../../../src/dsp/filters.hpp"
 #include "../../../src/dsp/sampleRate.hpp"
 #include "../../../src/models/VCAcore.hpp"
-#include "../../../src/models/ode.hpp"
-#include "../../../src/models/VanDerPoleODE.hpp"
 #include "../../../src/models/VdpOscillator.hpp"
 
 int main()

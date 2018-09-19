@@ -27,7 +27,7 @@ private:
 	//solve for u[n] numerically : f(u) = g* Grad2[tanh](u, u1) + u - u1 - x + x1 = 0
 	static double func(const double u, const double u1, const double x, const double x1, const double g)
 	{
-		return g * Tanh<double>::Value(u, u1) + u - u1 - x + x1;
+		return g * Tanh<double, 1>::Value(u, u1) + u - u1 - x + x1;
 	}
 
 public:

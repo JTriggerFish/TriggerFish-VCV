@@ -11,19 +11,6 @@
 #include "OTA1PoleIntegrator.hpp"
 #include "Transistor1PoleIntegrator.hpp"
 
-template<typename Float>
-class TanhBlock
-{
-private:
-	Float _x1{};
-public:
-	Float Process(Float x)
-	{
-		Float y = Tanh<Float>::Value(x, _x1);
-		_x1 = x;
-		return y;
-	}
-};
 
 template<typename Oversampler, typename Model>
 class VCACore
@@ -52,7 +39,7 @@ private:
 
 	double _cvScaling{3.0}; // For additional cv staturation. TODO trimmer for this ?
 	double _powerSupplyVoltage{ 12.0 };
-	TanhBlock<double> _outputStage{};
+	TanhBlock<double, ResamplingFactor> _outputStage{};
 
 
 public:
@@ -93,7 +80,6 @@ private:
 	{
 		for (unsigned int i = 0; i < ResamplingFactor; ++i)
 		{
-
 			Eigen::Array<double, 2 ,1> audioAndCv;
 			audioAndCv(0) = audio(i);
 			audioAndCv(1) = cv(i);
@@ -103,10 +89,7 @@ private:
 			audio(i) = audioAndCv(0) * audioAndCv(1) / _cvScaling;
 		}
 		//Apply final gain and saturate to power supply voltage
-		for (unsigned int i = 0; i < ResamplingFactor; ++i)
-		{
-			audio(i) = _powerSupplyVoltage * _outputStage.Process(finalGain * audio(i) / _powerSupplyVoltage);
-		}
+		_outputStage.Process(finalGain / _powerSupplyVoltage * audio);
 	}
 };
 template<typename T>

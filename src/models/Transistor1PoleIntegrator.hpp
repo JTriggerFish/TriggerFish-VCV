@@ -29,7 +29,7 @@ private:
 	//phiX = Grad2[tanh](x, x1)
 	static double func(const double y, const double y1, const double phiX, const double g)
 	{
-		return g * Tanh<double>::Value(y, y1) - g*phiX + y - y1;
+		return g * Tanh<double, 1>::Value(y, y1) - g*phiX + y - y1;
 	}
 
 public:
@@ -149,7 +149,7 @@ public:
 		Eigen::Array<double, 2, 1> u;
 		Eigen::Array<double, 2, 1> f;
 
-		const auto phiX = Tanh<double>::Value(x, _x1);
+		const auto phiX = Tanh<double,1>::Value(x, _x1);
 
 		//Note: Newton method is much slower than the secant method here
 		Eigen::Array<double, 1, 1> v_phiX; v_phiX << phiX;
@@ -180,7 +180,7 @@ public:
 		Eigen::Array<double, 2, 1> phiX;
 
 		for (int j = 0; j < 2; ++j)
-			phiX(j) = Tanh<double>::Value(x(j), x1(j));
+			phiX(j) = Tanh<double, 1>::Value(x(j), x1(j));
 
 		//Interleave the 2 guesses for the secant method for the audio and cv to
 		//make the compiler vectorize:

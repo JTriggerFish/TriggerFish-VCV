@@ -1,4 +1,5 @@
 #pragma once
+#include "../Eigen/Dense"
 #include <cmath>
 
 /**
@@ -26,23 +27,30 @@ namespace DiscreteGradient2
 		static constexpr double Value = 1.0e-12;
 	};
 
-	template<typename Float>
+	template<typename Float, int blockSize>
 	class Tanh
 	{
 	private:
 		static constexpr Float eps = _TanhEpsilon<Float>::Value;
 		static Float ValueLarge(const Float x, const Float xPrev)
 		{
-			return std::log(std::cosh(x)/std::cosh(xPrev)) / (x - xPrev);
+			return std::log(std::cosh(x) / std::cosh(xPrev)) / (x - xPrev);
 		}
 
 	public:
-
 		static Float Value(const Float x, const Float xPrev)
 		{
 			return std::abs(x - xPrev) <= eps ?
 				std::tanh(0.5*(x + xPrev)) :
 				ValueLarge(x, xPrev);
+		}
+		static Eigen::Array<Float, blockSize, 1> Value(const Eigen::Array<Float, blockSize, 1>&x, const Eigen::Array<Float, blockSize,1>& xPrev)
+		{
+			const Eigen::Array<Float, blockSize, 1> epsV = Eigen::Array<Float, blockSize, 1>::Constant(eps);
+			//Ternary operator as expressed in eigen:
+			return (Eigen::abs(x - xPrev) <= epsV).select(
+				Eigen::tanh(0.5*(x + xPrev)),
+				Eigen::log(Eigen::cosh(x) / Eigen::cosh(xPrev)) / (x - xPrev));
 		}
 		static Float Derivative(const Float x, const Float xPrev)
 		{
@@ -52,6 +60,26 @@ namespace DiscreteGradient2
 				return 0.5*(1.0 - t * t);
 			}
 			return (std::tanh(x) - ValueLarge(x, xPrev)) / (x - xPrev);
+		}
+	};
+	template<typename Float, int blockSize>
+	class TanhBlock
+	{
+	private:
+		Eigen::Array<Float, blockSize, 1>  _x1;
+	public:
+		TanhBlock()
+		{
+			_x1 = Eigen::Array<Float, blockSize, 1>::Zero();
+		}
+		Eigen::Array<Float, blockSize, 1> Process(const Eigen::Array<Float, blockSize, 1>& x)
+		{
+			//_x1 is the z^-1 or lag(1) operator on the input
+			_x1.template segment<blockSize - 1>(1) = x.template segment<blockSize - 1>(0);
+			Eigen::Array<Float, blockSize, 1> y = Tanh<Float, blockSize>::Value(x, _x1);
+			//Need to keep the last element for when called on the next block
+			_x1(0) = x(blockSize - 1);
+			return y;
 		}
 	};
 
