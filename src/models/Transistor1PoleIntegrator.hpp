@@ -64,6 +64,7 @@ private:
 			double guess = (g(i) * phiX(i) + (1.0 - 0.5*g(i)) * y1(i)) / (1 + 0.5*g(i));
 			y(2 * i) = guess;
 			//y(2 * i + 1) = guess + 1.0e-6;
+			//Other guess is simply the lagged value from the previous output:
 			y(2 * i + 1) = y1(i);
 		}
 		for(int i=0; i < N; ++i)
