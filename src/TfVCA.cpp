@@ -1,9 +1,10 @@
+#include "models/VCAcore.hpp"
+
 #include <memory>
 #include "TfElements.hpp"
 #include "components.hpp"
 #include "dsp/filters.hpp"
 #include "dsp/sampleRate.hpp"
-#include "models/VCAcore.hpp"
 
 
 // Analog modelled VCA with 2x oversampling
@@ -65,7 +66,7 @@ struct TfVCA : Module
 	// - onReset, onRandomize, onCreate, onDelete: implements special behavior when user clicks these from the context menu
 };
 
-const float TfVCA::_maxCvBleed = std::pow(10.f, -20.f / 20);
+const float TfVCA::_maxCvBleed = 1.41f * std::pow(10.f, -20.f / 20);
 
 void TfVCA::init(float sampleRate)
 {

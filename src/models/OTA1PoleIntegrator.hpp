@@ -1,5 +1,6 @@
 #pragma once
 
+#include "../Eigen/Dense"
 #include <cmath>
 #include "../dsp/nonlinear.hpp"
 #include <array>
@@ -26,7 +27,7 @@ private:
 	//solve for u[n] numerically : f(u) = g* Grad2[tanh](u, u1) + u - u1 - x + x1 = 0
 	static double func(const double u, const double u1, const double x, const double x1, const double g)
 	{
-		return g * Tanh<double>::Value(u, u1) + u - u1 - x + x1;
+		return g * Tanh<double, 1>::Value(u, u1) + u - u1 - x + x1;
 	}
 
 public:
@@ -48,30 +49,31 @@ private:
 	 * \param u interleaved state guesses ( 2 guesses ) for each model
 	 * \param f interleaved function values for the 2 guesses of each model
 	 */
-	template<std::size_t N>
-	static void InitGuesses(const std::array<double, N>& x,
-		const std::array<double, N>& g,
-		const std::array<double, N>& u1,
-		const std::array<double, N>& x1,
-		std::array<double, 2*N>& u,
-		std::array<double, 2*N>& f)
+	template<int N>
+	static void InitGuesses(
+		const Eigen::Array<double, N, 1>& x,
+		const Eigen::Array<double, N, 1>& g,
+		const Eigen::Array<double, N, 1>& u1,
+		const Eigen::Array<double, N, 1>& x1,
+		Eigen::Ref<Eigen::Array<double, 2*N, 1>> u,
+		Eigen::Ref<Eigen::Array<double, 2*N, 1>> f)
 	{
-		for (std::size_t i = 0; i < N; ++i)
+		for (int i = 0; i < N; ++i)
 		{
 			//initial guess linearised around u ~ 0
-			auto guess = (x[i] - x1[i] + u1[i] * (1.0 - 0.5*g[i])) / (1 + 0.5*g[i]);
-			u[2 * i] = guess;
-			//u[2 * i + 1] = guess + 1.0e-6;
-			u[2 * i + 1] = u1[i];
+			auto guess = (x(i) - x1(i) + u1(i) * (1.0 - 0.5*g(i))) / (1 + 0.5*g(i));
+			u(2 * i) = guess;
+			//u(2 * i + 1) = guess + 1.0e-6;
+			u(2 * i + 1) = u1(i);
 		}
-		for(std::size_t i=0; i < N; ++i)
+		for(int i=0; i < N; ++i)
 		{
-			if (std::abs(u[2 * i + 1] - u[2 * i]) < 1.0e-8)
-				u[2 * i + 1] += 1.0e-8;
+			if (std::abs(u(2 * i + 1) - u(2 * i)) < 1.0e-8)
+				u(2 * i + 1) += 1.0e-8;
 		}
-		for(std::size_t i=0; i < 2*N; ++i)
+		for(int i=0; i < 2*N; ++i)
 		{
-			f[i] = func(u[i], u1[i / 2], x[i / 2], x1[i / 2], g[i/2]);
+			f(i) = func(u(i), u1(i / 2), x(i / 2), x1(i / 2), g(i/2));
 		}
 	}
 
@@ -85,34 +87,41 @@ private:
 	 * \param u interleaved state guesses ( 2 guesses ) for each model
 	 * \param f interleaved function values ( 2 ) for the guesses of each model
 	 */
-	template<std::size_t N>
-	static void SecantIteration(const std::array<double, N>& x,
-		const std::array<double, N>& g,
-		const std::array<double, N>& u1,
-		const std::array<double, N>& x1,
-		std::array<double, 2*N>& u,
-		std::array<double, 2*N>& f)
+	template<int N>
+	static void SecantIteration(
+		const Eigen::Array<double, N, 1>& x,
+		const Eigen::Array<double, N, 1>& g,
+		const Eigen::Array<double, N, 1>& u1,
+		const Eigen::Array<double, N, 1>& x1,
+		Eigen::Ref<Eigen::Array<double, 2*N, 1>> u,
+		Eigen::Ref<Eigen::Array<double, 2*N, 1>> f)
 	{
-		for (std::size_t i = 0; i < N; ++i)
+		for (int i = 0; i < N; ++i)
 		{
-			const auto u_cur = u[2 * i];
-			u[2 * i] = u_cur - f[2 * i] * (u_cur - u[2 * i + 1]) / (f[2 * i] - f[2 * i + 1]);
-			f[2 * i + 1] = f[2 * i];
-			f[2 * i] = func(u[2 * i], u1[i], x[i], x1[i], g[i]);
-			u[2 * i + 1] = u_cur;
+			const auto u_cur = u(2 * i);
+			u(2 * i) = u_cur - f(2 * i) * (u_cur - u(2 * i + 1)) / (f(2 * i) - f(2 * i + 1));
+			f(2 * i + 1) = f(2 * i);
+			f(2 * i) = func(u(2 * i), u1(i), x(i), x1(i), g(i));
+			u(2 * i + 1) = u_cur;
 		}
 	}
 
-	double SolveSecantAndUpdateState(const double x, const double g, std::array<double, 2>& u, std::array<double, 2>& f)
+	double SolveSecantAndUpdateState(const double x, const double g,
+		Eigen::Ref<Eigen::Array<double, 2, 1>> u,
+		Eigen::Ref<Eigen::Array<double, 2, 1>> f)
 	{
 		//Secant method
+		Eigen::Array<double, 1, 1> v_x; v_x << x;
+		Eigen::Array<double, 1, 1> v_g   ; v_g	   << g;
+		Eigen::Array<double, 1, 1> v_u1  ; v_u1   << _u1;
+		Eigen::Array<double, 1, 1> v_x1  ; v_x1   << _x1;
 		while (true)
 		{
 			//Note:we know input x should be in a fairly narrow range so a fixed constant stopping criterion seems
 			//reasonable here, this should correspond to about 120dB accuracy
 			if (std::fabs(f[0]) < 1.0e-6 || std::fabs(f[0] - f[1]) < 1.0e-12)
 				break;
-			SecantIteration<1>({{ x }}, {{ g }}, {{ _u1 }}, {{ _x1 }}, u, f);
+			SecantIteration<1>(v_x, v_g, v_u1, v_x1, u, f);
 		}
 
 		_u1 = u[0];
@@ -140,12 +149,17 @@ public:
 
 		//[0] : current guess
 		//[1] : previous guess
-		std::array<double, 2> u;
-		std::array<double, 2> f;
+		Eigen::Array<double, 2, 1> u;
+		Eigen::Array<double, 2, 1> f;
 
-		//Note: Newton method is much slower
-		InitGuesses<1>({{ x }}, {{ g }}, {{ _u1 }}, {{ _x1 }}, u, f);
-		SecantIteration<1>({{ x }}, {{ g }}, {{ _u1 }}, {{ _x1 }}, u, f);
+		Eigen::Array<double, 1, 1> v_x; v_x << x;
+		Eigen::Array<double, 1, 1> v_g   ; v_g	   << g;
+		Eigen::Array<double, 1, 1> v_u1  ; v_u1   << _u1;
+		Eigen::Array<double, 1, 1> v_x1  ; v_x1   << _x1;
+
+		//Note: Newton method is much slower than secant method here
+		InitGuesses< 1 > (v_x, v_g, v_u1, v_x1, u, f);
+		SecantIteration<1>(v_x, v_g, v_u1, v_x1, u, f);
 
 		return SolveSecantAndUpdateState(x, g, u, f);
 	}
@@ -157,31 +171,34 @@ public:
 	 * \param g normalised cutoff gains, must be prewarped: g = w^~_c * T  = 2* tan( wc *T / 2 ) 
 	 * \return filtered values in place of input
 	 */
-	static void StepDual (std::array<OTA1PoleIntegrator,2>& models,  std::array<double,2>& x, const std::array<double,2>& g)
+	static void StepDual(std::array<OTA1PoleIntegrator, 2>& models, Eigen::Ref<Eigen::Array<double, 2, 1>> x, const Eigen::Array<double, 2, 1>& g)
 	{
-		std::array<double, 4> uAudioCv;
-		std::array<double, 4> fAudioCv;
-		std::array<double, 2> u1{ {models[0]._u1, models[1]._u1} };
-		std::array<double, 2> x1{ {models[0]._x1, models[1]._x1} };
+		Eigen::Array<double, 4, 1> uAudioCv;
+		Eigen::Array<double, 4, 1> fAudioCv;
+		Eigen::Array<double, 2, 1> u1;
+		u1 << models[0]._u1, models[1]._u1;
+		Eigen::Array<double, 2, 1> x1;
+		x1 << models[0]._x1, models[1]._x1;
+		Eigen::Array<double, 2, 1> phiX;
 
 		//Interleave the 2 guesses for the secant method for the audio and cv to
 		//make the compiler vectorize:
-		InitGuesses(x, g, u1, x1, uAudioCv, fAudioCv);
+		InitGuesses<2>(x, g, u1, x1, uAudioCv, fAudioCv);
 
 		//Similarly, Do one step of secant method in parallel
-		SecantIteration(x, g, u1, x1, uAudioCv, fAudioCv);
+		SecantIteration<2>(x, g, u1, x1, uAudioCv, fAudioCv);
 
 		//Do rest of the secant method, compiler probably can't unroll this
 		//due to the branches in each inner loop 
-		for (std::size_t j = 0; j < 2; ++j)
+		for (int j = 0; j < 2; ++j)
 		{
-			std::array<double, 2> u;
-			std::array<double, 2> f;
-			u[0] = uAudioCv[2 * j];
-			u[1] = uAudioCv[2 * j + 1];
-			f[0] = fAudioCv[2 * j];
-			f[1] = fAudioCv[2 * j + 1];
-			x[j] = models[j].SolveSecantAndUpdateState(x[j], g[j], u, f);
+			Eigen::Array<double, 2, 1> u;
+			Eigen::Array<double, 2, 1> f;
+			u(0) = uAudioCv(2 * j);
+			u(1) = uAudioCv(2 * j + 1);
+			f(0) = fAudioCv(2 * j);
+			f(1) = fAudioCv(2 * j + 1);
+			x(j) = models[j].SolveSecantAndUpdateState(x(j), g(j), u, f);
 		}
 	}
 };

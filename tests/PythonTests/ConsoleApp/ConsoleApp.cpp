@@ -4,8 +4,6 @@
 #include "../../../src/dsp/filters.hpp"
 #include "../../../src/dsp/sampleRate.hpp"
 #include "../../../src/models/VCAcore.hpp"
-#include "../../../src/models/ode.hpp"
-#include "../../../src/models/VanDerPoleODE.hpp"
 #include "../../../src/models/VdpOscillator.hpp"
 
 int main()
@@ -49,11 +47,10 @@ int main()
 	{
 		auto x = a * std::sin(2 * PI * phase);
 		////auto y = vca2xCheby7->Step(x, 1.0);
-		//auto y = vca2x_Tr_Cheby7->Step(x, 1.0, 1.0);
-		//out[i++] = y;
+		auto y = vca2x_Tr_Cheby7->Step(x, 1.0, 1.0);
 
 		//auto y = vdpo2x.Step(0, mu, w);
-		auto y = vdpo4x.Step(0, mu, w);
+		//auto y = vdpo4x.Step(0, mu, w);
 		out[i] = y;
 		//if(out[i] >= 12.0 || out[i] <= -12.0)
 		//{

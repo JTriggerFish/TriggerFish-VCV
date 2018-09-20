@@ -32,14 +32,14 @@ private:
 	std::unique_ptr<Oversampler> _resamplerMu;
 	std::unique_ptr<Oversampler> _resamplerW;
 
-	static constexpr unsigned int ResamplingFactor{ Oversampler::ResamplingFactor };
+	static constexpr int ResamplingFactor{ Oversampler::ResamplingFactor };
 
 	//dsp::PinkNoiseSource _noise{};
 
 	float ModelStep(double x, double mu, double w)
 	{
-		_vdp._mu = mu;
-		_vdp._w = std::max<double>(0.0, std::min<double>(maxAngularFreq, w));
+		_vdp._mu = std::max<double>(1.0e-8, mu);
+		_vdp._w = std::max<double>(-maxAngularFreq, std::min<double>(maxAngularFreq, w));
 		_integrator.Step(_vdp, x);// +_noise.Step());
 
 		//Clamp the state to avoid exploding if the ODE becomes unstable, typically when both mu and w are high.
@@ -79,15 +79,15 @@ public:
 		{
 			throw std::runtime_error("Sample rate invalid or not initialized");
 		}
-		std::array<double, ResamplingFactor> xA = _resamplerX->Upsample(x);
-		std::array<double, ResamplingFactor> muA = _resamplerMu->Upsample(mu);
-		std::array<double, ResamplingFactor> wA = _resamplerW->Upsample(w);
+		auto xA = _resamplerX->Upsample(x);
+		auto muA = _resamplerMu->Upsample(mu);
+		auto wA = _resamplerW->Upsample(w);
 
-		std::array<double, ResamplingFactor> output;
+		Eigen::Matrix<double, ResamplingFactor, 1> output;
 
-		for(size_t i=0; i < ResamplingFactor; ++i)
+		for(int i=0; i < ResamplingFactor; ++i)
 		{
-			output[i] =  ModelStep(xA[i], muA[i], wA[i]);
+			output(i) =  ModelStep(xA(i), muA(i), wA(i));
 		}
 		return _resamplerX->Downsample(output);
 
