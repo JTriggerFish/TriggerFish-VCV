@@ -38,8 +38,8 @@ private:
 
 	float ModelStep(double x, double mu, double w)
 	{
-		_vdp._mu = mu;
-		_vdp._w = std::max<double>(0.0, std::min<double>(maxAngularFreq, w));
+		_vdp._mu = std::max<double>(1.0e-8, mu);
+		_vdp._w = std::max<double>(-maxAngularFreq, std::min<double>(maxAngularFreq, w));
 		_integrator.Step(_vdp, x);// +_noise.Step());
 
 		//Clamp the state to avoid exploding if the ODE becomes unstable, typically when both mu and w are high.
