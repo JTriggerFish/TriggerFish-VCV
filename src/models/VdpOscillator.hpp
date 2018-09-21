@@ -93,3 +93,14 @@ public:
 
 	}
 };
+//Fix linking errors for old versions of gcc
+template<typename Oversampler, int IntegrationOrder>
+constexpr double VdpOscillator<Oversampler, IntegrationOrder>::maxAngularFreq;
+template<typename Oversampler, int IntegrationOrder>
+constexpr double VdpOscillator<Oversampler, IntegrationOrder>::maxOutput;
+template<typename Oversampler, int IntegrationOrder>
+constexpr double VdpOscillator<Oversampler, IntegrationOrder>::_initY0;
+template<typename Oversampler, int IntegrationOrder>
+constexpr double VdpOscillator<Oversampler, IntegrationOrder>::_initY1;
+template<typename Oversampler, int IntegrationOrder>
+constexpr int VdpOscillator<Oversampler, IntegrationOrder>::ResamplingFactor;
