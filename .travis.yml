@@ -1,0 +1,7 @@
+language: cpp
+build: make
+compiler: gcc
+os:
+  -windows
+  -linux
+  -osx
