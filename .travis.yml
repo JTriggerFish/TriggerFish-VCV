@@ -20,7 +20,7 @@ matrix:
         - os: osx
           osx_image: xcode10
           env:
-              - MATRIX_EVAL="brew install git wget cmake autoconf automake libtool"
+              - MATRIX_EVAL="" #"brew install git wget cmake autoconf automake libtool"
 
 before_install:
     - eval "${MATRIX_EVAL}"
