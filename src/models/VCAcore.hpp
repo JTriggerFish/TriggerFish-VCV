@@ -89,7 +89,7 @@ private:
 			audio(i) = audioAndCv(0) * audioAndCv(1) / _cvScaling;
 		}
 		//Apply final gain and saturate to power supply voltage
-		_outputStage.Process(finalGain / _powerSupplyVoltage * audio);
+		audio = _powerSupplyVoltage *  _outputStage.Process(finalGain / _powerSupplyVoltage * audio);
 	}
 };
 template<typename T>
