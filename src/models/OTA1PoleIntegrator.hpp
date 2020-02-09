@@ -2,7 +2,7 @@
 
 #include "../Eigen/Dense"
 #include <cmath>
-#include "../dsp/nonlinear.hpp"
+#include "../tfdsp/nonlinear.hpp"
 #include <array>
 
 /**

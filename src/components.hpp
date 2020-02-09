@@ -2,25 +2,24 @@
 #include "componentlibrary.hpp"
 #include <vector>
 #include <jansson.h>
-#include "widgets.hpp"
+#include "rack.hpp"
 #include <iostream>
 
 using namespace std;
 
 namespace rack {
 
-struct TfSlider : SVGFader
- {
+struct TfSlider : SVGSlider {
      TfSlider()
      {
 		Vec margin = Vec(4, 4);
 		maxHandlePos = Vec(-1.5, -8).plus(margin);
 		minHandlePos = Vec(-1.5, 104).plus(margin);
-		background->svg = SVG::load(assetPlugin(plugin,"res/slider.svg"));
+		background->svg = APP->window->loadSvg(asset::plugin(pluginInstance,"res/slider.svg"));
 		background->wrap();
 		background->box.pos = margin;
 		box.size = background->box.size.plus(margin.mult(2));
-		handle->svg = SVG::load(assetPlugin(plugin,"res/sliderHandle.svg"));
+		handle->svg = APP->window->loadSvg(asset::plugin(pluginInstance,"res/sliderHandle.svg"));
 		handle->wrap();
      }
 };

@@ -1,7 +1,7 @@
 #include <memory>
-#include "TfElements.hpp"
+#include "plugin.hpp"
 #include "components.hpp"
-#include "dsp/noise.hpp"
+#include "tfdsp/noise.hpp"
 
 
 // Analog style modulation of pitch for VCOs and filter cutoffs
@@ -47,20 +47,26 @@ struct TfSlop : Module
 
     //----------------------------------------------------------------
 
-	TfSlop() : Module(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS),  _rng(_seed())
+	TfSlop() : _rng(_seed())
 	{
-		auto engineSampleRate = engineGetSampleRate();
-		//_resampler = dsp::CreateX2Resampler_Butterworth5();
-		init(engineSampleRate);
+    config(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS);
+    configParam(TfSlop::HUM_LEVEL, 0.0f, 1.0f, 0.25f, "");
+    configParam(TfSlop::DRIFT_LEVEL, 0.0f, 1.0f, 0.25f, "");
+    configParam(TfSlop::TRACK_SCALING, 1.0f - 0.2f / 12, 1.0f, 1.0f, "");
+    configParam(TfSlop::DETUNE_MODE, -1.0f, 1.0f, -1.0f, "");
+
+		//_resampler = tfdsp::CreateX2Resampler_Butterworth5();
+    float gSampleRate = APP->engine->getSampleRate();
+		init(gSampleRate);
 	}
 
-	void step() override;
+	void process(const ProcessArgs& args) override;
 	void init(float sampleRate);
 	void onSampleRateChange() override;
 
 
 	// For more advanced Module features, read Rack's engine.hpp header file
-	// - toJson, fromJson: serialization of internal data
+	// - dataToJson, dataFromJson: serialization of internal data
 	// - onReset, onRandomize, onCreate, onDelete: implements special behavior when user clicks these from the context menu
 };
 
@@ -73,71 +79,72 @@ void TfSlop::init(float sampleRate)
 	_gaussian = std::normal_distribution<double>(0.0, std::sqrt(T));
 }
 
-void TfSlop::step()
+void TfSlop::process(const ProcessArgs& args)
  {
-	 if(_prevDetuneMode != params[DETUNE_MODE].value)
+	 if(_prevDetuneMode != params[DETUNE_MODE].getValue())
 	 {
 		 _ou = 0.0;
-		 _prevDetuneMode = params[DETUNE_MODE].value;
+		 _prevDetuneMode = params[DETUNE_MODE].getValue();
 	 }
-	float voct = inputs[VOCT_INPUT].value * params[TRACK_SCALING].value;
+	float voct = inputs[VOCT_INPUT].getVoltage() * params[TRACK_SCALING].getValue();
 
     _humPhase += _humPhaseIncrement;
     if(_humPhase >= 1.0)
         _humPhase -= 1.0;
 
-    float hum = _maxHum * params[HUM_LEVEL].value * std::sin(2 * PI * _humPhase);
+    float hum = _maxHum * params[HUM_LEVEL].getValue() * std::sin(2 * PI * _humPhase);
 
-	double sigma =  params[DETUNE_MODE].value < 0 ? _sigmaHz : _sigmaCents;
+	double sigma =  params[DETUNE_MODE].getValue() < 0 ? _sigmaHz : _sigmaCents;
 
 	_ou = _phi * _ou + sigma * _gaussian(_rng);
-	float drift = params[DRIFT_LEVEL].value * _ou;
+	float drift = params[DRIFT_LEVEL].getValue() * _ou;
 
 	voct = voct + hum;
 
 	
-	if(params[DETUNE_MODE].value < 0 ) //Hz i.e linear detune mode
-		outputs[VOCT_OUTPUT].value = dsp::detune::linear(voct, drift);
+	if(params[DETUNE_MODE].getValue() < 0 ) //Hz i.e linear detune mode
+		outputs[VOCT_OUTPUT].setVoltage(tfdsp::detune::linear(voct, drift));
 	else //Cents i.e proportional detune mode
-		outputs[VOCT_OUTPUT].value = voct + drift;
+		outputs[VOCT_OUTPUT].setVoltage(voct + drift);
 
 
 }
 void TfSlop::onSampleRateChange()
 {
-	float gSampleRate = engineGetSampleRate();
-	init(gSampleRate);
+  float gSampleRate = APP->engine->getSampleRate();
+  init(gSampleRate);
 }
 
 
 struct TfSlopWidget : ModuleWidget {
-	TfSlopWidget(TfSlop *module) : ModuleWidget(module) {
-		setPanel(SVG::load(assetPlugin(plugin, "res/TfSlop.svg")));
+	TfSlopWidget(TfSlop *module) {
+		setModule(module);
+		setPanel(APP->window->loadSvg(asset::plugin(pluginInstance, "res/TfSlop.svg")));
 
 		//Panel screws
-		addChild(Widget::create<ScrewSilver>(Vec(RACK_GRID_WIDTH, 0)));
-		addChild(Widget::create<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, 0)));
-		addChild(Widget::create<ScrewSilver>(Vec(RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
-		addChild(Widget::create<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
+		addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, 0)));
+		addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, 0)));
+		addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
+		addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
 
 		//Knobs
-        addParam(ParamWidget::create<TfCvKnob>(Vec(30, 55), module, TfSlop::HUM_LEVEL, 0.0f, 1.0f, 0.25f));
-        addParam(ParamWidget::create<TfCvKnob>(Vec(10, 127), module, TfSlop::DRIFT_LEVEL, 0.0f, 1.0f, 0.25f));
-		addParam(ParamWidget::create<TfCvKnob>(Vec(30, 190), module, TfSlop::TRACK_SCALING, 1.0f - 0.2f / 12, 1.0f, 1.0f));
+        addParam(createParam<TfCvKnob>(Vec(30, 55), module, TfSlop::HUM_LEVEL));
+        addParam(createParam<TfCvKnob>(Vec(10, 127), module, TfSlop::DRIFT_LEVEL));
+		addParam(createParam<TfCvKnob>(Vec(30, 190), module, TfSlop::TRACK_SCALING));
 
 		//Drift mode switch
-		addParam(ParamWidget::create<CKSS>(Vec(65, 135), module, TfSlop::DETUNE_MODE, -1.0f, 1.0f, -1.0f));
+		addParam(createParam<CKSS>(Vec(65, 135), module, TfSlop::DETUNE_MODE));
 
 		//Jacks at the bottom
-		addInput(Port::create<PJ301MPort>(Vec(13.5, 317), Port::INPUT, module, TfSlop::VOCT_INPUT));
-		addOutput(Port::create<PJ301MPort>(Vec(55, 317), Port::OUTPUT, module, TfSlop::VOCT_OUTPUT));
+		addInput(createInput<PJ301MPort>(Vec(13.5, 317), module, TfSlop::VOCT_INPUT));
+		addOutput(createOutput<PJ301MPort>(Vec(55, 317), module, TfSlop::VOCT_OUTPUT));
 
 	}
 };
 
 
 // Specify the Module and ModuleWidget subclass, human-readable
-// author name for categorization per plugin, module slug (should never
+// author name for categorization per pluginInstance, module slug (should never
 // change), human-readable module name, and any number of tags
 // (found in `include/tags.hpp`) separated by commas.
-Model *modelTfSlop = Model::create<TfSlop, TfSlopWidget>("TriggerFish-Elements", "TfSlop", "TriggerFish-Slop", rack::ModelTag::NOISE_TAG);
+Model *modelTfSlop = createModel<TfSlop, TfSlopWidget>("TfSlop");

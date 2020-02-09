@@ -8,7 +8,7 @@
  * References : Digital signal processing schemes for efficient interpolation and decimation, R.A Valenzuela, A.G Constantinides, IEE 1983
  */
 
-namespace dsp
+namespace tfdsp
 {
 
 	template<typename Impl, int Factor>

@@ -1,20 +1,18 @@
-#include "TfElements.hpp"
+#include "plugin.hpp"
 
 
-Plugin *plugin;
+Plugin *pluginInstance;
 
 
 void init(Plugin *p) {
-	plugin = p;
-	p->slug = TOSTRING(SLUG);
-	p->version = TOSTRING(VERSION);
+	pluginInstance = p;
 
-	// Add all Models defined throughout the plugin
+	// Add all Models defined throughout the pluginInstance
 	p->addModel(modelTfVCA);
 	p->addModel(modelTfSlop);
 	p->addModel(modelTfSlop4);
 	p->addModel(modelTfVDPO);
 
-	// Any other plugin initialization may go here.
+	// Any other pluginInstance initialization may go here.
 	// As an alternative, consider lazy-loading assets and lookup tables when your module is created to reduce startup times of Rack.
 }

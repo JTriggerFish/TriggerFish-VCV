@@ -1,13 +1,14 @@
 # If RACK_DIR is not defined when calling the Makefile, default to two directories above
 RACK_DIR ?= ../..
 
+
 # Must follow the format in the Naming section of
 # https://vcvrack.com/manual/PluginDevelopmentTutorial.html
 SLUG = TriggerFish-Elements
 
 # Must follow the format in the Versioning section of
 # https://vcvrack.com/manual/PluginDevelopmentTutorial.html
-VERSION = 0.6.4
+VERSION = 1.0
 
 
 # FLAGS will be passed to both the C and C++ compiler
@@ -20,7 +21,7 @@ CXXFLAGS += -Isrc -Isrc/dsp -Isrc/models
 LDFLAGS +=
 
 # Add .cpp and .c files to the build
-SOURCES += $(wildcard src/*.cpp src/dsp/*.cpp src/models/*.cpp)
+SOURCES += $(wildcard src/*.cpp src/tfdsp/*.cpp src/models/*.cpp)
 
 # Add files to the ZIP package when running `make dist`
 # The compiled plugin is automatically added.
