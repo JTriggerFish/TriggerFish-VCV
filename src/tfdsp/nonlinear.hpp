@@ -4,7 +4,6 @@
 
 /**
  * Mid point discrete gradients for integration of ODEs with nonlinear functions
- * References: Reducing
  * References:
  *     [1] : REDUCING THE ALIASING OF NONLINEAR WAVESHAPING USING CONTINUOUS-TIME CONVOLUTION, Julian Parker et al, DAFX 16
  *     [2] : Geometric intergration using discrete gradients, R. McLahlan, G.R.W Quispel, Nicolas Robidoux, 1998

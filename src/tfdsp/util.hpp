@@ -9,13 +9,13 @@ private:
 public:
   Derived const *Self() const
   {
-      // casting "down" the inheritance hierarchy
-      return static_cast<Derived const *>(this);
+    // casting "down" the inheritance hierarchy
+    return static_cast<Derived const *>(this);
   }
 
   Derived *Self()
   {
-      return static_cast<Derived *>(this);
+    return static_cast<Derived *>(this);
   }
 
 protected:

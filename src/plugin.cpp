@@ -1,10 +1,9 @@
 #include "plugin.hpp"
 
-
 Plugin *pluginInstance;
 
-
-void init(Plugin *p) {
+void init(Plugin *p)
+{
 	pluginInstance = p;
 
 	// Add all Models defined throughout the pluginInstance

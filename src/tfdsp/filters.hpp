@@ -149,7 +149,7 @@ public:
 };
 
 // Non Linear first order low pass with zero delay feedback
-// and OTA-style tanh saturation, using its antiderivative with rectangular kernal for antialising,
+// and OTA-style tanh saturation, using its antiderivative with rectangular kernel for antialising,
 // and templated number of Newton-Raphson iterations.
  // see [1] 6.13 and [2]
 template<unsigned int iterations> class OTAFirstOrderLowPass
