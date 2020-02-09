@@ -1,7 +1,7 @@
 #include "sampleRate.hpp"
 
 
-namespace dsp {
+namespace tfdsp {
 
 X2Resampler_Order5* CreateX2Resampler_Butterworth5()
 {

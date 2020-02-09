@@ -3,7 +3,7 @@
 #include "../Eigen/Dense"
 #include <cmath>
 #include <array>
-#include "../dsp/nonlinear.hpp"
+#include "../tfdsp/nonlinear.hpp"
 
 /**
  * References:

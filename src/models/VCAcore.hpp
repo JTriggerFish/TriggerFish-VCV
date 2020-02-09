@@ -6,8 +6,8 @@
 #include <cmath>
 #include <functional>
 #include <random>
-#include "../dsp/filters.hpp"
-#include "../dsp/noise.hpp"
+#include "../tfdsp/filters.hpp"
+#include "../tfdsp/noise.hpp"
 #include "OTA1PoleIntegrator.hpp"
 #include "Transistor1PoleIntegrator.hpp"
 
@@ -33,7 +33,7 @@ private:
 	Eigen::Array<double, 2, 1> _rolloffs;
 	Eigen::Array<double, 2, 1> _g;//Normalised and prewarped rolloffs
 
-	dsp::PinkNoiseSource _noise{};
+	tfdsp::PinkNoiseSource _noise{};
 	double _noiseLevel{ 1.0e-10 };
 	double _noiseStdDev{};
 

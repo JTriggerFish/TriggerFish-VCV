@@ -2,7 +2,7 @@
 #include "VanDerPoleODE.hpp"
 #include "ode.hpp"
 #include <algorithm>
-#include "../dsp/sampleRate.hpp"
+#include "../tfdsp/sampleRate.hpp"
 
 using namespace ode;
 
@@ -34,7 +34,7 @@ private:
 
 	static constexpr int ResamplingFactor{ Oversampler::ResamplingFactor };
 
-	//dsp::PinkNoiseSource _noise{};
+	//tfdsp::PinkNoiseSource _noise{};
 
 	float ModelStep(double x, double mu, double w)
 	{

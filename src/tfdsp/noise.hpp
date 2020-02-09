@@ -10,7 +10,7 @@
  *  -Pinking filter for pink noise : https://ccrma.stanford.edu/~jos/sasp/Example_Synthesis_1_F_Noise.html
  */
 
-namespace dsp 
+namespace tfdsp 
 {
 	class WhiteNoiseSource
 	{

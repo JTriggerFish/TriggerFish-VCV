@@ -1,7 +1,7 @@
 #include <memory>
 #include "TfElements.hpp"
 #include "components.hpp"
-#include "dsp/noise.hpp"
+#include "tfdsp/noise.hpp"
 
 
 // Like TfSlop but with 4 outputs and a common drift on top of the idiosyncratic drifts
@@ -60,7 +60,7 @@ struct TfSlop4 : Module
 	TfSlop4() : Module(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS),  _rng(_seed())
 	{
 		auto engineSampleRate = engineGetSampleRate();
-		//_resampler = dsp::CreateX2Resampler_Butterworth5();
+		//_resampler = tfdsp::CreateX2Resampler_Butterworth5();
 		init(engineSampleRate);
 	}
 
@@ -109,7 +109,7 @@ void TfSlop4::step()
 		_ouIndividual[i] = _phi * _ouIndividual[i] + _sigmaHz * _gaussian(_rng);
 		double v = voct[i] + hum + driftCommon;
 		double drift = params[INDIVIDUAL_DRIFT_LEVEL].value * _ouIndividual[i];
-		outputs[i].value = dsp::detune::linear(v, drift);
+		outputs[i].value = tfdsp::detune::linear(v, drift);
     }
 
 }

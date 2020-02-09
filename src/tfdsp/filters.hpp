@@ -15,7 +15,7 @@
  *     [1] ZDF filters : Vadim Zavalishin "The art of VA filter design" rev 2.0 2018
  *
  */
-namespace dsp
+namespace tfdsp
 {
     
 /**Prewarping from analog to digital frequency */

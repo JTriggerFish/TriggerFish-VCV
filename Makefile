@@ -2,7 +2,7 @@
 RACK_DIR ?= ../..
 
 # FLAGS will be passed to both the C and C++ compiler
-FLAGS += -std=c++17 #-faligned-allocation -faligned-new# -fopt-info-loop-optimized # -fopt-info-vec-missed
+FLAGS += -std=c++17 -w#-faligned-allocation -faligned-new# -fopt-info-loop-optimized # -fopt-info-vec-missed
 CFLAGS +=
 CXXFLAGS += -Isrc -Isrc/dsp -Isrc/models
 

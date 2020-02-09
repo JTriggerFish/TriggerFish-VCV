@@ -3,8 +3,8 @@
 #include <memory>
 #include "TfElements.hpp"
 #include "components.hpp"
-#include "dsp/filters.hpp"
-#include "dsp/sampleRate.hpp"
+#include "tfdsp/filters.hpp"
+#include "tfdsp/sampleRate.hpp"
 
 
 // Analog modelled VCA with 2x oversampling
@@ -41,18 +41,18 @@ struct TfVCA : Module
 	float _normalisedHighPassCv;
 	float _normalisedHighPassAudio;
 
-	std::unique_ptr<::VCA_TransistorCore<dsp::X2Resampler_Order7> >_vcaTransi;
+	std::unique_ptr<::VCA_TransistorCore<tfdsp::X2Resampler_Order7> >_vcaTransi;
 
-	dsp::FirstOrderHighPassZdf<float> _cvHighPass{};
-	dsp::FirstOrderHighPassZdf<float> _audioHighPass{};
+	tfdsp::FirstOrderHighPassZdf<float> _cvHighPass{};
+	tfdsp::FirstOrderHighPassZdf<float> _audioHighPass{};
 
 	//----------------------------------------------------------------
 
 	TfVCA() : Module(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS),
-		_vcaTransi(new ::VCA_TransistorCore<dsp::X2Resampler_Order7>(dsp::CreateX2Resampler_Chebychev7))
+		_vcaTransi(new ::VCA_TransistorCore<tfdsp::X2Resampler_Order7>(tfdsp::CreateX2Resampler_Chebychev7))
 	{
 		auto engineSampleRate = engineGetSampleRate();
-		//_resampler = dsp::CreateX2Resampler_Butterworth5();
+		//_resampler = tfdsp::CreateX2Resampler_Butterworth5();
 		init(engineSampleRate);
 	}
 

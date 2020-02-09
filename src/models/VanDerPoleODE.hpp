@@ -1,6 +1,6 @@
 #pragma once
 #include "../Eigen/Dense"
-#include "../dsp/filters.hpp"
+#include "../tfdsp/filters.hpp"
 using namespace Eigen;
 
 namespace ode

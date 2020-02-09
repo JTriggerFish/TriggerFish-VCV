@@ -1,7 +1,7 @@
 #include <memory>
 #include "TfElements.hpp"
 #include "components.hpp"
-#include "dsp/noise.hpp"
+#include "tfdsp/noise.hpp"
 
 
 // Analog style modulation of pitch for VCOs and filter cutoffs
@@ -50,7 +50,7 @@ struct TfSlop : Module
 	TfSlop() : Module(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS),  _rng(_seed())
 	{
 		auto engineSampleRate = engineGetSampleRate();
-		//_resampler = dsp::CreateX2Resampler_Butterworth5();
+		//_resampler = tfdsp::CreateX2Resampler_Butterworth5();
 		init(engineSampleRate);
 	}
 
@@ -97,7 +97,7 @@ void TfSlop::step()
 
 	
 	if(params[DETUNE_MODE].value < 0 ) //Hz i.e linear detune mode
-		outputs[VOCT_OUTPUT].value = dsp::detune::linear(voct, drift);
+		outputs[VOCT_OUTPUT].value = tfdsp::detune::linear(voct, drift);
 	else //Cents i.e proportional detune mode
 		outputs[VOCT_OUTPUT].value = voct + drift;
 

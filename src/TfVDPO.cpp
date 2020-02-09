@@ -2,7 +2,7 @@
 #include <memory>
 #include "TfElements.hpp"
 #include "components.hpp"
-#include "dsp/noise.hpp"
+#include "tfdsp/noise.hpp"
 
 
 // Analog style modulation of pitch for VCOs and filter cutoffs
@@ -35,8 +35,8 @@ struct TfVDPO : Module
 	// in particular harmonic tuning ( higher order methods have a tendency to have more inharmonic partials ).
 	// in the future it might be worth investing other methods such as Implicit Runge-Kutta for instance Radau II.
 	// Alternatively higher oversampling also provides better stability and tuning, which is why a HQ mode is offered
-    //VdpOscillator<dsp::X2Resampler_Order7, 3> _vdp{dsp::CreateX2Resampler_Chebychev7};
-    VdpOscillator<dsp::X4Resampler_Order7, 3> _vdpHq{dsp::CreateX4Resampler_Cheby7};
+    //VdpOscillator<tfdsp::X2Resampler_Order7, 3> _vdp{tfdsp::CreateX2Resampler_Chebychev7};
+    VdpOscillator<tfdsp::X4Resampler_Order7, 3> _vdpHq{tfdsp::CreateX4Resampler_Cheby7};
 
     //----------------------------------------------------------------
 
@@ -44,7 +44,7 @@ struct TfVDPO : Module
 	TfVDPO() : Module(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS)
 	{
 		auto engineSampleRate = engineGetSampleRate();
-		//_resampler = dsp::CreateX2Resampler_Butterworth5();
+		//_resampler = tfdsp::CreateX2Resampler_Butterworth5();
 		init(engineSampleRate);
 	}
 

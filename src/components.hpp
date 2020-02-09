@@ -2,15 +2,14 @@
 #include "componentlibrary.hpp"
 #include <vector>
 #include <jansson.h>
-#include "rack.hpp"
+#include "rack0.hpp"
 #include <iostream>
 
 using namespace std;
 
 namespace rack {
 
-struct TfSlider : SVGFader
- {
+struct TfSlider : SVGSlider {
      TfSlider()
      {
 		Vec margin = Vec(4, 4);
