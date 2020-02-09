@@ -18,7 +18,7 @@ matrix:
           env:
               - MATRIX_EVAL="sudo apt install git curl cmake libx11-dev libglu1-mesa-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev zlib1g-dev libasound2-dev libgtk2.0-dev libjack-jackd2-dev jq;CC=gcc-7 && CXX=g++-7"
         - os: osx
-          osx_image: xcode10
+          osx_image: xcode11.3
           env:
               - MATRIX_EVAL="" #"brew install git wget cmake autoconf automake libtool"
 
