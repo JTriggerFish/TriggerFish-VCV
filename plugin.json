@@ -5,7 +5,7 @@
   "license": "BSD-3-Clause",
   "brand": "TriggerFish",
   "author": "JTriggerFish",
-  "authorEmail": "",
+  "authorEmail": "FastTriggerFish@gmail.com",
   "authorUrl": "",
   "pluginUrl": "https://github.com/JTriggerFish/TriggerFish-VCV",
   "manualUrl": "https://github.com/JTriggerFish/TriggerFish-VCV",
@@ -16,7 +16,7 @@
     {
       "slug": "TfSlop",
       "name": "Slop",
-      "description": "",
+      "description": "Slop",
       "tags": [
         "Noise"
       ]
@@ -24,7 +24,7 @@
     {
       "slug": "TfSlop4",
       "name": "Slop4",
-      "description": "",
+      "description": "Slop",
       "tags": [
         "Noise"
       ]
@@ -42,7 +42,7 @@
       "name": "TFVCA",
       "description": "analog modelled VCA that is loosely based on the minimoog's circuit",
       "tags": [
-        "VCA"
+        "Voltage-controlled amplifier"
       ]
     }
   ]

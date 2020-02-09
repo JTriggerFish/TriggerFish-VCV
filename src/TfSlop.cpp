@@ -1,5 +1,5 @@
 #include <memory>
-#include "TfElements.hpp"
+#include "plugin.hpp"
 #include "components.hpp"
 #include "tfdsp/noise.hpp"
 
@@ -47,11 +47,17 @@ struct TfSlop : Module
 
     //----------------------------------------------------------------
 
-	TfSlop() : Module(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS),  _rng(_seed())
+	TfSlop() : _rng(_seed())
 	{
-		auto engineSampleRate = args.sampleRate;
+    config(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS);
+    configParam(TfSlop::HUM_LEVEL, 0.0f, 1.0f, 0.25f, "");
+    configParam(TfSlop::DRIFT_LEVEL, 0.0f, 1.0f, 0.25f, "");
+    configParam(TfSlop::TRACK_SCALING, 1.0f - 0.2f / 12, 1.0f, 1.0f, "");
+    configParam(TfSlop::DETUNE_MODE, -1.0f, 1.0f, -1.0f, "");
+
 		//_resampler = tfdsp::CreateX2Resampler_Butterworth5();
-		init(engineSampleRate);
+    float gSampleRate = APP->engine->getSampleRate();
+		init(gSampleRate);
 	}
 
 	void process(const ProcessArgs& args) override;
@@ -105,8 +111,8 @@ void TfSlop::process(const ProcessArgs& args)
 }
 void TfSlop::onSampleRateChange()
 {
-	float gSampleRate = args.sampleRate;
-	init(gSampleRate);
+  float gSampleRate = APP->engine->getSampleRate();
+  init(gSampleRate);
 }
 
 
@@ -128,11 +134,6 @@ struct TfSlopWidget : ModuleWidget {
 
 		//Drift mode switch
 		addParam(createParam<CKSS>(Vec(65, 135), module, TfSlop::DETUNE_MODE));
-
-    configParam(TfSlop::HUM_LEVEL, 0.0f, 1.0f, 0.25f, "");
-    configParam(TfSlop::DRIFT_LEVEL, 0.0f, 1.0f, 0.25f, "");
-    configParam(TfSlop::TRACK_SCALING, 1.0f - 0.2f / 12, 1.0f, 1.0f, "");
-    configParam(TfSlop::DETUNE_MODE, -1.0f, 1.0f, -1.0f, "");
 
 		//Jacks at the bottom
 		addInput(createInput<PJ301MPort>(Vec(13.5, 317), module, TfSlop::VOCT_INPUT));

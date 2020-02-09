@@ -1,6 +1,6 @@
 #include "models/VdpOscillator.hpp"
 #include <memory>
-#include "TfElements.hpp"
+#include "plugin.hpp"
 #include "components.hpp"
 #include "tfdsp/noise.hpp"
 
@@ -41,11 +41,19 @@ struct TfVDPO : Module
     //----------------------------------------------------------------
 
 	EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-	TfVDPO() : Module(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS)
+	TfVDPO()
 	{
-		auto engineSampleRate = args.sampleRate;
+    config(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS);
+    configParam(TfVDPO::FREQ, -5.0f, 5.0f, 0.0f, "");
+    configParam(TfVDPO::DAMPING, 0.001f, 9.0f, 0.5f, "");
+    configParam(TfVDPO::INPUT_GAIN, 0.0, 1.0f, 1.0f, "");
+    configParam(TfVDPO::LEVEL, 0.0, 1.0f, 2.0f, "");
+    configParam(TfVDPO::VOCT_SCALING, 0.0f, 1.0f, 2.0f, "");
+    configParam(TfVDPO::DAMPING_ATTENUVERT, -1.0f, 1.0f, 1.0f, "");
+    //configParam(TfVDPO::HQ_MODE, -1.0f, 1.0f, -1.0f, "");
 		//_resampler = tfdsp::CreateX2Resampler_Butterworth5();
-		init(engineSampleRate);
+    float gSampleRate = APP->engine->getSampleRate();
+    init(gSampleRate);
 	}
 
 	void process(const ProcessArgs& args) override;
@@ -84,8 +92,8 @@ void TfVDPO::process(const ProcessArgs& args)
 }
 void TfVDPO::onSampleRateChange()
 {
-	float gSampleRate = args.sampleRate;
-	init(gSampleRate);
+  float gSampleRate = APP->engine->getSampleRate();
+  init(gSampleRate);
 }
 
 
@@ -109,16 +117,9 @@ struct TfVDPOWidget : ModuleWidget {
 		addParam(createParam<TfTrimpot>(Vec(23, 256), module, TfVDPO::VOCT_SCALING));
 		addParam(createParam<TfTrimpot>(Vec(81, 256), module, TfVDPO::DAMPING_ATTENUVERT));
 
-    configParam(TfVDPO::FREQ, -5.0f, 5.0f, 0.0f, "");
-    configParam(TfVDPO::DAMPING, 0.001f, 9.0f, 0.5f, "");
-    configParam(TfVDPO::INPUT_GAIN, 0.0, 1.0f, 1.0f, "");
-    configParam(TfVDPO::LEVEL, 0.0, 1.0f, 2.0f, "");
-    configParam(TfVDPO::VOCT_SCALING, 0.0f, 1.0f, 2.0f, "");
-    configParam(TfVDPO::DAMPING_ATTENUVERT, -1.0f, 1.0f, 1.0f, "");
 		//High quality switch
 		//addParam(createParam<ToggleSwitch>(Vec(50, 280), module, TfVDPO::HQ_MODE));
 
-    //configParam(TfVDPO::HQ_MODE, -1.0f, 1.0f, -1.0f, "");
 		//Jacks at the bottom
 		addInput(createInput<PJ301MPort>(Vec(20, 280), module, TfVDPO::VOCT_INPUT));
 		addInput(createInput<PJ301MPort>(Vec(78, 280), module, TfVDPO::DAMPING_INPUT));

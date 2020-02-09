@@ -1,5 +1,5 @@
 #include <memory>
-#include "TfElements.hpp"
+#include "plugin.hpp"
 #include "components.hpp"
 #include "tfdsp/noise.hpp"
 
@@ -57,11 +57,19 @@ struct TfSlop4 : Module
 
     //----------------------------------------------------------------
 
-	TfSlop4() : Module(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS),  _rng(_seed())
+	TfSlop4() : _rng(_seed())
 	{
-		auto engineSampleRate = args.sampleRate;
+    config(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS);
+    configParam(TfSlop4::HUM_LEVEL, 0.0f, 1.0f, 0.10f, "");
+    configParam(TfSlop4::COMMON_DRIFT_LEVEL, 0.0f, 1.0f, 0.20f, "");
+    configParam(TfSlop4::INDIVIDUAL_DRIFT_LEVEL, 0.0f, 1.0f, 0.20f, "");
+    configParam(TfSlop4::TRACK_SCALING1, 1.0f - 0.2f / 12, 1.0f, 1.0f, "");
+    configParam(TfSlop4::TRACK_SCALING2, 1.0f - 0.2f / 12, 1.0f, 1.0f, "");
+    configParam(TfSlop4::TRACK_SCALING3, 1.0f - 0.2f / 12, 1.0f, 1.0f, "");
+    configParam(TfSlop4::TRACK_SCALING4, 1.0f - 0.2f / 12, 1.0f, 1.0f, "");
 		//_resampler = tfdsp::CreateX2Resampler_Butterworth5();
-		init(engineSampleRate);
+    float gSampleRate = APP->engine->getSampleRate();
+		init(gSampleRate);
 	}
 
 	void process(const ProcessArgs& args) override;
@@ -115,8 +123,8 @@ void TfSlop4::process(const ProcessArgs& args)
 }
 void TfSlop4::onSampleRateChange()
 {
-	float gSampleRate = args.sampleRate;
-	init(gSampleRate);
+  float gSampleRate = APP->engine->getSampleRate();
+  init(gSampleRate);
 }
 
 
@@ -136,9 +144,6 @@ struct TfSlop4Widget : ModuleWidget {
         addParam(createParam<TfCvKnob>(Vec(16, 133), module, TfSlop4::COMMON_DRIFT_LEVEL));
 		addParam(createParam<TfCvKnob>(Vec(105, 133), module, TfSlop4::INDIVIDUAL_DRIFT_LEVEL));
 
-    configParam(TfSlop4::HUM_LEVEL, 0.0f, 1.0f, 0.10f, "");
-    configParam(TfSlop4::COMMON_DRIFT_LEVEL, 0.0f, 1.0f, 0.20f, "");
-    configParam(TfSlop4::INDIVIDUAL_DRIFT_LEVEL, 0.0f, 1.0f, 0.20f, "");
         //Tracking trimmers
 		auto leftMargin = 13;
 		auto spacing = 35;
@@ -147,10 +152,6 @@ struct TfSlop4Widget : ModuleWidget {
         addParam(createParam<TfTrimpot>(Vec(leftMargin + 2*spacing, 223), module, TfSlop4::TRACK_SCALING3));
         addParam(createParam<TfTrimpot>(Vec(leftMargin + 3*spacing, 223), module, TfSlop4::TRACK_SCALING4));
 
-    configParam(TfSlop4::TRACK_SCALING1, 1.0f - 0.2f / 12, 1.0f, 1.0f, "");
-    configParam(TfSlop4::TRACK_SCALING2, 1.0f - 0.2f / 12, 1.0f, 1.0f, "");
-    configParam(TfSlop4::TRACK_SCALING3, 1.0f - 0.2f / 12, 1.0f, 1.0f, "");
-    configParam(TfSlop4::TRACK_SCALING4, 1.0f - 0.2f / 12, 1.0f, 1.0f, "");
 		//Input jacks
 		leftMargin =10;
 		addInput(createInput<PJ301MPort>(Vec(leftMargin, 283), module, TfSlop4::VOCT_INPUT1));

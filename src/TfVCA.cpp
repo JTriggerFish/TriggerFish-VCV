@@ -1,7 +1,7 @@
 #include "models/VCAcore.hpp"
 
 #include <memory>
-#include "TfElements.hpp"
+#include "plugin.hpp"
 #include "components.hpp"
 #include "tfdsp/filters.hpp"
 #include "tfdsp/sampleRate.hpp"
@@ -48,12 +48,19 @@ struct TfVCA : Module
 
 	//----------------------------------------------------------------
 
-	TfVCA() : Module(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS),
-		_vcaTransi(new ::VCA_TransistorCore<tfdsp::X2Resampler_Order7>(tfdsp::CreateX2Resampler_Chebychev7))
+	TfVCA() : _vcaTransi(new ::VCA_TransistorCore<tfdsp::X2Resampler_Order7>(tfdsp::CreateX2Resampler_Chebychev7))
 	{
-		auto engineSampleRate = args.sampleRate;
+    config(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS);
+    configParam(TfVCA::LIN_INPUT_LEVEL, 0.0f, 1.0f, 1.0f, "");
+    configParam(TfVCA::EXP_INPUT_LEVEL, 0.0f, 1.0f, 0.0f, "");
+    configParam(TfVCA::INPUT_GAIN, 0.0f, 2.0f, 0.5f, "");
+    configParam(TfVCA::OUTPUT_LEVEL, 0.0f, 2.0f, 1.0f, "");
+    configParam(TfVCA::EXP_CV_BASE, 2.0f, 50.0f, 50.0f, "");
+    configParam(TfVCA::CV_BLEED, 0.0f, 1.0f, 0.5f, "");
+
 		//_resampler = tfdsp::CreateX2Resampler_Butterworth5();
-		init(engineSampleRate);
+    float gSampleRate = APP->engine->getSampleRate();
+		init(gSampleRate);
 	}
 
 	void process(const ProcessArgs& args) override;
@@ -86,8 +93,8 @@ void TfVCA::process(const ProcessArgs& args) {
 	float audio = inputs[AUDIO_INPUT].getVoltage() * inputGain;
 	//VCA cv should be unipolar between 0 and 10, normalise to 0 to 1. 
 	//If no input plugged in then pass zero.
-	float linCv = inputs[LIN_CV_INPUT].normalize(0.f) / 10.f * params[LIN_INPUT_LEVEL].getValue();
-	float expCv = inputs[EXP_CV_INPUT].normalize(0.f) / 10.f * params[EXP_INPUT_LEVEL].getValue();
+	float linCv = inputs[LIN_CV_INPUT].getNormalVoltage(0.f) / 10.f * params[LIN_INPUT_LEVEL].getValue();
+	float expCv = inputs[EXP_CV_INPUT].getNormalVoltage(0.f) / 10.f * params[EXP_INPUT_LEVEL].getValue();
 
 	float expBase = params[EXP_CV_BASE].getValue();
 	expCv = (powf(expBase, expCv) - 1.f) / (expBase - 1.f);
@@ -112,12 +119,12 @@ void TfVCA::process(const ProcessArgs& args) {
 	outputs[MAIN_OUTPUT].value += audio;
 
 	//Deal with input monitoring lights
-	lights[CV_LIGHT].setBrightnessSmooth(std::max(0.f, cv));
+	lights[CV_LIGHT].setSmoothBrightness(std::max(0.f, cv), args.sampleTime);
 
 }
 void TfVCA::onSampleRateChange()
 {
-	float gSampleRate = args.sampleRate;
+	float gSampleRate = APP->engine->getSampleRate();
 	init(gSampleRate);
 }
 
@@ -141,13 +148,6 @@ struct TfVCAWidget : ModuleWidget {
 
 		addParam(createParam<TfTrimpot>(Vec(38,245), module, TfVCA::EXP_CV_BASE));
 		addParam(createParam<TfTrimpot>(Vec(121,245), module, TfVCA::CV_BLEED));
-
-    configParam(TfVCA::LIN_INPUT_LEVEL, 0.0f, 1.0f, 1.0f, "");
-    configParam(TfVCA::EXP_INPUT_LEVEL, 0.0f, 1.0f, 0.0f, "");
-    configParam(TfVCA::INPUT_GAIN, 0.0f, 2.0f, 0.5f, "");
-    configParam(TfVCA::OUTPUT_LEVEL, 0.0f, 2.0f, 1.0f, "");
-    configParam(TfVCA::EXP_CV_BASE, 2.0f, 50.0f, 50.0f, "");
-    configParam(TfVCA::CV_BLEED, 0.0f, 1.0f, 0.5f, "");
 
 		//Activity led
 		addChild(createLight<MediumLight<BlueLight>>(Vec(85, 250), module, TfVCA::CV_LIGHT));
