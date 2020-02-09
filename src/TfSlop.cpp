@@ -140,4 +140,4 @@ struct TfSlopWidget : ModuleWidget {
 // author name for categorization per plugin, module slug (should never
 // change), human-readable module name, and any number of tags
 // (found in `include/tags.hpp`) separated by commas.
-Model *modelTfSlop = Model::create<TfSlop, TfSlopWidget>("TriggerFish-Elements", "TfSlop", "TriggerFish-Slop", rack::ModelTag::NOISE_TAG);
+Model *modelTfSlop = Model::create<TfSlop, TfSlopWidget>("TfSlop");

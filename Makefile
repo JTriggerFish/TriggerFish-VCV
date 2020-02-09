@@ -1,15 +1,6 @@
 # If RACK_DIR is not defined when calling the Makefile, default to two directories above
 RACK_DIR ?= ../..
 
-# Must follow the format in the Naming section of
-# https://vcvrack.com/manual/PluginDevelopmentTutorial.html
-SLUG = TriggerFish-Elements
-
-# Must follow the format in the Versioning section of
-# https://vcvrack.com/manual/PluginDevelopmentTutorial.html
-VERSION = 0.6.3
-
-
 # FLAGS will be passed to both the C and C++ compiler
 FLAGS += -std=c++17 #-faligned-allocation -faligned-new# -fopt-info-loop-optimized # -fopt-info-vec-missed
 CFLAGS +=
