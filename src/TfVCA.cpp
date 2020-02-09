@@ -124,7 +124,7 @@ void TfVCA::onSampleRateChange()
 
 struct TfVCAWidget : ModuleWidget {
 	TfVCAWidget(TfVCA *module) : ModuleWidget(module) {
-		setPanel(SVG::load(assetPlugin(plugin, "res/TfVCA.svg")));
+		setPanel(SVG::load(assetPlugin(pluginInstance, "res/TfVCA.svg")));
 
 		//Panel screws
 		addChild(Widget::create<ScrewSilver>(Vec(RACK_GRID_WIDTH, 0)));
@@ -157,7 +157,7 @@ struct TfVCAWidget : ModuleWidget {
 
 
 // Specify the Module and ModuleWidget subclass, human-readable
-// author name for categorization per plugin, module slug (should never
+// author name for categorization per pluginInstance, module slug (should never
 // change), human-readable module name, and any number of tags
 // (found in `include/tags.hpp`) separated by commas.
 Model *modelTfVCA = Model::create<TfVCA, TfVCAWidget>("TfVCA");

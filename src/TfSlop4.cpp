@@ -122,7 +122,7 @@ void TfSlop4::onSampleRateChange()
 
 struct TfSlop4Widget : ModuleWidget {
 	TfSlop4Widget(TfSlop4 *module) : ModuleWidget(module) {
-		setPanel(SVG::load(assetPlugin(plugin, "res/TfSlop4.svg")));
+		setPanel(SVG::load(assetPlugin(pluginInstance, "res/TfSlop4.svg")));
 
 		//Panel screws
 		addChild(Widget::create<ScrewSilver>(Vec(RACK_GRID_WIDTH, 0)));
@@ -161,7 +161,7 @@ struct TfSlop4Widget : ModuleWidget {
 
 
 // Specify the Module and ModuleWidget subclass, human-readable
-// author name for categorization per plugin, module slug (should never
+// author name for categorization per pluginInstance, module slug (should never
 // change), human-readable module name, and any number of tags
 // (found in `include/tags.hpp`) separated by commas.
 Model *modelTfSlop4 = Model::create<TfSlop4, TfSlop4Widget>("TfSlop4");
