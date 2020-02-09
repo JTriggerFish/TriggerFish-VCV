@@ -115,22 +115,22 @@ struct TfSlopWidget : ModuleWidget {
 		setPanel(SVG::load(assetPlugin(pluginInstance, "res/TfSlop.svg")));
 
 		//Panel screws
-		addChild(Widget::create<ScrewSilver>(Vec(RACK_GRID_WIDTH, 0)));
-		addChild(Widget::create<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, 0)));
-		addChild(Widget::create<ScrewSilver>(Vec(RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
-		addChild(Widget::create<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
+		addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, 0)));
+		addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, 0)));
+		addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
+		addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
 
 		//Knobs
-        addParam(ParamWidget::create<TfCvKnob>(Vec(30, 55), module, TfSlop::HUM_LEVEL, 0.0f, 1.0f, 0.25f));
-        addParam(ParamWidget::create<TfCvKnob>(Vec(10, 127), module, TfSlop::DRIFT_LEVEL, 0.0f, 1.0f, 0.25f));
-		addParam(ParamWidget::create<TfCvKnob>(Vec(30, 190), module, TfSlop::TRACK_SCALING, 1.0f - 0.2f / 12, 1.0f, 1.0f));
+        addParam(createParam<TfCvKnob>(Vec(30, 55), module, TfSlop::HUM_LEVEL, 0.0f, 1.0f, 0.25f));
+        addParam(createParam<TfCvKnob>(Vec(10, 127), module, TfSlop::DRIFT_LEVEL, 0.0f, 1.0f, 0.25f));
+		addParam(createParam<TfCvKnob>(Vec(30, 190), module, TfSlop::TRACK_SCALING, 1.0f - 0.2f / 12, 1.0f, 1.0f));
 
 		//Drift mode switch
-		addParam(ParamWidget::create<CKSS>(Vec(65, 135), module, TfSlop::DETUNE_MODE, -1.0f, 1.0f, -1.0f));
+		addParam(createParam<CKSS>(Vec(65, 135), module, TfSlop::DETUNE_MODE, -1.0f, 1.0f, -1.0f));
 
 		//Jacks at the bottom
-		addInput(Port::create<PJ301MPort>(Vec(13.5, 317), Port::INPUT, module, TfSlop::VOCT_INPUT));
-		addOutput(Port::create<PJ301MPort>(Vec(55, 317), Port::OUTPUT, module, TfSlop::VOCT_OUTPUT));
+		addInput(createPort<PJ301MPort>(Vec(13.5, 317), PortWidget::INPUT, module, TfSlop::VOCT_INPUT));
+		addOutput(createPort<PJ301MPort>(Vec(55, 317), PortWidget::OUTPUT, module, TfSlop::VOCT_OUTPUT));
 
 	}
 };
@@ -140,4 +140,4 @@ struct TfSlopWidget : ModuleWidget {
 // author name for categorization per pluginInstance, module slug (should never
 // change), human-readable module name, and any number of tags
 // (found in `include/tags.hpp`) separated by commas.
-Model *modelTfSlop = Model::create<TfSlop, TfSlopWidget>("TfSlop");
+Model *modelTfSlop = createModel<TfSlop, TfSlopWidget>("TfSlop");

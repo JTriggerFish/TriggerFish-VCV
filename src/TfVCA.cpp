@@ -127,30 +127,30 @@ struct TfVCAWidget : ModuleWidget {
 		setPanel(SVG::load(assetPlugin(pluginInstance, "res/TfVCA.svg")));
 
 		//Panel screws
-		addChild(Widget::create<ScrewSilver>(Vec(RACK_GRID_WIDTH, 0)));
-		addChild(Widget::create<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, 0)));
-		addChild(Widget::create<ScrewSilver>(Vec(RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
-		addChild(Widget::create<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
+		addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, 0)));
+		addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, 0)));
+		addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
+		addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
 
 		//KnobsAudio
-		addParam(ParamWidget::create<TfCvKnob>(Vec(26,45.5), module, TfVCA::LIN_INPUT_LEVEL, 0.0f, 1.0f, 1.0f));
-		addParam(ParamWidget::create<TfCvKnob>(Vec(26, 104), module, TfVCA::EXP_INPUT_LEVEL, 0.0f, 1.0f, 0.0f));
-		addParam(ParamWidget::create<TfLargeAudioKnob>(Vec(108,79), module, TfVCA::INPUT_GAIN, 0.0f, 2.0f, 0.5f));
-		addParam(ParamWidget::create<TfAudioKob>(Vec(72,154), module, TfVCA::OUTPUT_LEVEL, 0.0f, 2.0f, 1.0f));
+		addParam(createParam<TfCvKnob>(Vec(26,45.5), module, TfVCA::LIN_INPUT_LEVEL, 0.0f, 1.0f, 1.0f));
+		addParam(createParam<TfCvKnob>(Vec(26, 104), module, TfVCA::EXP_INPUT_LEVEL, 0.0f, 1.0f, 0.0f));
+		addParam(createParam<TfLargeAudioKnob>(Vec(108,79), module, TfVCA::INPUT_GAIN, 0.0f, 2.0f, 0.5f));
+		addParam(createParam<TfAudioKob>(Vec(72,154), module, TfVCA::OUTPUT_LEVEL, 0.0f, 2.0f, 1.0f));
 
-		addParam(ParamWidget::create<TfTrimpot>(Vec(38,245), module, TfVCA::EXP_CV_BASE, 2.0f, 50.0f, 50.0f));
-		addParam(ParamWidget::create<TfTrimpot>(Vec(121,245), module, TfVCA::CV_BLEED, 0.0f, 1.0f, 0.5f));
+		addParam(createParam<TfTrimpot>(Vec(38,245), module, TfVCA::EXP_CV_BASE, 2.0f, 50.0f, 50.0f));
+		addParam(createParam<TfTrimpot>(Vec(121,245), module, TfVCA::CV_BLEED, 0.0f, 1.0f, 0.5f));
 
 		//Activity led
-		addChild(ModuleLightWidget::create<MediumLight<BlueLight>>(Vec(85, 250), module, TfVCA::CV_LIGHT));
+		addChild(createLight<MediumLight<BlueLight>>(Vec(85, 250), module, TfVCA::CV_LIGHT));
 
 		//Jacks at the bottom
 		constexpr float offset = 15.0f;
 		constexpr float spacing = 42.0f;
-		addInput(Port::create<PJ301MPort>(Vec(offset, 313), Port::INPUT, module, TfVCA::LIN_CV_INPUT));
-		addInput(Port::create<PJ301MPort>(Vec(offset + spacing, 313), Port::INPUT, module, TfVCA::EXP_CV_INPUT));
-		addInput(Port::create<PJ301MPort>(Vec(offset + 2*spacing, 313 ), Port::INPUT, module, TfVCA::AUDIO_INPUT));
-		addOutput(Port::create<PJ301MPort>(Vec(offset + 3*spacing, 313), Port::OUTPUT, module, TfVCA::MAIN_OUTPUT));
+		addInput(createPort<PJ301MPort>(Vec(offset, 313), PortWidget::INPUT, module, TfVCA::LIN_CV_INPUT));
+		addInput(createPort<PJ301MPort>(Vec(offset + spacing, 313), PortWidget::INPUT, module, TfVCA::EXP_CV_INPUT));
+		addInput(createPort<PJ301MPort>(Vec(offset + 2*spacing, 313 ), PortWidget::INPUT, module, TfVCA::AUDIO_INPUT));
+		addOutput(createPort<PJ301MPort>(Vec(offset + 3*spacing, 313), PortWidget::OUTPUT, module, TfVCA::MAIN_OUTPUT));
 
 	}
 };
@@ -160,4 +160,4 @@ struct TfVCAWidget : ModuleWidget {
 // author name for categorization per pluginInstance, module slug (should never
 // change), human-readable module name, and any number of tags
 // (found in `include/tags.hpp`) separated by commas.
-Model *modelTfVCA = Model::create<TfVCA, TfVCAWidget>("TfVCA");
+Model *modelTfVCA = createModel<TfVCA, TfVCAWidget>("TfVCA");

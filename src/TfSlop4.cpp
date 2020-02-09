@@ -125,36 +125,36 @@ struct TfSlop4Widget : ModuleWidget {
 		setPanel(SVG::load(assetPlugin(pluginInstance, "res/TfSlop4.svg")));
 
 		//Panel screws
-		addChild(Widget::create<ScrewSilver>(Vec(RACK_GRID_WIDTH, 0)));
-		addChild(Widget::create<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, 0)));
-		addChild(Widget::create<ScrewSilver>(Vec(RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
-		addChild(Widget::create<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
+		addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, 0)));
+		addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, 0)));
+		addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
+		addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
 
 		//Knobs
-        addParam(ParamWidget::create<TfCvKnob>(Vec(61, 66), module, TfSlop4::HUM_LEVEL, 0.0f, 1.0f, 0.10f));
-        addParam(ParamWidget::create<TfCvKnob>(Vec(16, 133), module, TfSlop4::COMMON_DRIFT_LEVEL, 0.0f, 1.0f, 0.20f));
-		addParam(ParamWidget::create<TfCvKnob>(Vec(105, 133), module, TfSlop4::INDIVIDUAL_DRIFT_LEVEL, 0.0f, 1.0f, 0.20f));
+        addParam(createParam<TfCvKnob>(Vec(61, 66), module, TfSlop4::HUM_LEVEL, 0.0f, 1.0f, 0.10f));
+        addParam(createParam<TfCvKnob>(Vec(16, 133), module, TfSlop4::COMMON_DRIFT_LEVEL, 0.0f, 1.0f, 0.20f));
+		addParam(createParam<TfCvKnob>(Vec(105, 133), module, TfSlop4::INDIVIDUAL_DRIFT_LEVEL, 0.0f, 1.0f, 0.20f));
 
         //Tracking trimmers
 		auto leftMargin = 13;
 		auto spacing = 35;
-		addParam(ParamWidget::create<TfTrimpot>(Vec(leftMargin, 223), module, TfSlop4::TRACK_SCALING1, 1.0f - 0.2f / 12, 1.0f, 1.0f));
-        addParam(ParamWidget::create<TfTrimpot>(Vec(leftMargin + spacing, 223), module, TfSlop4::TRACK_SCALING2, 1.0f - 0.2f / 12, 1.0f, 1.0f));
-        addParam(ParamWidget::create<TfTrimpot>(Vec(leftMargin + 2*spacing, 223), module, TfSlop4::TRACK_SCALING3, 1.0f - 0.2f / 12, 1.0f, 1.0f));
-        addParam(ParamWidget::create<TfTrimpot>(Vec(leftMargin + 3*spacing, 223), module, TfSlop4::TRACK_SCALING4, 1.0f - 0.2f / 12, 1.0f, 1.0f));
+		addParam(createParam<TfTrimpot>(Vec(leftMargin, 223), module, TfSlop4::TRACK_SCALING1, 1.0f - 0.2f / 12, 1.0f, 1.0f));
+        addParam(createParam<TfTrimpot>(Vec(leftMargin + spacing, 223), module, TfSlop4::TRACK_SCALING2, 1.0f - 0.2f / 12, 1.0f, 1.0f));
+        addParam(createParam<TfTrimpot>(Vec(leftMargin + 2*spacing, 223), module, TfSlop4::TRACK_SCALING3, 1.0f - 0.2f / 12, 1.0f, 1.0f));
+        addParam(createParam<TfTrimpot>(Vec(leftMargin + 3*spacing, 223), module, TfSlop4::TRACK_SCALING4, 1.0f - 0.2f / 12, 1.0f, 1.0f));
 
 		//Input jacks
 		leftMargin =10;
-		addInput(Port::create<PJ301MPort>(Vec(leftMargin, 283), Port::INPUT, module, TfSlop4::VOCT_INPUT1));
-		addInput(Port::create<PJ301MPort>(Vec(leftMargin + spacing, 283), Port::INPUT, module, TfSlop4::VOCT_INPUT2));
-		addInput(Port::create<PJ301MPort>(Vec(leftMargin + 2*spacing, 283), Port::INPUT, module, TfSlop4::VOCT_INPUT3));
-		addInput(Port::create<PJ301MPort>(Vec(leftMargin + 3*spacing, 283), Port::INPUT, module, TfSlop4::VOCT_INPUT4));
+		addInput(createPort<PJ301MPort>(Vec(leftMargin, 283), PortWidget::INPUT, module, TfSlop4::VOCT_INPUT1));
+		addInput(createPort<PJ301MPort>(Vec(leftMargin + spacing, 283), PortWidget::INPUT, module, TfSlop4::VOCT_INPUT2));
+		addInput(createPort<PJ301MPort>(Vec(leftMargin + 2*spacing, 283), PortWidget::INPUT, module, TfSlop4::VOCT_INPUT3));
+		addInput(createPort<PJ301MPort>(Vec(leftMargin + 3*spacing, 283), PortWidget::INPUT, module, TfSlop4::VOCT_INPUT4));
 
 		//Output jacks
-		addOutput(Port::create<PJ301MPort>(Vec(leftMargin, 319), Port::OUTPUT, module, TfSlop4::VOCT_OUTPUT1));
-		addOutput(Port::create<PJ301MPort>(Vec(leftMargin + spacing, 319), Port::OUTPUT, module, TfSlop4::VOCT_OUTPUT2));
-		addOutput(Port::create<PJ301MPort>(Vec(leftMargin + 2*spacing, 319), Port::OUTPUT, module, TfSlop4::VOCT_OUTPUT3));
-		addOutput(Port::create<PJ301MPort>(Vec(leftMargin + 3*spacing, 319), Port::OUTPUT, module, TfSlop4::VOCT_OUTPUT4));
+		addOutput(createPort<PJ301MPort>(Vec(leftMargin, 319), PortWidget::OUTPUT, module, TfSlop4::VOCT_OUTPUT1));
+		addOutput(createPort<PJ301MPort>(Vec(leftMargin + spacing, 319), PortWidget::OUTPUT, module, TfSlop4::VOCT_OUTPUT2));
+		addOutput(createPort<PJ301MPort>(Vec(leftMargin + 2*spacing, 319), PortWidget::OUTPUT, module, TfSlop4::VOCT_OUTPUT3));
+		addOutput(createPort<PJ301MPort>(Vec(leftMargin + 3*spacing, 319), PortWidget::OUTPUT, module, TfSlop4::VOCT_OUTPUT4));
 
 	}
 };
@@ -164,4 +164,4 @@ struct TfSlop4Widget : ModuleWidget {
 // author name for categorization per pluginInstance, module slug (should never
 // change), human-readable module name, and any number of tags
 // (found in `include/tags.hpp`) separated by commas.
-Model *modelTfSlop4 = Model::create<TfSlop4, TfSlop4Widget>("TfSlop4");
+Model *modelTfSlop4 = createModel<TfSlop4, TfSlop4Widget>("TfSlop4");

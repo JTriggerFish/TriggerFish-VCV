@@ -94,28 +94,28 @@ struct TfVDPOWidget : ModuleWidget {
 		setPanel(SVG::load(assetPlugin(pluginInstance, "res/TfVDPO.svg")));
 
 		//Panel screws
-		addChild(Widget::create<ScrewSilver>(Vec(RACK_GRID_WIDTH, 0)));
-		addChild(Widget::create<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, 0)));
-		addChild(Widget::create<ScrewSilver>(Vec(RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
-		addChild(Widget::create<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
+		addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, 0)));
+		addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, 0)));
+		addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
+		addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
 
 		//Knobs
-        addParam(ParamWidget::create<TfAudioKob>(Vec(14, 58), module, TfVDPO::FREQ, -5.0f, 5.0f, 0.0f));
-        addParam(ParamWidget::create<TfAudioKob>(Vec(14, 112), module, TfVDPO::DAMPING, 0.001f, 9.0f, 0.5f));
-		addParam(ParamWidget::create<TfCvKnob>(Vec(18, 175), module, TfVDPO::INPUT_GAIN, 0.0, 1.0f, 1.0f));
-		addParam(ParamWidget::create<TfCvKnob>(Vec(76, 175), module, TfVDPO::LEVEL, 0.0, 1.0f, 2.0f));
+        addParam(createParam<TfAudioKob>(Vec(14, 58), module, TfVDPO::FREQ, -5.0f, 5.0f, 0.0f));
+        addParam(createParam<TfAudioKob>(Vec(14, 112), module, TfVDPO::DAMPING, 0.001f, 9.0f, 0.5f));
+		addParam(createParam<TfCvKnob>(Vec(18, 175), module, TfVDPO::INPUT_GAIN, 0.0, 1.0f, 1.0f));
+		addParam(createParam<TfCvKnob>(Vec(76, 175), module, TfVDPO::LEVEL, 0.0, 1.0f, 2.0f));
 
-		addParam(ParamWidget::create<TfTrimpot>(Vec(23, 256), module, TfVDPO::VOCT_SCALING, 0.0f, 1.0f, 2.0f));
-		addParam(ParamWidget::create<TfTrimpot>(Vec(81, 256), module, TfVDPO::DAMPING_ATTENUVERT, -1.0f, 1.0f, 1.0f));
+		addParam(createParam<TfTrimpot>(Vec(23, 256), module, TfVDPO::VOCT_SCALING, 0.0f, 1.0f, 2.0f));
+		addParam(createParam<TfTrimpot>(Vec(81, 256), module, TfVDPO::DAMPING_ATTENUVERT, -1.0f, 1.0f, 1.0f));
 
 		//High quality switch
-		//addParam(ParamWidget::create<ToggleSwitch>(Vec(50, 280), module, TfVDPO::HQ_MODE, -1.0f, 1.0f, -1.0f));
+		//addParam(createParam<ToggleSwitch>(Vec(50, 280), module, TfVDPO::HQ_MODE, -1.0f, 1.0f, -1.0f));
 
 		//Jacks at the bottom
-		addInput(Port::create<PJ301MPort>(Vec(20, 280), Port::INPUT, module, TfVDPO::VOCT_INPUT));
-		addInput(Port::create<PJ301MPort>(Vec(78, 280), Port::INPUT, module, TfVDPO::DAMPING_INPUT));
-		addInput(Port::create<PJ301MPort>(Vec(20, 324), Port::INPUT, module, TfVDPO::AUDIO_INPUT));
-		addOutput(Port::create<PJ301MPort>(Vec(78, 324), Port::OUTPUT, module, TfVDPO::OUTPUT));
+		addInput(createPort<PJ301MPort>(Vec(20, 280), PortWidget::INPUT, module, TfVDPO::VOCT_INPUT));
+		addInput(createPort<PJ301MPort>(Vec(78, 280), PortWidget::INPUT, module, TfVDPO::DAMPING_INPUT));
+		addInput(createPort<PJ301MPort>(Vec(20, 324), PortWidget::INPUT, module, TfVDPO::AUDIO_INPUT));
+		addOutput(createPort<PJ301MPort>(Vec(78, 324), PortWidget::OUTPUT, module, TfVDPO::OUTPUT));
 
 	}
 };
@@ -125,4 +125,4 @@ struct TfVDPOWidget : ModuleWidget {
 // author name for categorization per pluginInstance, module slug (should never
 // change), human-readable module name, and any number of tags
 // (found in `include/tags.hpp`) separated by commas.
-Model *modelTfVDPO = Model::create<TfVDPO, TfVDPOWidget>("TfVDPO");
+Model *modelTfVDPO = createModel<TfVDPO, TfVDPOWidget>("TfVDPO");
