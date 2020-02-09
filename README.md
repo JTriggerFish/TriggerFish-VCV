@@ -63,5 +63,5 @@ Because of this the CPU useage is relatively high.
 
 ## Contributing
 
-I welcome Issues and Pull Requests to this repository if you have suggestions for improvement.
+Issues, pull requests and suggestions for improvement are all very welcome.
 
