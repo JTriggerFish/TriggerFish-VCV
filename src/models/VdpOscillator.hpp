@@ -39,7 +39,7 @@ private:
 	float ModelStep(double x, double mu, double w)
 	{
 		_vdp._mu = std::max<double>(1.0e-8, mu);
-		_vdp._w = std::max<double>(-maxAngularFreq, std::min<double>(maxAngularFreq, w));
+		_vdp._w = std::max<double>(1.0e-4, std::min<double>(maxAngularFreq, w));
 		_integrator.Step(_vdp, x);// +_noise.Step());
 
 		//Clamp the state to avoid exploding if the ODE becomes unstable, typically when both mu and w are high.
@@ -93,3 +93,15 @@ public:
 
 	}
 };
+
+//Fix linking errors for old versions of gcc
+template<typename Oversampler, int IntegrationOrder>
+constexpr double VdpOscillator<Oversampler, IntegrationOrder>::maxAngularFreq;
+template<typename Oversampler, int IntegrationOrder>
+constexpr double VdpOscillator<Oversampler, IntegrationOrder>::maxOutput;
+template<typename Oversampler, int IntegrationOrder>
+constexpr double VdpOscillator<Oversampler, IntegrationOrder>::_initY0;
+template<typename Oversampler, int IntegrationOrder>
+constexpr double VdpOscillator<Oversampler, IntegrationOrder>::_initY1;
+template<typename Oversampler, int IntegrationOrder>
+constexpr int VdpOscillator<Oversampler, IntegrationOrder>::ResamplingFactor;
