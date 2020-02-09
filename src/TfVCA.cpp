@@ -56,7 +56,7 @@ struct TfVCA : Module
 		init(engineSampleRate);
 	}
 
-	void step() override;
+	void process(const ProcessArgs& args) override;
 	void init(float sampleRate);
 	void onSampleRateChange() override;
 
@@ -76,7 +76,7 @@ void TfVCA::init(float sampleRate)
 	 _normalisedHighPassAudio = _audioHighPassF / (0.5f * sampleRate);
 }
 
-void TfVCA::step() {
+void TfVCA::process(const ProcessArgs& args) {
 	//float deltaTime = engineGetSampleTime();
 
 	float inputGain = params[INPUT_GAIN].value;

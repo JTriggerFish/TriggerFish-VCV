@@ -48,7 +48,7 @@ struct TfVDPO : Module
 		init(engineSampleRate);
 	}
 
-	void step() override;
+	void process(const ProcessArgs& args) override;
 	void init(float sampleRate);
 	void onSampleRateChange() override;
 
@@ -65,7 +65,7 @@ void TfVDPO::init(float sampleRate)
     _vdpHq.SetSampleRate(sampleRate);
 }
 
-void TfVDPO::step()
+void TfVDPO::process(const ProcessArgs& args)
  {
 	 float x = inputs[AUDIO_INPUT].value * params[INPUT_GAIN].value;
 	 float vOct = inputs[VOCT_INPUT].value * params[VOCT_SCALING].value + params[FREQ].value;

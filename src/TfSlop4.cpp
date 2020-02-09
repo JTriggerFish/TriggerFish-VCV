@@ -64,7 +64,7 @@ struct TfSlop4 : Module
 		init(engineSampleRate);
 	}
 
-	void step() override;
+	void process(const ProcessArgs& args) override;
 	void init(float sampleRate);
 	void onSampleRateChange() override;
 
@@ -83,7 +83,7 @@ void TfSlop4::init(float sampleRate)
 	_gaussian = std::normal_distribution<double>(0.0, std::sqrt(T));
 }
 
-void TfSlop4::step()
+void TfSlop4::process(const ProcessArgs& args)
  {
     std::array<float,4> voct;
     for(int i=0; i < 4; ++i)
