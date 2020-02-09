@@ -134,13 +134,20 @@ struct TfVCAWidget : ModuleWidget {
 		addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
 
 		//KnobsAudio
-		addParam(createParam<TfCvKnob>(Vec(26,45.5), module, TfVCA::LIN_INPUT_LEVEL, 0.0f, 1.0f, 1.0f));
-		addParam(createParam<TfCvKnob>(Vec(26, 104), module, TfVCA::EXP_INPUT_LEVEL, 0.0f, 1.0f, 0.0f));
-		addParam(createParam<TfLargeAudioKnob>(Vec(108,79), module, TfVCA::INPUT_GAIN, 0.0f, 2.0f, 0.5f));
-		addParam(createParam<TfAudioKob>(Vec(72,154), module, TfVCA::OUTPUT_LEVEL, 0.0f, 2.0f, 1.0f));
+		addParam(createParam<TfCvKnob>(Vec(26,45.5), module, TfVCA::LIN_INPUT_LEVEL));
+		addParam(createParam<TfCvKnob>(Vec(26, 104), module, TfVCA::EXP_INPUT_LEVEL));
+		addParam(createParam<TfLargeAudioKnob>(Vec(108,79), module, TfVCA::INPUT_GAIN));
+		addParam(createParam<TfAudioKob>(Vec(72,154), module, TfVCA::OUTPUT_LEVEL));
 
-		addParam(createParam<TfTrimpot>(Vec(38,245), module, TfVCA::EXP_CV_BASE, 2.0f, 50.0f, 50.0f));
-		addParam(createParam<TfTrimpot>(Vec(121,245), module, TfVCA::CV_BLEED, 0.0f, 1.0f, 0.5f));
+		addParam(createParam<TfTrimpot>(Vec(38,245), module, TfVCA::EXP_CV_BASE));
+		addParam(createParam<TfTrimpot>(Vec(121,245), module, TfVCA::CV_BLEED));
+
+    configParam(TfVCA::LIN_INPUT_LEVEL, 0.0f, 1.0f, 1.0f, "");
+    configParam(TfVCA::EXP_INPUT_LEVEL, 0.0f, 1.0f, 0.0f, "");
+    configParam(TfVCA::INPUT_GAIN, 0.0f, 2.0f, 0.5f, "");
+    configParam(TfVCA::OUTPUT_LEVEL, 0.0f, 2.0f, 1.0f, "");
+    configParam(TfVCA::EXP_CV_BASE, 2.0f, 50.0f, 50.0f, "");
+    configParam(TfVCA::CV_BLEED, 0.0f, 1.0f, 0.5f, "");
 
 		//Activity led
 		addChild(createLight<MediumLight<BlueLight>>(Vec(85, 250), module, TfVCA::CV_LIGHT));

@@ -101,17 +101,24 @@ struct TfVDPOWidget : ModuleWidget {
 		addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
 
 		//Knobs
-        addParam(createParam<TfAudioKob>(Vec(14, 58), module, TfVDPO::FREQ, -5.0f, 5.0f, 0.0f));
-        addParam(createParam<TfAudioKob>(Vec(14, 112), module, TfVDPO::DAMPING, 0.001f, 9.0f, 0.5f));
-		addParam(createParam<TfCvKnob>(Vec(18, 175), module, TfVDPO::INPUT_GAIN, 0.0, 1.0f, 1.0f));
-		addParam(createParam<TfCvKnob>(Vec(76, 175), module, TfVDPO::LEVEL, 0.0, 1.0f, 2.0f));
+        addParam(createParam<TfAudioKob>(Vec(14, 58), module, TfVDPO::FREQ));
+        addParam(createParam<TfAudioKob>(Vec(14, 112), module, TfVDPO::DAMPING));
+		addParam(createParam<TfCvKnob>(Vec(18, 175), module, TfVDPO::INPUT_GAIN));
+		addParam(createParam<TfCvKnob>(Vec(76, 175), module, TfVDPO::LEVEL));
 
-		addParam(createParam<TfTrimpot>(Vec(23, 256), module, TfVDPO::VOCT_SCALING, 0.0f, 1.0f, 2.0f));
-		addParam(createParam<TfTrimpot>(Vec(81, 256), module, TfVDPO::DAMPING_ATTENUVERT, -1.0f, 1.0f, 1.0f));
+		addParam(createParam<TfTrimpot>(Vec(23, 256), module, TfVDPO::VOCT_SCALING));
+		addParam(createParam<TfTrimpot>(Vec(81, 256), module, TfVDPO::DAMPING_ATTENUVERT));
 
+    configParam(TfVDPO::FREQ, -5.0f, 5.0f, 0.0f, "");
+    configParam(TfVDPO::DAMPING, 0.001f, 9.0f, 0.5f, "");
+    configParam(TfVDPO::INPUT_GAIN, 0.0, 1.0f, 1.0f, "");
+    configParam(TfVDPO::LEVEL, 0.0, 1.0f, 2.0f, "");
+    configParam(TfVDPO::VOCT_SCALING, 0.0f, 1.0f, 2.0f, "");
+    configParam(TfVDPO::DAMPING_ATTENUVERT, -1.0f, 1.0f, 1.0f, "");
 		//High quality switch
-		//addParam(createParam<ToggleSwitch>(Vec(50, 280), module, TfVDPO::HQ_MODE, -1.0f, 1.0f, -1.0f));
+		//addParam(createParam<ToggleSwitch>(Vec(50, 280), module, TfVDPO::HQ_MODE));
 
+    //configParam(TfVDPO::HQ_MODE, -1.0f, 1.0f, -1.0f, "");
 		//Jacks at the bottom
 		addInput(createInput<PJ301MPort>(Vec(20, 280), module, TfVDPO::VOCT_INPUT));
 		addInput(createInput<PJ301MPort>(Vec(78, 280), module, TfVDPO::DAMPING_INPUT));

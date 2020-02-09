@@ -122,12 +122,17 @@ struct TfSlopWidget : ModuleWidget {
 		addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
 
 		//Knobs
-        addParam(createParam<TfCvKnob>(Vec(30, 55), module, TfSlop::HUM_LEVEL, 0.0f, 1.0f, 0.25f));
-        addParam(createParam<TfCvKnob>(Vec(10, 127), module, TfSlop::DRIFT_LEVEL, 0.0f, 1.0f, 0.25f));
-		addParam(createParam<TfCvKnob>(Vec(30, 190), module, TfSlop::TRACK_SCALING, 1.0f - 0.2f / 12, 1.0f, 1.0f));
+        addParam(createParam<TfCvKnob>(Vec(30, 55), module, TfSlop::HUM_LEVEL));
+        addParam(createParam<TfCvKnob>(Vec(10, 127), module, TfSlop::DRIFT_LEVEL));
+		addParam(createParam<TfCvKnob>(Vec(30, 190), module, TfSlop::TRACK_SCALING));
 
 		//Drift mode switch
-		addParam(createParam<CKSS>(Vec(65, 135), module, TfSlop::DETUNE_MODE, -1.0f, 1.0f, -1.0f));
+		addParam(createParam<CKSS>(Vec(65, 135), module, TfSlop::DETUNE_MODE));
+
+    configParam(TfSlop::HUM_LEVEL, 0.0f, 1.0f, 0.25f, "");
+    configParam(TfSlop::DRIFT_LEVEL, 0.0f, 1.0f, 0.25f, "");
+    configParam(TfSlop::TRACK_SCALING, 1.0f - 0.2f / 12, 1.0f, 1.0f, "");
+    configParam(TfSlop::DETUNE_MODE, -1.0f, 1.0f, -1.0f, "");
 
 		//Jacks at the bottom
 		addInput(createInput<PJ301MPort>(Vec(13.5, 317), module, TfSlop::VOCT_INPUT));
