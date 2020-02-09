@@ -43,7 +43,7 @@ struct TfVDPO : Module
 	EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 	TfVDPO() : Module(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS)
 	{
-		auto engineSampleRate = engineGetSampleRate();
+		auto engineSampleRate = args.sampleRate;
 		//_resampler = tfdsp::CreateX2Resampler_Butterworth5();
 		init(engineSampleRate);
 	}
@@ -67,24 +67,24 @@ void TfVDPO::init(float sampleRate)
 
 void TfVDPO::process(const ProcessArgs& args)
  {
-	 float x = inputs[AUDIO_INPUT].value * params[INPUT_GAIN].value;
-	 float vOct = inputs[VOCT_INPUT].value * params[VOCT_SCALING].value + params[FREQ].value;
-	 float mu = params[DAMPING].value + params[DAMPING_ATTENUVERT].value * inputs[DAMPING_INPUT].value;
+	 float x = inputs[AUDIO_INPUT].getVoltage() * params[INPUT_GAIN].getValue();
+	 float vOct = inputs[VOCT_INPUT].getVoltage() * params[VOCT_SCALING].getValue() + params[FREQ].getValue();
+	 float mu = params[DAMPING].getValue() + params[DAMPING_ATTENUVERT].getValue() * inputs[DAMPING_INPUT].getVoltage();
 	 float freq = 261.626f * powf(2.0f, vOct );
 
 	 //TODO: menu item for low quality, leave high quality by default for now.
 
-	 //auto y = params[HQ_MODE].value > 0 ?
+	 //auto y = params[HQ_MODE].getValue() > 0 ?
 	 //_vdpHq.Step(double(x), double(mu), double(2 * PI * freq))
 	 //: _vdp.Step(double(x), double(mu), double(2 * PI * freq));
 	 auto y = _vdpHq.Step(double(x), double(mu), double(2 * PI * freq));
 
-	 outputs[OUTPUT].value = y * params[LEVEL].value;
+	 outputs[OUTPUT].setVoltage(y * params[LEVEL].getValue());
 
 }
 void TfVDPO::onSampleRateChange()
 {
-	float gSampleRate = engineGetSampleRate();
+	float gSampleRate = args.sampleRate;
 	init(gSampleRate);
 }
 
@@ -92,7 +92,7 @@ void TfVDPO::onSampleRateChange()
 struct TfVDPOWidget : ModuleWidget {
 	TfVDPOWidget(TfVDPO *module) {
 		setModule(module);
-		setPanel(SVG::load(assetPlugin(pluginInstance, "res/TfVDPO.svg")));
+		setPanel(APP->window->loadSvg(asset::plugin(pluginInstance, "res/TfVDPO.svg")));
 
 		//Panel screws
 		addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, 0)));
@@ -113,10 +113,10 @@ struct TfVDPOWidget : ModuleWidget {
 		//addParam(createParam<ToggleSwitch>(Vec(50, 280), module, TfVDPO::HQ_MODE, -1.0f, 1.0f, -1.0f));
 
 		//Jacks at the bottom
-		addInput(createPort<PJ301MPort>(Vec(20, 280), PortWidget::INPUT, module, TfVDPO::VOCT_INPUT));
-		addInput(createPort<PJ301MPort>(Vec(78, 280), PortWidget::INPUT, module, TfVDPO::DAMPING_INPUT));
-		addInput(createPort<PJ301MPort>(Vec(20, 324), PortWidget::INPUT, module, TfVDPO::AUDIO_INPUT));
-		addOutput(createPort<PJ301MPort>(Vec(78, 324), PortWidget::OUTPUT, module, TfVDPO::OUTPUT));
+		addInput(createInput<PJ301MPort>(Vec(20, 280), module, TfVDPO::VOCT_INPUT));
+		addInput(createInput<PJ301MPort>(Vec(78, 280), module, TfVDPO::DAMPING_INPUT));
+		addInput(createInput<PJ301MPort>(Vec(20, 324), module, TfVDPO::AUDIO_INPUT));
+		addOutput(createOutput<PJ301MPort>(Vec(78, 324), module, TfVDPO::OUTPUT));
 
 	}
 };

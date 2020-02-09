@@ -15,11 +15,11 @@ struct TfSlider : SVGSlider {
 		Vec margin = Vec(4, 4);
 		maxHandlePos = Vec(-1.5, -8).plus(margin);
 		minHandlePos = Vec(-1.5, 104).plus(margin);
-		background->svg = SVG::load(assetPlugin(pluginInstance,"res/slider.svg"));
+		background->svg = APP->window->loadSvg(asset::plugin(pluginInstance,"res/slider.svg"));
 		background->wrap();
 		background->box.pos = margin;
 		box.size = background->box.size.plus(margin.mult(2));
-		handle->svg = SVG::load(assetPlugin(pluginInstance,"res/sliderHandle.svg"));
+		handle->svg = APP->window->loadSvg(asset::plugin(pluginInstance,"res/sliderHandle.svg"));
 		handle->wrap();
      }
 };

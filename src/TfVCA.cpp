@@ -51,7 +51,7 @@ struct TfVCA : Module
 	TfVCA() : Module(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS),
 		_vcaTransi(new ::VCA_TransistorCore<tfdsp::X2Resampler_Order7>(tfdsp::CreateX2Resampler_Chebychev7))
 	{
-		auto engineSampleRate = engineGetSampleRate();
+		auto engineSampleRate = args.sampleRate;
 		//_resampler = tfdsp::CreateX2Resampler_Butterworth5();
 		init(engineSampleRate);
 	}
@@ -77,31 +77,31 @@ void TfVCA::init(float sampleRate)
 }
 
 void TfVCA::process(const ProcessArgs& args) {
-	//float deltaTime = engineGetSampleTime();
+	//float deltaTime = args.sampleTime;
 
-	float inputGain = params[INPUT_GAIN].value;
+	float inputGain = params[INPUT_GAIN].getValue();
 	constexpr float audioRenorm = 5.0f;
 	inputGain /= audioRenorm;
 
-	float audio = inputs[AUDIO_INPUT].value * inputGain;
+	float audio = inputs[AUDIO_INPUT].getVoltage() * inputGain;
 	//VCA cv should be unipolar between 0 and 10, normalise to 0 to 1. 
 	//If no input plugged in then pass zero.
-	float linCv = inputs[LIN_CV_INPUT].normalize(0.f) / 10.f * params[LIN_INPUT_LEVEL].value;
-	float expCv = inputs[EXP_CV_INPUT].normalize(0.f) / 10.f * params[EXP_INPUT_LEVEL].value;
+	float linCv = inputs[LIN_CV_INPUT].normalize(0.f) / 10.f * params[LIN_INPUT_LEVEL].getValue();
+	float expCv = inputs[EXP_CV_INPUT].normalize(0.f) / 10.f * params[EXP_INPUT_LEVEL].getValue();
 
-	float expBase = params[EXP_CV_BASE].value;
+	float expBase = params[EXP_CV_BASE].getValue();
 	expCv = (powf(expBase, expCv) - 1.f) / (expBase - 1.f);
 
 	float cv = linCv + expCv;
 
 	//cv bleed
-	outputs[MAIN_OUTPUT].value = _cvHighPass(cv, _normalisedHighPassCv) * params[CV_BLEED].value * _maxCvBleed;
+	outputs[MAIN_OUTPUT].setVoltage(_cvHighPass(cv, _normalisedHighPassCv) * params[CV_BLEED].getValue() * _maxCvBleed);
 
 
 	//Renormalise the audio so that the output level and the input gain
 	//are more orthogonal, where the input gain is mostly used for distortion
 	auto finalGain = std::min(100.0f, (1.0f + inputGain) / (0.00001f + inputGain));
-	finalGain *= params[OUTPUT_LEVEL].value;
+	finalGain *= params[OUTPUT_LEVEL].getValue();
 
 	//VCA core
 	audio = _vcaTransi->Step(audio, cv, finalGain);
@@ -117,7 +117,7 @@ void TfVCA::process(const ProcessArgs& args) {
 }
 void TfVCA::onSampleRateChange()
 {
-	float gSampleRate = engineGetSampleRate();
+	float gSampleRate = args.sampleRate;
 	init(gSampleRate);
 }
 
@@ -125,7 +125,7 @@ void TfVCA::onSampleRateChange()
 struct TfVCAWidget : ModuleWidget {
 	TfVCAWidget(TfVCA *module) {
 		setModule(module);
-		setPanel(SVG::load(assetPlugin(pluginInstance, "res/TfVCA.svg")));
+		setPanel(APP->window->loadSvg(asset::plugin(pluginInstance, "res/TfVCA.svg")));
 
 		//Panel screws
 		addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, 0)));
@@ -148,10 +148,10 @@ struct TfVCAWidget : ModuleWidget {
 		//Jacks at the bottom
 		constexpr float offset = 15.0f;
 		constexpr float spacing = 42.0f;
-		addInput(createPort<PJ301MPort>(Vec(offset, 313), PortWidget::INPUT, module, TfVCA::LIN_CV_INPUT));
-		addInput(createPort<PJ301MPort>(Vec(offset + spacing, 313), PortWidget::INPUT, module, TfVCA::EXP_CV_INPUT));
-		addInput(createPort<PJ301MPort>(Vec(offset + 2*spacing, 313 ), PortWidget::INPUT, module, TfVCA::AUDIO_INPUT));
-		addOutput(createPort<PJ301MPort>(Vec(offset + 3*spacing, 313), PortWidget::OUTPUT, module, TfVCA::MAIN_OUTPUT));
+		addInput(createInput<PJ301MPort>(Vec(offset, 313), module, TfVCA::LIN_CV_INPUT));
+		addInput(createInput<PJ301MPort>(Vec(offset + spacing, 313), module, TfVCA::EXP_CV_INPUT));
+		addInput(createInput<PJ301MPort>(Vec(offset + 2*spacing, 313 ), module, TfVCA::AUDIO_INPUT));
+		addOutput(createOutput<PJ301MPort>(Vec(offset + 3*spacing, 313), module, TfVCA::MAIN_OUTPUT));
 
 	}
 };

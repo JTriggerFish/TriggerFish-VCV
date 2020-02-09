@@ -59,7 +59,7 @@ struct TfSlop4 : Module
 
 	TfSlop4() : Module(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS),  _rng(_seed())
 	{
-		auto engineSampleRate = engineGetSampleRate();
+		auto engineSampleRate = args.sampleRate;
 		//_resampler = tfdsp::CreateX2Resampler_Butterworth5();
 		init(engineSampleRate);
 	}
@@ -90,32 +90,32 @@ void TfSlop4::process(const ProcessArgs& args)
     {
         //NOTE! : the parameters that are replicated for each input are put at the beginning to make life easier in loops
         //careful not to add parameters before these in the enum !
-        voct[i] = inputs[i].value * params[i].value;
+        voct[i] = inputs[i].getVoltage() * params[i].getValue();
     }
 
     _humPhase += _humPhaseIncrement;
     if(_humPhase >= 1.0)
         _humPhase -= 1.0;
 
-    float hum = _maxHum * params[HUM_LEVEL].value * std::sin(2 * PI * _humPhase);
+    float hum = _maxHum * params[HUM_LEVEL].getValue() * std::sin(2 * PI * _humPhase);
 
 	//The common drift operates in cents
 	_ouCommon = _phi * _ouCommon + _sigmaCents * _gaussian(_rng);
-    float driftCommon = params[COMMON_DRIFT_LEVEL].value * _ouCommon;
+    float driftCommon = params[COMMON_DRIFT_LEVEL].getValue() * _ouCommon;
 
     for(int i=0; i < 4; ++i)
     {
 		//The individual drifts operate in hz for linear detuning
 		_ouIndividual[i] = _phi * _ouIndividual[i] + _sigmaHz * _gaussian(_rng);
 		double v = voct[i] + hum + driftCommon;
-		double drift = params[INDIVIDUAL_DRIFT_LEVEL].value * _ouIndividual[i];
-		outputs[i].value = tfdsp::detune::linear(v, drift);
+		double drift = params[INDIVIDUAL_DRIFT_LEVEL].getValue() * _ouIndividual[i];
+		outputs[i].setVoltage(tfdsp::detune::linear(v, drift));
     }
 
 }
 void TfSlop4::onSampleRateChange()
 {
-	float gSampleRate = engineGetSampleRate();
+	float gSampleRate = args.sampleRate;
 	init(gSampleRate);
 }
 
@@ -123,7 +123,7 @@ void TfSlop4::onSampleRateChange()
 struct TfSlop4Widget : ModuleWidget {
 	TfSlop4Widget(TfSlop4 *module) {
 		setModule(module);
-		setPanel(SVG::load(assetPlugin(pluginInstance, "res/TfSlop4.svg")));
+		setPanel(APP->window->loadSvg(asset::plugin(pluginInstance, "res/TfSlop4.svg")));
 
 		//Panel screws
 		addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, 0)));
@@ -146,16 +146,16 @@ struct TfSlop4Widget : ModuleWidget {
 
 		//Input jacks
 		leftMargin =10;
-		addInput(createPort<PJ301MPort>(Vec(leftMargin, 283), PortWidget::INPUT, module, TfSlop4::VOCT_INPUT1));
-		addInput(createPort<PJ301MPort>(Vec(leftMargin + spacing, 283), PortWidget::INPUT, module, TfSlop4::VOCT_INPUT2));
-		addInput(createPort<PJ301MPort>(Vec(leftMargin + 2*spacing, 283), PortWidget::INPUT, module, TfSlop4::VOCT_INPUT3));
-		addInput(createPort<PJ301MPort>(Vec(leftMargin + 3*spacing, 283), PortWidget::INPUT, module, TfSlop4::VOCT_INPUT4));
+		addInput(createInput<PJ301MPort>(Vec(leftMargin, 283), module, TfSlop4::VOCT_INPUT1));
+		addInput(createInput<PJ301MPort>(Vec(leftMargin + spacing, 283), module, TfSlop4::VOCT_INPUT2));
+		addInput(createInput<PJ301MPort>(Vec(leftMargin + 2*spacing, 283), module, TfSlop4::VOCT_INPUT3));
+		addInput(createInput<PJ301MPort>(Vec(leftMargin + 3*spacing, 283), module, TfSlop4::VOCT_INPUT4));
 
 		//Output jacks
-		addOutput(createPort<PJ301MPort>(Vec(leftMargin, 319), PortWidget::OUTPUT, module, TfSlop4::VOCT_OUTPUT1));
-		addOutput(createPort<PJ301MPort>(Vec(leftMargin + spacing, 319), PortWidget::OUTPUT, module, TfSlop4::VOCT_OUTPUT2));
-		addOutput(createPort<PJ301MPort>(Vec(leftMargin + 2*spacing, 319), PortWidget::OUTPUT, module, TfSlop4::VOCT_OUTPUT3));
-		addOutput(createPort<PJ301MPort>(Vec(leftMargin + 3*spacing, 319), PortWidget::OUTPUT, module, TfSlop4::VOCT_OUTPUT4));
+		addOutput(createOutput<PJ301MPort>(Vec(leftMargin, 319), module, TfSlop4::VOCT_OUTPUT1));
+		addOutput(createOutput<PJ301MPort>(Vec(leftMargin + spacing, 319), module, TfSlop4::VOCT_OUTPUT2));
+		addOutput(createOutput<PJ301MPort>(Vec(leftMargin + 2*spacing, 319), module, TfSlop4::VOCT_OUTPUT3));
+		addOutput(createOutput<PJ301MPort>(Vec(leftMargin + 3*spacing, 319), module, TfSlop4::VOCT_OUTPUT4));
 
 	}
 };

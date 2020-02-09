@@ -49,7 +49,7 @@ struct TfSlop : Module
 
 	TfSlop() : Module(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS),  _rng(_seed())
 	{
-		auto engineSampleRate = engineGetSampleRate();
+		auto engineSampleRate = args.sampleRate;
 		//_resampler = tfdsp::CreateX2Resampler_Butterworth5();
 		init(engineSampleRate);
 	}
@@ -75,37 +75,37 @@ void TfSlop::init(float sampleRate)
 
 void TfSlop::process(const ProcessArgs& args)
  {
-	 if(_prevDetuneMode != params[DETUNE_MODE].value)
+	 if(_prevDetuneMode != params[DETUNE_MODE].getValue())
 	 {
 		 _ou = 0.0;
-		 _prevDetuneMode = params[DETUNE_MODE].value;
+		 _prevDetuneMode = params[DETUNE_MODE].getValue();
 	 }
-	float voct = inputs[VOCT_INPUT].value * params[TRACK_SCALING].value;
+	float voct = inputs[VOCT_INPUT].getVoltage() * params[TRACK_SCALING].getValue();
 
     _humPhase += _humPhaseIncrement;
     if(_humPhase >= 1.0)
         _humPhase -= 1.0;
 
-    float hum = _maxHum * params[HUM_LEVEL].value * std::sin(2 * PI * _humPhase);
+    float hum = _maxHum * params[HUM_LEVEL].getValue() * std::sin(2 * PI * _humPhase);
 
-	double sigma =  params[DETUNE_MODE].value < 0 ? _sigmaHz : _sigmaCents;
+	double sigma =  params[DETUNE_MODE].getValue() < 0 ? _sigmaHz : _sigmaCents;
 
 	_ou = _phi * _ou + sigma * _gaussian(_rng);
-	float drift = params[DRIFT_LEVEL].value * _ou;
+	float drift = params[DRIFT_LEVEL].getValue() * _ou;
 
 	voct = voct + hum;
 
 	
-	if(params[DETUNE_MODE].value < 0 ) //Hz i.e linear detune mode
-		outputs[VOCT_OUTPUT].value = tfdsp::detune::linear(voct, drift);
+	if(params[DETUNE_MODE].getValue() < 0 ) //Hz i.e linear detune mode
+		outputs[VOCT_OUTPUT].setVoltage(tfdsp::detune::linear(voct, drift));
 	else //Cents i.e proportional detune mode
-		outputs[VOCT_OUTPUT].value = voct + drift;
+		outputs[VOCT_OUTPUT].setVoltage(voct + drift);
 
 
 }
 void TfSlop::onSampleRateChange()
 {
-	float gSampleRate = engineGetSampleRate();
+	float gSampleRate = args.sampleRate;
 	init(gSampleRate);
 }
 
@@ -113,7 +113,7 @@ void TfSlop::onSampleRateChange()
 struct TfSlopWidget : ModuleWidget {
 	TfSlopWidget(TfSlop *module) {
 		setModule(module);
-		setPanel(SVG::load(assetPlugin(pluginInstance, "res/TfSlop.svg")));
+		setPanel(APP->window->loadSvg(asset::plugin(pluginInstance, "res/TfSlop.svg")));
 
 		//Panel screws
 		addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, 0)));
@@ -130,8 +130,8 @@ struct TfSlopWidget : ModuleWidget {
 		addParam(createParam<CKSS>(Vec(65, 135), module, TfSlop::DETUNE_MODE, -1.0f, 1.0f, -1.0f));
 
 		//Jacks at the bottom
-		addInput(createPort<PJ301MPort>(Vec(13.5, 317), PortWidget::INPUT, module, TfSlop::VOCT_INPUT));
-		addOutput(createPort<PJ301MPort>(Vec(55, 317), PortWidget::OUTPUT, module, TfSlop::VOCT_OUTPUT));
+		addInput(createInput<PJ301MPort>(Vec(13.5, 317), module, TfSlop::VOCT_INPUT));
+		addOutput(createOutput<PJ301MPort>(Vec(55, 317), module, TfSlop::VOCT_OUTPUT));
 
 	}
 };
