@@ -123,7 +123,8 @@ void TfVCA::onSampleRateChange()
 
 
 struct TfVCAWidget : ModuleWidget {
-	TfVCAWidget(TfVCA *module) : ModuleWidget(module) {
+	TfVCAWidget(TfVCA *module) {
+		setModule(module);
 		setPanel(SVG::load(assetPlugin(pluginInstance, "res/TfVCA.svg")));
 
 		//Panel screws

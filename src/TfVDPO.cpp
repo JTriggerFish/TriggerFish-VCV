@@ -90,7 +90,8 @@ void TfVDPO::onSampleRateChange()
 
 
 struct TfVDPOWidget : ModuleWidget {
-	TfVDPOWidget(TfVDPO *module) : ModuleWidget(module) {
+	TfVDPOWidget(TfVDPO *module) {
+		setModule(module);
 		setPanel(SVG::load(assetPlugin(pluginInstance, "res/TfVDPO.svg")));
 
 		//Panel screws

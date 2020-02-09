@@ -121,7 +121,8 @@ void TfSlop4::onSampleRateChange()
 
 
 struct TfSlop4Widget : ModuleWidget {
-	TfSlop4Widget(TfSlop4 *module) : ModuleWidget(module) {
+	TfSlop4Widget(TfSlop4 *module) {
+		setModule(module);
 		setPanel(SVG::load(assetPlugin(pluginInstance, "res/TfSlop4.svg")));
 
 		//Panel screws
