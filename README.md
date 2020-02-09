@@ -3,6 +3,8 @@
 
 <img src="doc/modules.png" width="600">
 
+[![Build Status](https://travis-ci.org/JTriggerFish/TriggerFish-VCV.svg?branch=master)](https://travis-ci.org/JTriggerFish/TriggerFish-VCV)
+
 ## Modules
 - [Slop and Slop 4](slop-and-slop-4)
 - [VDPO](vdpo)
