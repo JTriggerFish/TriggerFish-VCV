@@ -8,7 +8,7 @@ SLUG = TriggerFish-Elements
 
 # Must follow the format in the Versioning section of
 # https://vcvrack.com/manual/PluginDevelopmentTutorial.html
-VERSION = 1.0
+VERSION = 2.0
 
 
 # FLAGS will be passed to both the C and C++ compiler
