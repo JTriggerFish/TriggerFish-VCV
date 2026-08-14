@@ -47,8 +47,8 @@
             ],
             "problemMatcher": "$gcc"
         },
-        {
-			"label": "VCV: run smoke patch",
+		{
+			"label": "VCV: run Slop4 smoke patch",
 			"type": "process",
 			"command": "powershell.exe",
 			"args": [
@@ -57,7 +57,21 @@
 				"Bypass",
 				"-File",
 				"${workspaceFolder}\\dev.ps1",
-				"smoke"
+				"smoke-slop4"
+			],
+			"problemMatcher": "$gcc"
+		},
+		{
+			"label": "VCV: run VDPO smoke patch",
+			"type": "process",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}\\dev.ps1",
+				"smoke-vdpo"
 			],
 			"problemMatcher": "$gcc"
 		},

@@ -14,7 +14,7 @@
       "version": "2.6.6",
       "params": [],
       "data": {
-        "text": "TriggerFish playable development patch\n\nSETUP\nSelect MIDI and audio devices in the MIDI-CV and Audio-8 displays. For computer keyboard input, select Computer keyboard/mouse and an appropriate keyboard layout. Start with monitor volume low.\n\nVOICE A\nMIDI pitch -> Slop -> VDPO -> TriggerFish VCA -> final mixer.\n\nVOICE B\nMIDI pitch -> Slop4 -> four VCV VCOs (two unison, two one octave higher) -> VCA Mix -> TriggerFish VCA -> final mixer.\n\nAll TriggerFish module parameters use their declared defaults. Native module settings are chosen to make the patch playable. The final VCA Mix module is the master: its Mix level is -6 dB and feeds VCV Audio-8 outputs 1/2 directly."
+        "text": "TriggerFish Slop4 playable smoke test\n\nSETUP\nSelect MIDI and audio devices in MIDI-CV and Audio-8. Start with monitor volume low.\n\nMIDI pitch -> Slop4 -> four Fundamental VCOs -> VCA Mix -> TriggerFish VCA. MIDI gate drives the ADSR. Two oscillators are at unison and two are one octave higher.\n\nAll TriggerFish parameters are at their declared defaults. The final VCA Mix is the master, set to -6 dB and routed to outputs 1/2."
       },
       "pos": [
         0,
@@ -64,23 +64,23 @@
         },
         {
           "id": 4,
-          "value": 0
+          "value": 0.0
         },
         {
           "id": 5,
-          "value": 0
+          "value": 0.0
         },
         {
           "id": 6,
-          "value": 0
+          "value": 0.0
         },
         {
           "id": 7,
-          "value": 0
+          "value": 0.0
         },
         {
           "id": 8,
-          "value": 0
+          "value": 0.0
         }
       ],
       "pos": [
@@ -89,107 +89,7 @@
       ]
     },
     {
-      "id": 4,
-      "plugin": "TriggerFish-Elements",
-      "model": "TfSlop",
-      "version": "2.1.0",
-      "params": [
-        {
-          "id": 0,
-          "value": 0.25
-        },
-        {
-          "id": 1,
-          "value": 0.05
-        },
-        {
-          "id": 2,
-          "value": 1
-        },
-        {
-          "id": 3,
-          "value": -1
-        }
-      ],
-      "pos": [
-        42,
-        0
-      ]
-    },
-    {
-      "id": 5,
-      "plugin": "TriggerFish-Elements",
-      "model": "TfVDPO",
-      "version": "2.1.0",
-      "params": [
-        {
-          "id": 0,
-          "value": 0.5
-        },
-        {
-          "id": 1,
-          "value": 0
-        },
-        {
-          "id": 2,
-          "value": 1
-        },
-        {
-          "id": 3,
-          "value": 1
-        },
-        {
-          "id": 4,
-          "value": 1
-        },
-        {
-          "id": 5,
-          "value": 1
-        }
-      ],
-      "pos": [
-        48,
-        0
-      ]
-    },
-    {
-      "id": 6,
-      "plugin": "TriggerFish-Elements",
-      "model": "TfVCA",
-      "version": "2.1.0",
-      "params": [
-        {
-          "id": 0,
-          "value": 0.5
-        },
-        {
-          "id": 1,
-          "value": 1
-        },
-        {
-          "id": 2,
-          "value": 1
-        },
-        {
-          "id": 3,
-          "value": 0.5
-        },
-        {
-          "id": 4,
-          "value": 50
-        },
-        {
-          "id": 5,
-          "value": 1
-        }
-      ],
-      "pos": [
-        56,
-        0
-      ]
-    },
-    {
-      "id": 14,
+      "id": 11,
       "plugin": "Fundamental",
       "model": "VCMixer",
       "version": "2.6.4",
@@ -204,15 +104,15 @@
         },
         {
           "id": 2,
-          "value": 0.7
+          "value": 0.0
         },
         {
           "id": 3,
-          "value": 0
+          "value": 0.0
         },
         {
           "id": 4,
-          "value": 0
+          "value": 0.0
         }
       ],
       "data": {
@@ -225,7 +125,7 @@
       ]
     },
     {
-      "id": 16,
+      "id": 12,
       "plugin": "Core",
       "model": "AudioInterface",
       "version": "2.6.6",
@@ -246,26 +146,26 @@
       ]
     },
     {
-      "id": 7,
+      "id": 4,
       "plugin": "TriggerFish-Elements",
       "model": "TfSlop4",
       "version": "2.1.0",
       "params": [
         {
           "id": 0,
-          "value": 1
+          "value": 1.0
         },
         {
           "id": 1,
-          "value": 1
+          "value": 1.0
         },
         {
           "id": 2,
-          "value": 1
+          "value": 1.0
         },
         {
           "id": 3,
-          "value": 1
+          "value": 1.0
         },
         {
           "id": 4,
@@ -286,30 +186,30 @@
       ]
     },
     {
-      "id": 8,
+      "id": 5,
       "plugin": "Fundamental",
       "model": "VCO",
       "version": "2.6.4",
       "params": [
         {
           "id": 0,
-          "value": 1
+          "value": 1.0
         },
         {
           "id": 1,
-          "value": 1
+          "value": 1.0
         },
         {
           "id": 2,
-          "value": 0
+          "value": 0.0
         },
         {
           "id": 3,
-          "value": 0
+          "value": 0.0
         },
         {
           "id": 4,
-          "value": 0
+          "value": 0.0
         },
         {
           "id": 5,
@@ -317,11 +217,11 @@
         },
         {
           "id": 6,
-          "value": 0
+          "value": 0.0
         },
         {
           "id": 7,
-          "value": 0
+          "value": 0.0
         }
       ],
       "pos": [
@@ -330,30 +230,30 @@
       ]
     },
     {
-      "id": 9,
+      "id": 6,
       "plugin": "Fundamental",
       "model": "VCO",
       "version": "2.6.4",
       "params": [
         {
           "id": 0,
-          "value": 1
+          "value": 1.0
         },
         {
           "id": 1,
-          "value": 1
+          "value": 1.0
         },
         {
           "id": 2,
-          "value": 0
+          "value": 0.0
         },
         {
           "id": 3,
-          "value": 0
+          "value": 0.0
         },
         {
           "id": 4,
-          "value": 0
+          "value": 0.0
         },
         {
           "id": 5,
@@ -361,11 +261,11 @@
         },
         {
           "id": 6,
-          "value": 0
+          "value": 0.0
         },
         {
           "id": 7,
-          "value": 0
+          "value": 0.0
         }
       ],
       "pos": [
@@ -374,42 +274,42 @@
       ]
     },
     {
-      "id": 10,
+      "id": 7,
       "plugin": "Fundamental",
       "model": "VCO",
       "version": "2.6.4",
       "params": [
         {
           "id": 0,
-          "value": 1
+          "value": 1.0
         },
         {
           "id": 1,
-          "value": 1
+          "value": 1.0
         },
         {
           "id": 2,
-          "value": 12
+          "value": 12.0
         },
         {
           "id": 3,
-          "value": 0
+          "value": 0.0
         },
         {
           "id": 4,
-          "value": 0
+          "value": 0.0
         },
         {
           "id": 5,
-          "value": 0.45
+          "value": 0.5
         },
         {
           "id": 6,
-          "value": 0
+          "value": 0.0
         },
         {
           "id": 7,
-          "value": 0
+          "value": 0.0
         }
       ],
       "pos": [
@@ -418,42 +318,42 @@
       ]
     },
     {
-      "id": 11,
+      "id": 8,
       "plugin": "Fundamental",
       "model": "VCO",
       "version": "2.6.4",
       "params": [
         {
           "id": 0,
-          "value": 1
+          "value": 1.0
         },
         {
           "id": 1,
-          "value": 1
+          "value": 1.0
         },
         {
           "id": 2,
-          "value": 12
+          "value": 12.0
         },
         {
           "id": 3,
-          "value": 0
+          "value": 0.0
         },
         {
           "id": 4,
-          "value": 0
+          "value": 0.0
         },
         {
           "id": 5,
-          "value": 0.55
+          "value": 0.5
         },
         {
           "id": 6,
-          "value": 0
+          "value": 0.0
         },
         {
           "id": 7,
-          "value": 0
+          "value": 0.0
         }
       ],
       "pos": [
@@ -462,7 +362,7 @@
       ]
     },
     {
-      "id": 12,
+      "id": 9,
       "plugin": "Fundamental",
       "model": "VCMixer",
       "version": "2.6.4",
@@ -498,7 +398,7 @@
       ]
     },
     {
-      "id": 13,
+      "id": 10,
       "plugin": "TriggerFish-Elements",
       "model": "TfVCA",
       "version": "2.1.0",
@@ -509,11 +409,11 @@
         },
         {
           "id": 1,
-          "value": 1
+          "value": 1.0
         },
         {
           "id": 2,
-          "value": 1
+          "value": 1.0
         },
         {
           "id": 3,
@@ -521,11 +421,11 @@
         },
         {
           "id": 4,
-          "value": 50
+          "value": 50.0
         },
         {
           "id": 5,
-          "value": 1
+          "value": 1.0
         }
       ],
       "pos": [
@@ -536,188 +436,148 @@
   ],
   "cables": [
     {
-      "id": 1001,
+      "id": 1000,
       "outputModuleId": 2,
       "outputId": 0,
       "inputModuleId": 4,
       "inputId": 0,
-      "color": "#ffb437"
+      "color": "#f3374b"
     },
     {
-      "id": 1002,
+      "id": 1001,
       "outputModuleId": 4,
       "outputId": 0,
       "inputModuleId": 5,
       "inputId": 0,
-      "color": "#ffb437"
+      "color": "#ffcc00"
+    },
+    {
+      "id": 1002,
+      "outputModuleId": 5,
+      "outputId": 0,
+      "inputModuleId": 9,
+      "inputId": 1,
+      "color": "#0c8e15"
     },
     {
       "id": 1003,
-      "outputModuleId": 5,
+      "outputModuleId": 2,
       "outputId": 0,
-      "inputModuleId": 6,
-      "inputId": 0,
-      "color": "#3695ef"
+      "inputModuleId": 4,
+      "inputId": 1,
+      "color": "#0986ad"
     },
     {
       "id": 1004,
-      "outputModuleId": 2,
+      "outputModuleId": 4,
       "outputId": 1,
-      "inputModuleId": 3,
-      "inputId": 4,
-      "color": "#00b56e"
+      "inputModuleId": 6,
+      "inputId": 0,
+      "color": "#c91847"
     },
     {
       "id": 1005,
-      "outputModuleId": 3,
-      "outputId": 0,
-      "inputModuleId": 6,
-      "inputId": 1,
-      "color": "#00b56e"
+      "outputModuleId": 6,
+      "outputId": 1,
+      "inputModuleId": 9,
+      "inputId": 2,
+      "color": "#7a3ec8"
     },
     {
       "id": 1006,
-      "outputModuleId": 6,
+      "outputModuleId": 2,
       "outputId": 0,
-      "inputModuleId": 14,
-      "inputId": 1,
-      "color": "#3695ef"
+      "inputModuleId": 4,
+      "inputId": 2,
+      "color": "#f3374b"
     },
     {
       "id": 1007,
-      "outputModuleId": 2,
-      "outputId": 0,
+      "outputModuleId": 4,
+      "outputId": 2,
       "inputModuleId": 7,
       "inputId": 0,
-      "color": "#ffb437"
+      "color": "#ffcc00"
     },
     {
       "id": 1008,
-      "outputModuleId": 2,
-      "outputId": 0,
-      "inputModuleId": 7,
-      "inputId": 1,
-      "color": "#ffb437"
+      "outputModuleId": 7,
+      "outputId": 2,
+      "inputModuleId": 9,
+      "inputId": 3,
+      "color": "#0c8e15"
     },
     {
       "id": 1009,
       "outputModuleId": 2,
       "outputId": 0,
-      "inputModuleId": 7,
-      "inputId": 2,
-      "color": "#ffb437"
+      "inputModuleId": 4,
+      "inputId": 3,
+      "color": "#0986ad"
     },
     {
       "id": 1010,
-      "outputModuleId": 2,
-      "outputId": 0,
-      "inputModuleId": 7,
-      "inputId": 3,
-      "color": "#ffb437"
+      "outputModuleId": 4,
+      "outputId": 3,
+      "inputModuleId": 8,
+      "inputId": 0,
+      "color": "#c91847"
     },
     {
       "id": 1011,
-      "outputModuleId": 7,
-      "outputId": 0,
-      "inputModuleId": 8,
-      "inputId": 0,
-      "color": "#ffb437"
+      "outputModuleId": 8,
+      "outputId": 3,
+      "inputModuleId": 9,
+      "inputId": 4,
+      "color": "#7a3ec8"
     },
     {
       "id": 1012,
-      "outputModuleId": 7,
+      "outputModuleId": 2,
       "outputId": 1,
-      "inputModuleId": 9,
-      "inputId": 0,
-      "color": "#ffb437"
+      "inputModuleId": 3,
+      "inputId": 4,
+      "color": "#f3374b"
     },
     {
       "id": 1013,
-      "outputModuleId": 7,
-      "outputId": 2,
+      "outputModuleId": 3,
+      "outputId": 0,
       "inputModuleId": 10,
-      "inputId": 0,
-      "color": "#ffb437"
+      "inputId": 1,
+      "color": "#ffcc00"
     },
     {
       "id": 1014,
-      "outputModuleId": 7,
-      "outputId": 3,
-      "inputModuleId": 11,
+      "outputModuleId": 9,
+      "outputId": 0,
+      "inputModuleId": 10,
       "inputId": 0,
-      "color": "#ffb437"
+      "color": "#0c8e15"
     },
     {
       "id": 1015,
-      "outputModuleId": 8,
+      "outputModuleId": 10,
       "outputId": 0,
-      "inputModuleId": 12,
+      "inputModuleId": 11,
       "inputId": 1,
-      "color": "#3695ef"
+      "color": "#0986ad"
     },
     {
       "id": 1016,
-      "outputModuleId": 9,
-      "outputId": 1,
+      "outputModuleId": 11,
+      "outputId": 0,
       "inputModuleId": 12,
-      "inputId": 2,
-      "color": "#3695ef"
+      "inputId": 0,
+      "color": "#c91847"
     },
     {
       "id": 1017,
-      "outputModuleId": 10,
-      "outputId": 2,
-      "inputModuleId": 12,
-      "inputId": 3,
-      "color": "#3695ef"
-    },
-    {
-      "id": 1018,
       "outputModuleId": 11,
-      "outputId": 3,
+      "outputId": 0,
       "inputModuleId": 12,
-      "inputId": 4,
-      "color": "#3695ef"
-    },
-    {
-      "id": 1019,
-      "outputModuleId": 12,
-      "outputId": 0,
-      "inputModuleId": 13,
-      "inputId": 0,
-      "color": "#f3374b"
-    },
-    {
-      "id": 1020,
-      "outputModuleId": 3,
-      "outputId": 0,
-      "inputModuleId": 13,
       "inputId": 1,
-      "color": "#00b56e"
-    },
-    {
-      "id": 1021,
-      "outputModuleId": 13,
-      "outputId": 0,
-      "inputModuleId": 14,
-      "inputId": 2,
-      "color": "#3695ef"
-    },
-    {
-      "id": 1026,
-      "outputModuleId": 14,
-      "outputId": 0,
-      "inputModuleId": 16,
-      "inputId": 0,
-      "color": "#f3374b"
-    },
-    {
-      "id": 1027,
-      "outputModuleId": 14,
-      "outputId": 0,
-      "inputModuleId": 16,
-      "inputId": 1,
-      "color": "#f3374b"
+      "color": "#7a3ec8"
     }
   ]
 }

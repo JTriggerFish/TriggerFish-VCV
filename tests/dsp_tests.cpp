@@ -8,8 +8,9 @@
 #include "models/OTA1PoleIntegrator.hpp"
 #include "models/Transistor1PoleIntegrator.hpp"
 #include "models/VCAcore.hpp"
-#include "models/VdpOscillator.hpp"
+#include "models/VdpSplitOscillator.hpp"
 #include "tfdsp/control.hpp"
+#include "tfdsp/noise.hpp"
 #include "tfdsp/nonlinear.hpp"
 #include "tfdsp/sampleRate.hpp"
 
@@ -74,6 +75,27 @@ int main()
 		drift = ou.Step(rng);
 	Check(std::isfinite(drift), "OU drift remains finite");
 	Check(rng.calls < 1000, "OU noise generation runs at control rate");
+	double maxExp2RelativeError = 0.0;
+	for (int i = 0; i <= 20000; ++i)
+	{
+		const float exponent = -100.0f + 200.0f * i / 20000.0f;
+		const double exact = std::exp2(static_cast<double>(exponent));
+		maxExp2RelativeError = std::max(maxExp2RelativeError,
+			std::abs(static_cast<double>(tfdsp::Exp2Taylor5(exponent)) / exact - 1.0));
+	}
+	Check(maxExp2RelativeError < 6.0e-6,
+		"fast exp2 stays within its relative-error budget");
+
+	Check(tfdsp::detune::linear(5.0, 0.0) == 5.0,
+		"linear detune preserves pitch exactly when drift is zero");
+	const double detunePitch = -4.75;
+	const double detuneHz = 2.0;
+	const double detuneReference = detunePitch + std::log1p(
+		detuneHz / (261.63 * std::exp2(detunePitch))) / std::log(2.0);
+	Check(std::abs(tfdsp::detune::linear(detunePitch, detuneHz) - detuneReference) * 1200.0 < 0.002,
+		"linear detune stays within its pitch-error budget");
+	Check(tfdsp::detune::linear(std::numeric_limits<double>::quiet_NaN(), 1.0) == 0.0,
+		"linear detune rejects non-finite input");
 
 	auto resampler = tfdsp::CreateX2Resampler_Chebychev7();
 	resampler->Downsample(resampler->Upsample(1.0));
@@ -88,12 +110,15 @@ int main()
 		"VCA model rejects non-finite input");
 	vca.Reset();
 
-	VdpOscillator<tfdsp::DummyResampler, 3> oscillator(tfdsp::CreateDummyResampler);
+	VdpSplitOscillator<tfdsp::X4Resampler_Order7> oscillator(tfdsp::CreateX4Resampler_Cheby7);
 	oscillator.SetSampleRate(48000.0);
 	float oscillatorOutput = 0.0f;
 	for (int i = 0; i < 100; ++i)
 		oscillatorOutput = oscillator.Step(0.0, 0.5, 2.0 * tfdsp::PI * 261.625565);
 	Check(std::isfinite(oscillatorOutput), "VDPO model produces finite output");
+	for (int i = 0; i < 100; ++i)
+		oscillatorOutput = oscillator.Step(0.0, 9.0, 2.0 * tfdsp::PI * 18000.0);
+	Check(std::isfinite(oscillatorOutput), "VDPO model remains stable above the legacy frequency limit");
 	Check(oscillator.Step(0.0, 0.5, std::numeric_limits<double>::quiet_NaN()) == 0.0f,
 		"VDPO model rejects non-finite input");
 	oscillator.Reset();

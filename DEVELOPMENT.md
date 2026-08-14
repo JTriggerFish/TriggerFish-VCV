@@ -32,7 +32,8 @@ Run the usual tasks from PowerShell:
 .\dev.ps1 build        # Build plugin.dll
 .\dev.ps1 install      # Install into the Rack user plugin directory
 .\dev.ps1 run          # Install and launch Rack
-.\dev.ps1 smoke        # Install and open the smoke-test patch
+.\dev.ps1 smoke-slop4  # Install and open the Slop4/four-VCO patch
+.\dev.ps1 smoke-vdpo   # Install and open the two-VDPO patch
 .\dev.ps1 dist         # Build the release .vcvplugin package
 .\dev.ps1 test         # Build and run standalone C++ DSP tests
 .\dev.ps1 python-test  # Build Python bindings and run pytest
@@ -82,19 +83,49 @@ uv sync --locked --group dev --python 3.13
 uv run pytest
 ```
 
+Compare the current VDPO integrator with the legacy BDF implementation using:
+
+```bash
+uv run python tests/python/benchmark_vdpo.py
+```
+
+Benchmark the Slop linear-Hz pitch conversion using:
+
+```bash
+uv run python tests/python/benchmark_slop.py
+```
+
 The GitHub Actions workflow performs both a Linux Rack SDK package build and
 the standalone tests, so Linux compatibility is checked continuously.
 
-## Smoke-test patch
+## Smoke-test patches
 
-[test.vcv](test.vcv) contains every TriggerFish module and uses only Rack Core
-and Fundamental dependencies. It provides two MIDI-controlled, enveloped
-voices: Slop/VDPO/VCA and Slop4/four VCOs/VCA. Two VCOs are at unison and two
-are one octave higher. A final stereo master is set to -6 dB.
+[test-slop4.vcv](test-slop4.vcv) is a MIDI-controlled, enveloped Slop4 voice
+using four Fundamental VCOs. Two VCOs are at unison and two are one octave
+higher.
 
-The checked-in patch does not name a MIDI controller, audio interface, or
-driver. Select the appropriate MIDI and audio devices after opening it. Keep
+[test-vdpo.vcv](test-vdpo.vcv) contains two MIDI-controlled, enveloped
+Slop/VDPO/VCA voices. One VDPO is self-resonating. The other is forced by a
+Fundamental VCO; click the Push module to cycle its forcing waveform through
+sine, saw, and square.
+
+Both patches use only Rack Core, Fundamental, and TriggerFish modules. Their
+final stereo masters are set to -6 dB. `dev.ps1 smoke` remains an alias for
+`dev.ps1 smoke-vdpo`.
+
+The checked-in patches do not name a MIDI controller, audio interface, or
+driver. Select the appropriate MIDI and audio devices after opening one. Keep
 monitor volume low on first use.
+
+The patch files are generated from `tools/generate_test_patches.py`. Edit that
+source and run `uv run python tools/generate_test_patches.py` when changing the
+patch topology or defaults.
+
+The smoke commands use ignored `*.local.vcv` copies, allowing Rack to save MIDI
+and audio device selections without putting machine-specific state in Git. Each
+launch refreshes module topology, parameters, and other test state from the
+checked-in patch while carrying the local MIDI and audio device configuration
+forward. Delete the corresponding local copy to clear those device selections.
 
 ## Python and pre-commit
 

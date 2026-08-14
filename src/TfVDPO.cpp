@@ -1,9 +1,10 @@
-#include "models/VdpOscillator.hpp"
+#include "models/VdpSplitOscillator.hpp"
 #include <memory>
 #include <algorithm>
 #include <cmath>
 #include "plugin.hpp"
 #include "components.hpp"
+#include "tfdsp/approx.hpp"
 #include "tfdsp/noise.hpp"
 
 // Analog style modulation of pitch for VCOs and filter cutoffs
@@ -36,12 +37,10 @@ struct TfVDPO : Module
 		NUM_LIGHTS
 	};
 
-	//NOTE : The order 3 BDF integration is chosen as a decent compromise between stability and accuracy,
-	// in particular harmonic tuning ( higher order methods have a tendency to have more inharmonic partials ).
-	// in the future it might be worth investing other methods such as Implicit Runge-Kutta for instance Radau II.
-	// Alternatively higher oversampling also provides better stability and tuning, which is why a HQ mode is offered
-	//VdpOscillator<tfdsp::X2Resampler_Order7, 3> _vdp{tfdsp::CreateX2Resampler_Chebychev7};
-	VdpOscillator<tfdsp::X4Resampler_Order7, 3> _vdpHq{tfdsp::CreateX4Resampler_Cheby7};
+	// Four-times oversampling suppresses aliases from the nonlinear limit cycle.
+	// The structure-aware split integrator uses cheap adaptive substeps only in
+	// the stiff high-damping/high-frequency corner.
+	VdpSplitOscillator<tfdsp::X4Resampler_Order7> _vdpHq{tfdsp::CreateX4Resampler_Cheby7};
 
 	//----------------------------------------------------------------
 
@@ -88,10 +87,13 @@ void TfVDPO::process(const ProcessArgs &args)
 	const float dampingInput = inputs[DAMPING_INPUT].getVoltage();
 	const float x = (std::isfinite(audioInput) ? audioInput : 0.0f) * params[INPUT_GAIN].getValue();
 	float vOct = (std::isfinite(pitchInput) ? pitchInput : 0.0f) * params[VOCT_SCALING].getValue() + params[FREQ].getValue();
-	vOct = std::clamp(vOct, -10.0f, std::log2(4200.0f / dsp::FREQ_C4));
+	const float maxFrequency = 0.45f * args.sampleRate;
+	vOct = std::clamp(vOct, -10.0f, std::log2(maxFrequency / dsp::FREQ_C4));
 	const float mu = std::clamp(params[DAMPING].getValue() + params[DAMPING_ATTENUVERT].getValue() *
 		(std::isfinite(dampingInput) ? dampingInput : 0.0f), 1.0e-8f, 9.0f);
-	const float freq = dsp::FREQ_C4 * std::exp2(vOct);
+	// The shared approximation has at most 6e-6 relative error (about 0.01 cent)
+	// and avoids a comparatively expensive libm call in the per-sample path.
+	const float freq = dsp::FREQ_C4 * tfdsp::Exp2Taylor5(vOct);
 
 	//TODO: menu item for low quality, leave high quality by default for now.
 

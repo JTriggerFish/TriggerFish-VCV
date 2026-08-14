@@ -8,6 +8,8 @@ param(
         "install",
         "run",
         "smoke",
+        "smoke-slop4",
+        "smoke-vdpo",
         "test",
         "python-test",
         "shell",
@@ -88,6 +90,23 @@ function Invoke-PluginMake([string]$Target) {
     Invoke-Mingw "cd '$repoMsys' && RACK_DIR='$sdkMsys' make -j$Jobs $Target"
 }
 
+function Start-SmokePatch([string]$Filename) {
+    $portablePatch = Join-Path $repoRoot $Filename
+    Assert-Path $portablePatch "Rack smoke-test patch"
+    $localFilename = [System.IO.Path]::GetFileNameWithoutExtension($Filename) + ".local.vcv"
+    $smokePatch = Join-Path $repoRoot $localFilename
+    $refreshScript = Join-Path $repoRoot "tools\refresh_smoke_patch.py"
+    Assert-Path $refreshScript "Smoke-patch refresh helper"
+    & uv run --no-project --python 3.13 python $refreshScript $portablePatch $smokePatch
+    if ($LASTEXITCODE -ne 0) {
+        throw "Smoke-patch refresh failed with exit code $LASTEXITCODE."
+    }
+    Write-Host "Building and installing TriggerFish..."
+    Invoke-PluginMake "install"
+    Write-Host "Launching Rack with $localFilename..."
+    Start-Process -FilePath $rackExe -ArgumentList @($smokePatch) -WorkingDirectory $rackRuntime
+}
+
 switch ($Command) {
     "doctor" {
         Assert-Path (Join-Path $rackSdk "plugin.mk") "Rack SDK"
@@ -112,14 +131,9 @@ switch ($Command) {
         Write-Host "Launching Rack..."
         Start-Process -FilePath $rackExe -WorkingDirectory $rackRuntime
     }
-    "smoke" {
-        $smokePatch = Join-Path $repoRoot "test.vcv"
-        Assert-Path $smokePatch "Rack smoke-test patch"
-        Write-Host "Building and installing TriggerFish..."
-        Invoke-PluginMake "install"
-        Write-Host "Launching Rack with test.vcv..."
-        Start-Process -FilePath $rackExe -ArgumentList @($smokePatch) -WorkingDirectory $rackRuntime
-    }
+    "smoke" { Start-SmokePatch "test-vdpo.vcv" }
+    "smoke-slop4" { Start-SmokePatch "test-slop4.vcv" }
+    "smoke-vdpo" { Start-SmokePatch "test-vdpo.vcv" }
     "test" {
         Invoke-Mingw "cd '$repoMsys' && cmake -S . -B build/dsp-tests -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DTRIGGERFISH_BUILD_PYTHON=OFF && cmake --build build/dsp-tests -j$Jobs && ctest --test-dir build/dsp-tests --output-on-failure"
     }

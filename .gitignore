@@ -9,3 +9,6 @@
 __pycache__/
 *.egg-info/
 .idea/
+
+# Per-machine Rack patches (MIDI/audio device selections and other local state)
+*.local.vcv

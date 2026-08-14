@@ -34,7 +34,9 @@ While it can self oscillate, best results are obtained by feeding it another osc
 
 The higher the level the more the VDPO will follow the input, however if self-freq is too low the oscillator is too slow to follow it and all sorts of fun stuff happens.
 
-Note that this modules solves a stiff differential equation in real time using backward differentiation and 4x oversampling and is thus quite CPU heavy despite using vectorized arithmetic.
+The stiff differential equation is solved with a structure-aware, prewarped
+split integrator and 4x oversampling. This improves pitch tracking across the
+audio range while using adaptive work only for high damping at high frequency.
 
 ## VCA
 TriggerFish VCA is an analog modelled VCA that is loosely based on the minimoog's circuit.
@@ -71,4 +73,3 @@ See [DEVELOPMENT.md](DEVELOPMENT.md) for the Windows toolchain and the
 one-command build, test, package, install, and Rack workflows. The old
 machine-specific Visual Studio/Python wrapper has been replaced by CMake,
 pybind11, scikit-build-core, and uv.
-
