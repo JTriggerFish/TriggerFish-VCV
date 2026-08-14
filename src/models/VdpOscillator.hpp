@@ -21,7 +21,7 @@ private:
 	StateVector<double,2> _initConditions;
 
 	//More or less C8 on a piano, no point going higher and things start to blow up anyway
-	static constexpr double maxAngularFreq = double(2 * PI * 4200);
+	static constexpr double maxAngularFreq = double(2 * tfdsp::PI * 4200);
 	//Clamp the output to avoid blow ups
 	static constexpr double maxOutput = 12.0;
 
@@ -56,7 +56,7 @@ private:
 public:
 
 	EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-	explicit VdpOscillator(std::function<Oversampler*()> resamplerCreator) : _resamplerX(resamplerCreator()),
+	explicit VdpOscillator(std::function<std::unique_ptr<Oversampler>()> resamplerCreator) : _resamplerX(resamplerCreator()),
 		_resamplerMu(resamplerCreator()),
 		_resamplerW(resamplerCreator())
 	{
@@ -72,12 +72,25 @@ public:
 		_integrator.SetInitConditions(_initConditions);
 		_integrator.SetSampleRate(_sampleRate);
 	}
+	void Reset()
+	{
+		_initConditions << _initY0, _initY1;
+		_integrator.SetInitConditions(_initConditions);
+		_resamplerX->Reset();
+		_resamplerMu->Reset();
+		_resamplerW->Reset();
+	}
 
 	float Step(double x, double mu, double w)
 	{
 		if (_sampleRate <= 0.)
 		{
 			throw std::runtime_error("Sample rate invalid or not initialized");
+		}
+		if (!std::isfinite(x) || !std::isfinite(mu) || !std::isfinite(w))
+		{
+			Reset();
+			return 0.0f;
 		}
 		auto xA = _resamplerX->Upsample(x);
 		auto muA = _resamplerMu->Upsample(mu);
@@ -89,19 +102,13 @@ public:
 		{
 			output(i) =  ModelStep(xA(i), muA(i), wA(i));
 		}
-		return _resamplerX->Downsample(output);
+		const float result = _resamplerX->Downsample(output);
+		if (!std::isfinite(result))
+		{
+			Reset();
+			return 0.0f;
+		}
+		return result;
 
 	}
 };
-
-//Fix linking errors for old versions of gcc
-template<typename Oversampler, int IntegrationOrder>
-constexpr double VdpOscillator<Oversampler, IntegrationOrder>::maxAngularFreq;
-template<typename Oversampler, int IntegrationOrder>
-constexpr double VdpOscillator<Oversampler, IntegrationOrder>::maxOutput;
-template<typename Oversampler, int IntegrationOrder>
-constexpr double VdpOscillator<Oversampler, IntegrationOrder>::_initY0;
-template<typename Oversampler, int IntegrationOrder>
-constexpr double VdpOscillator<Oversampler, IntegrationOrder>::_initY1;
-template<typename Oversampler, int IntegrationOrder>
-constexpr int VdpOscillator<Oversampler, IntegrationOrder>::ResamplingFactor;

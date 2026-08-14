@@ -7,8 +7,6 @@
 #include <cmath>
 #include <random>
 
-#define PI 3.1415926535897932384626433832795028841971693993751058209749445923078164062
-
 /**
  * General linear filtering methods
  * References:
@@ -17,6 +15,7 @@
  */
 namespace tfdsp
 {
+inline constexpr double PI = 3.141592653589793238462643383279502884;
     
 /**Prewarping from analog to digital frequency */
 template<typename T> inline T AnalogToDigitalFreq_Bilinear(const T samplingFreq, const T fa)
@@ -33,7 +32,8 @@ template<typename T> class OneSampleDelay
      T _s1{}; //Default init to 0 for floating point types
 
 public:
-    OneSampleDelay<T>() {}
+    OneSampleDelay() = default;
+    void Reset() { _s1 = T{}; }
     inline T operator()(const T x)
     {
         T y = _s1;
@@ -48,10 +48,11 @@ template<typename T> class FirstOrderAllPass
     T _s1{}; //Default init to 0 for floating point types
 
 public:
-    FirstOrderAllPass<T>(const T coeff) 
+    explicit FirstOrderAllPass(const T coeff)
     {
         _a = coeff;
     }
+    void Reset() { _s1 = T{}; }
     inline T operator()(const T x)
     {
         T s = x - _a * _s1;
@@ -73,7 +74,7 @@ template<typename T> class SecondOrderBiquad
      T _s2{}; //Default init to 0 for numerical types
 
 public:
-    SecondOrderBiquad<T>(const std::array<T,3>& a, const std::array<T,3>& b)
+    SecondOrderBiquad(const std::array<T,3>& a, const std::array<T,3>& b)
     {
         _a = a;
         _b = b;
@@ -86,6 +87,11 @@ public:
         _b[1] /= a[0];
         _b[2] /= a[0];
 
+    }
+    void Reset()
+    {
+        _s1 = T{};
+        _s2 = T{};
     }
     inline T operator()(const T x)
     {
@@ -110,7 +116,8 @@ template<typename T> class FirstOrderLowPassZdf
      T _s1{}; //Default init to 0 for floating point types
 
 public:
-    FirstOrderLowPassZdf<T>() {}
+    FirstOrderLowPassZdf() = default;
+    void Reset() { _s1 = T{}; }
 
     //Note that fc is normalised frequency between 0 and 1, 1 being the Nyquist limit ( i.e sampling freq / 2 )
     inline T operator()(const T x, const T fc )
@@ -132,7 +139,8 @@ template<typename T> class FirstOrderHighPassZdf
      T _s1{}; //Default init to 0 for floating point types
 
 public:
-    FirstOrderHighPassZdf<T>() {}
+    FirstOrderHighPassZdf() = default;
+    void Reset() { _s1 = T{}; }
 
     //Note that fc is normalised frequency between 0 and 1, 1 being the Nyquist limit ( i.e sampling freq / 2 )
     inline T operator()(const T x, const T fc )
@@ -159,7 +167,12 @@ template<unsigned int iterations> class OTAFirstOrderLowPass
      double _u1{};
 
 public:
-    OTAFirstOrderLowPass<iterations>() {}
+    OTAFirstOrderLowPass() = default;
+    void Reset()
+    {
+        _s1 = 0.0;
+        _u1 = 0.0;
+    }
 
     //Note that fc is normalised frequency between 0 and 1, 1 being the Nyquist limit ( i.e sampling freq / 2 )
     double operator()(const double x, const double fc)

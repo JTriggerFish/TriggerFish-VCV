@@ -1,5 +1,5 @@
 #pragma once
-#include "../Eigen/Dense"
+#include <Eigen/Dense>
 #include <memory>
 #include <functional>
 #include "util.hpp"
@@ -27,6 +27,10 @@ namespace tfdsp
 		{
 			return Self()->_Downsample(x2);
 		}
+		inline void Reset()
+		{
+			Self()->_Reset();
+		}
 	};
 
 	class DummyResampler : public Resampler<DummyResampler, 1>
@@ -35,6 +39,7 @@ namespace tfdsp
 		DummyResampler() {}
 		friend class Resampler<DummyResampler, 1>;
 	protected:
+		void _Reset() {}
 		inline Eigen::Array<double, 1, 1> _Upsample(const double x)
 		{
 			Eigen::Array<double, 1, 1> xA;
@@ -77,6 +82,14 @@ namespace tfdsp
 		double _delay{};
 
 	protected:
+		void _Reset()
+		{
+			_sInDirect.setZero();
+			_sInDelayed.setZero();
+			_sOutDirect.setZero();
+			_sOutDelayed.setZero();
+			_delay = 0.0;
+		}
 		Eigen::Array<double, 2, 1> _Upsample(const double x)
 		{
 			Eigen::Array<double, 2, 1> x2;
@@ -135,11 +148,16 @@ namespace tfdsp
 		std::unique_ptr<X2Type> _stage2;
 
 	public:
-		X4Resampler(std::function<X2Type*()> resamplerCreator) : _stage1{ resamplerCreator() }, _stage2(resamplerCreator())
+		explicit X4Resampler(std::function<std::unique_ptr<X2Type>()> resamplerCreator) : _stage1{ resamplerCreator() }, _stage2(resamplerCreator())
 		{
 		}
 	private:
 		friend class Resampler<X4Resampler<X2Type>, 4>;
+		void _Reset()
+		{
+			_stage1->Reset();
+			_stage2->Reset();
+		}
 		Eigen::Array<double, 4, 1> _Upsample(const double x)
 		{
 			Eigen::Array<double, 4 ,1> x4;
@@ -176,10 +194,10 @@ namespace tfdsp
 
 	using X4Resampler_Order7 = X4Resampler<X2Resampler_Order7>;
 
-	X2Resampler_Order5* CreateX2Resampler_Butterworth5();
-	X2Resampler_Order7* CreateX2Resampler_Chebychev7();
-	X2Resampler_Order9* CreateX2Resampler_Chebychev9();
-	DummyResampler* CreateDummyResampler();
-	X4Resampler_Order7* CreateX4Resampler_Cheby7();
+	std::unique_ptr<X2Resampler_Order5> CreateX2Resampler_Butterworth5();
+	std::unique_ptr<X2Resampler_Order7> CreateX2Resampler_Chebychev7();
+	std::unique_ptr<X2Resampler_Order9> CreateX2Resampler_Chebychev9();
+	std::unique_ptr<DummyResampler> CreateDummyResampler();
+	std::unique_ptr<X4Resampler_Order7> CreateX4Resampler_Cheby7();
 
 }

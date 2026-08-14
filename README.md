@@ -3,12 +3,12 @@
 
 <img src="doc/modules.png" width="600">
 
-[![Build Status](https://travis-ci.org/JTriggerFish/TriggerFish-VCV.svg?branch=master)](https://travis-ci.org/JTriggerFish/TriggerFish-VCV)
+[![CI](https://github.com/JTriggerFish/TriggerFish-VCV/actions/workflows/ci.yml/badge.svg)](https://github.com/JTriggerFish/TriggerFish-VCV/actions/workflows/ci.yml)
 
 ## Modules
-- [Slop and Slop 4](slop-and-slop-4)
-- [VDPO](vdpo)
-- [VCA](vca)
+- [Slop and Slop 4](#slop-and-slop-4)
+- [VDPO](#vdpo)
+- [VCA](#vca)
 
 
 ### Slop and Slop 4
@@ -42,7 +42,7 @@ Just like the original it includes 3 non linearities, one on the audio, one on t
 
 The input non linearities are tanh-like but with a 1 pole feedback loop, resulting in some amount of slew limiting. The output nonlinearity is also a tanh but with no feedback loop, it also serves to limit the output to +-12v.
 
-**Gain** controls the input gain, note that the output is level compensated to keep the volume approximately constant, so this control mostly affects the input saturation.
+**Drive** controls the level-compensated input drive. Its extended range mostly increases saturation and nonlinear slew rather than acting as another output-volume control.
 At very low levels more pink noise will be heard on the output, and with the knob fully counterclockwise the input will be cut out.
 
 **lin** and **exp** are controls for the gain of the linear and exponential cv inputs. 
@@ -64,4 +64,11 @@ Because of this the CPU useage is relatively high.
 ## Contributing
 
 Issues, pull requests and suggestions for improvement are all very welcome.
+
+## Development
+
+See [DEVELOPMENT.md](DEVELOPMENT.md) for the Windows toolchain and the
+one-command build, test, package, install, and Rack workflows. The old
+machine-specific Visual Studio/Python wrapper has been replaced by CMake,
+pybind11, scikit-build-core, and uv.
 

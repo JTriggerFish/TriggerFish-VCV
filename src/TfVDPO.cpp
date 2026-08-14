@@ -1,5 +1,7 @@
 #include "models/VdpOscillator.hpp"
 #include <memory>
+#include <algorithm>
+#include <cmath>
 #include "plugin.hpp"
 #include "components.hpp"
 #include "tfdsp/noise.hpp"
@@ -47,12 +49,16 @@ struct TfVDPO : Module
 	TfVDPO()
 	{
 		config(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS);
-		configParam(TfVDPO::FREQ, -5.0f, 5.0f, 0.0f, "");
-		configParam(TfVDPO::DAMPING, 0.001f, 9.0f, 0.5f, "");
-		configParam(TfVDPO::INPUT_GAIN, 0.0, 1.0f, 1.0f, "");
-		configParam(TfVDPO::LEVEL, 0.0, 1.0f, 2.0f, "");
-		configParam(TfVDPO::VOCT_SCALING, 0.0f, 1.0f, 2.0f, "");
-		configParam(TfVDPO::DAMPING_ATTENUVERT, -1.0f, 1.0f, 1.0f, "");
+		configParam(TfVDPO::FREQ, -5.0f, 5.0f, 0.0f, "Frequency offset", " oct");
+		configParam(TfVDPO::DAMPING, 0.001f, 9.0f, 0.5f, "Damping");
+		configParam(TfVDPO::INPUT_GAIN, 0.0, 1.0f, 1.0f, "Audio input gain", "%", 0.0f, 100.0f);
+		configParam(TfVDPO::LEVEL, 0.0, 1.0f, 1.0f, "Output level", "%", 0.0f, 100.0f);
+		configParam(TfVDPO::VOCT_SCALING, 0.0f, 1.0f, 1.0f, "1V/octave amount", "%", 0.0f, 100.0f);
+		configParam(TfVDPO::DAMPING_ATTENUVERT, -1.0f, 1.0f, 1.0f, "Damping modulation", "%", 0.0f, 100.0f);
+		configInput(VOCT_INPUT, "1V/octave pitch");
+		configInput(AUDIO_INPUT, "Audio");
+		configInput(DAMPING_INPUT, "Damping modulation");
+		configOutput(OUTPUT, "Audio");
 		//configParam(TfVDPO::HQ_MODE, -1.0f, 1.0f, -1.0f, "");
 		//_resampler = tfdsp::CreateX2Resampler_Butterworth5();
 		float gSampleRate = APP->engine->getSampleRate();
@@ -61,7 +67,8 @@ struct TfVDPO : Module
 
 	void process(const ProcessArgs &args) override;
 	void init(float sampleRate);
-	void onSampleRateChange() override;
+	void onSampleRateChange(const SampleRateChangeEvent& event) override;
+	void onReset(const ResetEvent& event) override;
 
 	// For more advanced Module features, read Rack's engine.hpp header file
 	// - dataToJson, dataFromJson: serialization of internal data
@@ -76,24 +83,34 @@ void TfVDPO::init(float sampleRate)
 
 void TfVDPO::process(const ProcessArgs &args)
 {
-	float x = inputs[AUDIO_INPUT].getVoltage() * params[INPUT_GAIN].getValue();
-	float vOct = inputs[VOCT_INPUT].getVoltage() * params[VOCT_SCALING].getValue() + params[FREQ].getValue();
-	float mu = params[DAMPING].getValue() + params[DAMPING_ATTENUVERT].getValue() * inputs[DAMPING_INPUT].getVoltage();
-	float freq = 261.626f * powf(2.0f, vOct);
+	const float audioInput = inputs[AUDIO_INPUT].getVoltage();
+	const float pitchInput = inputs[VOCT_INPUT].getVoltage();
+	const float dampingInput = inputs[DAMPING_INPUT].getVoltage();
+	const float x = (std::isfinite(audioInput) ? audioInput : 0.0f) * params[INPUT_GAIN].getValue();
+	float vOct = (std::isfinite(pitchInput) ? pitchInput : 0.0f) * params[VOCT_SCALING].getValue() + params[FREQ].getValue();
+	vOct = std::clamp(vOct, -10.0f, std::log2(4200.0f / dsp::FREQ_C4));
+	const float mu = std::clamp(params[DAMPING].getValue() + params[DAMPING_ATTENUVERT].getValue() *
+		(std::isfinite(dampingInput) ? dampingInput : 0.0f), 1.0e-8f, 9.0f);
+	const float freq = dsp::FREQ_C4 * std::exp2(vOct);
 
 	//TODO: menu item for low quality, leave high quality by default for now.
 
 	//auto y = params[HQ_MODE].getValue() > 0 ?
-	//_vdpHq.Step(double(x), double(mu), double(2 * PI * freq))
-	//: _vdp.Step(double(x), double(mu), double(2 * PI * freq));
-	auto y = _vdpHq.Step(double(x), double(mu), double(2 * PI * freq));
+	//_vdpHq.Step(double(x), double(mu), double(2 * tfdsp::PI * freq))
+	//: _vdp.Step(double(x), double(mu), double(2 * tfdsp::PI * freq));
+	auto y = _vdpHq.Step(double(x), double(mu), double(2 * tfdsp::PI * freq));
 
-	outputs[OUTPUT].setVoltage(y * params[LEVEL].getValue());
+	const float output = y * params[LEVEL].getValue();
+	outputs[OUTPUT].setVoltage(std::isfinite(output) ? output : 0.0f);
 }
-void TfVDPO::onSampleRateChange()
+void TfVDPO::onReset(const ResetEvent& event)
 {
-	float gSampleRate = APP->engine->getSampleRate();
-	init(gSampleRate);
+	Module::onReset(event);
+	_vdpHq.Reset();
+}
+void TfVDPO::onSampleRateChange(const SampleRateChangeEvent& event)
+{
+	init(event.sampleRate);
 }
 
 struct TfVDPOWidget : ModuleWidget

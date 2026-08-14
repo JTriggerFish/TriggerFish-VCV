@@ -1,5 +1,5 @@
 #pragma once
-#include "../Eigen/Dense"
+#include <Eigen/Dense>
 #include "../tfdsp/filters.hpp"
 using namespace Eigen;
 
@@ -14,7 +14,7 @@ namespace ode
 		//Damping parameter
 		Scalar _mu{ Scalar(0.1) };
 		//Radian frequency ( 2* pi * f)
-		Scalar _w{ Scalar(200 * 2 * PI) };
+		Scalar _w{ Scalar(200 * 2 * tfdsp::PI) };
 
 		explicit VanDerPoleODE(Scalar mu, Scalar w)
 			: _mu(mu), _w(w)

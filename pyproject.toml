@@ -1,0 +1,32 @@
+[build-system]
+requires = ["scikit-build-core>=0.11", "pybind11>=3.0", "cmake>=3.25", "ninja>=1.12"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "triggerfish-vcv-dsp"
+version = "2.1.0"
+description = "Development bindings and tests for TriggerFish VCV DSP models"
+requires-python = ">=3.11"
+dependencies = ["numpy>=2.0"]
+
+[dependency-groups]
+dev = [
+    "black[jupyter]>=26.5.1",
+    "nbstripout>=0.9.1",
+    "pre-commit>=4.0",
+    "pytest>=8.0",
+]
+
+[project.optional-dependencies]
+analysis = ["matplotlib>=3.9", "scipy>=1.14"]
+
+[tool.scikit-build]
+cmake.args = ["-DTRIGGERFISH_BUILD_PYTHON=ON", "-DBUILD_TESTING=OFF"]
+build-dir = "build/python/{wheel_tag}"
+wheel.packages = []
+
+[tool.pytest.ini_options]
+testpaths = ["tests/python"]
+
+[tool.black]
+target-version = ["py313"]

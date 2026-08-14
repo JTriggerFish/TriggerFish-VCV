@@ -1,0 +1,7 @@
+CompileFlags:
+  CompilationDatabase: build/dsp-tests
+  Add:
+    - -std=c++17
+    - -D_USE_MATH_DEFINES
+  Remove:
+    - -W*

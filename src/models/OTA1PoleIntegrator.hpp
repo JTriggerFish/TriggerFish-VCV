@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../Eigen/Dense"
+#include <Eigen/Dense>
 #include <cmath>
 #include "../tfdsp/nonlinear.hpp"
 #include <array>
@@ -99,7 +99,14 @@ private:
 		for (int i = 0; i < N; ++i)
 		{
 			const auto u_cur = u(2 * i);
-			u(2 * i) = u_cur - f(2 * i) * (u_cur - u(2 * i + 1)) / (f(2 * i) - f(2 * i + 1));
+			const auto denominator = f(2 * i) - f(2 * i + 1);
+			if (!std::isfinite(u_cur) || !std::isfinite(f(2 * i)) ||
+				!std::isfinite(denominator) || std::abs(denominator) < 1.0e-14)
+				continue;
+			const auto next = u_cur - f(2 * i) * (u_cur - u(2 * i + 1)) / denominator;
+			if (!std::isfinite(next))
+				continue;
+			u(2 * i) = next;
 			f(2 * i + 1) = f(2 * i);
 			f(2 * i) = func(u(2 * i), u1(i), x(i), x1(i), g(i));
 			u(2 * i + 1) = u_cur;
@@ -110,27 +117,41 @@ private:
 		Eigen::Ref<Eigen::Array<double, 2, 1>> u,
 		Eigen::Ref<Eigen::Array<double, 2, 1>> f)
 	{
+		if (!std::isfinite(x) || !std::isfinite(g))
+		{
+			Reset();
+			return 0.0;
+		}
 		//Secant method
 		Eigen::Array<double, 1, 1> v_x; v_x << x;
 		Eigen::Array<double, 1, 1> v_g   ; v_g	   << g;
 		Eigen::Array<double, 1, 1> v_u1  ; v_u1   << _u1;
 		Eigen::Array<double, 1, 1> v_x1  ; v_x1   << _x1;
-		while (true)
+		constexpr int maxIterations = 8;
+		for (int iteration = 0; iteration < maxIterations; ++iteration)
 		{
 			//Note:we know input x should be in a fairly narrow range so a fixed constant stopping criterion seems
 			//reasonable here, this should correspond to about 120dB accuracy
-			if (std::fabs(f[0]) < 1.0e-6 || std::fabs(f[0] - f[1]) < 1.0e-12)
+			if (!std::isfinite(f[0]) || !std::isfinite(f[1]) ||
+				std::fabs(f[0]) < 1.0e-6 || std::fabs(f[0] - f[1]) < 1.0e-12)
 				break;
 			SecantIteration<1>(v_x, v_g, v_u1, v_x1, u, f);
 		}
 
-		_u1 = u[0];
+		const double solution = std::isfinite(u[0]) ? u[0] : (std::isfinite(u[1]) ? u[1] : _u1);
+		_u1 = solution;
 		_x1 = x;
 
-		return x - u[0];
+		return x - solution;
 	}
 
 public:
+	void Reset()
+	{
+		_u1 = 0.0;
+		_x1 = 0.0;
+	}
+
 	/**
 	 * \brief Process one sample of the discretized version of the system :
 	 * dy/dt = w_c * tanh(x-y)

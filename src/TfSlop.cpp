@@ -1,6 +1,8 @@
 #include <memory>
+#include <cmath>
 #include "plugin.hpp"
 #include "components.hpp"
+#include "tfdsp/control.hpp"
 #include "tfdsp/noise.hpp"
 
 // Analog style modulation of pitch for VCOs and filter cutoffs
@@ -31,32 +33,31 @@ struct TfSlop : Module
 
 	std::random_device _seed{};
 	std::minstd_rand _rng;
-	std::normal_distribution<double> _gaussian{};
-
-	static constexpr float _maxHum{1.0e-2f};
+	// 0.01 V/oct is a peak pitch deviation of 12 cents.
+	static constexpr float _maxHum{12.0f / 1200.0f};
 	static constexpr float _humFreq{60.0f};
+	tfdsp::RecursiveSineOscillator _humOscillator{};
 
-	float _humPhaseIncrement{};
-	float _humPhase{};
-
-	//Temperature drift is modelled as an OU process with a simple Euler discretization.
-	// i.e an AR(1) process
+	// Temperature drift is modeled as an exact sampled OU process.
 	static constexpr double _tau{60.0}; //Time constant ( average decay time) in seconds
 	static constexpr double _sigmaCents{0.2 / 12};
 	static constexpr double _sigmaHz{2};
-	double _ou{};
-	double _phi;
+	tfdsp::InterpolatedOrnsteinUhlenbeck _ou{};
 	float _prevDetuneMode{};
+	float _sampleRate{44100.0f};
 
 	//----------------------------------------------------------------
 
 	TfSlop() : _rng(_seed())
 	{
 		config(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS);
-		configParam(TfSlop::HUM_LEVEL, 0.0f, 1.0f, 0.25f, "");
-		configParam(TfSlop::DRIFT_LEVEL, 0.0f, 1.0f, 0.25f, "");
-		configParam(TfSlop::TRACK_SCALING, 1.0f - 0.2f / 12, 1.0f, 1.0f, "");
-		configParam(TfSlop::DETUNE_MODE, -1.0f, 1.0f, -1.0f, "");
+		configParam(TfSlop::HUM_LEVEL, 0.0f, 1.0f, 0.25f, "60 Hz hum depth", " cents peak", 0.0f, 12.0f);
+		configParam(TfSlop::DRIFT_LEVEL, 0.0f, 1.0f, 0.05f, "Drift", "%", 0.0f, 100.0f);
+		configParam(TfSlop::TRACK_SCALING, 1.0f - 0.2f / 12, 1.0f, 1.0f, "Tracking", "%", 0.0f, 100.0f);
+		configSwitch(TfSlop::DETUNE_MODE, -1.0f, 1.0f, -1.0f, "Drift mode", {"Linear Hz", "Proportional cents", "Proportional cents"});
+		configInput(VOCT_INPUT, "1V/octave pitch");
+		configOutput(VOCT_OUTPUT, "Detuned 1V/octave pitch");
+		configBypass(VOCT_INPUT, VOCT_OUTPUT);
 
 		//_resampler = tfdsp::CreateX2Resampler_Butterworth5();
 		float gSampleRate = APP->engine->getSampleRate();
@@ -65,7 +66,8 @@ struct TfSlop : Module
 
 	void process(const ProcessArgs &args) override;
 	void init(float sampleRate);
-	void onSampleRateChange() override;
+	void onSampleRateChange(const SampleRateChangeEvent& event) override;
+	void onReset(const ResetEvent& event) override;
 
 	// For more advanced Module features, read Rack's engine.hpp header file
 	// - dataToJson, dataFromJson: serialization of internal data
@@ -74,43 +76,48 @@ struct TfSlop : Module
 
 void TfSlop::init(float sampleRate)
 {
-	double T = 1.0 / sampleRate;
-	_humPhaseIncrement = _humFreq * T;
-	_phi = 1.0 - T / _tau;
-	_gaussian = std::normal_distribution<double>(0.0, std::sqrt(T));
+	_sampleRate = sampleRate;
+	_humOscillator.SetFrequency(_humFreq, sampleRate);
+	const double sigma = params[DETUNE_MODE].getValue() < 0 ? _sigmaHz : _sigmaCents;
+	_ou.Configure(sampleRate, _tau, sigma);
+	_prevDetuneMode = params[DETUNE_MODE].getValue();
 }
 
 void TfSlop::process(const ProcessArgs &args)
 {
 	if (_prevDetuneMode != params[DETUNE_MODE].getValue())
 	{
-		_ou = 0.0;
+		_ou.Reset();
+		const double sigma = params[DETUNE_MODE].getValue() < 0 ? _sigmaHz : _sigmaCents;
+		_ou.Configure(args.sampleRate, _tau, sigma);
 		_prevDetuneMode = params[DETUNE_MODE].getValue();
 	}
-	float voct = inputs[VOCT_INPUT].getVoltage() * params[TRACK_SCALING].getValue();
+	const float input = inputs[VOCT_INPUT].getVoltage();
+	float voct = (std::isfinite(input) ? input : 0.0f) * params[TRACK_SCALING].getValue();
 
-	_humPhase += _humPhaseIncrement;
-	if (_humPhase >= 1.0)
-		_humPhase -= 1.0;
-
-	float hum = _maxHum * params[HUM_LEVEL].getValue() * std::sin(2 * PI * _humPhase);
-
-	double sigma = params[DETUNE_MODE].getValue() < 0 ? _sigmaHz : _sigmaCents;
-
-	_ou = _phi * _ou + sigma * _gaussian(_rng);
-	float drift = params[DRIFT_LEVEL].getValue() * _ou;
+	float hum = _maxHum * params[HUM_LEVEL].getValue() * _humOscillator.Step();
+	float drift = params[DRIFT_LEVEL].getValue() * _ou.Step(_rng);
 
 	voct = voct + hum;
 
 	if (params[DETUNE_MODE].getValue() < 0) //Hz i.e linear detune mode
-		outputs[VOCT_OUTPUT].setVoltage(tfdsp::detune::linear(voct, drift));
+		outputs[VOCT_OUTPUT].setVoltage(static_cast<float>(tfdsp::detune::linear(voct, drift)));
 	else //Cents i.e proportional detune mode
-		outputs[VOCT_OUTPUT].setVoltage(voct + drift);
+	{
+		const double output = voct + drift;
+		outputs[VOCT_OUTPUT].setVoltage(std::isfinite(output) ? static_cast<float>(output) : 0.0f);
+	}
 }
-void TfSlop::onSampleRateChange()
+void TfSlop::onSampleRateChange(const SampleRateChangeEvent& event)
 {
-	float gSampleRate = APP->engine->getSampleRate();
-	init(gSampleRate);
+	init(event.sampleRate);
+}
+void TfSlop::onReset(const ResetEvent& event)
+{
+	Module::onReset(event);
+	_humOscillator.Reset();
+	_ou.Reset();
+	init(_sampleRate);
 }
 
 struct TfSlopWidget : ModuleWidget

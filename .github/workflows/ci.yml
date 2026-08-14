@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  RACK_SDK_VERSION: "2.6.6"
+
+jobs:
+  plugin-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Download Rack SDK
+        run: |
+          curl --fail --location \
+            "https://vcvrack.com/downloads/Rack-SDK-${RACK_SDK_VERSION}-lin-x64.zip" \
+            --output rack-sdk.zip
+          unzip -q rack-sdk.zip
+      - name: Build and package plugin
+        run: make RACK_DIR="$GITHUB_WORKSPACE/Rack-SDK" -j2 dist
+
+  dsp-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Configure C++ tests
+        run: cmake -S . -B build/tests -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+      - name: Build C++ tests
+        run: cmake --build build/tests --parallel 2
+      - name: Run C++ tests
+        run: ctest --test-dir build/tests --output-on-failure
+
+  python-tests:
+    runs-on: windows-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: true
+          python-version: "3.13"
+      - name: Build bindings and install test dependencies
+        run: uv sync --locked --group dev
+      - name: Check formatting and notebook cleanliness
+        run: uv run pre-commit run --all-files
+      - name: Run Python tests
+        run: uv run pytest

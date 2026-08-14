@@ -2,44 +2,108 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "Builds application",
-            "type": "shell",
-            "command": "make",
-            "windows":{
-                "command": "make",
-                "options": {
-                    "cwd": "${workspaceRoot}",
-                    "env": {
-                        "PATH": "C:\\msys64\\usr\\bin\\;C:\\msys64\\mingw64\\bin"
-                    }
-                }
-            },
-            "options": {
-                "cwd": "${workspaceRoot}",
-            },
+            "label": "VCV: build plugin",
+            "type": "process",
+            "command": "powershell.exe",
+            "args": [
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                "${workspaceFolder}\\dev.ps1",
+                "build"
+            ],
             "group": {
                 "kind": "build",
                 "isDefault": true
             },
-            "presentation": {
-                "echo": true,
-                "reveal": "always",
-                "focus": false,
-                "panel": "shared"
-            },
-            "args": ["-j8"],
-            "problemMatcher": {
-                "owner": "cpp",
-                "fileLocation": ["absolute"],
-                "pattern": {
-                    "regexp": "^(.*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)$",
-                    "file": 1,
-                    "line": 2,
-                    "column": 3,
-                    "severity": 4,
-                    "message": 5
-                }
-            }
+            "problemMatcher": "$gcc"
+        },
+        {
+            "label": "VCV: install plugin",
+            "type": "process",
+            "command": "powershell.exe",
+            "args": [
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                "${workspaceFolder}\\dev.ps1",
+                "install"
+            ],
+            "problemMatcher": "$gcc"
+        },
+        {
+            "label": "VCV: install and run Rack",
+            "type": "process",
+            "command": "powershell.exe",
+            "args": [
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                "${workspaceFolder}\\dev.ps1",
+                "run"
+            ],
+            "problemMatcher": "$gcc"
+        },
+        {
+			"label": "VCV: run smoke patch",
+			"type": "process",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}\\dev.ps1",
+				"smoke"
+			],
+			"problemMatcher": "$gcc"
+		},
+		{
+			"label": "VCV: C++ DSP tests",
+			"type": "process",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}\\dev.ps1",
+				"test"
+			],
+			"group": "test",
+			"problemMatcher": "$gcc"
+		},
+		{
+			"label": "VCV: Python DSP tests",
+			"type": "process",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}\\dev.ps1",
+				"python-test"
+			],
+			"group": "test",
+			"problemMatcher": "$gcc"
+		},
+		{
+            "label": "VCV: package plugin",
+            "type": "process",
+            "command": "powershell.exe",
+            "args": [
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                "${workspaceFolder}\\dev.ps1",
+                "dist"
+            ],
+            "problemMatcher": "$gcc"
         }
     ]
 }

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../Eigen/Dense"
+#include <Eigen/Dense>
 #include <cmath>
 #include <array>
 #include "../tfdsp/nonlinear.hpp"
@@ -14,13 +14,21 @@
 using namespace DiscreteGradient2;
 
 /**
- * \brief Model of 1 pole Transistor based integrator / low pass filter
+ * \brief Model of a Moog-ladder-style transistor one-pole low-pass stage.
+ *
+ * In normalized variables, the continuous-time model is
+ *
+ *     dy/dt = w_c * (tanh(x) - tanh(y)).
+ *
+ * The state y represents the capacitor voltage. Around zero, tanh(z) ~= z,
+ * so the model reduces to dy/dt = w_c * (x - y), the standard one-pole
+ * low-pass equation.
  */
 class Transistor1PoleIntegrator
 {
 private:
 
-	//Previous value of internal state
+	// Previous output/state: the discrete equivalent of the capacitor voltage.
 	double _y1{};
 	//Previous value of input
 	double _x1{};
@@ -98,7 +106,14 @@ private:
 		for (int i = 0; i < N; ++i)
 		{
 			const auto y_cur = y(2 * i);
-			y(2 * i) = y_cur - f(2 * i) * (y_cur - y(2 * i + 1)) / (f(2 * i) - f(2 * i + 1));
+			const auto denominator = f(2 * i) - f(2 * i + 1);
+			if (!std::isfinite(y_cur) || !std::isfinite(f(2 * i)) ||
+				!std::isfinite(denominator) || std::abs(denominator) < 1.0e-14)
+				continue;
+			const auto next = y_cur - f(2 * i) * (y_cur - y(2 * i + 1)) / denominator;
+			if (!std::isfinite(next))
+				continue;
+			y(2 * i) = next;
 			f(2 * i + 1) = f(2 * i);
 			f(2 * i) = func(y(2 * i), y1(i), phiX(i), g(i));
 			y(2 * i + 1) = y_cur;
@@ -109,30 +124,44 @@ private:
 		Eigen::Ref<Eigen::Array<double, 2, 1>> y,
 		Eigen::Ref<Eigen::Array<double, 2, 1>> f)
 	{
+		if (!std::isfinite(x) || !std::isfinite(phiX) || !std::isfinite(g))
+		{
+			Reset();
+			return 0.0;
+		}
 		Eigen::Array<double, 1, 1> v_phiX; v_phiX << phiX;
 		Eigen::Array<double, 1, 1> v_g   ; v_g	   << g;
 		Eigen::Array<double, 1, 1> v_y1  ; v_y1   << _y1;
 		//Secant method
-		while (true)
+		constexpr int maxIterations = 8;
+		for (int iteration = 0; iteration < maxIterations; ++iteration)
 		{
 			//Note:we know input x should be in a fairly narrow range so a fixed constant stopping criterion seems
 			//reasonable here, this should correspond to about 120dB accuracy
-			if (std::fabs(f(0)) < 1.0e-6 || std::fabs(f(0) - f(1)) < 1.0e-12)
+			if (!std::isfinite(f(0)) || !std::isfinite(f(1)) ||
+				std::fabs(f(0)) < 1.0e-6 || std::fabs(f(0) - f(1)) < 1.0e-12)
 				break;
 			SecantIteration<1>(v_phiX, v_g, v_y1, y, f);
 		}
 
-		_y1 = y(0);
+		const double solution = std::isfinite(y(0)) ? y(0) : (std::isfinite(y(1)) ? y(1) : _y1);
+		_y1 = solution;
 		_x1 = x;
 
-		return y(0);
+		return solution;
 	}
 
 
 public:
+	void Reset()
+	{
+		_y1 = 0.0;
+		_x1 = 0.0;
+	}
+
 	/**
 	 * \brief Process one sample of the discretized version of the system :
-	 * dy/dt = w_c * tanh(x-y)
+	 * dy/dt = w_c * (tanh(x) - tanh(y))
 	 * \param x input, expected between -10 and 10
 	 * \param g normalised cutoff gain, must be prewarped: g = w^~_c * T  = 2* tan( wc *T / 2 ) 
 	 * \return filtered value
@@ -164,7 +193,7 @@ public:
 	}
 	/**
 	 * \brief Process one sample of the discretized version of the system, but for 2 models and inputs :
-	 * dy/dt = w_c * tanh(x-y)
+	 * dy/dt = w_c * (tanh(x) - tanh(y))
 	 * \param models the two models
 	 * \param x inputs / outputs, expected between -10 and 10
 	 * \param g normalised cutoff gains, must be prewarped: g = w^~_c * T  = 2* tan( wc *T / 2 ) 

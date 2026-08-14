@@ -1,5 +1,5 @@
 #pragma once
-#include "../Eigen/Dense"
+#include <Eigen/Dense>
 #include <cmath>
 
 /**
@@ -31,9 +31,15 @@ namespace DiscreteGradient2
 	{
 	private:
 		static constexpr Float eps = _TanhEpsilon<Float>::Value;
+		static Float LogCosh(const Float x)
+		{
+			// log(cosh(x)) without forming cosh(x), which overflows for large |x|.
+			const Float ax = std::abs(x);
+			return ax + std::log1p(std::exp(-Float(2) * ax)) - std::log(Float(2));
+		}
 		static Float ValueLarge(const Float x, const Float xPrev)
 		{
-			return std::log(std::cosh(x) / std::cosh(xPrev)) / (x - xPrev);
+			return (LogCosh(x) - LogCosh(xPrev)) / (x - xPrev);
 		}
 
 	public:
@@ -45,11 +51,10 @@ namespace DiscreteGradient2
 		}
 		static Eigen::Array<Float, blockSize, 1> Value(const Eigen::Array<Float, blockSize, 1>&x, const Eigen::Array<Float, blockSize,1>& xPrev)
 		{
-			const Eigen::Array<Float, blockSize, 1> epsV = Eigen::Array<Float, blockSize, 1>::Constant(eps);
-			//Ternary operator as expressed in eigen:
-			return (Eigen::abs(x - xPrev) <= epsV).select(
-				Eigen::tanh(0.5*(x + xPrev)),
-				Eigen::log(Eigen::cosh(x) / Eigen::cosh(xPrev)) / (x - xPrev));
+			Eigen::Array<Float, blockSize, 1> result;
+			for (int i = 0; i < blockSize; ++i)
+				result(i) = Value(x(i), xPrev(i));
+			return result;
 		}
 		static Float Derivative(const Float x, const Float xPrev)
 		{
@@ -71,6 +76,10 @@ namespace DiscreteGradient2
 		TanhBlock()
 		{
 			_x1 = Eigen::Array<Float, blockSize, 1>::Zero();
+		}
+		void Reset()
+		{
+			_x1.setZero();
 		}
 		Eigen::Array<Float, blockSize, 1> Process(const Eigen::Array<Float, blockSize, 1>& x)
 		{

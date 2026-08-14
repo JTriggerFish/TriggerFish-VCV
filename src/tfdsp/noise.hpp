@@ -26,6 +26,10 @@ namespace tfdsp
 		{
 			return _gaussian(_rng);
 		}
+		void Reset()
+		{
+			_gaussian.reset();
+		}
 	};
 
 	class PinkNoiseSource
@@ -61,6 +65,13 @@ namespace tfdsp
 			auto x = _white.Step();
 			return Filter3dbPerOctave(x);
 		}
+		void Reset()
+		{
+			_white.Reset();
+			_filter.Reset();
+			_x.fill(0.0f);
+			_y.fill(0.0f);
+		}
 	};
 	class detune
 	{
@@ -71,10 +82,16 @@ namespace tfdsp
 		*/
 		static double linear(double vOct, double det, double f0 = 261.63)
 		{
+			if (!std::isfinite(vOct) || !std::isfinite(det) ||
+				!std::isfinite(f0) || f0 <= 0.0)
+				return 0.0;
+
 			static const double ln2 = std::log(2.0);
-			double v = det / f0 + std::exp(vOct * ln2);
+			const double boundedVOct = std::clamp(vOct, -100.0, 100.0);
+			double v = det / f0 + std::exp2(boundedVOct);
 			v = std::max<double>(1.0e-8, v);
-			return std::log(v) / ln2;
+			const double result = std::log(v) / ln2;
+			return std::isfinite(result) ? result : 0.0;
 		}
 	};
 

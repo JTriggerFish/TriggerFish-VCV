@@ -1,6 +1,8 @@
 #include "models/VCAcore.hpp"
 
 #include <memory>
+#include <algorithm>
+#include <cmath>
 #include "plugin.hpp"
 #include "components.hpp"
 #include "tfdsp/filters.hpp"
@@ -11,7 +13,7 @@ struct TfVCA : Module
 {
 	enum ParamIds
 	{
-		INPUT_GAIN,
+		DRIVE,
 		LIN_INPUT_LEVEL,
 		EXP_INPUT_LEVEL,
 		CV_BLEED,
@@ -51,15 +53,21 @@ struct TfVCA : Module
 
 	//----------------------------------------------------------------
 
-	TfVCA() : _vcaTransi(new ::VCA_TransistorCore<tfdsp::X2Resampler_Order7>(tfdsp::CreateX2Resampler_Chebychev7))
+	TfVCA() : _vcaTransi(std::make_unique<::VCA_TransistorCore<tfdsp::X2Resampler_Order7>>(tfdsp::CreateX2Resampler_Chebychev7))
 	{
 		config(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS);
-		configParam(TfVCA::LIN_INPUT_LEVEL, 0.0f, 1.0f, 1.0f, "");
-		configParam(TfVCA::EXP_INPUT_LEVEL, 0.0f, 1.0f, 0.0f, "");
-		configParam(TfVCA::INPUT_GAIN, 0.0f, 2.0f, 0.5f, "");
-		configParam(TfVCA::OUTPUT_LEVEL, 0.0f, 2.0f, 1.0f, "");
-		configParam(TfVCA::EXP_CV_BASE, 2.0f, 50.0f, 50.0f, "");
-		configParam(TfVCA::CV_BLEED, 0.0f, 1.0f, 0.5f, "");
+		configParam(TfVCA::LIN_INPUT_LEVEL, 0.0f, 1.0f, 1.0f, "Linear CV amount", "%", 0.0f, 100.0f);
+		configParam(TfVCA::EXP_INPUT_LEVEL, 0.0f, 1.0f, 1.0f, "Exponential CV amount", "%", 0.0f, 100.0f);
+		configParam(TfVCA::DRIVE, 0.0f, 5.0f, 0.5f, "Drive (level compensated)", "%", 0.0f, 100.0f);
+		configParam(TfVCA::OUTPUT_LEVEL, 0.0f, 2.0f, 1.0f, "Output level", "%", 0.0f, 100.0f);
+		configParam(TfVCA::EXP_CV_BASE, 2.0f, 50.0f, 50.0f, "Exponential CV curve");
+		configParam(TfVCA::CV_BLEED, 0.0f, 1.0f, 0.5f, "CV bleed", "%", 0.0f, 100.0f);
+		configInput(LIN_CV_INPUT, "Linear CV");
+		configInput(EXP_CV_INPUT, "Exponential CV");
+		configInput(AUDIO_INPUT, "Audio");
+		configOutput(MAIN_OUTPUT, "Audio");
+		configLight(CV_LIGHT, "CV level");
+		configBypass(AUDIO_INPUT, MAIN_OUTPUT);
 
 		//_resampler = tfdsp::CreateX2Resampler_Butterworth5();
 		float gSampleRate = APP->engine->getSampleRate();
@@ -68,7 +76,8 @@ struct TfVCA : Module
 
 	void process(const ProcessArgs &args) override;
 	void init(float sampleRate);
-	void onSampleRateChange() override;
+	void onSampleRateChange(const SampleRateChangeEvent& event) override;
+	void onReset(const ResetEvent& event) override;
 
 	// For more advanced Module features, read Rack's engine.hpp header file
 	// - dataToJson, dataFromJson: serialization of internal data
@@ -89,27 +98,30 @@ void TfVCA::process(const ProcessArgs &args)
 {
 	//float deltaTime = args.sampleTime;
 
-	float inputGain = params[INPUT_GAIN].getValue();
+	float driveGain = params[DRIVE].getValue();
 	constexpr float audioRenorm = 5.0f;
-	inputGain /= audioRenorm;
+	driveGain /= audioRenorm;
 
-	float audio = inputs[AUDIO_INPUT].getVoltage() * inputGain;
+	const float audioInput = inputs[AUDIO_INPUT].getVoltage();
+	float audio = (std::isfinite(audioInput) ? audioInput : 0.0f) * driveGain;
 	//VCA cv should be unipolar between 0 and 10, normalise to 0 to 1.
 	//If no input plugged in then pass zero.
-	float linCv = inputs[LIN_CV_INPUT].getNormalVoltage(0.f) / 10.f * params[LIN_INPUT_LEVEL].getValue();
-	float expCv = inputs[EXP_CV_INPUT].getNormalVoltage(0.f) / 10.f * params[EXP_INPUT_LEVEL].getValue();
+	const float linearInput = inputs[LIN_CV_INPUT].getNormalVoltage(0.f);
+	const float exponentialInput = inputs[EXP_CV_INPUT].getNormalVoltage(0.f);
+	float linCv = std::clamp(std::isfinite(linearInput) ? linearInput / 10.f * params[LIN_INPUT_LEVEL].getValue() : 0.0f, 0.0f, 1.0f);
+	float expCv = std::clamp(std::isfinite(exponentialInput) ? exponentialInput / 10.f * params[EXP_INPUT_LEVEL].getValue() : 0.0f, 0.0f, 1.0f);
 
 	float expBase = params[EXP_CV_BASE].getValue();
 	expCv = (powf(expBase, expCv) - 1.f) / (expBase - 1.f);
 
-	float cv = linCv + expCv;
+	float cv = std::clamp(linCv + expCv, 0.0f, 1.0f);
 
 	//cv bleed
-	outputs[MAIN_OUTPUT].setVoltage(_cvHighPass(cv, _normalisedHighPassCv) * params[CV_BLEED].getValue() * _maxCvBleed);
+	const float cvBleed = _cvHighPass(cv, _normalisedHighPassCv) * params[CV_BLEED].getValue() * _maxCvBleed;
 
-	//Renormalise the audio so that the output level and the input gain
-	//are more orthogonal, where the input gain is mostly used for distortion
-	auto finalGain = std::min(100.0f, (1.0f + inputGain) / (0.00001f + inputGain));
+	// Compensate most of the drive-induced level change. This makes DRIVE
+	// primarily a saturation control; OUTPUT_LEVEL remains the volume control.
+	auto finalGain = std::min(100.0f, (1.0f + driveGain) / (0.00001f + driveGain));
 	finalGain *= params[OUTPUT_LEVEL].getValue();
 
 	//VCA core
@@ -118,15 +130,22 @@ void TfVCA::process(const ProcessArgs &args)
 	//DC rejection in case there is some DC offset due to aliasing
 	audio = _audioHighPass(audio, _normalisedHighPassAudio);
 
-	outputs[MAIN_OUTPUT].value += audio;
+	const float output = audio + cvBleed;
+	outputs[MAIN_OUTPUT].setVoltage(std::isfinite(output) ? output : 0.0f);
 
 	//Deal with input monitoring lights
 	lights[CV_LIGHT].setSmoothBrightness(std::max(0.f, cv), args.sampleTime);
 }
-void TfVCA::onSampleRateChange()
+void TfVCA::onReset(const ResetEvent& event)
 {
-	float gSampleRate = APP->engine->getSampleRate();
-	init(gSampleRate);
+	Module::onReset(event);
+	_vcaTransi->Reset();
+	_cvHighPass.Reset();
+	_audioHighPass.Reset();
+}
+void TfVCA::onSampleRateChange(const SampleRateChangeEvent& event)
+{
+	init(event.sampleRate);
 }
 
 struct TfVCAWidget : ModuleWidget
@@ -145,7 +164,7 @@ struct TfVCAWidget : ModuleWidget
 		//KnobsAudio
 		addParam(createParam<TfCvKnob>(Vec(26, 45.5), module, TfVCA::LIN_INPUT_LEVEL));
 		addParam(createParam<TfCvKnob>(Vec(26, 104), module, TfVCA::EXP_INPUT_LEVEL));
-		addParam(createParam<TfLargeAudioKnob>(Vec(108, 79), module, TfVCA::INPUT_GAIN));
+		addParam(createParam<TfLargeAudioKnob>(Vec(108, 79), module, TfVCA::DRIVE));
 		addParam(createParam<TfAudioKob>(Vec(72, 154), module, TfVCA::OUTPUT_LEVEL));
 
 		addParam(createParam<TfTrimpot>(Vec(38, 245), module, TfVCA::EXP_CV_BASE));

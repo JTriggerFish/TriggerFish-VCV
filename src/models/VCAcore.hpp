@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../Eigen/Dense"
+#include <Eigen/Dense>
 #include <memory>
 #include <array>
 #include <cmath>
@@ -44,7 +44,7 @@ private:
 
 public:
 	EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-	VCACore(std::function<Oversampler*()> resamplerCreator) :
+	explicit VCACore(std::function<std::unique_ptr<Oversampler>()> resamplerCreator) :
 		_audioResampler{ resamplerCreator() }, _cvResampler{ resamplerCreator() }
 	{
 		_rolloffs << Model::DefaultRolloff, Model::DefaultRolloff;
@@ -54,16 +54,30 @@ public:
 		_sampleRate = f0 * ResamplingFactor;
 		//g = w^~_c * T  = 2* tan( wc *T / 2 ) ( prewarping )
 		//i.e g = 2 * tan( pi / 2 * f / (fo/2)) = tan(pi / 2 * fc)
-		_g = 2.0 * Eigen::tan(PI / 2.0 * _rolloffs / (0.5 * _sampleRate));
+		_g = 2.0 * Eigen::tan(tfdsp::PI / 2.0 * _rolloffs / (0.5 * _sampleRate));
 
 		//Conserve the power spectral density independently of the sample rate
 		_noiseStdDev = std::sqrt( _noiseLevel * _sampleRate / 2);
+	}
+	void Reset()
+	{
+		for (auto& model : _models)
+			model.Reset();
+		_audioResampler->Reset();
+		_cvResampler->Reset();
+		_noise.Reset();
+		_outputStage.Reset();
 	}
 	float Step(const float audio, const float cv, const float finalGain)
 	{
 		if (_sampleRate <= 0.f)
 		{
 			throw std::runtime_error("Sample rate invalid or not initialized");
+		}
+		if (!std::isfinite(audio) || !std::isfinite(cv) || !std::isfinite(finalGain))
+		{
+			Reset();
+			return 0.0f;
 		}
 		const double noise = _noiseStdDev * _noise.Step();
 		double input = noise + audio;
@@ -73,7 +87,13 @@ public:
 
 		Step(audioA, cvA, finalGain);
 
-		return float(_audioResampler->Downsample(audioA));
+		const float output = float(_audioResampler->Downsample(audioA));
+		if (!std::isfinite(output))
+		{
+			Reset();
+			return 0.0f;
+		}
+		return output;
 	}
 private:
 	inline void Step(Eigen::Ref<Eigen::Array<double, ResamplingFactor, 1>> audio, const Eigen::Array<double, ResamplingFactor, 1>& cv, const double finalGain)

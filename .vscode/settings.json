@@ -1,5 +1,8 @@
 {
-    "C_Cpp.intelliSenseEngine": "Default",
+    "C_Cpp.intelliSenseEngine": "disabled",
+    "clangd.arguments": [
+        "--background-index"
+    ],
     "files.associations": {
         "cmath": "cpp",
         "array": "cpp",

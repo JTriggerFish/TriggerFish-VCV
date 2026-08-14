@@ -1,8 +1,14 @@
-tests/PythonTests/ConsoleApp/* diff
-*.cpp diff
-*.h diff
-*.hpp diff
-*.c diff
-* text=auto
+# Store source and configuration files with deterministic Unix line endings on
+# every platform. Git still detects binary files, with explicit rules for the
+# binary formats used by this repository.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.pdf binary
+*.zip binary
+*.vcvplugin binary
 
 
