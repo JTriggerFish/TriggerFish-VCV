@@ -1,0 +1,297 @@
+#include "models/Tb303Oscillator.hpp"
+
+#include <algorithm>
+#include <array>
+#include <cmath>
+#include <memory>
+
+#include "plugin.hpp"
+#include "components.hpp"
+#include "tfdsp/sampleRate.hpp"
+
+struct Tf303Oscillator : Module
+{
+	enum ParamIds
+	{
+		OCTAVE,
+		TUNE,
+		SLIDE_TIME,
+		SHAPE,
+		WAVE,
+		FM_AMOUNT,
+		TIME_AMOUNT,
+		SHAPE_AMOUNT,
+		WAVE_AMOUNT,
+		FM_MODE,
+		NUM_PARAMS
+	};
+	enum InputIds
+	{
+		VOCT_INPUT,
+		SLIDE_INPUT,
+		TIME_INPUT,
+		FM_INPUT,
+		SHAPE_INPUT,
+		WAVE_INPUT,
+		NUM_INPUTS
+	};
+	enum OutputIds
+	{
+		CV_OUTPUT,
+		AUDIO_OUTPUT,
+		NUM_OUTPUTS
+	};
+	enum LightIds
+	{
+		NUM_LIGHTS
+	};
+
+	using OscillatorX2 = tfdsp::Tb303Oscillator<tfdsp::X2Resampler_Order7>;
+	using OscillatorX4 = tfdsp::Tb303Oscillator<tfdsp::X4Resampler_Order7>;
+	std::array<std::unique_ptr<OscillatorX2>, PORT_MAX_CHANNELS> oscillatorsX2;
+	std::array<std::unique_ptr<OscillatorX4>, PORT_MAX_CHANNELS> oscillatorsX4;
+	std::array<dsp::SchmittTrigger, PORT_MAX_CHANNELS> slideTriggers{};
+	// 2x preserves substantially more harmonic phase while the 4x option is
+	// available for comparison at extreme pitch and modulation settings.
+	int oversampling = 0;
+	int activeOversampling = 0;
+
+	Tf303Oscillator()
+	{
+		config(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS);
+		configParam(OCTAVE, -3.0f, 3.0f, 0.0f, "Octave", " oct");
+		getParamQuantity(OCTAVE)->snapEnabled = true;
+		configParam(TUNE, -7.0f / 12.0f, 7.0f / 12.0f, 0.0f,
+			"Tune", " semitones", 0.0f, 12.0f);
+		configParam(SLIDE_TIME, std::log10(0.002f), std::log10(0.360f),
+			std::log10(0.060f), "Slide time", " ms", 10.0f, 1000.0f);
+		configParam(SHAPE, -1.0f, 1.0f, 0.0f, "Square shape", "%",
+			0.0f, 100.0f);
+		configParam(WAVE, 0.0f, 1.0f, 0.0f, "Saw / square morph", "%",
+			0.0f, 100.0f);
+		configParam(FM_AMOUNT, -1.0f, 1.0f, 0.0f, "FM amount", "%",
+			0.0f, 100.0f);
+		configParam(TIME_AMOUNT, -1.0f, 1.0f, 0.0f, "Slide-time CV amount",
+			"%", 0.0f, 100.0f);
+		configParam(SHAPE_AMOUNT, -1.0f, 1.0f, 0.0f, "Shape CV amount",
+			"%", 0.0f, 100.0f);
+		configParam(WAVE_AMOUNT, -1.0f, 1.0f, 0.0f, "Wave CV amount", "%",
+			0.0f, 100.0f);
+		configSwitch(FM_MODE, 0.0f, 1.0f, 0.0f, "FM response",
+			{"Exponential", "Linear (through-zero)"});
+
+		configInput(VOCT_INPUT, "Pitch (1V/octave)");
+		configInput(SLIDE_INPUT, "Slide gate");
+		configInput(TIME_INPUT, "Slide time CV");
+		configInput(FM_INPUT,
+			"Frequency modulation (exponential or through-zero linear)");
+		configInput(SHAPE_INPUT, "Square shape CV");
+		configInput(WAVE_INPUT, "Saw / square morph CV");
+		configOutput(CV_OUTPUT, "Post-slide pitch CV");
+		configOutput(AUDIO_OUTPUT, "Audio");
+
+		for (int channel = 0; channel < PORT_MAX_CHANNELS; ++channel)
+		{
+			oscillatorsX2[channel] = std::make_unique<OscillatorX2>(
+				tfdsp::CreateX2Resampler_Chebychev7);
+			oscillatorsX4[channel] = std::make_unique<OscillatorX4>(
+				tfdsp::CreateX4Resampler_Cheby7);
+		}
+		SetSampleRate(APP->engine->getSampleRate());
+	}
+
+	void SetSampleRate(float sampleRate)
+	{
+		for (int channel = 0; channel < PORT_MAX_CHANNELS; ++channel)
+		{
+			oscillatorsX2[channel]->SetSampleRate(sampleRate);
+			oscillatorsX4[channel]->SetSampleRate(sampleRate);
+		}
+	}
+
+	void ResetDsp()
+	{
+		for (int channel = 0; channel < PORT_MAX_CHANNELS; ++channel)
+		{
+			oscillatorsX2[channel]->Reset();
+			oscillatorsX4[channel]->Reset();
+			slideTriggers[channel].reset();
+		}
+	}
+
+	void process(const ProcessArgs& args) override
+	{
+		oversampling = std::clamp(oversampling, 0, 1);
+		if (activeOversampling != oversampling)
+		{
+			activeOversampling = oversampling;
+			for (int channel = 0; channel < PORT_MAX_CHANNELS; ++channel)
+			{
+				if (activeOversampling == 0)
+					oscillatorsX2[channel]->Reset();
+				else
+					oscillatorsX4[channel]->Reset();
+			}
+		}
+		const int channels = std::clamp(std::max({
+			inputs[VOCT_INPUT].getChannels(), inputs[SLIDE_INPUT].getChannels(),
+			inputs[TIME_INPUT].getChannels(), inputs[FM_INPUT].getChannels(),
+			inputs[SHAPE_INPUT].getChannels(),
+			inputs[WAVE_INPUT].getChannels(), 1}), 1, PORT_MAX_CHANNELS);
+		outputs[CV_OUTPUT].setChannels(channels);
+		outputs[AUDIO_OUTPUT].setChannels(channels);
+
+		const double octave = std::round(params[OCTAVE].getValue());
+		const double tuningOffset = octave + params[TUNE].getValue();
+		const double slideLog = params[SLIDE_TIME].getValue();
+		const double slideRange = std::log10(0.360) - std::log10(0.002);
+		const double shapeKnob = params[SHAPE].getValue();
+		const double waveKnob = params[WAVE].getValue();
+		const double fmAmount = params[FM_AMOUNT].getValue();
+		const double timeAmount = params[TIME_AMOUNT].getValue();
+		const double shapeAmount = params[SHAPE_AMOUNT].getValue();
+		const double waveAmount = params[WAVE_AMOUNT].getValue();
+		const bool linearFm = params[FM_MODE].getValue() > 0.5f;
+
+		for (int channel = 0; channel < channels; ++channel)
+		{
+			auto finiteInput = [&](InputIds input)
+			{
+				const float value = inputs[input].getPolyVoltage(channel);
+				return std::isfinite(value) ? static_cast<double>(value) : 0.0;
+			};
+			const double timeCv = finiteInput(TIME_INPUT);
+			const double channelSlideLog = std::clamp(slideLog + timeAmount *
+				(timeCv / 10.0) * slideRange, std::log10(0.002),
+				std::log10(0.360));
+			const double slideTime = std::pow(10.0, channelSlideLog);
+			const double shape = std::clamp(shapeKnob + shapeAmount *
+				finiteInput(SHAPE_INPUT) / 5.0, -1.0, 1.0);
+			const double wave = std::clamp(waveKnob + waveAmount *
+				finiteInput(WAVE_INPUT) / 10.0, 0.0, 1.0);
+			const float slideVoltage = static_cast<float>(finiteInput(SLIDE_INPUT));
+			slideTriggers[channel].process(slideVoltage, 0.1f, 1.0f);
+			const bool slide = slideTriggers[channel].isHigh();
+			float renderedPitch;
+			float renderedAudio;
+			if (activeOversampling == 0)
+			{
+				const auto rendered = oscillatorsX2[channel]->Step(
+					finiteInput(VOCT_INPUT), slide,
+					slideTime, tuningOffset, fmAmount * finiteInput(FM_INPUT),
+					linearFm, shape, wave);
+				renderedPitch = rendered.pitch;
+				renderedAudio = rendered.mixed;
+			}
+			else
+			{
+				const auto rendered = oscillatorsX4[channel]->Step(
+					finiteInput(VOCT_INPUT), slide,
+					slideTime, tuningOffset, fmAmount * finiteInput(FM_INPUT),
+					linearFm, shape, wave);
+				renderedPitch = rendered.pitch;
+				renderedAudio = rendered.mixed;
+			}
+			outputs[CV_OUTPUT].setVoltage(std::clamp(renderedPitch,
+				-12.0f, 12.0f), channel);
+			outputs[AUDIO_OUTPUT].setVoltage(
+				std::isfinite(renderedAudio) ? renderedAudio : 0.0f, channel);
+		}
+	}
+
+	json_t* dataToJson() override
+	{
+		json_t* root = json_object();
+		json_object_set_new(root, "oversampling", json_integer(oversampling));
+		return root;
+	}
+
+	void dataFromJson(json_t* root) override
+	{
+		if (json_t* value = json_object_get(root, "oversampling"))
+			oversampling = std::clamp(
+				static_cast<int>(json_integer_value(value)), 0, 1);
+	}
+
+	void onReset(const ResetEvent& event) override
+	{
+		Module::onReset(event);
+		oversampling = 0;
+		activeOversampling = 0;
+		ResetDsp();
+	}
+
+	void onSampleRateChange(const SampleRateChangeEvent& event) override
+	{
+		SetSampleRate(event.sampleRate);
+	}
+};
+
+struct Tf303OscillatorWidget : ModuleWidget
+{
+	Tf303OscillatorWidget(Tf303Oscillator* module)
+	{
+		setModule(module);
+		setPanel(APP->window->loadSvg(asset::plugin(
+			pluginInstance, "res/Tf303Oscillator.svg")));
+
+		addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, 0)));
+		addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, 0)));
+		addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH,
+			RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
+		addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH,
+			RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
+
+		addParam(createParam<TfSnapKnob>(Vec(4, 48), module,
+			Tf303Oscillator::OCTAVE));
+		addParam(createParam<TfCvKnob>(Vec(40, 48), module,
+			Tf303Oscillator::TUNE));
+		addParam(createParam<TfCvKnob>(Vec(76, 48), module,
+			Tf303Oscillator::SLIDE_TIME));
+		addParam(createParam<TfCvKnob>(Vec(112, 48), module,
+			Tf303Oscillator::SHAPE));
+		addParam(createParam<TfCvKnob>(Vec(148, 48), module,
+			Tf303Oscillator::WAVE));
+
+		addParam(createParam<TfTrimpot>(Vec(18, 113), module,
+			Tf303Oscillator::FM_AMOUNT));
+		addParam(createParam<TfTrimpot>(Vec(60, 113), module,
+			Tf303Oscillator::TIME_AMOUNT));
+		addParam(createParam<TfTrimpot>(Vec(102, 113), module,
+			Tf303Oscillator::SHAPE_AMOUNT));
+		addParam(createParam<TfTrimpot>(Vec(144, 113), module,
+			Tf303Oscillator::WAVE_AMOUNT));
+		addParam(createParam<CKSS>(Vec(84, 151), module,
+			Tf303Oscillator::FM_MODE));
+
+		addInput(createInput<PJ301MPort>(Vec(6, 202), module,
+			Tf303Oscillator::VOCT_INPUT));
+		addInput(createInput<PJ301MPort>(Vec(48, 202), module,
+			Tf303Oscillator::SLIDE_INPUT));
+		addInput(createInput<PJ301MPort>(Vec(90, 202), module,
+			Tf303Oscillator::TIME_INPUT));
+		addInput(createInput<PJ301MPort>(Vec(6, 260), module,
+			Tf303Oscillator::FM_INPUT));
+		addInput(createInput<PJ301MPort>(Vec(48, 260), module,
+			Tf303Oscillator::SHAPE_INPUT));
+		addInput(createInput<PJ301MPort>(Vec(90, 260), module,
+			Tf303Oscillator::WAVE_INPUT));
+		addOutput(createOutput<PJ301MPort>(Vec(48, 334), module,
+			Tf303Oscillator::CV_OUTPUT));
+		addOutput(createOutput<PJ301MPort>(Vec(108, 334), module,
+			Tf303Oscillator::AUDIO_OUTPUT));
+	}
+
+	void appendContextMenu(Menu* menu) override
+	{
+		Tf303Oscillator* module = dynamic_cast<Tf303Oscillator*>(this->module);
+		if (!module)
+			return;
+		menu->addChild(new MenuSeparator);
+		menu->addChild(createIndexPtrSubmenuItem("Oversampling",
+			{"2x (lower phase smear)", "4x"}, &module->oversampling));
+	}
+};
+
+Model* modelTf303Oscillator = createModel<Tf303Oscillator,
+	Tf303OscillatorWidget>("Tf303Oscillator");

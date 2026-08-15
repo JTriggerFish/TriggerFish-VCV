@@ -84,8 +84,7 @@ public:
 				std::max(std::abs(_configuration.earlyVoltage), 10.0) : 100.0;
 			output *= std::clamp(1.0 + outputNodeVolts / earlyVoltage, 0.5, 1.5);
 		}
-		return std::clamp(output, -MaximumControlCurrent,
-			MaximumControlCurrent);
+		return output;
 	}
 
 	void Reset() {}

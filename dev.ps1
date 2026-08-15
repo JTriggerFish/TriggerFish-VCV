@@ -11,7 +11,7 @@ param(
         "smoke",
         "smoke-slop4",
         "smoke-vdpo",
-        "smoke-filter",
+        "smoke-303",
         "test",
         "python-test",
         "shell",
@@ -97,11 +97,11 @@ function Start-SmokePatch([string]$Filename) {
     Assert-Path $portablePatch "Rack smoke-test patch"
     $localFilename = [System.IO.Path]::GetFileNameWithoutExtension($Filename) + ".local.vcv"
     $smokePatch = Join-Path $repoRoot $localFilename
-    $refreshScript = Join-Path $repoRoot "tools\refresh_smoke_patch.py"
-    Assert-Path $refreshScript "Smoke-patch refresh helper"
-    & uv run --no-project --python 3.13 python $refreshScript $portablePatch $smokePatch
+    $prepareScript = Join-Path $repoRoot "tools\refresh_smoke_patch.py"
+    Assert-Path $prepareScript "Smoke-patch preparation helper"
+    & uv run --no-project --python 3.13 python $prepareScript $portablePatch $smokePatch
     if ($LASTEXITCODE -ne 0) {
-        throw "Smoke-patch refresh failed with exit code $LASTEXITCODE."
+        throw "Smoke-patch preparation failed with exit code $LASTEXITCODE."
     }
     Write-Host "Building and installing TriggerFish..."
     Invoke-PluginMake "install"
@@ -141,6 +141,17 @@ switch ($Command) {
             if ($LASTEXITCODE -ne 0) {
                 throw "Panel preview failed with exit code $LASTEXITCODE."
             }
+            & uv run python tools/svg_text_to_paths.py `
+                res-src/Tf303Oscillator.svg res/Tf303Oscillator.svg `
+                --font $panelFont
+            if ($LASTEXITCODE -ne 0) {
+                throw "Oscillator panel asset generation failed with exit code $LASTEXITCODE."
+            }
+            & uv run python tools/render_panel_preview.py `
+                --rack-runtime $rackRuntime --module Tf303Oscillator
+            if ($LASTEXITCODE -ne 0) {
+                throw "Oscillator panel preview failed with exit code $LASTEXITCODE."
+            }
         }
         finally {
             Pop-Location
@@ -158,7 +169,7 @@ switch ($Command) {
     "smoke" { Start-SmokePatch "test-vdpo.vcv" }
     "smoke-slop4" { Start-SmokePatch "test-slop4.vcv" }
     "smoke-vdpo" { Start-SmokePatch "test-vdpo.vcv" }
-    "smoke-filter" { Start-SmokePatch "test-diode-ladder.vcv" }
+    "smoke-303" { Start-SmokePatch "test-303-voice.vcv" }
     "test" {
         Invoke-Mingw "cd '$repoMsys' && cmake -S . -B build/dsp-tests -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DTRIGGERFISH_BUILD_PYTHON=OFF && cmake --build build/dsp-tests -j$Jobs && ctest --test-dir build/dsp-tests --output-on-failure"
     }

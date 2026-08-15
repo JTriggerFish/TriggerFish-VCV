@@ -9,6 +9,7 @@
 #include "models/DiodeLadderFilter.hpp"
 #include "models/Transistor1PoleIntegrator.hpp"
 #include "models/Tb303Voice.hpp"
+#include "models/Tb303Oscillator.hpp"
 #include "models/VCAcore.hpp"
 #include "models/VdpSplitOscillator.hpp"
 #include "tfdsp/control.hpp"
@@ -125,6 +126,50 @@ int main()
 		"VDPO model rejects non-finite input");
 	oscillator.Reset();
 
+	tfdsp::Tb303SquareShaper squareShaper;
+	squareShaper.SetSampleRate(192000.0);
+	double squarePeak = 0.0;
+	for (int i = 0; i < 192000; ++i)
+	{
+		const double phase = std::fmod(85.0 * i / 192000.0, 1.0);
+		squarePeak = std::max(squarePeak, std::abs(squareShaper.Step(
+			2.0 * phase - 1.0, 85.0, 0.0)));
+	}
+	Check(squarePeak > 0.8 && squarePeak < 2.0,
+		"TB-303 square shaper produces a bounded asymmetric waveform");
+	Check(squareShaper.Step(std::numeric_limits<double>::quiet_NaN(),
+		85.0, 0.0) == 0.0,
+		"TB-303 square shaper rejects non-finite input");
+
+	tfdsp::Tb303Oscillator<tfdsp::X4Resampler_Order7> tb303Oscillator(
+		tfdsp::CreateX4Resampler_Cheby7);
+	tb303Oscillator.SetSampleRate(48000.0);
+	tfdsp::Tb303Oscillator<tfdsp::X4Resampler_Order7>::Output tb303Output;
+	for (int i = 0; i < 48000; ++i)
+		tb303Output = tb303Oscillator.Step(0.0, false, 0.060, 0.0,
+			0.0, false, 0.0, 0.0);
+	Check(std::isfinite(tb303Output.saw) &&
+		std::isfinite(tb303Output.square) &&
+		std::isfinite(tb303Output.mixed),
+		"TB-303 oscillator produces finite oversampled outputs");
+	Check(std::abs(tb303Output.mixed - tb303Output.saw) < 1.0e-6,
+		"TB-303 oscillator saw endpoint matches its mixed output");
+	for (int i = 0; i < 2880; ++i)
+		tb303Output = tb303Oscillator.Step(1.0, true, 0.060, 0.0,
+			0.0, false, 0.0, 1.0);
+	Check(std::abs(tb303Output.pitch -
+		(1.0 - std::exp(-0.060 / 0.022))) < 2.0e-3,
+		"TB-303 stock slide follows the 22 ms pitch-CV time constant");
+	tb303Output = tb303Oscillator.Step(2.0, false, 0.060, 0.0,
+		0.0, false, 0.0, 1.0);
+	Check(std::abs(tb303Output.pitch - 2.0f) < 1.0e-6f,
+		"TB-303 pitch changes immediately when slide is low");
+	const auto invalidTb303Output = tb303Oscillator.Step(
+		std::numeric_limits<double>::infinity(), false, 0.060, 0.0,
+		0.0, false, 0.0, 0.0);
+	Check(invalidTb303Output.mixed == 0.0f,
+		"TB-303 oscillator rejects non-finite controls");
+
 	tfdsp::DiodeLadderFilter<tfdsp::X2Resampler_Order7> diodeFilter(
 		tfdsp::CreateX2Resampler_Chebychev7);
 	diodeFilter.SetSampleRate(48000.0);
@@ -233,6 +278,27 @@ int main()
 	}
 	Check(std::abs(vcaPeak / 0.1 - 1.0) < 0.03,
 		"TB-303 VCA wrapper is unity-calibrated at small signal");
+	Check(tfdsp::AnalogOutputStage::Process(5.0) == 5.0,
+		"analog output stage is exactly linear at nominal Rack level");
+	Check(tfdsp::AnalogOutputStage::Process(100.0) <=
+		tfdsp::AnalogOutputStage::RailVolts,
+		"analog output stage approaches its rail without crossing it");
+	Check(tfdsp::AnalogOutputStage::ProcessSafety(100.0) <
+		tfdsp::AnalogOutputStage::SafetyLimitVolts,
+		"analog output safety stage approaches its limit without hard clipping");
+	tb303Vca.Reset();
+	double overloadedPeak = 0.0;
+	for (int i = 0; i < 48000; ++i)
+	{
+		const double input = 100.0 * std::sin(
+			2.0 * tfdsp::PI * 1000.0 * i / 48000.0);
+		const double output = tb303Vca.Step(input, 1.0, 1.0);
+		if (i >= 4800)
+			overloadedPeak = std::max(overloadedPeak, std::abs(output));
+	}
+	Check(overloadedPeak > tfdsp::AnalogOutputStage::KneeVolts &&
+		overloadedPeak < tfdsp::AnalogOutputStage::SafetyLimitVolts,
+		"TB-303 VCA overload bends smoothly inside the safety guard");
 	Check(tb303Vca.Step(std::numeric_limits<double>::quiet_NaN(),
 		1.0, 0.0) == 0.0,
 		"TB-303 VCA wrapper rejects non-finite input");

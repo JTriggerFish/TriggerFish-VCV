@@ -11,19 +11,21 @@ import numpy as np
 
 FIRST_STAGE_SCALE = 33.0 / 18.0
 CAPACITOR_SCALE = FIRST_STAGE_SCALE ** (-0.25)
-STOCK_INPUT_SCALE = 0.547
-RACK_OUTPUT_SCALE = 2.75
+STOCK_INPUT_SCALE = 0.10532968190436065
+RACK_OUTPUT_SCALE = 9.494
 STOCK_RESONANCE_SCALE = 0.78
 HIGH_RESONANCE_MULTIPLIER = 2.0
 BASS_POLE_RADIANS = 2.0 * np.pi * 24.66
+OUTPUT_KNEE_VOLTS = 8.0
+OUTPUT_RAIL_VOLTS = 11.0
 
 FORWARD_SECTIONS = (
     (578.1, 0.0),
     (97.5, 0.0),
-    (38.5, 0.0),
     (20.0, 109.9),
     (4.45, 34.0),
 )
+OUTPUT_COUPLING_SECTIONS = ((38.5, 0.0),)
 FEEDBACK_SECTIONS = (
     (578.1, 0.0),
     (97.5, 0.0),
@@ -70,8 +72,20 @@ def transfer(frequency, cutoff, resonance=0.0, high_resonance=False, bass=0.0):
 def resonance_makeup(resonance, high_resonance=False):
     """Return the model's deliberately modest resonance level compensation."""
 
-    feedback_range = HIGH_RESONANCE_MULTIPLIER if high_resonance else 1.0
-    return 1.0 + np.clip(resonance, 0.0, 1.0) * feedback_range
+    makeup_range = 3.0 if high_resonance else 2.0
+    return 1.0 + np.clip(resonance, 0.0, 1.0) * makeup_range
+
+
+def analog_output_stage(voltage):
+    """Return the memoryless output-compliance curve used by the C++ model."""
+
+    values = np.asarray(voltage)
+    magnitude = np.abs(values)
+    headroom = OUTPUT_RAIL_VOLTS - OUTPUT_KNEE_VOLTS
+    curved = OUTPUT_KNEE_VOLTS + headroom * np.tanh(
+        (magnitude - OUTPUT_KNEE_VOLTS) / headroom
+    )
+    return np.where(magnitude <= OUTPUT_KNEE_VOLTS, values, np.copysign(curved, values))
 
 
 def _cascade(input_value, states, sections, gain=1.0):
@@ -109,7 +123,10 @@ def render_nonlinear_reference(
         forward_slice.stop, forward_slice.stop + len(FEEDBACK_SECTIONS)
     )
     ladder_slice = slice(feedback_slice.stop, feedback_slice.stop + 4)
-    bass_slice = slice(ladder_slice.stop, ladder_slice.stop + 2)
+    output_coupling_slice = slice(
+        ladder_slice.stop, ladder_slice.stop + len(OUTPUT_COUPLING_SECTIONS)
+    )
+    bass_slice = slice(output_coupling_slice.stop, output_coupling_slice.stop + 2)
     state_size = bass_slice.stop
     feedback_amount = resonance * STOCK_RESONANCE_SCALE
     if high_resonance:
@@ -148,12 +165,16 @@ def render_nonlinear_reference(
                 junctions[3] - junctions[4],
             )
         )
-        _, bass_derivatives = _cascade(ladder[3], state[bass_slice], bass_sections)
+        coupled_output, output_coupling_derivatives = _cascade(
+            ladder[3], state[output_coupling_slice], OUTPUT_COUPLING_SECTIONS
+        )
+        _, bass_derivatives = _cascade(coupled_output, state[bass_slice], bass_sections)
 
         result = np.empty(state_size)
         result[forward_slice] = forward_derivatives
         result[feedback_slice] = feedback_derivatives
         result[ladder_slice] = ladder_derivatives
+        result[output_coupling_slice] = output_coupling_derivatives
         result[bass_slice] = bass_derivatives
         return result
 
@@ -175,8 +196,13 @@ def render_nonlinear_reference(
     makeup = resonance_makeup(resonance, high_resonance)
     for index in range(sample_times.size):
         ladder_output = solution.y[ladder_slice, index][3]
-        bass_output, _ = _cascade(
-            ladder_output, solution.y[bass_slice, index], bass_sections
+        coupled_output, _ = _cascade(
+            ladder_output,
+            solution.y[output_coupling_slice, index],
+            OUTPUT_COUPLING_SECTIONS,
         )
-        output[index] = RACK_OUTPUT_SCALE * makeup * bass_output
+        bass_output, _ = _cascade(
+            coupled_output, solution.y[bass_slice, index], bass_sections
+        )
+        output[index] = analog_output_stage(RACK_OUTPUT_SCALE * makeup * bass_output)
     return sample_times, output

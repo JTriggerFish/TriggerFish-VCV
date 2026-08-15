@@ -29,6 +29,7 @@ if(EXISTS "${RACK_SDK_DIR}/include/rack.hpp")
 		src/TfVCA.cpp
 		src/TfVDPO.cpp
 		src/TfDiodeLadderFilter.cpp
+		src/Tf303Oscillator.cpp
 	)
 	target_include_directories(triggerfish_rack_index PRIVATE
 		${CMAKE_CURRENT_SOURCE_DIR}/src

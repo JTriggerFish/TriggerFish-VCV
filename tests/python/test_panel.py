@@ -13,6 +13,7 @@ PREVIEW_MODULE = importlib.util.module_from_spec(PREVIEW_SPEC)
 PREVIEW_SPEC.loader.exec_module(PREVIEW_MODULE)
 COMPONENTS = PREVIEW_MODULE.COMPONENTS
 CONTROL_PATTERN = PREVIEW_MODULE.CONTROL_PATTERN
+control_pattern = PREVIEW_MODULE.control_pattern
 PANEL_GRAPHICS = PREVIEW_MODULE.PANEL_GRAPHICS
 render_preview = PREVIEW_MODULE.render_preview
 svg_dimensions = PREVIEW_MODULE.svg_dimensions
@@ -26,6 +27,41 @@ def test_diode_ladder_runtime_panel_outlines_all_editable_text():
     assert not runtime.findall(f".//{SVG}text")
     assert len(runtime.findall(f".//{SVG}path")) > len(source.findall(f".//{SVG}path"))
     assert b"\r\n" not in (ROOT / "res" / "TfDiodeLadderFilter.svg").read_bytes()
+
+
+def test_303_oscillator_runtime_panel_outlines_all_editable_text():
+    source = ET.parse(ROOT / "res-src" / "Tf303Oscillator.svg").getroot()
+    runtime = ET.parse(ROOT / "res" / "Tf303Oscillator.svg").getroot()
+
+    assert source.attrib["width"] == "180"
+    assert source.findall(f".//{SVG}text")
+    assert not runtime.findall(f".//{SVG}text")
+    assert len(runtime.findall(f".//{SVG}path")) > len(source.findall(f".//{SVG}path"))
+    assert b"\r\n" not in (ROOT / "res" / "Tf303Oscillator.svg").read_bytes()
+
+
+def test_303_oscillator_panel_matches_widget_layout():
+    widget_source = (ROOT / "src" / "Tf303Oscillator.cpp").read_text(encoding="utf-8")
+    controls = list(control_pattern("Tf303Oscillator").finditer(widget_source))
+    assert len(controls) == 18
+    by_id = {control.group("id"): control for control in controls}
+    assert [
+        by_id[name].group("type")
+        for name in ("OCTAVE", "TUNE", "SLIDE_TIME", "SHAPE", "WAVE")
+    ] == ["TfSnapKnob", "TfCvKnob", "TfCvKnob", "TfCvKnob", "TfCvKnob"]
+    assert [
+        float(by_id[name].group("x"))
+        for name in ("OCTAVE", "TUNE", "SLIDE_TIME", "SHAPE", "WAVE")
+    ] == [4.0, 40.0, 76.0, 112.0, 148.0]
+    assert [
+        (float(by_id[name].group("x")), float(by_id[name].group("y")))
+        for name in ("CV_OUTPUT", "AUDIO_OUTPUT")
+    ] == [(48.0, 334.0), (108.0, 334.0)]
+
+    source = ET.parse(ROOT / "res-src" / "Tf303Oscillator.svg").getroot()
+    output_blocks = source.find(f".//{SVG}g[@id='output-jack-blocks']")
+    assert output_blocks is not None
+    assert output_blocks.attrib["fill"] == "#545454"
 
 
 def test_diode_ladder_documentation_includes_rendered_module_preview():

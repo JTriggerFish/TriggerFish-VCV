@@ -4,6 +4,7 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
 
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
@@ -12,6 +13,7 @@
 #include "models/DiodeLadderFilter.hpp"
 #include "models/OtaVca.hpp"
 #include "models/Tb303Voice.hpp"
+#include "models/Tb303Oscillator.hpp"
 #include "models/VdpOscillator.hpp"
 #include "models/VdpSplitOscillator.hpp"
 #include "tfdsp/noise.hpp"
@@ -206,7 +208,38 @@ namespace
 		return result;
 	}
 
-	py::array_t<float> RenderDiodeLadderVcaX4(
+	template<typename Filter>
+	py::array_t<float> RenderModulatedDiodeLadder(
+		py::array_t<double, py::array::c_style | py::array::forcecast> audio,
+		py::array_t<double, py::array::c_style | py::array::forcecast> driveGain,
+		py::array_t<double, py::array::c_style | py::array::forcecast> bass,
+		double cutoff, double resonance, bool highResonance, double sampleRate)
+	{
+		const auto audioInfo = audio.request();
+		const auto driveInfo = driveGain.request();
+		const auto bassInfo = bass.request();
+		RequireSameSize(audioInfo, driveInfo, "audio", "drive_gain");
+		RequireSameSize(audioInfo, bassInfo, "audio", "bass");
+		if (!(sampleRate > 0.0))
+			throw std::invalid_argument("sample_rate must be positive");
+
+		py::array_t<float> result(audioInfo.shape[0]);
+		auto output = result.mutable_unchecked<1>();
+		auto audioValues = audio.unchecked<1>();
+		auto driveValues = driveGain.unchecked<1>();
+		auto bassValues = bass.unchecked<1>();
+		Filter model(tfdsp::CreateX4Resampler_Cheby7);
+		model.SetSampleRate(sampleRate);
+		for (py::ssize_t i = 0; i < audioInfo.shape[0]; ++i)
+		{
+			output(i) = model.Step(audioValues(i), cutoff, resonance,
+				highResonance, driveValues(i), bassValues(i));
+		}
+		return result;
+	}
+
+	template<typename Filter>
+	py::array_t<float> RenderDiodeLadderVca(
 		py::array_t<double, py::array::c_style | py::array::forcecast> audio,
 		py::array_t<double, py::array::c_style | py::array::forcecast> control,
 		double cutoff, double resonance, bool highResonance, double driveGain,
@@ -222,11 +255,17 @@ namespace
 		auto output = result.mutable_unchecked<1>();
 		auto audioValues = audio.unchecked<1>();
 		auto controlValues = control.unchecked<1>();
-		using Filter = tfdsp::DiodeLadderFilter<tfdsp::X4Resampler_Order7>;
-		Filter filter(tfdsp::CreateX4Resampler_Cheby7);
+		Filter filter([]
+		{
+			if constexpr (Filter::OversamplingFactor == 2)
+				return tfdsp::CreateX2Resampler_Chebychev7();
+			else
+				return tfdsp::CreateX4Resampler_Cheby7();
+		});
 		filter.SetSampleRate(sampleRate);
 		tfdsp::Tb303Vca vca;
-		vca.SetSampleRate(sampleRate * (oversampledVca ? 4.0 : 1.0));
+		vca.SetSampleRate(sampleRate * (oversampledVca ?
+			Filter::OversamplingFactor : 1.0));
 		for (py::ssize_t i = 0; i < audioInfo.shape[0]; ++i)
 		{
 			if (oversampledVca)
@@ -249,11 +288,131 @@ namespace
 		}
 		return result;
 	}
+
+	template<typename Filter>
+	py::array_t<double> RenderModulatedDiodeLadderVoice(
+		py::array_t<double, py::array::c_style | py::array::forcecast> audio,
+		py::array_t<double, py::array::c_style | py::array::forcecast> cutoff,
+		py::array_t<double, py::array::c_style | py::array::forcecast> baseControl,
+		py::array_t<double, py::array::c_style | py::array::forcecast> accentControl,
+		double resonance, bool highResonance, double driveGain, double bass,
+		double sampleRate)
+	{
+		const auto audioInfo = audio.request();
+		const auto cutoffInfo = cutoff.request();
+		const auto baseInfo = baseControl.request();
+		const auto accentInfo = accentControl.request();
+		RequireSameSize(audioInfo, cutoffInfo, "audio", "cutoff");
+		RequireSameSize(audioInfo, baseInfo, "audio", "base_control");
+		RequireSameSize(audioInfo, accentInfo, "audio", "accent_control");
+		if (!(sampleRate > 0.0))
+			throw std::invalid_argument("sample_rate must be positive");
+
+		py::array_t<double> result({audioInfo.shape[0], py::ssize_t{3}});
+		auto output = result.mutable_unchecked<2>();
+		auto audioValues = audio.unchecked<1>();
+		auto cutoffValues = cutoff.unchecked<1>();
+		auto baseValues = baseControl.unchecked<1>();
+		auto accentValues = accentControl.unchecked<1>();
+		Filter filter([]
+		{
+			if constexpr (Filter::OversamplingFactor == 2)
+				return tfdsp::CreateX2Resampler_Chebychev7();
+			else
+				return tfdsp::CreateX4Resampler_Cheby7();
+		});
+		filter.SetSampleRate(sampleRate);
+		tfdsp::Tb303Vca vca;
+		vca.SetSampleRate(sampleRate * Filter::OversamplingFactor);
+		for (py::ssize_t i = 0; i < audioInfo.shape[0]; ++i)
+		{
+			const auto rendered = filter.StepWithPostProcessor(
+				audioValues(i), cutoffValues(i), resonance, highResonance,
+				driveGain, bass, baseValues(i),
+				[&](double audioValue, double control)
+				{
+					return vca.Step(audioValue, control, accentValues(i));
+				});
+			output(i, 0) = rendered.lowPass;
+			output(i, 1) = rendered.postProcessed;
+			output(i, 2) = static_cast<double>(filter.SolverFailures());
+		}
+		return result;
+	}
+
+	template<typename Oscillator>
+	py::array_t<double> RenderTb303Oscillator(
+		py::array_t<double, py::array::c_style | py::array::forcecast> pitch,
+		py::array_t<double, py::array::c_style | py::array::forcecast> slide,
+		py::array_t<double, py::array::c_style | py::array::forcecast> fm,
+		py::array_t<double, py::array::c_style | py::array::forcecast> shape,
+		py::array_t<double, py::array::c_style | py::array::forcecast> wave,
+		double sampleRate, double slideTime, bool linearFm)
+	{
+		const auto pitchInfo = pitch.request();
+		const auto slideInfo = slide.request();
+		const auto fmInfo = fm.request();
+		const auto shapeInfo = shape.request();
+		const auto waveInfo = wave.request();
+		RequireSameSize(pitchInfo, slideInfo, "pitch", "slide");
+		RequireSameSize(pitchInfo, fmInfo, "pitch", "fm");
+		RequireSameSize(pitchInfo, shapeInfo, "pitch", "shape");
+		RequireSameSize(pitchInfo, waveInfo, "pitch", "wave");
+		if (!(sampleRate > 0.0) || !(slideTime > 0.0))
+			throw std::invalid_argument(
+				"sample_rate and slide_time must be positive");
+
+		py::array_t<double> result({pitchInfo.shape[0], py::ssize_t{4}});
+		auto output = result.mutable_unchecked<2>();
+		auto pitchValues = pitch.unchecked<1>();
+		auto slideValues = slide.unchecked<1>();
+		auto fmValues = fm.unchecked<1>();
+		auto shapeValues = shape.unchecked<1>();
+		auto waveValues = wave.unchecked<1>();
+		Oscillator oscillator([]
+		{
+			using Resampler = typename Oscillator::Resampler;
+			if constexpr (std::is_same_v<Resampler, tfdsp::DummyResampler>)
+				return tfdsp::CreateDummyResampler();
+			else if constexpr (std::is_same_v<Resampler,
+				tfdsp::X2Resampler_Order5>)
+				return tfdsp::CreateX2Resampler_Butterworth5();
+			else if constexpr (std::is_same_v<Resampler,
+				tfdsp::X2Resampler_Order7>)
+				return tfdsp::CreateX2Resampler_Chebychev7();
+			else if constexpr (std::is_same_v<Resampler,
+				tfdsp::X4Resampler<tfdsp::X2Resampler_Order5>>)
+				return std::make_unique<Resampler>(
+					tfdsp::CreateX2Resampler_Butterworth5);
+			else
+				return tfdsp::CreateX4Resampler_Cheby7();
+		});
+		oscillator.SetSampleRate(sampleRate);
+		for (py::ssize_t i = 0; i < pitchInfo.shape[0]; ++i)
+		{
+			const auto value = oscillator.Step(pitchValues(i),
+				slideValues(i) >= 1.0, slideTime, 0.0, fmValues(i),
+				linearFm, shapeValues(i), waveValues(i));
+			output(i, 0) = value.saw;
+			output(i, 1) = value.square;
+			output(i, 2) = value.mixed;
+			output(i, 3) = value.pitch;
+		}
+		return result;
+	}
 }
 
 PYBIND11_MODULE(_triggerfish_dsp, module)
 {
 	module.doc() = "TriggerFish DSP development bindings";
+
+	module.def("diode_ladder_map_cutoff", [](double requestedHz,
+		double maximumHz)
+	{
+		return tfdsp::DiodeLadderFilter<
+			tfdsp::X4Resampler_Order7>::MapCutoffControl(
+			requestedHz, maximumHz);
+	}, py::arg("requested_hz"), py::arg("maximum_hz") = 20000.0);
 
 	module.def("vca_transistor", [](py::array_t<float, py::array::c_style | py::array::forcecast> audio,
 		py::array_t<float, py::array::c_style | py::array::forcecast> cv,
@@ -453,6 +612,11 @@ PYBIND11_MODULE(_triggerfish_dsp, module)
 		py::arg("audio"), py::arg("cutoff"), py::arg("resonance") = 0.0,
 		py::arg("high_resonance") = false, py::arg("drive_gain") = 1.0,
 		py::arg("bass") = 0.0, py::arg("sample_rate") = 48000.0);
+	module.def("diode_ladder_modulated_x4",
+		&RenderModulatedDiodeLadder<DiodeLadderX4>, py::arg("audio"),
+		py::arg("drive_gain"), py::arg("bass"), py::arg("cutoff"),
+		py::arg("resonance") = 0.0, py::arg("high_resonance") = false,
+		py::arg("sample_rate") = 48000.0);
 	module.def("diode_ladder_x2_order9",
 		&RenderDiodeLadder<DiodeLadderX2Order9, true>,
 		py::arg("audio"), py::arg("cutoff"), py::arg("resonance") = 0.0,
@@ -492,10 +656,53 @@ PYBIND11_MODULE(_triggerfish_dsp, module)
 		});
 	}, py::arg("audio"));
 
-	module.def("diode_ladder_vca_x4", &RenderDiodeLadderVcaX4,
+	module.def("diode_ladder_vca_x2", &RenderDiodeLadderVca<DiodeLadderX2>,
 		py::arg("audio"), py::arg("control"), py::arg("cutoff"),
 		py::arg("resonance") = 0.0, py::arg("high_resonance") = false,
 		py::arg("drive_gain") = 1.0, py::arg("bass") = 0.0,
 		py::arg("sample_rate") = 48000.0, py::arg("oversampled_vca") = true);
+	module.def("diode_ladder_vca_x4", &RenderDiodeLadderVca<DiodeLadderX4>,
+		py::arg("audio"), py::arg("control"), py::arg("cutoff"),
+		py::arg("resonance") = 0.0, py::arg("high_resonance") = false,
+		py::arg("drive_gain") = 1.0, py::arg("bass") = 0.0,
+		py::arg("sample_rate") = 48000.0, py::arg("oversampled_vca") = true);
+	module.def("diode_ladder_voice_x4",
+		&RenderModulatedDiodeLadderVoice<DiodeLadderX4>, py::arg("audio"),
+		py::arg("cutoff"), py::arg("base_control"),
+		py::arg("accent_control"), py::arg("resonance") = 0.0,
+		py::arg("high_resonance") = false, py::arg("drive_gain") = 1.0,
+		py::arg("bass") = 0.0, py::arg("sample_rate") = 48000.0);
+
+	using Tb303OscillatorX1 = tfdsp::Tb303Oscillator<tfdsp::DummyResampler>;
+	using Tb303OscillatorX2 =
+		tfdsp::Tb303Oscillator<tfdsp::X2Resampler_Order7>;
+	using Tb303OscillatorX2Order5 =
+		tfdsp::Tb303Oscillator<tfdsp::X2Resampler_Order5>;
+	using Tb303OscillatorX4 =
+		tfdsp::Tb303Oscillator<tfdsp::X4Resampler_Order7>;
+	using Tb303OscillatorX4Order5 = tfdsp::Tb303Oscillator<
+		tfdsp::X4Resampler<tfdsp::X2Resampler_Order5>>;
+	module.def("tb303_oscillator_x1", &RenderTb303Oscillator<Tb303OscillatorX1>,
+		py::arg("pitch"), py::arg("slide"), py::arg("fm"),
+		py::arg("shape"), py::arg("wave"), py::arg("sample_rate") = 48000.0,
+		py::arg("slide_time") = 0.060, py::arg("linear_fm") = false);
+	module.def("tb303_oscillator_x2", &RenderTb303Oscillator<Tb303OscillatorX2>,
+		py::arg("pitch"), py::arg("slide"), py::arg("fm"),
+		py::arg("shape"), py::arg("wave"), py::arg("sample_rate") = 48000.0,
+		py::arg("slide_time") = 0.060, py::arg("linear_fm") = false);
+	module.def("tb303_oscillator_x2_order5",
+		&RenderTb303Oscillator<Tb303OscillatorX2Order5>,
+		py::arg("pitch"), py::arg("slide"), py::arg("fm"),
+		py::arg("shape"), py::arg("wave"), py::arg("sample_rate") = 48000.0,
+		py::arg("slide_time") = 0.060, py::arg("linear_fm") = false);
+	module.def("tb303_oscillator_x4", &RenderTb303Oscillator<Tb303OscillatorX4>,
+		py::arg("pitch"), py::arg("slide"), py::arg("fm"),
+		py::arg("shape"), py::arg("wave"), py::arg("sample_rate") = 48000.0,
+		py::arg("slide_time") = 0.060, py::arg("linear_fm") = false);
+	module.def("tb303_oscillator_x4_order5",
+		&RenderTb303Oscillator<Tb303OscillatorX4Order5>,
+		py::arg("pitch"), py::arg("slide"), py::arg("fm"),
+		py::arg("shape"), py::arg("wave"), py::arg("sample_rate") = 48000.0,
+		py::arg("slide_time") = 0.060, py::arg("linear_fm") = false);
 
 }

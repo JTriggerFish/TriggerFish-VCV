@@ -1,97 +1,42 @@
-"""Refresh a private Rack smoke patch while retaining local device choices."""
+"""Prepare a private Rack smoke patch without overwriting local edits."""
 
 from __future__ import annotations
 
 import argparse
-import copy
-import json
 import os
 import tempfile
 from pathlib import Path
 
-PRESERVED_DATA_KEYS = {
-    ("Core", "MIDIToCVInterface"): ("midi",),
-    ("Core", "AudioInterface"): ("audio",),
-}
 
+def prepare_local_patch(portable_path: Path, local_path: Path) -> bool:
+    """Create *local_path* from *portable_path* when it does not exist.
 
-def _load(path: Path) -> dict:
-    return json.loads(path.read_text(encoding="utf-8"))
+    Rack may save ``.vcv`` files as Zstandard-compressed tar archives. Existing
+    local patches are therefore treated as opaque, user-owned files and left
+    byte-for-byte unchanged. This also preserves local topology, parameter
+    edits, and MIDI/audio device selections.
 
-
-def _module_key(module: dict) -> tuple[object, object, object]:
-    return module.get("id"), module.get("plugin"), module.get("model")
-
-
-def _find_previous_module(
-    module: dict, candidates: list[dict], used: set[int]
-) -> dict | None:
-    for index, candidate in enumerate(candidates):
-        if index not in used and _module_key(candidate) == _module_key(module):
-            used.add(index)
-            return candidate
-
-    module_type = module.get("plugin"), module.get("model")
-    for index, candidate in enumerate(candidates):
-        if (
-            index not in used
-            and (
-                candidate.get("plugin"),
-                candidate.get("model"),
-            )
-            == module_type
-        ):
-            used.add(index)
-            return candidate
-    return None
-
-
-def refresh_local_patch(portable_path: Path, local_path: Path) -> bool:
-    """Write the current portable patch to *local_path* and retain device data.
-
-    Returns ``True`` when an existing local patch supplied device state.
-    Other serialized settings deliberately come from the portable patch so its
-    topology and test defaults cannot silently become stale.
+    Returns ``True`` when an existing local patch was reused.
     """
 
-    portable = _load(portable_path)
-    reused_device_state = local_path.exists()
+    if local_path.exists():
+        return True
 
-    if reused_device_state:
-        local = _load(local_path)
-        local_modules = local.get("modules", [])
-        used_local_modules: set[int] = set()
-        for module in portable.get("modules", []):
-            preserved_keys = PRESERVED_DATA_KEYS.get(
-                (module.get("plugin"), module.get("model"))
-            )
-            if not preserved_keys:
-                continue
-            previous = _find_previous_module(module, local_modules, used_local_modules)
-            if previous is None:
-                continue
-
-            previous_data = previous.get("data", {})
-            current_data = module.setdefault("data", {})
-            for key in preserved_keys:
-                if key in previous_data:
-                    current_data[key] = copy.deepcopy(previous_data[key])
-
-    serialized = json.dumps(portable, indent=2) + "\n"
+    portable_data = portable_path.read_bytes()
     local_path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(
         dir=local_path.parent, prefix=f".{local_path.name}.", suffix=".tmp"
     )
     temporary_path = Path(temporary_name)
     try:
-        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as output:
-            output.write(serialized)
+        with os.fdopen(descriptor, "wb") as output:
+            output.write(portable_data)
         temporary_path.replace(local_path)
     except BaseException:
         temporary_path.unlink(missing_ok=True)
         raise
 
-    return reused_device_state
+    return False
 
 
 def main() -> None:
@@ -99,8 +44,8 @@ def main() -> None:
     parser.add_argument("portable_patch", type=Path)
     parser.add_argument("local_patch", type=Path)
     args = parser.parse_args()
-    reused = refresh_local_patch(args.portable_patch, args.local_patch)
-    action = "Refreshed" if reused else "Created"
+    reused = prepare_local_patch(args.portable_patch, args.local_patch)
+    action = "Using existing" if reused else "Created"
     print(f"{action} private local patch {args.local_patch.name}.")
 
 

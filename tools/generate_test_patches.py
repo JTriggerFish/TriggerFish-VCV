@@ -14,6 +14,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 CORE_VERSION = "2.6.6"
 FUNDAMENTAL_VERSION = "2.6.4"
+IMPROMPTU_VERSION = "2.5.0"
 TRIGGERFISH_VERSION = json.loads((ROOT / "plugin.json").read_text(encoding="utf-8"))[
     "version"
 ]
@@ -43,6 +44,18 @@ DEFAULT_PARAMS = {
         1.0,
         2.0,
     ],
+    "Tf303Oscillator": [
+        0.0,
+        0.0,
+        math.log10(0.060),
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+    ],
     "VCO": [1.0, 1.0, 0.0, 0.0, 0.0, 0.5, 0.0, 0.0],
 }
 
@@ -63,6 +76,7 @@ def module(
     versions = {
         "Core": CORE_VERSION,
         "Fundamental": FUNDAMENTAL_VERSION,
+        "ImpromptuModular": IMPROMPTU_VERSION,
         "TriggerFish-Elements": TRIGGERFISH_VERSION,
     }
     result = {
@@ -126,6 +140,31 @@ def mixer(
         values=list(levels),
         data={"chExp": False, "mixExp": False},
     )
+
+
+def foundry_step(*, gate: bool = False, velocity: int = 0, gate_type: int = 0) -> int:
+    """Pack Foundry's public per-step fields into its patch representation."""
+    value = velocity | (50 << 8) | (10 << 16) | (gate_type << 28)
+    if gate:
+        value |= 1 << 24
+    return value
+
+
+def foundry_track(
+    track: int, pitches: list[float], attributes: list[int]
+) -> dict[str, int | list[int] | list[float]]:
+    """Build one 16-step Foundry track, padded to its 32-step storage size."""
+    if len(pitches) != 16 or len(attributes) != 16:
+        raise ValueError("Foundry smoke-test tracks must contain 16 steps")
+    prefix = f"id{track}_"
+    return {
+        f"{prefix}pulsesPerStep": 1,
+        f"{prefix}sequences": [16] + [32] * 63,
+        f"{prefix}seqSaved": [1] + [0] * 63,
+        f"{prefix}cv": pitches + [0.0] * 16,
+        f"{prefix}attributes": attributes + [foundry_step() for _ in range(16)],
+        f"{prefix}seqIndexEdit": 0,
+    }
 
 
 class Patch:
@@ -283,41 +322,107 @@ def generate_vdpo_patch() -> None:
     patch.write("test-vdpo.vcv")
 
 
-def generate_diode_ladder_patch() -> None:
-    patch = Patch(zoom=0.78, grid_offset=(-1, -0.1))
+def generate_303_voice_patch() -> None:
+    patch = Patch(zoom=0.68, grid_offset=(-1, -0.1))
+    pitches = [
+        -20 / 12,
+        -20 / 12,
+        -20 / 12,
+        -20 / 12,
+        -20 / 12,
+        -8 / 12,
+        -20 / 12,
+        -20 / 12,
+        -20 / 12,
+        -20 / 12,
+        -20 / 12,
+        -12 / 12,
+        -24 / 12,
+        -20 / 12,
+        -20 / 12,
+        -20 / 12,
+    ]
+    slide_steps = {5, 12}
+    legato_steps = slide_steps | {step - 1 for step in slide_steps}
+    rest_steps = {1, 3, 6, 8, 10, 13, 15}
+    accent_steps = {2, 9, 14}
+    note_attributes = [
+        foundry_step(
+            gate=step not in rest_steps,
+            velocity=200 if step in accent_steps else 0,
+            gate_type=5 if step in legato_steps else 0,
+        )
+        for step in range(16)
+    ]
+    # Foundry track B is a full-step gate lane for our oscillator's Slide input.
+    slide_attributes = [
+        foundry_step(gate=step in slide_steps, gate_type=5) for step in range(16)
+    ]
+    foundry_data: dict = {
+        "velocityMode": 0,
+        "running": True,
+        "stepIndexEdit": 0,
+        "trackIndexEdit": 0,
+    }
+    foundry_data.update(foundry_track(0, pitches, note_attributes))
+    foundry_data.update(foundry_track(1, [0.0] * 16, slide_attributes))
+
     patch.add(
         notes(
             1,
-            "TriggerFish diode ladder playable smoke test\n\n"
-            "SETUP\nSelect MIDI and audio devices in MIDI-CV and Audio-8. "
-            "Start with monitor volume low.\n\n"
-            "MIDI pitch drives a Fundamental VCO and the filter's V/OCT input. "
-            "MIDI gate drives the filter's internal TB-303 envelopes and OTA VCA. "
-            "The VCO saw passes through TfDiodeLadderFilter; LP OUT bypasses the "
-            "VCA, while VCA OUT is the playable voice used here.\n\n"
-            "All TriggerFish parameters are at their declared defaults. Try "
-            "DRIVE, BASS, high resonance, ACCENT from a sequencer, and the "
-            "oversampling and articulation context-menu settings. "
-            "The final VCA Mix is the master, set to -6 dB and routed to outputs 1/2.",
+            "TriggerFish 303 voice smoke test\n\n"
+            "SETUP\nSelect an output device in Audio-8 and start with monitor "
+            "volume low. Impromptu Clocked and Foundry run the programmed "
+            "16-step pattern automatically.\n\n"
+            "Foundry A sends pitch, gate, and per-step accent. Track B marks "
+            "the legato notes for Tf303Oscillator's Slide input. The oscillator's "
+            "post-slide CV tracks TfDiodeLadderFilter cutoff, and VCA OUT feeds "
+            "the -6 dB stereo master. Isolated repeated E notes alternate normal "
+            "and accented articulation; two legato pairs slide by one octave.\n\n"
+            "All TriggerFish parameters start at their declared defaults. Try "
+            "WAVE and SHAPE on the oscillator, then CUTOFF, RES, ENV, ACCENT, "
+            "DRIVE, and BASS on the filter.",
         )
     )
-    patch.add(midi(2, (16, 0)))
-    patch.add(mixer(6, (38, 0), (0.5011872336, 0.7, 0.0, 0.0, 0.0)))
-    patch.add(audio(7, (47, 0)))
-    patch.add(module(4, "Fundamental", "VCO", (0, 1)))
-    patch.add(module(5, "TriggerFish-Elements", "TfDiodeLadderFilter", (10, 1)))
+    patch.add(
+        module(
+            2,
+            "ImpromptuModular",
+            "Clocked",
+            (16, 0),
+            values=[125.0, 5.0, 0.0, 0.0] + [0.0] * 4 + [0.5] * 4 + [0.0] * 8,
+            data={"running": True, "ppqn": 4},
+        )
+    )
+    patch.add(
+        module(
+            3,
+            "ImpromptuModular",
+            "Foundry",
+            (28, 0),
+            data=foundry_data,
+        )
+    )
+    patch.add(mixer(6, (65, 0), (0.5011872336, 0.7, 0.0, 0.0, 0.0)))
+    patch.add(audio(7, (74, 0)))
+    patch.add(module(4, "TriggerFish-Elements", "Tf303Oscillator", (28, 1)))
+    patch.add(module(5, "TriggerFish-Elements", "TfDiodeLadderFilter", (40, 1)))
 
-    patch.cable(2, 0, 4, 0)
-    patch.cable(2, 0, 5, 1)
-    patch.cable(2, 1, 5, 5)
-    patch.cable(4, 2, 5, 0)
+    patch.cable(2, 1, 3, 6)  # Clocked x4 -> Foundry track A clock
+    patch.cable(2, 4, 3, 5)  # reset
+    patch.cable(3, 0, 4, 0)  # track A pitch -> oscillator V/OCT
+    patch.cable(3, 9, 4, 1)  # track B gate -> oscillator Slide
+    patch.cable(4, 0, 5, 1)  # post-slide pitch -> filter V/OCT
+    patch.cable(4, 1, 5, 0)  # oscillator audio -> filter input
+    patch.cable(3, 8, 5, 5)  # track A gate -> filter Gate
+    patch.cable(3, 4, 5, 6)  # track A CV2 -> filter Accent
     patch.cable(5, 1, 6, 1)
     patch.cable(6, 0, 7, 0)
     patch.cable(6, 0, 7, 1)
-    patch.write("test-diode-ladder.vcv")
+    patch.write("test-303-voice.vcv")
 
 
 if __name__ == "__main__":
     generate_slop4_patch()
     generate_vdpo_patch()
-    generate_diode_ladder_patch()
+    generate_303_voice_patch()

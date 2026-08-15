@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
+#include "AnalogOutputStage.hpp"
 #include "OtaVca.hpp"
 
 namespace tfdsp
@@ -383,18 +384,20 @@ public:
 		const double differential = RackToDifferentialScale * audioRackVolts;
 		const double outputCurrent = _core.ProcessCurrent(differential,
 			_lastControlCurrent);
-		// The 220k pin-6 load converts OTA current to the hardware voltage.
-		// RackOutputCalibration then brings that sub-volt nominal signal into
-		// the usual Rack audio range. It is deliberately not the reciprocal of
-		// the audio-input attenuation.
-		const double rackVolts = RackTransimpedanceOhms * outputCurrent;
+		// The 220k pin-6 load converts OTA current to the hardware voltage. The
+		// output mirror and buffer progressively lose compliance before an ideal
+		// current source could reach the supply rail. Split this physical node
+		// from the Rack calibration so its overload can be modeled explicitly.
+		const double physicalVolts = PhysicalOutputLoadOhms * outputCurrent;
+		const double limitedPhysicalVolts = SoftPhysicalCompliance(physicalVolts);
+		const double rackVolts = RackOutputCalibration * limitedPhysicalVolts;
 
 		// C38 is the BA662 buffer's 1 uF output coupling capacitor. The
 		// following 50k volume control gives a 3.18 Hz corner, below the 303's
 		// already modeled filter coupling losses.
 		_outputLowPass += _outputCouplingCoefficient *
 			(rackVolts - _outputLowPass);
-		return std::clamp(rackVolts - _outputLowPass, -12.0, 12.0);
+		return rackVolts - _outputLowPass;
 	}
 
 	double LastControlCurrent() const { return _lastControlCurrent; }
@@ -405,8 +408,6 @@ public:
 	static constexpr double AccentControlCurrentAmps = 20.0e-6;
 	static constexpr double PhysicalOutputLoadOhms = 220000.0;
 	static constexpr double RackOutputCalibration = 9.818181818181818;
-	static constexpr double RackTransimpedanceOhms =
-		PhysicalOutputLoadOhms * RackOutputCalibration;
 
 private:
 	static constexpr double Pi = 3.14159265358979323846;
@@ -419,6 +420,24 @@ private:
 	double _outputLowPass{};
 	double _lastControlCurrent{};
 	OtaVcaCore _core{};
+
+	static double SoftPhysicalCompliance(double voltage)
+	{
+		// Rack calibration maps these physical voltages to the same 8 V knee
+		// and 11 V asymptote used by the modeled output buffer. These values are
+		// a conservative headroom calibration; original BA662 output-compliance
+		// curves are not available over the required operating range.
+		constexpr double knee = AnalogOutputStage::KneeVolts /
+			RackOutputCalibration;
+		constexpr double rail = AnalogOutputStage::RailVolts /
+			RackOutputCalibration;
+		constexpr double headroom = rail - knee;
+		const double magnitude = std::abs(voltage);
+		if (magnitude <= knee)
+			return voltage;
+		return std::copysign(knee + headroom * std::tanh(
+			(magnitude - knee) / headroom), voltage);
+	}
 };
 
 } // namespace tfdsp

@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="180" height="380" viewBox="0 0 180 380">
+  <rect width="180" height="380" fill="#cecece"/>
+  <path d="M0 27h180M0 190h180M0 310h180" stroke="#777" stroke-width="0.7"/>
+
+  <g font-family="DejaVu Sans, sans-serif" text-anchor="middle" fill="#1f1f1f">
+    <text x="90" y="14" font-size="10" font-weight="bold" letter-spacing="1.1">TRIGGERFISH</text>
+    <text x="90" y="24" font-size="7.8" letter-spacing="1.5">303 OSCILLATOR</text>
+
+    <text x="18" y="41" font-size="7.2" font-weight="bold">OCT</text>
+    <text x="54" y="41" font-size="7.2" font-weight="bold">TUNE</text>
+    <text x="90" y="41" font-size="7.2" font-weight="bold">SLIDE</text>
+    <text x="126" y="41" font-size="7.2" font-weight="bold">SHAPE</text>
+    <text x="162" y="41" font-size="7.2" font-weight="bold">WAVE</text>
+
+    <text x="27" y="106" font-size="7" font-weight="bold">FM</text>
+    <text x="69" y="106" font-size="7" font-weight="bold">TIME CV</text>
+    <text x="111" y="106" font-size="7" font-weight="bold">SHAPE CV</text>
+    <text x="153" y="106" font-size="7" font-weight="bold">WAVE CV</text>
+
+    <text x="90" y="146" font-size="7.2" font-weight="bold">FM MODE</text>
+    <text x="109" y="158" font-size="6.8" font-weight="bold">EXP</text>
+    <text x="109" y="181" font-size="6.8" font-weight="bold">LIN</text>
+
+    <text x="18" y="199" font-size="7.2" font-weight="bold">1V/OCT</text>
+    <text x="60" y="199" font-size="7.2" font-weight="bold">SLIDE</text>
+    <text x="102" y="199" font-size="7.2" font-weight="bold">TIME CV</text>
+
+    <text x="18" y="257" font-size="7.2" font-weight="bold">FM</text>
+    <text x="60" y="257" font-size="7.2" font-weight="bold">SHAPE CV</text>
+    <text x="102" y="257" font-size="7.2" font-weight="bold">WAVE CV</text>
+
+    <text x="60" y="324" font-size="7.2" font-weight="bold">CV OUT</text>
+    <text x="120" y="324" font-size="7.2" font-weight="bold">OUT</text>
+  </g>
+
+  <g id="output-jack-blocks" fill="#545454" stroke="#2e2e2e" stroke-width="0.45">
+    <rect x="39" y="327" width="42" height="37" rx="7"/>
+    <rect x="99" y="327" width="42" height="37" rx="7"/>
+  </g>
+</svg>

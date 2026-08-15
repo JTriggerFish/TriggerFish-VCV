@@ -30,12 +30,12 @@ Run the usual tasks from PowerShell:
 ```powershell
 .\dev.ps1 doctor       # Verify tools and configured paths
 .\dev.ps1 build        # Build plugin.dll
-.\dev.ps1 panel-preview # Regenerate and render the diode-ladder panel
+.\dev.ps1 panel-preview # Regenerate and render editable module panels
 .\dev.ps1 install      # Install into the Rack user plugin directory
 .\dev.ps1 run          # Install and launch Rack
 .\dev.ps1 smoke-slop4  # Install and open the Slop4/four-VCO patch
 .\dev.ps1 smoke-vdpo   # Install and open the two-VDPO patch
-.\dev.ps1 smoke-filter # Install and open the diode-ladder filter patch
+.\dev.ps1 smoke-303    # Install and open the sequenced 303 voice patch
 .\dev.ps1 dist         # Build the release .vcvplugin package
 .\dev.ps1 test         # Build and run standalone C++ DSP tests
 .\dev.ps1 python-test  # Build Python bindings and run pytest
@@ -109,6 +109,7 @@ OTA VCA cores, with output level matched before calculating the residual:
 
 ```bash
 uv run python tests/python/benchmark_ba662.py
+uv run python tests/python/benchmark_tb303_oscillator.py
 ```
 
 Run the slower, manual transistor-level BA662-clone comparison with ngspice:
@@ -135,14 +136,15 @@ Slop/VDPO/VCA voices. One VDPO is self-resonating. The other is forced by a
 Fundamental VCO; click the Push module to cycle its forcing waveform through
 sine, saw, and square.
 
-[test-diode-ladder.vcv](test-diode-ladder.vcv) is a MIDI-controlled Fundamental
-VCO into `TfDiodeLadderFilter`. Pitch is also routed to the filter's V/OCT
-input, while Gate drives the internal TB-303 filter/volume envelopes and the
-patch monitors the module's post-VCA output.
+[test-303-voice.vcv](test-303-voice.vcv) combines `Tf303Oscillator` and
+`TfDiodeLadderFilter` with Impromptu Modular's Clocked and Foundry. The
+programmed 16-step pattern routes pitch, gate, per-step accent, and a separate
+slide lane through the complete oscillator/filter/VCA voice. Install Impromptu
+Modular from the Rack Library before opening it.
 
-All patches use only Rack Core, Fundamental, and TriggerFish modules. Their
-final stereo masters are set to -6 dB. `dev.ps1 smoke` remains an alias for
-`dev.ps1 smoke-vdpo`.
+The Slop4 and VDPO patches use Rack Core, Fundamental, and TriggerFish modules;
+the 303 patch also uses Impromptu Modular. Their final stereo masters are set
+to -6 dB. `dev.ps1 smoke` remains an alias for `dev.ps1 smoke-vdpo`.
 
 The checked-in patches do not name a MIDI controller, audio interface, or
 driver. Select the appropriate MIDI and audio devices after opening one. Keep
@@ -152,7 +154,7 @@ The patch files are generated from `tools/generate_test_patches.py`. Edit that
 source and run `uv run python tools/generate_test_patches.py` when changing the
 patch topology or defaults.
 
-The editable diode-ladder panel is in `res-src`. Rack's NanoSVG renderer does
+Editable panels are in `res-src`. Rack's NanoSVG renderer does
 not support SVG text, so regenerate the runtime asset after changing labels,
 using the DejaVu Sans font bundled with a Rack runtime (or the system copy on
 Linux):
@@ -173,18 +175,19 @@ and screws without launching Rack:
 uv run python tools/render_panel_preview.py --rack-runtime /path/to/Rack2
 ```
 
-The tool reads widget positions from `src/TfDiodeLadderFilter.cpp`, embeds the
-installed Rack component artwork into a self-contained SVG, and writes SVG and
-PNG previews under the ignored `build/panel-preview` directory. Set
+Pass `--module Tf303Oscillator` to preview the oscillator. The tool reads
+widget positions from the corresponding module source, embeds the installed
+Rack component artwork into a self-contained SVG, and writes SVG and PNG
+previews under the ignored `build/panel-preview` directory. Set
 `PANEL_PREVIEW_BROWSER` if Edge, Chrome, or Chromium is not found automatically.
 On Windows, `dev.ps1 panel-preview` regenerates the runtime SVG and the preview
 in one command.
 
 The smoke commands use ignored `*.local.vcv` copies, allowing Rack to save MIDI
-and audio device selections without putting machine-specific state in Git. Each
-launch refreshes module topology, parameters, and other test state from the
-checked-in patch while carrying the local MIDI and audio device configuration
-forward. Delete the corresponding local copy to clear those device selections.
+and audio device selections, parameter changes, and extra test modules without
+putting machine-specific state in Git. Once created, a local patch is left
+byte-for-byte unchanged because Rack may store it as a compressed archive.
+Delete the corresponding local copy to recreate it from the checked-in patch.
 
 ## Python and pre-commit
 

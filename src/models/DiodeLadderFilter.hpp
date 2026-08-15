@@ -9,6 +9,7 @@
 #include <memory>
 #include <utility>
 
+#include "AnalogOutputStage.hpp"
 #include "tfdsp/filters.hpp"
 #include "tfdsp/sampleRate.hpp"
 
@@ -158,10 +159,14 @@ public:
 		_forward.Configure({{
 			{578.1, 0.0},
 			{97.5, 0.0},
-			{38.5, 0.0},
 			{20.0, 109.9},
 			{4.45, 34.0},
 		}}, _sampleRate, 1.06);
+		// Place the lowest forward-path coupling section after the nonlinear
+		// ladder. This leaves the published small-signal transfer unchanged,
+		// while correctly rejecting DC generated inside the asymmetric driven
+		// ladder before the Devil Fish bass shelves can amplify it.
+		_outputCoupling.Configure(38.5, 0.0, _sampleRate);
 
 		_feedback.Configure({{
 			{578.1, 0.0},
@@ -173,6 +178,7 @@ public:
 		}}, _sampleRate, 18.7);
 
 		_bassSmoothing = 1.0 - std::exp(-1.0 / (0.010 * _sampleRate));
+		_driveSmoothing = 1.0 - std::exp(-1.0 / (0.010 * _sampleRate));
 		ConfigureBassCorrection();
 		Reset();
 	}
@@ -182,11 +188,13 @@ public:
 		_state = {1.0e-12, 0.0, 0.0, 0.0};
 		_forward.Reset();
 		_feedback.Reset();
+		_outputCoupling.Reset();
 		for (auto& section : _bassCorrection)
 			section.Reset();
 		_resampler->Reset();
 		_postResampler->Reset();
 		_smoothedBass = 0.0;
+		_smoothedDrive = 0.0;
 		_configuredBass = -1.0;
 		_lastIterations = 0;
 		_solverFailures = 0;
@@ -204,38 +212,37 @@ public:
 		}
 
 		const double maximumCutoff = std::min(20000.0, 0.45 * _hostSampleRate);
-		cutoffHz = std::clamp(cutoffHz, 5.0, maximumCutoff);
+		cutoffHz = MapCutoffControl(cutoffHz, maximumCutoff);
 		resonance = std::clamp(resonance, 0.0, 1.0);
 		driveGain = std::clamp(driveGain, 0.0, 66.6);
 		bass = std::clamp(bass, 0.0, 1.0);
 
-		// The service schematic shows the approximately 6.5 Vpp stock saw
-		// attenuated by R62 = 220k and R70 = 10k before the input pair. In the
-		// pair's tanh(v / 2VT) coordinates this is about 5.5 normalized Vpp.
+		// The service schematic AC-couples the approximately 5.5 Vpp stock saw
+		// through R62 = 220k into the input node held by R70 = 2.2k. In the
+		// pair's tanh(v / 2VT) coordinates this is about 1.05 normalized Vpp.
 		// Map a nominal 10 Vpp Rack oscillator to that circuit drive. The
 		// Devil Fish range then extends to 66.6 times the stock level.
-		const double normalizedInput = inputVolts * StockInputScale * driveGain;
-		const auto upsampled = _resampler->Upsample(normalizedInput);
+		const auto upsampled = _resampler->Upsample(inputVolts * StockInputScale);
 		Eigen::Array<double, OversamplingFactor, 1> output;
-		for (int i = 0; i < OversamplingFactor; ++i)
-			output(i) = ProcessOversampled(upsampled(i), cutoffHz, resonance,
-				highResonance, bass);
-
-		// Open303 and tbvcf both use resonance-dependent output makeup. Scaling
-		// by the selected feedback range retains some authentic thinning while
-		// preventing the driven signal from disappearing. High mode has twice
-		// the feedback and therefore reaches 3x (+9.54 dB), versus the stock
-		// range's 2x (+6.02 dB).
 		const double resonanceMakeup = 1.0 + resonance *
-			(highResonance ? HighResonanceMultiplier : 1.0);
-		const double result = RackOutputScale * resonanceMakeup *
-			_resampler->Downsample(output);
+			(highResonance ? HighResonanceMakeup : StockResonanceMakeup);
+		const double outputScale = RackOutputScale * resonanceMakeup;
+		for (int i = 0; i < OversamplingFactor; ++i)
+			output(i) = AnalogOutputStage::Process(outputScale *
+				ProcessOversampled(upsampled(i), cutoffHz, resonance,
+					highResonance, driveGain, bass));
+
+		// Open303 and tbvcf both use resonance-dependent output makeup. The
+		// calibration is based on AC signal level after the output coupling
+		// section, retaining some authentic thinning without counting nonlinear
+		// DC offset as useful output level.
+		const double result = _resampler->Downsample(output);
 		if (!std::isfinite(result))
 		{
 			Reset();
 			return 0.0f;
 		}
-		return static_cast<float>(std::clamp(result, -20.0, 20.0));
+		return static_cast<float>(AnalogOutputStage::ProcessSafety(result));
 	}
 
 	// Process a second nonlinear stage before decimation. The second resampler
@@ -256,25 +263,30 @@ public:
 		}
 
 		const double maximumCutoff = std::min(20000.0, 0.45 * _hostSampleRate);
-		cutoffHz = std::clamp(cutoffHz, 5.0, maximumCutoff);
+		cutoffHz = MapCutoffControl(cutoffHz, maximumCutoff);
 		resonance = std::clamp(resonance, 0.0, 1.0);
 		driveGain = std::clamp(driveGain, 0.0, 66.6);
 		bass = std::clamp(bass, 0.0, 1.0);
 
-		const double normalizedInput = inputVolts * StockInputScale * driveGain;
-		const auto upsampled = _resampler->Upsample(normalizedInput);
+		const auto upsampled = _resampler->Upsample(inputVolts * StockInputScale);
 		const auto upsampledControl = _postResampler->Upsample(postControl);
 		Eigen::Array<double, OversamplingFactor, 1> lowPass;
 		Eigen::Array<double, OversamplingFactor, 1> postProcessed;
 		const double resonanceMakeup = 1.0 + resonance *
-			(highResonance ? HighResonanceMultiplier : 1.0);
-		const double outputScale = RackOutputScale * resonanceMakeup;
+			(highResonance ? HighResonanceMakeup : StockResonanceMakeup);
+		const double lowPassOutputScale = RackOutputScale * resonanceMakeup;
+		const double vcaInputScale = RackOutputScale;
 		for (int i = 0; i < OversamplingFactor; ++i)
 		{
-			lowPass(i) = outputScale * ProcessOversampled(upsampled(i),
-				cutoffHz, resonance, highResonance, bass);
-			postProcessed(i) = postProcessor(
-				std::clamp(lowPass(i), -20.0, 20.0), upsampledControl(i));
+			const double filtered = ProcessOversampled(upsampled(i), cutoffHz,
+				resonance, highResonance, driveGain, bass);
+			lowPass(i) = AnalogOutputStage::Process(
+				lowPassOutputScale * filtered);
+			// Resonance makeup is a Rack output calibration rather than part of
+			// the circuit. Apply it after the nonlinear VCA so it cannot change
+			// the BA662 drive and then pass it through the modeled output rail.
+			postProcessed(i) = AnalogOutputStage::Process(resonanceMakeup *
+				postProcessor(vcaInputScale * filtered, upsampledControl(i)));
 		}
 
 		const double lowPassResult = _resampler->Downsample(lowPass);
@@ -285,40 +297,68 @@ public:
 			return {};
 		}
 		return {
-			static_cast<float>(std::clamp(lowPassResult, -20.0, 20.0)),
-			static_cast<float>(std::clamp(postResult, -12.0, 12.0)),
+			static_cast<float>(
+				AnalogOutputStage::ProcessSafety(lowPassResult)),
+			static_cast<float>(AnalogOutputStage::ProcessSafety(postResult)),
 		};
 	}
 
 	int LastIterations() const { return _lastIterations; }
 	std::size_t SolverFailures() const { return _solverFailures; }
 
+	// Cutoff is proportional to a unidirectional transistor control current.
+	// Linear FM can request a negative current; the hardware pinches off through
+	// the device curve instead of stopping at an arbitrary frequency boundary.
+	// A second soft knee protects the discrete model near its usable ceiling.
+	static double MapCutoffControl(double requestedHz, double maximumHz)
+	{
+		const double positive = Softplus(requestedHz, CutoffPinchKneeHz);
+		return maximumHz - Softplus(maximumHz - positive,
+			CutoffCeilingKneeHz);
+	}
+
 private:
 	static constexpr double FirstStageScale = 33.0 / 18.0;
 	static constexpr double CapacitorScale = 0.8593887047640296;
-	static constexpr double StockInputScale = 0.547;
-	// Output level is calibrated independently of the nonlinear input drive.
-	// At stock drive, zero resonance, and an open cutoff, this keeps ordinary
-	// +/-5 V Rack oscillators in the same nominal voltage range. It is not the
-	// reciprocal of StockInputScale: that would only cancel in the linear limit.
-	static constexpr double RackOutputScale = 2.75;
+	static constexpr double StockInputScale = 0.10532968190436065;
+	// Convert the ladder's normalized voltage back to the nominal Rack scale.
+	// This is the reciprocal of the stock input mapping, so an open, linear
+	// ladder has approximately unity signal gain before the surrounding network.
+	static constexpr double RackOutputScale = 9.494;
 	static constexpr double StockResonanceScale = 0.78;
 	static constexpr double HighResonanceMultiplier = 2.0;
+	static constexpr double StockResonanceMakeup = 2.0;
+	static constexpr double HighResonanceMakeup = 3.0;
 	static constexpr double BassPole = 2.0 * PI * 24.66;
+	static constexpr double CutoffPinchKneeHz = 1.0;
+	static constexpr double CutoffCeilingKneeHz = 10.0;
 
 	std::unique_ptr<ResamplerType> _resampler;
 	std::unique_ptr<ResamplerType> _postResampler;
-	AnalogRatioCascade<5> _forward;
+	AnalogRatioCascade<4> _forward;
 	AnalogRatioCascade<6> _feedback;
+	AnalogRatioSection _outputCoupling;
 	std::array<AnalogRatioSection, 2> _bassCorrection{};
 	std::array<double, 4> _state{};
 	double _hostSampleRate{};
 	double _sampleRate{};
 	double _smoothedBass{};
+	double _smoothedDrive{};
 	double _configuredBass{-1.0};
 	double _bassSmoothing{};
+	double _driveSmoothing{};
 	int _lastIterations{};
 	std::size_t _solverFailures{};
+
+	static double Softplus(double value, double knee)
+	{
+		const double normalized = value / knee;
+		if (normalized > 40.0)
+			return value;
+		if (normalized < -40.0)
+			return knee * std::exp(normalized);
+		return knee * std::log1p(std::exp(normalized));
+	}
 
 	void ConfigureBassCorrection()
 	{
@@ -333,8 +373,9 @@ private:
 	}
 
 	double ProcessOversampled(double input, double cutoffHz, double resonance,
-		bool highResonance, double bass)
+		bool highResonance, double driveGain, double bass)
 	{
+		_smoothedDrive += _driveSmoothing * (driveGain - _smoothedDrive);
 		_smoothedBass += _bassSmoothing * (bass - _smoothedBass);
 		if (std::abs(_smoothedBass - bass) < 1.0e-8)
 			_smoothedBass = bass;
@@ -342,7 +383,7 @@ private:
 			std::abs(_smoothedBass - _configuredBass) > 1.0e-7)
 			ConfigureBassCorrection();
 
-		const double forward = _forward.Process(input);
+		const double forward = _forward.Process(input * _smoothedDrive);
 		const double feedbackAmount = resonance * StockResonanceScale *
 			(highResonance ? HighResonanceMultiplier : 1.0);
 		const auto feedbackAffine = _feedback.Preview();
@@ -437,10 +478,10 @@ private:
 
 		_state = next;
 		_feedback.Process(next[3]);
-		double output = next[3];
+		double output = _outputCoupling.Process(next[3]);
 		for (auto& section : _bassCorrection)
 			output = section.Process(output);
-		return std::clamp(output, -4.0, 4.0);
+		return output;
 	}
 
 	static bool Solve4x4(double matrix[4][4], std::array<double, 4>& rhs)

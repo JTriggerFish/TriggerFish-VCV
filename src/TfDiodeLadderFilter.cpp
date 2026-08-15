@@ -303,8 +303,7 @@ struct TfDiodeLadderFilter : Module
 				vcaOutput = rendered.postProcessed;
 			}
 			outputs[LP_OUTPUT].setVoltage(
-				std::isfinite(output) ? std::clamp(output, -12.0f, 12.0f) : 0.0f,
-				channel);
+				std::isfinite(output) ? output : 0.0f, channel);
 			outputs[VCA_OUTPUT].setVoltage(std::isfinite(vcaOutput) ?
 				vcaOutput : 0.0f, channel);
 		}

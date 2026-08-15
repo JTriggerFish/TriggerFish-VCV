@@ -55,6 +55,15 @@
         "Voltage-controlled amplifier",
         "Polyphonic"
       ]
+    },
+    {
+      "slug": "Tf303Oscillator",
+      "name": "Tf303Oscillator",
+      "description": "Circuit-informed TB-303-style oscillator with slide and voltage-controlled waveform morphing",
+      "tags": [
+        "Oscillator",
+        "Polyphonic"
+      ]
     }
   ]
 }

@@ -29,6 +29,18 @@ CONTROL_PATTERN = re.compile(
     re.MULTILINE,
 )
 
+
+def control_pattern(module_name: str) -> re.Pattern[str]:
+    return re.compile(
+        r"add(?P<kind>Param|Input|Output)\s*\(\s*"
+        r"create(?:Param|Input|Output)<(?P<type>[^>]+)>\s*\(\s*"
+        r"Vec\(\s*(?P<x>[0-9.]+)\s*,\s*(?P<y>[0-9.]+)\s*\)\s*,\s*module\s*,\s*"
+        + re.escape(module_name)
+        + r"::(?P<id>[A-Z0-9_]+)",
+        re.MULTILINE,
+    )
+
+
 COMPONENTS = {
     "TfLargeAudioKnob": (
         "Davies1900hLargeBlack_bg.svg",
@@ -43,6 +55,10 @@ COMPONENTS = {
 }
 
 PANEL_GRAPHICS = ((ROOT / "res" / "TfDiodeConnectedTransistor.svg", 1.0, 44.0),)
+MODULE_GRAPHICS = {
+    "TfDiodeLadderFilter": PANEL_GRAPHICS,
+    "Tf303Oscillator": (),
+}
 
 # Representative positions make the preview read naturally. They affect only
 # the rendered knob indicators; parameter behavior remains defined in C++.
@@ -61,6 +77,22 @@ KNOB_ANGLES = {
     "FM_AMOUNT": -145.0,
     "RES_AMOUNT": -145.0,
     "VCA_CV_AMOUNT": 145.0,
+    "OCTAVE": 0.0,
+    "TUNE": 0.0,
+    "SLIDE_TIME": -25.0,
+    "SHAPE": 0.0,
+    "WAVE": -145.0,
+    "TIME_AMOUNT": 0.0,
+    "SHAPE_AMOUNT": 0.0,
+    "WAVE_AMOUNT": 0.0,
+    "FM_MODE": 0.0,
+}
+
+MODULE_KNOB_ANGLES = {
+    "Tf303Oscillator": {
+        "FM_AMOUNT": 0.0,
+        "SLIDE_TIME": 43.0,
+    }
 }
 
 
@@ -121,7 +153,9 @@ def find_browser() -> Path | None:
     return None
 
 
-def render_png(browser: Path, preview: Path, output: Path) -> None:
+def render_png(
+    browser: Path, preview: Path, output: Path, width: float, height: float
+) -> None:
     with tempfile.TemporaryDirectory(prefix="browser-", dir=output.parent) as profile:
         command = [
             str(browser),
@@ -130,7 +164,7 @@ def render_png(browser: Path, preview: Path, output: Path) -> None:
             "--hide-scrollbars",
             "--no-first-run",
             "--force-device-scale-factor=1",
-            "--window-size=480,760",
+            f"--window-size={int(2 * width)},{int(2 * height)}",
             f"--user-data-dir={profile}",
             f"--screenshot={output.resolve()}",
             preview.resolve().as_uri(),
@@ -141,9 +175,16 @@ def render_png(browser: Path, preview: Path, output: Path) -> None:
         raise RuntimeError(f"browser PNG render failed: {detail}")
 
 
-def render_preview(rack_runtime: Path, output_directory: Path, png: bool) -> Path:
-    panel_source = ROOT / "res-src" / "TfDiodeLadderFilter.svg"
-    widget_source = ROOT / "src" / "TfDiodeLadderFilter.cpp"
+def render_preview(
+    rack_runtime: Path,
+    output_directory: Path,
+    png: bool,
+    module_name: str = "TfDiodeLadderFilter",
+) -> Path:
+    if module_name not in MODULE_GRAPHICS:
+        raise ValueError(f"Unsupported panel module: {module_name}")
+    panel_source = ROOT / "res-src" / f"{module_name}.svg"
+    widget_source = ROOT / "src" / f"{module_name}.cpp"
     component_directory = rack_runtime / "res" / "ComponentLibrary"
     if not component_directory.is_dir():
         raise FileNotFoundError(
@@ -151,21 +192,30 @@ def render_preview(rack_runtime: Path, output_directory: Path, png: bool) -> Pat
             "Set RACK_RUNTIME_DIR to the Rack installation directory."
         )
 
+    panel_width, panel_height = svg_dimensions(panel_source)
     panel = panel_source.read_text(encoding="utf-8")
     panel = re.sub(
-        r'width="240" height="380"', 'width="480" height="760"', panel, count=1
+        r'width="[0-9.]+" height="[0-9.]+"',
+        f'width="{2 * panel_width:g}" height="{2 * panel_height:g}"',
+        panel,
+        count=1,
     )
     widgets = widget_source.read_text(encoding="utf-8")
-    controls = list(CONTROL_PATTERN.finditer(widgets))
+    controls = list(control_pattern(module_name).finditer(widgets))
     if not controls:
-        raise RuntimeError("No panel controls were found in TfDiodeLadderFilter.cpp")
+        raise RuntimeError(f"No panel controls were found in {module_name}.cpp")
 
     overlays = ['\n<g id="rack-component-preview">\n']
-    for asset, x, y in PANEL_GRAPHICS:
+    for asset, x, y in MODULE_GRAPHICS[module_name]:
         overlays.append(image_element(asset, x, y))
 
     screw = component_directory / "ScrewSilver.svg"
-    for x, y in ((15.0, 0.0), (210.0, 0.0), (15.0, 365.0), (210.0, 365.0)):
+    for x, y in (
+        (15.0, 0.0),
+        (panel_width - 30.0, 0.0),
+        (15.0, panel_height - 15.0),
+        (panel_width - 30.0, panel_height - 15.0),
+    ):
         overlays.append(image_element(screw, x, y))
 
     for control in controls:
@@ -177,8 +227,11 @@ def render_preview(rack_runtime: Path, output_directory: Path, png: bool) -> Pat
         y = float(control.group("y"))
         parameter_id = control.group("id")
         for index, asset_name in enumerate(asset_names):
+            module_angles = MODULE_KNOB_ANGLES.get(module_name, {})
             angle = (
-                KNOB_ANGLES.get(parameter_id) if index == len(asset_names) - 1 else None
+                module_angles.get(parameter_id, KNOB_ANGLES.get(parameter_id))
+                if index == len(asset_names) - 1
+                else None
             )
             overlays.append(
                 image_element(component_directory / asset_name, x, y, angle=angle)
@@ -186,7 +239,7 @@ def render_preview(rack_runtime: Path, output_directory: Path, png: bool) -> Pat
     overlays.append("</g>\n")
 
     output_directory.mkdir(parents=True, exist_ok=True)
-    preview = output_directory / "TfDiodeLadderFilter-preview.svg"
+    preview = output_directory / f"{module_name}-preview.svg"
     preview.write_text(
         panel.replace("</svg>", "".join(overlays) + "</svg>"), encoding="utf-8"
     )
@@ -198,7 +251,11 @@ def render_preview(rack_runtime: Path, output_directory: Path, png: bool) -> Pat
                 "No Chromium-family browser found. Set PANEL_PREVIEW_BROWSER or use --no-png."
             )
         render_png(
-            browser, preview, output_directory / "TfDiodeLadderFilter-preview.png"
+            browser,
+            preview,
+            output_directory / f"{module_name}-preview.png",
+            panel_width,
+            panel_height,
         )
     return preview
 
@@ -216,9 +273,17 @@ def main() -> None:
         default=ROOT / "build" / "panel-preview",
     )
     parser.add_argument("--no-png", action="store_true")
+    parser.add_argument(
+        "--module",
+        choices=sorted(MODULE_GRAPHICS),
+        default="TfDiodeLadderFilter",
+    )
     arguments = parser.parse_args()
     preview = render_preview(
-        arguments.rack_runtime, arguments.output_directory, not arguments.no_png
+        arguments.rack_runtime,
+        arguments.output_directory,
+        not arguments.no_png,
+        arguments.module,
     )
     print(preview)
 

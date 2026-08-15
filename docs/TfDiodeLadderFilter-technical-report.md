@@ -121,15 +121,17 @@ Devil Fish doubled-feedback range and reaches self-oscillation.
 The output applies a resonance-dependent calibration
 
 $$
-G_{\mathrm{out}}=2.75\left(1+qm\right),
+G_{\mathrm{out}}=9.494\left(1+qm\right),
 \qquad
-m=\begin{cases}1,&\text{stock},\\2,&\text{high}.
+m=\begin{cases}2,&\text{stock},\\3,&\text{high}.
 \end{cases}
 $$
 
-The fixed factor 2.75 preserves a practical Rack level. The second factor is a
-software compensation informed by Open303 and `tbvcf`; it retains part of the
-source-level reduction produced by the circuit.
+The fixed factor 9.494 converts the normalized ladder voltage back to the
+nominal Rack scale. The second factor is a
+software compensation informed by Open303 and `tbvcf`; it is calibrated from
+the AC signal after output coupling and retains part of the source-level
+reduction produced by the circuit.
 
 ## Bass extension
 
@@ -147,7 +149,11 @@ $$
 At $b=0$ the shelves cancel. At $b=1$ their poles move down one decade. The
 result adds approximately 4 dB at 32 Hz relative to the stock setting. The
 24.66 Hz corner and squared-shelf form are fitted software parameters. A 10 ms
-smoother prevents abrupt coefficient changes.
+smoother prevents abrupt coefficient changes. The $s/(s+38.5)$ factor from
+the fitted forward path is evaluated after the nonlinear ladder. Multiplication
+commutes in the small-signal model, so this placement retains the published
+transfer while removing DC produced within the driven ladder before the Bass
+shelves.
 
 ## Discrete-time realization
 
@@ -287,25 +293,26 @@ Gate and accent articulation continue from their current state.
 
 ## Input and modulation calibration
 
-The service schematic shows an approximately 6.5 V peak-to-peak saw attenuated
-by 220 kohm and 10 kohm before the input pair. For a 10 V peak-to-peak Rack
+The oscillator saw is approximately 5.5 V peak-to-peak and the service
+schematic shows it AC-coupled through 220 kohm into the input node held by
+2.2 kohm. For a 10 V peak-to-peak Rack
 oscillator,
 
 $$
 S_{\mathrm{in}}=
-\frac{6.5\,[10/(220+10)]}{2(0.02585)(10)}
-\approx0.547
+\frac{5.5\,[2.2/(220+2.2)]}{2(0.02585)(10)}
+\approx0.10533
 $$
 
 normalized units per Rack volt. Drive applies
 
 $$
 u_{\mathrm{normalized}}
-=0.547V_{\mathrm{in}}10^{D/20},
+=0.10533V_{\mathrm{in}}10^{D/20},
 $$
 
 where $D$ spans silence through the marked 0 dB stock point to 36.47 dB, or
-66.6 times stock.
+66.6 times stock. Gain changes use a 10 ms smoother at the oversampled rate.
 
 Cutoff follows the Rack pitch convention
 
@@ -325,20 +332,25 @@ $$
 $$
 
 At full depth, a $\pm5$ V signal produces a $\pm1$ kHz excursion.
+Linear FM can request a negative control current at low base cutoffs. A 1 Hz
+softplus knee models transistor pinch-off continuously. A 10 Hz soft knee at
+the numerical cutoff ceiling keeps the prewarped discrete coefficient within
+its supported range.
 
 Key calibration values are summarized below.
 
 | Value | Function | Basis |
 |---|---|---|
 | 18 nF / 33 nF | Ladder capacitor ratio | Roland schematic |
-| 0.547 | Rack input scale | Schematic signal and divider estimate |
+| 0.10533 | Rack input scale | Schematic signal and divider estimate |
 | 0.78 | Stock feedback scale | Software fit |
 | 2x feedback | High resonance | Published Devil Fish range |
-| 2.75 | Rack output scale | Level calibration |
+| 9.494 | Rack output scale | Reciprocal normalized-voltage conversion |
 | $1+qm$ | Resonance makeup | Software calibration |
 | 24.66 Hz, two shelves | Bass response | Calibrated reduction |
 | 200 Hz/V | Linear FM depth | Modular range |
 | 53.22% | Default exponential CV depth | Modular range |
+| 8 V / 11 V | Output knee / asymptotic rail | Headroom calibration |
 
 ## Filter and volume envelopes
 
@@ -434,8 +446,8 @@ $$
 g_m=\frac{\eta I_{\mathrm{ABC}}}{2V_T}.
 $$
 
-The wrapper receives each Rack-scaled oversampled filter value after resonance
-makeup and applies
+The wrapper receives the Rack-scaled oversampled filter value before the
+software resonance makeup and applies
 
 $$
 v_d=\sqrt{2}(10^{-3})V_{\mathrm{Rack}},
@@ -447,11 +459,33 @@ I_{\mathrm{ABC}}=
 +(20\ \mu\mathrm{A})e_{\mathrm{accent}}.
 $$
 
-The physical transimpedance is 220 kohm. A Rack output calibration of
-9.8181818 restores a practical modular level. The efficiency value is
-calibrated against modern 662-family data and the modern-device clone
-reference. The VCA output has its own half-band decimator, so both module
-outputs traverse one resampling round trip.
+The OTA current first drives the physical 220 kohm load. A factor of 9.8181818
+then restores a practical modular level. The efficiency value is calibrated
+against modern 662-family data and the modern-device clone reference.
+
+Output-mirror and buffer compliance use a smooth rail function
+
+$$
+S(x)=
+\begin{cases}
+x, & |x|\leq V_k,\\
+\operatorname{sgn}(x)\left[V_k+(V_r-V_k)
+\tanh\!\left(\dfrac{|x|-V_k}{V_r-V_k}\right)\right],
+& |x|>V_k,
+\end{cases}
+$$
+
+where $V_k=8$ V and $V_r=11$ V in calibrated Rack units. The physical
+compliance limits are these values divided by 9.8181818. The curve is linear
+through the knee with continuous first derivative and approaches the rail
+without producing a flat segment. These conservative limits are calibration
+values because suitable original-BA662 compliance curves are unavailable.
+
+The resonance makeup is applied after the nonlinear VCA, followed by the same
+smooth output-stage rail. This prevents a software level correction from
+changing the OTA drive. Both nonlinear compliance stages run before the VCA's
+half-band decimator. Any residual decimator overshoot above 11 V passes through
+a second unity-slope compliance curve that approaches 12 V smoothly.
 
 ### C38 output coupling
 
@@ -486,12 +520,18 @@ small-signal response from 30 Hz to 6 kHz, host rates from 44.1 to 192 kHz, DC
 rejection, resonance thresholds, extreme drive, and 2x/4x agreement.
 
 In a representative heavy-drive run, the first five odd harmonics agreed with
-the continuous-time reference by approximately 0.02% to 2.4%. The automated
-limit is 3.5% per harmonic.
+the continuous-time reference within 6.3%. The automated limit is 6.5% per
+harmonic.
 
 Randomized abrupt parameter stress at 44.1, 48, 96, and 192 kHz produced finite
 outputs and zero Newton failures in both oversampling modes. The largest
 observed iteration count was eight.
+
+A 10.3 Hz saw stress case at 47.2% Bass, 58.9% high-range resonance, and a
+2 kHz cutoff reaches 9.40 V without engaging the 12 V soft guard. In a
+strongly saturated 997 Hz test, off-harmonic FFT energy measured -36.0 dBc at
+2x and -47.7 dBc at 4x. The regression requires 4x to remain below -45 dBc and
+at least 8 dB below 2x.
 
 ### OTA transistor reference
 
@@ -557,6 +597,7 @@ the ignored `build/ba662-reference` directory.
 - `src/models/DiodeLadderFilter.hpp`: coupling network, ladder equations,
   Newton solve, bass response, and oversampling.
 - `src/models/OtaVca.hpp`: reusable matched-pair OTA law.
+- `src/models/AnalogOutputStage.hpp`: smooth output-compliance characteristic.
 - `src/models/Tb303Voice.hpp`: envelopes, accent, VCA wrapper, and C38.
 - `src/TfDiodeLadderFilter.cpp`: Rack controls, ports, modulation, and
   polyphony.
