@@ -124,7 +124,11 @@ def main():
     outliner = Outliner(arguments.font, arguments.bold_font)
     outliner.convert_children(tree.getroot())
     arguments.destination.parent.mkdir(parents=True, exist_ok=True)
-    tree.write(arguments.destination, encoding="utf-8", xml_declaration=True)
+    # Write bytes so Windows text-mode newline translation cannot override the
+    # repository's LF policy.
+    with arguments.destination.open("wb") as destination:
+        tree.write(destination, encoding="utf-8", xml_declaration=True)
+        destination.write(b"\n")
 
 
 if __name__ == "__main__":

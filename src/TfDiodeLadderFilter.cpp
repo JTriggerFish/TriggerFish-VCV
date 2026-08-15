@@ -123,8 +123,8 @@ struct TfDiodeLadderFilter : Module
 			"Accent sweep", {"Off", "Fast", "Normal", "Slow"});
 
 		configInput(AUDIO_INPUT, "Audio");
-		configInput(VOCT_INPUT, "1V/octave cutoff");
-		configInput(CV_INPUT, "Exponential cutoff CV");
+		configInput(VOCT_INPUT, "Cutoff (1V/octave)");
+		configInput(CV_INPUT, "Attenuverted exponential cutoff CV");
 		configInput(FM_INPUT, "AC-coupled linear filter FM");
 		configInput(RES_INPUT, "Resonance CV");
 		configInput(GATE_INPUT, "Articulation gate");
@@ -355,6 +355,12 @@ struct TfDiodeLadderFilterWidget : ModuleWidget
 		setPanel(APP->window->loadSvg(asset::plugin(
 			pluginInstance, "res/TfDiodeLadderFilter.svg")));
 
+		auto* transistorGraphic = new SvgWidget;
+		transistorGraphic->setSvg(APP->window->loadSvg(asset::plugin(
+			pluginInstance, "res/TfDiodeConnectedTransistor.svg")));
+		transistorGraphic->box.pos = Vec(1, 44);
+		addChild(transistorGraphic);
+
 		addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, 0)));
 		addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, 0)));
 		addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH,
@@ -376,45 +382,45 @@ struct TfDiodeLadderFilterWidget : ModuleWidget
 		addParam(createParam<TfAudioKob>(Vec(171, 123), module,
 			TfDiodeLadderFilter::BASS));
 
-		addParam(createParam<TfAudioKob>(Vec(12, 182), module,
+		addParam(createParam<TfCvKnob>(Vec(10, 181), module,
 			TfDiodeLadderFilter::ENV_AMOUNT));
-		addParam(createParam<TfAudioKob>(Vec(68, 182), module,
+		addParam(createParam<TfCvKnob>(Vec(58, 181), module,
 			TfDiodeLadderFilter::NORMAL_DECAY));
-		addParam(createParam<TfAudioKob>(Vec(124, 182), module,
+		addParam(createParam<TfCvKnob>(Vec(106, 181), module,
 			TfDiodeLadderFilter::ACCENT_AMOUNT));
-		addParam(createParam<TfTrimpot>(Vec(185, 190), module,
+		addParam(createParam<TfCvKnob>(Vec(154, 181), module,
 			TfDiodeLadderFilter::ACCENT_DECAY));
-		addParam(createParam<TfTrimpot>(Vec(215, 190), module,
+		addParam(createParam<TfCvKnob>(Vec(202, 181), module,
 			TfDiodeLadderFilter::VCA_DECAY));
 
-		addParam(createParam<TfTrimpot>(Vec(25, 228), module,
+		addParam(createParam<TfCvKnob>(Vec(34, 228), module,
 			TfDiodeLadderFilter::CV_AMOUNT));
-		addParam(createParam<TfTrimpot>(Vec(75, 228), module,
+		addParam(createParam<TfCvKnob>(Vec(82, 228), module,
 			TfDiodeLadderFilter::FM_AMOUNT));
-		addParam(createParam<TfTrimpot>(Vec(125, 228), module,
+		addParam(createParam<TfCvKnob>(Vec(130, 228), module,
 			TfDiodeLadderFilter::RES_AMOUNT));
-		addParam(createParam<TfTrimpot>(Vec(175, 228), module,
+		addParam(createParam<TfCvKnob>(Vec(178, 228), module,
 			TfDiodeLadderFilter::VCA_CV_AMOUNT));
 
-		addInput(createInput<PJ301MPort>(Vec(6, 278), module,
+		addInput(createInput<PJ301MPort>(Vec(12, 282), module,
 			TfDiodeLadderFilter::VOCT_INPUT));
-		addInput(createInput<PJ301MPort>(Vec(54, 278), module,
+		addInput(createInput<PJ301MPort>(Vec(60, 282), module,
 			TfDiodeLadderFilter::CV_INPUT));
-		addInput(createInput<PJ301MPort>(Vec(102, 278), module,
+		addInput(createInput<PJ301MPort>(Vec(108, 282), module,
 			TfDiodeLadderFilter::GATE_INPUT));
-		addInput(createInput<PJ301MPort>(Vec(150, 278), module,
+		addInput(createInput<PJ301MPort>(Vec(156, 282), module,
 			TfDiodeLadderFilter::ACCENT_INPUT));
-		addInput(createInput<PJ301MPort>(Vec(198, 278), module,
+		addInput(createInput<PJ301MPort>(Vec(204, 282), module,
 			TfDiodeLadderFilter::VCA_CV_INPUT));
-		addInput(createInput<PJ301MPort>(Vec(6, 330), module,
+		addInput(createInput<PJ301MPort>(Vec(12, 334), module,
 			TfDiodeLadderFilter::AUDIO_INPUT));
-		addInput(createInput<PJ301MPort>(Vec(54, 330), module,
+		addInput(createInput<PJ301MPort>(Vec(60, 334), module,
 			TfDiodeLadderFilter::FM_INPUT));
-		addInput(createInput<PJ301MPort>(Vec(102, 330), module,
+		addInput(createInput<PJ301MPort>(Vec(108, 334), module,
 			TfDiodeLadderFilter::RES_INPUT));
-		addOutput(createOutput<PJ301MPort>(Vec(150, 330), module,
+		addOutput(createOutput<PJ301MPort>(Vec(156, 334), module,
 			TfDiodeLadderFilter::LP_OUTPUT));
-		addOutput(createOutput<PJ301MPort>(Vec(198, 330), module,
+		addOutput(createOutput<PJ301MPort>(Vec(204, 334), module,
 			TfDiodeLadderFilter::VCA_OUTPUT));
 	}
 

@@ -30,6 +30,7 @@ Run the usual tasks from PowerShell:
 ```powershell
 .\dev.ps1 doctor       # Verify tools and configured paths
 .\dev.ps1 build        # Build plugin.dll
+.\dev.ps1 panel-preview # Regenerate and render the diode-ladder panel
 .\dev.ps1 install      # Install into the Rack user plugin directory
 .\dev.ps1 run          # Install and launch Rack
 .\dev.ps1 smoke-slop4  # Install and open the Slop4/four-VCO patch
@@ -164,6 +165,20 @@ uv run python tools/svg_text_to_paths.py \
 
 An optional `--bold-font` can supply real bold outlines; otherwise the helper
 adds a small outline to bold labels. The font itself is not copied or committed.
+
+Render the panel together with the actual Rack knobs, switch, trimmers, ports,
+and screws without launching Rack:
+
+```text
+uv run python tools/render_panel_preview.py --rack-runtime /path/to/Rack2
+```
+
+The tool reads widget positions from `src/TfDiodeLadderFilter.cpp`, embeds the
+installed Rack component artwork into a self-contained SVG, and writes SVG and
+PNG previews under the ignored `build/panel-preview` directory. Set
+`PANEL_PREVIEW_BROWSER` if Edge, Chrome, or Chromium is not found automatically.
+On Windows, `dev.ps1 panel-preview` regenerates the runtime SVG and the preview
+in one command.
 
 The smoke commands use ignored `*.local.vcv` copies, allowing Rack to save MIDI
 and audio device selections without putting machine-specific state in Git. Each

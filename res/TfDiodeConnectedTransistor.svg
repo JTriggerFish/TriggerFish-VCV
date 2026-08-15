@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="31" height="31" viewBox="0 0 77 77">
+  <!--
+    NPN geometry adapted from the public-domain Wikimedia Commons file
+    "BJT NPN symbol (case, unlabelled).svg":
+    https://commons.wikimedia.org/wiki/File:BJT_NPN_symbol_(case,_unlabelled).svg
+    The base-to-collector wire was added here to represent the diode-connected
+    transistor used by the ladder.
+  -->
+  <path fill="none" stroke="#526870" stroke-width="3.5" opacity="0.48"
+        d="M15 37a28 28 0 1 1 0 2M7 38h30M34 23v30h2V23M35 32l21-15V3M35 45l21 14v14M46 56l3-5 4 6zM7 38V3h49"/>
+</svg>

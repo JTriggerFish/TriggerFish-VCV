@@ -64,59 +64,63 @@ Because of this the CPU useage is relatively high.
 
 ## Diode Ladder Filter
 
-The complete circuit analysis, equations, numerical method, calibration, and
-reference measurements are documented in the
+<img src="doc/TfDiodeLadderFilter.png" width="240" alt="TfDiodeLadderFilter module">
+
+TfDiodeLadderFilter is a circuit-modelled four-stage diode ladder inspired by
+the Roland TB-303 filter. It combines the ladder with TB-303-style cutoff and
+amplitude envelopes, accent handling, a BA662-style OTA VCA, and selected
+Devil Fish-inspired extensions. `LP OUT` exposes the filter directly, while
+`VCA OUT` provides a complete articulated voice.
+
+**Cutoff** sets the base frequency from 10 Hz to 20 kHz. `1V/OCT` is a fixed,
+calibrated tracking input and is not affected by the **EXP CV** knob. `EXP CV`
+is a second exponential cutoff input with a bipolar attenuverter. At 100% it
+also follows 1 V/octave; its 53.2% default lets a 0--10 V envelope sweep the
+default 500 Hz cutoff to 20 kHz.
+
+**FM** controls the bipolar amount of AC-coupled linear-frequency modulation.
+It is intended for audio-rate filter FM and does not change the DC cutoff. At
+100%, a +/-5 V signal contributes approximately +/-1 kHz.
+
+**Resonance** sets the feedback level. The `RES` input has a bipolar
+attenuverter, and **Res Range** selects Stock or High feedback. High mode
+extends into self-oscillation at suitable cutoff settings. Resonance-dependent
+makeup keeps the filtered signal at a useful level as feedback increases.
+
+**Drive** controls the level entering the nonlinear ladder. The marked 0 dB
+position is the stock calibration; the full range extends from mute to
++36.5 dB for stronger saturation and resonance interaction. **Bass** adds a
+continuous low-frequency extension to the stock coupling response.
+
+`GATE` drives the internal filter envelope and VCA envelope. A held gate does
+not retrigger, allowing legato notes and pitch slides to retain the current
+articulation. **Env Mod** sets the filter-envelope depth and **Env Decay** sets
+its normal decay from 30 ms to 3 s.
+
+`ACC` drives the accent path. **Accent** sets how strongly accents affect the
+filter and VCA, while **Acc Decay** sets the accented filter-envelope decay
+from 30 ms to 3 s. **Accent Sweep** selects Off, Fast, Normal, or Slow; Normal
+is the stock default, with Fast and Slow providing Devil Fish-inspired
+alternatives.
+
+**VCA Decay** moves from short decay through longer decay and into sustain.
+The `VCA CV` input is normalled to the internal volume envelope. Patching an
+external 0--10 V signal replaces that envelope, and the **VCA CV** knob sets
+its amount. Accent remains additive, so reducing **Accent** gives independent
+external VCA control.
+
+`IN` accepts the audio signal. `LP OUT` is the filter output before the
+internal VCA. `VCA OUT` passes the same filtered signal through the
+BA662-style VCA and its output coupling. The module is polyphonic: `IN` sets
+the channel count, and monophonic control signals are shared across voices.
+
+The module uses 4x oversampling by default. Right-click the panel to select 2x
+oversampling for lower CPU use, or to switch the articulation timing between
+TB-303 and Devil Fish modes.
+
+The circuit analysis, equations, numerical method, calibration, references,
+and validation results are in the
 [TfDiodeLadderFilter technical report](docs/TfDiodeLadderFilter-technical-report.md).
-
-`TfDiodeLadderFilter` is a circuit-structured four-stage diode ladder inspired
-by the Roland TB-303 filter and its extended high-resonance, drive, filter-FM,
-and bass modifications. The unbuffered stages are solved as one coupled
-nonlinear system; the AC-coupled resonance path is included in the implicit
-solve rather than approximated by a separate output high-pass filter.
-
-**Cutoff** spans 10 Hz to 20 kHz, defaults to the service-note 500 Hz centre
-calibration, and has dedicated 1 V/octave and attenuverted exponential CV inputs.
-The exponential CV attenuverter defaults to 53.2%, so a standard 0--10 V
-envelope sweeps the default cutoff to 20 kHz; at 100% it follows the usual
-1 V/octave Rack mapping.
-**FM** is an AC-coupled linear-Hz input intended for audio-rate modulation. At
-full amount, a nominal +/-5 V Rack signal sweeps the cutoff by +/-1 kHz.
-**Resonance** has an attenuverted CV input and a Stock/High switch; High mode can
-self-oscillate in the upper part of the knob travel at suitable mid/high cutoff
-settings. Resonance-dependent output makeup prevents the source from vanishing,
-while retaining the level thinning and drive-dependent resonance quenching of
-the circuit.
-
-**Drive** ranges from silence through a marked 0 dB stock point to 66.6 times
-stock level. **Bass** continuously morphs the calibrated stock coupling response
-to the extended response while retaining the circuit's internal
-frequency-dependent feedback behaviour.
-
-Input drive is calibrated from the stock oscillator and resistor divider in the
-Roland schematic. Output gain is calibrated independently so that a stock-driven,
-open filter keeps a normal +/-5 V oscillator in the same practical Rack voltage
-range; it is not an algebraic reciprocal of the nonlinear input scaling.
-
-The module supports Rack polyphony and uses 4x oversampling by default. A 2x
-mode is available in the context menu for dense patches where lower CPU use is
-more important than extreme high-frequency nonlinear accuracy.
-
-`GATE` drives separate TB-303-style filter and volume envelopes. `ACCENT` adds
-the short main envelope to both the filter sweep and BA662 control-current
-paths; the filter sweep retains capacitor memory across repeated accents.
-Tied/high Gates do not retrigger, so pitch slides can preserve the current
-articulation. The panel's snapped **Accent Sweep** control selects
-Off/Fast/Normal/Slow behavior; Normal is the circuit-derived stock default.
-The context menu selects stock or Devil Fish gate behavior. Fast and Slow
-follow the published Devil Fish behavior descriptions, since their changed
-component values have not been published.
-
-`LP OUT` remains the raw filter output for ordinary modular use. `VCA OUT`
-passes the same signal through a reduced BA662-style OTA model and its output
-coupling. `VCA CV` is normalled to the internal volume envelope, but a patched
-0--10 V signal replaces that base control; its attenuator defaults to 100%.
-The accent current remains additive, so turning `ACCENT` down gives a fully
-independent externally controlled VCA.
 
 
 
