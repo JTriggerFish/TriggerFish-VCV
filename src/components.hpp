@@ -54,4 +54,12 @@ struct TfTrimpot : Trimpot
 	}
 };
 
+struct TfSnapKnob : RoundBlackSnapKnob
+{
+	TfSnapKnob()
+	{
+		shadow->blurRadius = 2;
+	}
+};
+
 } // namespace rack

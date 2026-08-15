@@ -10,6 +10,7 @@ param(
         "smoke",
         "smoke-slop4",
         "smoke-vdpo",
+        "smoke-filter",
         "test",
         "python-test",
         "shell",
@@ -134,6 +135,7 @@ switch ($Command) {
     "smoke" { Start-SmokePatch "test-vdpo.vcv" }
     "smoke-slop4" { Start-SmokePatch "test-slop4.vcv" }
     "smoke-vdpo" { Start-SmokePatch "test-vdpo.vcv" }
+    "smoke-filter" { Start-SmokePatch "test-diode-ladder.vcv" }
     "test" {
         Invoke-Mingw "cd '$repoMsys' && cmake -S . -B build/dsp-tests -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DTRIGGERFISH_BUILD_PYTHON=OFF && cmake --build build/dsp-tests -j$Jobs && ctest --test-dir build/dsp-tests --output-on-failure"
     }

@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="380" viewBox="0 0 240 380">
+  <rect width="240" height="380" fill="#cecece"/>
+  <path d="M0 27h240M0 264h240" stroke="#777" stroke-width="0.7"/>
+
+  <g font-family="DejaVu Sans, sans-serif" text-anchor="middle" fill="#1f1f1f">
+    <text x="120" y="14" font-size="10" font-weight="bold" letter-spacing="1.1">TRIGGERFISH</text>
+    <text x="120" y="24" font-size="7.8" letter-spacing="1.5">DIODE LADDER FILTER</text>
+
+    <text x="58" y="106" font-size="8.5" font-weight="bold">CUTOFF</text>
+    <text x="178" y="106" font-size="8.5" font-weight="bold">RESONANCE</text>
+
+    <text x="120" y="56" font-size="7" font-weight="bold">RES RANGE</text>
+    <text x="120" y="96" font-size="7">STOCK / HIGH</text>
+
+    <text x="46" y="118" font-size="8" font-weight="bold">DRIVE</text>
+    <text x="120" y="116" font-size="7.5" font-weight="bold">ACCENT SWEEP</text>
+    <text x="186" y="118" font-size="8" font-weight="bold">BASS</text>
+    <text x="96" y="160" font-size="7.5" font-weight="bold">O</text>
+    <text x="107" y="124" font-size="7.5" font-weight="bold">F</text>
+    <text x="133" y="124" font-size="7.5" font-weight="bold">N</text>
+    <text x="144" y="160" font-size="7.5" font-weight="bold">S</text>
+
+    <text x="31" y="179" font-size="7.5" font-weight="bold">ENV</text>
+    <text x="87" y="179" font-size="7.5" font-weight="bold">DECAY</text>
+    <text x="143" y="179" font-size="7.5" font-weight="bold">ACCENT</text>
+    <text x="195" y="173" font-size="6.8" font-weight="bold">ACC</text>
+    <text x="195" y="181" font-size="6.8" font-weight="bold">DECAY</text>
+    <text x="225" y="173" font-size="6.8" font-weight="bold">VCA</text>
+    <text x="225" y="181" font-size="6.8" font-weight="bold">DECAY</text>
+    <text x="35" y="225" font-size="7.5" font-weight="bold">CV</text>
+    <text x="85" y="225" font-size="7.5" font-weight="bold">FM</text>
+    <text x="135" y="225" font-size="7.5" font-weight="bold">RES</text>
+    <text x="185" y="225" font-size="7.2" font-weight="bold">VCA CV</text>
+
+    <text x="21" y="275" font-size="7.5" font-weight="bold">V/OCT</text>
+    <text x="69" y="275" font-size="7.5" font-weight="bold">CV</text>
+    <text x="117" y="275" font-size="7.5" font-weight="bold">GATE</text>
+    <text x="165" y="275" font-size="7.5" font-weight="bold">ACC</text>
+    <text x="213" y="275" font-size="7.2" font-weight="bold">VCA CV</text>
+    <text x="21" y="327" font-size="7.5" font-weight="bold">IN</text>
+    <text x="69" y="327" font-size="7.5" font-weight="bold">FM</text>
+    <text x="117" y="327" font-size="7.5" font-weight="bold">RES</text>
+    <text x="165" y="327" font-size="7.2" font-weight="bold">LP OUT</text>
+    <text x="213" y="327" font-size="7.2" font-weight="bold">VCA OUT</text>
+  </g>
+
+  <g fill="#545454" stroke="#2e2e2e" stroke-width="0.45">
+    <rect x="0" y="275" width="42" height="37" rx="7"/>
+    <rect x="48" y="275" width="42" height="37" rx="7"/>
+    <rect x="96" y="275" width="42" height="37" rx="7"/>
+    <rect x="144" y="275" width="42" height="37" rx="7"/>
+    <rect x="192" y="275" width="42" height="37" rx="7"/>
+    <rect x="0" y="327" width="42" height="37" rx="7"/>
+    <rect x="48" y="327" width="42" height="37" rx="7"/>
+    <rect x="96" y="327" width="42" height="37" rx="7"/>
+    <rect x="144" y="327" width="42" height="37" rx="7"/>
+    <rect x="192" y="327" width="42" height="37" rx="7"/>
+  </g>
+
+  <g opacity="0.12" fill="none" stroke="#24565d" stroke-width="2">
+    <path d="M12 176c28-15 51-15 73 0s47 15 70 0 43-14 73-2"/>
+    <path d="M12 261c27-11 48-9 70 0s45 11 67 0 47-11 79 0"/>
+  </g>
+</svg>

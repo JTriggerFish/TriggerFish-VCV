@@ -9,6 +9,9 @@
 #include <pybind11/pybind11.h>
 
 #include "models/VCAcore.hpp"
+#include "models/DiodeLadderFilter.hpp"
+#include "models/OtaVca.hpp"
+#include "models/Tb303Voice.hpp"
 #include "models/VdpOscillator.hpp"
 #include "models/VdpSplitOscillator.hpp"
 #include "tfdsp/noise.hpp"
@@ -137,6 +140,115 @@ namespace
 		}
 		return result;
 	}
+
+	template<typename Filter, bool Order9 = false>
+	py::array_t<float> RenderDiodeLadder(
+		py::array_t<double, py::array::c_style | py::array::forcecast> audio,
+		double cutoff, double resonance, bool highResonance, double driveGain,
+		double bass, double sampleRate)
+	{
+		const auto audioInfo = audio.request();
+		if (audioInfo.ndim != 1)
+			throw std::invalid_argument("audio must be a one-dimensional array");
+		if (!(sampleRate > 0.0))
+			throw std::invalid_argument("sample_rate must be positive");
+
+		py::array_t<float> result(audioInfo.shape[0]);
+		auto output = result.mutable_unchecked<1>();
+		auto audioValues = audio.unchecked<1>();
+		Filter model([]
+		{
+			if constexpr (Filter::OversamplingFactor == 1)
+			{
+				return tfdsp::CreateDummyResampler();
+			}
+			else if constexpr (Filter::OversamplingFactor == 2)
+			{
+				if constexpr (Order9)
+					return tfdsp::CreateX2Resampler_Chebychev9();
+				else
+					return tfdsp::CreateX2Resampler_Chebychev7();
+			}
+			else
+			{
+				if constexpr (Order9)
+				{
+					using X4Order9 = tfdsp::X4Resampler<tfdsp::X2Resampler_Order9>;
+					return std::make_unique<X4Order9>(
+						tfdsp::CreateX2Resampler_Chebychev9);
+				}
+				else
+					return tfdsp::CreateX4Resampler_Cheby7();
+			}
+		});
+		model.SetSampleRate(sampleRate);
+		for (py::ssize_t i = 0; i < audioInfo.shape[0]; ++i)
+			output(i) = model.Step(audioValues(i), cutoff, resonance,
+				highResonance, driveGain, bass);
+		return result;
+	}
+
+	template<typename Resampler>
+	py::array_t<double> RenderResamplerRoundTrip(
+		py::array_t<double, py::array::c_style | py::array::forcecast> audio,
+		std::function<std::unique_ptr<Resampler>()> createResampler)
+	{
+		const auto audioInfo = audio.request();
+		if (audioInfo.ndim != 1)
+			throw std::invalid_argument("audio must be a one-dimensional array");
+
+		py::array_t<double> result(audioInfo.shape[0]);
+		auto output = result.mutable_unchecked<1>();
+		auto audioValues = audio.unchecked<1>();
+		auto model = createResampler();
+		for (py::ssize_t i = 0; i < audioInfo.shape[0]; ++i)
+			output(i) = model->Downsample(model->Upsample(audioValues(i)));
+		return result;
+	}
+
+	py::array_t<float> RenderDiodeLadderVcaX4(
+		py::array_t<double, py::array::c_style | py::array::forcecast> audio,
+		py::array_t<double, py::array::c_style | py::array::forcecast> control,
+		double cutoff, double resonance, bool highResonance, double driveGain,
+		double bass, double sampleRate, bool oversampledVca)
+	{
+		const auto audioInfo = audio.request();
+		const auto controlInfo = control.request();
+		RequireSameSize(audioInfo, controlInfo, "audio", "control");
+		if (!(sampleRate > 0.0))
+			throw std::invalid_argument("sample_rate must be positive");
+
+		py::array_t<float> result(audioInfo.shape[0]);
+		auto output = result.mutable_unchecked<1>();
+		auto audioValues = audio.unchecked<1>();
+		auto controlValues = control.unchecked<1>();
+		using Filter = tfdsp::DiodeLadderFilter<tfdsp::X4Resampler_Order7>;
+		Filter filter(tfdsp::CreateX4Resampler_Cheby7);
+		filter.SetSampleRate(sampleRate);
+		tfdsp::Tb303Vca vca;
+		vca.SetSampleRate(sampleRate * (oversampledVca ? 4.0 : 1.0));
+		for (py::ssize_t i = 0; i < audioInfo.shape[0]; ++i)
+		{
+			if (oversampledVca)
+			{
+				const auto rendered = filter.StepWithPostProcessor(
+					audioValues(i), cutoff, resonance, highResonance, driveGain,
+					bass, controlValues(i), [&](double audioValue, double vcaControl)
+					{
+						return vca.Step(audioValue, vcaControl, 0.0);
+					});
+				output(i) = rendered.postProcessed;
+			}
+			else
+			{
+				const double filtered = filter.Step(audioValues(i), cutoff,
+					resonance, highResonance, driveGain, bass);
+				output(i) = static_cast<float>(vca.Step(filtered,
+					controlValues(i), 0.0));
+			}
+		}
+		return result;
+	}
 }
 
 PYBIND11_MODULE(_triggerfish_dsp, module)
@@ -163,6 +275,117 @@ PYBIND11_MODULE(_triggerfish_dsp, module)
 			output(i) = model.Step(audioValues(i), cvValues(i), finalGain);
 		return result;
 	}, py::arg("audio"), py::arg("cv"), py::arg("sample_rate"), py::arg("final_gain") = 1.0f);
+
+	module.def("vca_ota_legacy", [](py::array_t<float, py::array::c_style | py::array::forcecast> audio,
+		py::array_t<float, py::array::c_style | py::array::forcecast> cv,
+		float sampleRate, float finalGain)
+	{
+		const auto audioInfo = audio.request();
+		const auto cvInfo = cv.request();
+		RequireSameSize(audioInfo, cvInfo, "audio", "cv");
+		if (!(sampleRate > 0.0f))
+			throw std::invalid_argument("sample_rate must be positive");
+
+		py::array_t<float> result(audioInfo.shape[0]);
+		auto output = result.mutable_unchecked<1>();
+		auto audioValues = audio.unchecked<1>();
+		auto cvValues = cv.unchecked<1>();
+		VCA_OTACore<tfdsp::X2Resampler_Order7> model(tfdsp::CreateX2Resampler_Chebychev7);
+		model.SetSampleRate(sampleRate);
+		for (py::ssize_t i = 0; i < audioInfo.shape[0]; ++i)
+			output(i) = model.Step(audioValues(i), cvValues(i), finalGain);
+		return result;
+	}, py::arg("audio"), py::arg("cv"), py::arg("sample_rate"),
+		py::arg("final_gain") = 1.0f);
+
+	module.def("ota_vca_current", [](py::array_t<double, py::array::c_style | py::array::forcecast> differential,
+		py::array_t<double, py::array::c_style | py::array::forcecast> control,
+		double efficiency, double inputOffset, double mirrorImbalance)
+	{
+		const auto differentialInfo = differential.request();
+		const auto controlInfo = control.request();
+		RequireSameSize(differentialInfo, controlInfo, "differential", "control");
+		tfdsp::OtaVcaCore::Configuration configuration;
+		configuration.currentTransferEfficiency = efficiency;
+		configuration.inputOffsetVolts = inputOffset;
+		configuration.mirrorImbalance = mirrorImbalance;
+		tfdsp::OtaVcaCore model(configuration);
+		py::array_t<double> result(differentialInfo.shape[0]);
+		auto output = result.mutable_unchecked<1>();
+		auto differentialValues = differential.unchecked<1>();
+		auto controlValues = control.unchecked<1>();
+		for (py::ssize_t i = 0; i < differentialInfo.shape[0]; ++i)
+			output(i) = model.ProcessCurrent(differentialValues(i), controlValues(i));
+		return result;
+	}, py::arg("differential"), py::arg("control"),
+		py::arg("efficiency") = 0.85, py::arg("input_offset") = 0.0,
+		py::arg("mirror_imbalance") = 0.0);
+
+	module.def("tb303_vca", [](py::array_t<double, py::array::c_style | py::array::forcecast> audio,
+		py::array_t<double, py::array::c_style | py::array::forcecast> baseControl,
+		py::array_t<double, py::array::c_style | py::array::forcecast> accentControl,
+		double sampleRate)
+	{
+		const auto audioInfo = audio.request();
+		const auto baseInfo = baseControl.request();
+		const auto accentInfo = accentControl.request();
+		RequireSameSize(audioInfo, baseInfo, "audio", "base_control");
+		RequireSameSize(audioInfo, accentInfo, "audio", "accent_control");
+		if (!(sampleRate > 0.0))
+			throw std::invalid_argument("sample_rate must be positive");
+
+		py::array_t<double> result(audioInfo.shape[0]);
+		auto output = result.mutable_unchecked<1>();
+		auto audioValues = audio.unchecked<1>();
+		auto baseValues = baseControl.unchecked<1>();
+		auto accentValues = accentControl.unchecked<1>();
+		tfdsp::Tb303Vca model;
+		model.SetSampleRate(sampleRate);
+		for (py::ssize_t i = 0; i < audioInfo.shape[0]; ++i)
+			output(i) = model.Step(audioValues(i), baseValues(i), accentValues(i));
+		return result;
+	}, py::arg("audio"), py::arg("base_control"), py::arg("accent_control"),
+		py::arg("sample_rate") = 48000.0);
+
+	module.def("tb303_articulation", [](py::array_t<double, py::array::c_style | py::array::forcecast> gate,
+		py::array_t<double, py::array::c_style | py::array::forcecast> accent,
+		py::array_t<double, py::array::c_style | py::array::forcecast> resonance,
+		double normalDecay, double accentDecay, double vcaDecay,
+		double sampleRate, bool devilFish, int accentSweep)
+	{
+		const auto gateInfo = gate.request();
+		const auto accentInfo = accent.request();
+		const auto resonanceInfo = resonance.request();
+		RequireSameSize(gateInfo, accentInfo, "gate", "accent");
+		RequireSameSize(gateInfo, resonanceInfo, "gate", "resonance");
+		if (!(sampleRate > 0.0))
+			throw std::invalid_argument("sample_rate must be positive");
+
+		py::array_t<double> result({gateInfo.shape[0], py::ssize_t{4}});
+		auto output = result.mutable_unchecked<2>();
+		auto gateValues = gate.unchecked<1>();
+		auto accentValues = accent.unchecked<1>();
+		auto resonanceValues = resonance.unchecked<1>();
+		tfdsp::Tb303Articulation model;
+		model.SetSampleRate(sampleRate);
+		model.SetMode(devilFish ? tfdsp::Tb303Articulation::Mode::DevilFish :
+			tfdsp::Tb303Articulation::Mode::Stock);
+		model.SetAccentSweepMode(static_cast<tfdsp::Tb303AccentSweep::Mode>(
+			std::clamp(accentSweep, 0, 3)));
+		for (py::ssize_t i = 0; i < gateInfo.shape[0]; ++i)
+		{
+			const auto value = model.Step(gateValues(i), accentValues(i),
+				resonanceValues(i), normalDecay, accentDecay, vcaDecay);
+			output(i, 0) = value.mainEnvelope;
+			output(i, 1) = value.filterAccent;
+			output(i, 2) = value.volumeEnvelope;
+			output(i, 3) = value.vcaAccent;
+		}
+		return result;
+	}, py::arg("gate"), py::arg("accent"), py::arg("resonance"),
+		py::arg("normal_decay") = 0.5, py::arg("accent_decay") = 0.2,
+		py::arg("vca_decay") = 0.5, py::arg("sample_rate") = 48000.0,
+		py::arg("devil_fish") = false, py::arg("accent_sweep") = 2);
 
 	module.def("vdpo_bdf", [](py::array_t<double, py::array::c_style | py::array::forcecast> audio,
 		py::array_t<double, py::array::c_style | py::array::forcecast> damping,
@@ -210,5 +433,69 @@ PYBIND11_MODULE(_triggerfish_dsp, module)
 		py::arg("pitch"), py::arg("detune"), py::arg("reference_frequency") = 261.63);
 	module.def("detune_reference_double", &RenderDetune<DetuneMethod::ReferenceDouble>,
 		py::arg("pitch"), py::arg("detune"), py::arg("reference_frequency") = 261.63);
+
+	using DiodeLadderX1 = tfdsp::DiodeLadderFilter<tfdsp::DummyResampler>;
+	using DiodeLadderX2 = tfdsp::DiodeLadderFilter<tfdsp::X2Resampler_Order7>;
+	using DiodeLadderX4 = tfdsp::DiodeLadderFilter<tfdsp::X4Resampler_Order7>;
+	using DiodeLadderX2Order9 =
+		tfdsp::DiodeLadderFilter<tfdsp::X2Resampler_Order9>;
+	using X4ResamplerOrder9 = tfdsp::X4Resampler<tfdsp::X2Resampler_Order9>;
+	using DiodeLadderX4Order9 = tfdsp::DiodeLadderFilter<X4ResamplerOrder9>;
+	module.def("diode_ladder_x1", &RenderDiodeLadder<DiodeLadderX1>,
+		py::arg("audio"), py::arg("cutoff"), py::arg("resonance") = 0.0,
+		py::arg("high_resonance") = false, py::arg("drive_gain") = 1.0,
+		py::arg("bass") = 0.0, py::arg("sample_rate") = 48000.0);
+	module.def("diode_ladder_x2", &RenderDiodeLadder<DiodeLadderX2>,
+		py::arg("audio"), py::arg("cutoff"), py::arg("resonance") = 0.0,
+		py::arg("high_resonance") = false, py::arg("drive_gain") = 1.0,
+		py::arg("bass") = 0.0, py::arg("sample_rate") = 48000.0);
+	module.def("diode_ladder_x4", &RenderDiodeLadder<DiodeLadderX4>,
+		py::arg("audio"), py::arg("cutoff"), py::arg("resonance") = 0.0,
+		py::arg("high_resonance") = false, py::arg("drive_gain") = 1.0,
+		py::arg("bass") = 0.0, py::arg("sample_rate") = 48000.0);
+	module.def("diode_ladder_x2_order9",
+		&RenderDiodeLadder<DiodeLadderX2Order9, true>,
+		py::arg("audio"), py::arg("cutoff"), py::arg("resonance") = 0.0,
+		py::arg("high_resonance") = false, py::arg("drive_gain") = 1.0,
+		py::arg("bass") = 0.0, py::arg("sample_rate") = 48000.0);
+	module.def("diode_ladder_x4_order9",
+		&RenderDiodeLadder<DiodeLadderX4Order9, true>,
+		py::arg("audio"), py::arg("cutoff"), py::arg("resonance") = 0.0,
+		py::arg("high_resonance") = false, py::arg("drive_gain") = 1.0,
+		py::arg("bass") = 0.0, py::arg("sample_rate") = 48000.0);
+
+	module.def("resampler_round_trip_x2_order7", [](py::array_t<double,
+		py::array::c_style | py::array::forcecast> audio)
+	{
+		return RenderResamplerRoundTrip<tfdsp::X2Resampler_Order7>(audio,
+			tfdsp::CreateX2Resampler_Chebychev7);
+	}, py::arg("audio"));
+	module.def("resampler_round_trip_x2_order9", [](py::array_t<double,
+		py::array::c_style | py::array::forcecast> audio)
+	{
+		return RenderResamplerRoundTrip<tfdsp::X2Resampler_Order9>(audio,
+			tfdsp::CreateX2Resampler_Chebychev9);
+	}, py::arg("audio"));
+	module.def("resampler_round_trip_x4_order7", [](py::array_t<double,
+		py::array::c_style | py::array::forcecast> audio)
+	{
+		return RenderResamplerRoundTrip<tfdsp::X4Resampler_Order7>(audio,
+			tfdsp::CreateX4Resampler_Cheby7);
+	}, py::arg("audio"));
+	module.def("resampler_round_trip_x4_order9", [](py::array_t<double,
+		py::array::c_style | py::array::forcecast> audio)
+	{
+		return RenderResamplerRoundTrip<X4ResamplerOrder9>(audio, []
+		{
+			return std::make_unique<X4ResamplerOrder9>(
+				tfdsp::CreateX2Resampler_Chebychev9);
+		});
+	}, py::arg("audio"));
+
+	module.def("diode_ladder_vca_x4", &RenderDiodeLadderVcaX4,
+		py::arg("audio"), py::arg("control"), py::arg("cutoff"),
+		py::arg("resonance") = 0.0, py::arg("high_resonance") = false,
+		py::arg("drive_gain") = 1.0, py::arg("bass") = 0.0,
+		py::arg("sample_rate") = 48000.0, py::arg("oversampled_vca") = true);
 
 }

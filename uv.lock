@@ -1435,7 +1435,7 @@ wheels = [
 
 [[package]]
 name = "triggerfish-vcv-dsp"
-version = "2.1.0"
+version = "2.2.0"
 source = { editable = "." }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -1452,9 +1452,12 @@ analysis = [
 [package.dev-dependencies]
 dev = [
     { name = "black", extra = ["jupyter"] },
+    { name = "fonttools" },
     { name = "nbstripout" },
     { name = "pre-commit" },
     { name = "pytest" },
+    { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "scipy", version = "1.18.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
 ]
 
 [package.metadata]
@@ -1468,9 +1471,11 @@ provides-extras = ["analysis"]
 [package.metadata.requires-dev]
 dev = [
     { name = "black", extras = ["jupyter"], specifier = ">=26.5.1" },
+    { name = "fonttools", specifier = ">=4.60" },
     { name = "nbstripout", specifier = ">=0.9.1" },
     { name = "pre-commit", specifier = ">=4.0" },
     { name = "pytest", specifier = ">=8.0" },
+    { name = "scipy", specifier = ">=1.14" },
 ]
 
 [[package]]

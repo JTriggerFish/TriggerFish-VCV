@@ -1,0 +1,41 @@
+* Open Music Labs BA662 clone topology, expanded from dual matched pairs.
+* The transistor wrapper definitions and analysis deck are injected by
+* tests/python/reference_ba662_spice.py. Manufacturer model text is downloaded
+* into ignored build output and is deliberately not copied into this project.
+
+__DEVICE_MODELS__
+
+.subckt BA662 p1 p2 p3 p4 vm p6 p7 p8 vp
+* Control-current mirror and differential input pair.
+XQ1A n2 p1 vm NPN_DEVICE
+XQ1B p1 p1 vm NPN_DEVICE
+XQ2A n7 p2 n2 NPN_DEVICE
+XQ2B n5 p3 n2 NPN_DEVICE
+
+* PNP Wilson current-mirror loads.
+XQ3A n7 n10 vp PNP_DEVICE
+XQ3B n10 n10 vp PNP_DEVICE
+XQ4A n5 n11 vp PNP_DEVICE
+XQ4B n11 n11 vp PNP_DEVICE
+XQ5A n12 n7 n10 PNP_DEVICE
+XQ5B p6 n5 n11 PNP_DEVICE
+
+* NPN output mirror and the emitter-follower buffer.
+XQ6A n12 n14 vm NPN_DEVICE
+XQ6B n14 n14 vm NPN_DEVICE
+XQ7A vp p7 p8 NPN_DEVICE
+XQ7B p6 n12 n14 NPN_DEVICE
+
+* Unused half of the PNP matched pair retained to match the published clone.
+XQ8A vm n20 n18 PNP_DEVICE
+XQ8B n17 p8 n19 PNP_DEVICE
+
+* Buffer current sink. The 47k resistor is external to the original IC die,
+* but is part of the published clone and is driven from BA662 pin 4.
+XQ9A p8 n21 vm NPN_DEVICE
+XQ9B n21 n21 vm NPN_DEVICE
+RBIAS p4 n21 47k
+RUNUSED vp n18 10k
+.ends BA662
+
+__ANALYSIS_DECK__

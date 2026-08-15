@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 
-project(TriggerFishDSP VERSION 2.1.0 LANGUAGES CXX)
+project(TriggerFishDSP VERSION 2.2.0 LANGUAGES CXX)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 17)
@@ -28,6 +28,7 @@ if(EXISTS "${RACK_SDK_DIR}/include/rack.hpp")
 		src/TfSlop4.cpp
 		src/TfVCA.cpp
 		src/TfVDPO.cpp
+		src/TfDiodeLadderFilter.cpp
 	)
 	target_include_directories(triggerfish_rack_index PRIVATE
 		${CMAKE_CURRENT_SOURCE_DIR}/src

@@ -8,6 +8,7 @@ Run from the repository root with::
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -25,6 +26,23 @@ DEFAULT_PARAMS = {
     "TfSlop4": [1.0, 1.0, 1.0, 1.0, 0.1, 0.05, 0.05],
     "TfVCA": [0.5, 1.0, 1.0, 0.5, 50.0, 1.0],
     "TfVDPO": [0.5, 0.0, 1.0, 1.0, 1.0, 1.0],
+    "TfDiodeLadderFilter": [
+        0.9344246,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.5321928,
+        0.0,
+        0.0,
+        1.0 / 3.0,
+        math.log10(0.5),
+        math.log10(0.2),
+        0.5,
+        0.5,
+        1.0,
+        2.0,
+    ],
     "VCO": [1.0, 1.0, 0.0, 0.0, 0.0, 0.5, 0.0, 0.0],
 }
 
@@ -265,6 +283,41 @@ def generate_vdpo_patch() -> None:
     patch.write("test-vdpo.vcv")
 
 
+def generate_diode_ladder_patch() -> None:
+    patch = Patch(zoom=0.78, grid_offset=(-1, -0.1))
+    patch.add(
+        notes(
+            1,
+            "TriggerFish diode ladder playable smoke test\n\n"
+            "SETUP\nSelect MIDI and audio devices in MIDI-CV and Audio-8. "
+            "Start with monitor volume low.\n\n"
+            "MIDI pitch drives a Fundamental VCO and the filter's V/OCT input. "
+            "MIDI gate drives the filter's internal TB-303 envelopes and OTA VCA. "
+            "The VCO saw passes through TfDiodeLadderFilter; LP OUT bypasses the "
+            "VCA, while VCA OUT is the playable voice used here.\n\n"
+            "All TriggerFish parameters are at their declared defaults. Try "
+            "DRIVE, BASS, high resonance, ACCENT from a sequencer, and the "
+            "oversampling and articulation context-menu settings. "
+            "The final VCA Mix is the master, set to -6 dB and routed to outputs 1/2.",
+        )
+    )
+    patch.add(midi(2, (16, 0)))
+    patch.add(mixer(6, (38, 0), (0.5011872336, 0.7, 0.0, 0.0, 0.0)))
+    patch.add(audio(7, (47, 0)))
+    patch.add(module(4, "Fundamental", "VCO", (0, 1)))
+    patch.add(module(5, "TriggerFish-Elements", "TfDiodeLadderFilter", (10, 1)))
+
+    patch.cable(2, 0, 4, 0)
+    patch.cable(2, 0, 5, 1)
+    patch.cable(2, 1, 5, 5)
+    patch.cable(4, 2, 5, 0)
+    patch.cable(5, 1, 6, 1)
+    patch.cable(6, 0, 7, 0)
+    patch.cable(6, 0, 7, 1)
+    patch.write("test-diode-ladder.vcv")
+
+
 if __name__ == "__main__":
     generate_slop4_patch()
     generate_vdpo_patch()
+    generate_diode_ladder_patch()

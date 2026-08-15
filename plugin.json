@@ -1,7 +1,7 @@
 {
   "slug": "TriggerFish-Elements",
   "name": "TriggerFish-Elements",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "license": "BSD-3-Clause",
   "brand": "TriggerFish",
   "author": "JTriggerFish",
@@ -43,6 +43,17 @@
       "description": "analog modelled VCA that is loosely based on the minimoog's circuit",
       "tags": [
         "Voltage-controlled amplifier"
+      ]
+    },
+    {
+      "slug": "TfDiodeLadderFilter",
+      "name": "TfDiodeLadderFilter",
+      "description": "Circuit-modelled diode ladder filter with TB-303-style articulation and OTA VCA",
+      "tags": [
+        "Filter",
+        "Envelope generator",
+        "Voltage-controlled amplifier",
+        "Polyphonic"
       ]
     }
   ]

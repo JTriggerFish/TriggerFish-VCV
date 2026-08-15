@@ -11,6 +11,69 @@ PLUGIN_VERSION = json.loads((ROOT / "plugin.json").read_text(encoding="utf-8"))[
 PATCH_PATHS = {
     "slop4": ROOT / "test-slop4.vcv",
     "vdpo": ROOT / "test-vdpo.vcv",
+    "diode_ladder": ROOT / "test-diode-ladder.vcv",
+}
+
+# Canonical Rack 2.6 module tags. Rack accepts a few historical aliases, but
+# manifests should publish the canonical names used by its module browser.
+RACK_MODULE_TAGS = {
+    "Arpeggiator",
+    "Attenuator",
+    "Blank",
+    "Chorus",
+    "Clock generator",
+    "Clock modulator",
+    "Compressor",
+    "Controller",
+    "Delay",
+    "Digital",
+    "Distortion",
+    "Drum",
+    "Dual",
+    "Dynamics",
+    "Effect",
+    "Envelope follower",
+    "Envelope generator",
+    "Equalizer",
+    "Expander",
+    "External",
+    "Filter",
+    "Flanger",
+    "Function generator",
+    "Granular",
+    "Hardware clone",
+    "Limiter",
+    "Logic",
+    "Low-frequency oscillator",
+    "Low-pass gate",
+    "MIDI",
+    "Mixer",
+    "Multiple",
+    "Noise",
+    "Oscillator",
+    "Panning",
+    "Phaser",
+    "Physical modeling",
+    "Polyphonic",
+    "Quad",
+    "Quantizer",
+    "Random",
+    "Recording",
+    "Reverb",
+    "Ring modulator",
+    "Sample and hold",
+    "Sampler",
+    "Sequencer",
+    "Slew limiter",
+    "Speech",
+    "Switch",
+    "Synth voice",
+    "Tuner",
+    "Utility",
+    "Visual",
+    "Vocoder",
+    "Voltage-controlled amplifier",
+    "Waveshaper",
 }
 
 EXPECTED_DEFAULTS = {
@@ -18,7 +81,31 @@ EXPECTED_DEFAULTS = {
     "TfSlop4": {0: 1.0, 1: 1.0, 2: 1.0, 3: 1.0, 4: 0.1, 5: 0.05, 6: 0.05},
     "TfVDPO": {0: 0.5, 1: 0.0, 2: 1.0, 3: 1.0, 4: 1.0, 5: 1.0},
     "TfVCA": {0: 0.5, 1: 1.0, 2: 1.0, 3: 0.5, 4: 50.0, 5: 1.0},
+    "TfDiodeLadderFilter": {
+        0: 0.9344246,
+        1: 0.0,
+        2: 0.0,
+        3: 0.0,
+        4: 0.0,
+        5: 0.5321928,
+        6: 0.0,
+        7: 0.0,
+        8: 1.0 / 3.0,
+        9: math.log10(0.5),
+        10: math.log10(0.2),
+        11: 0.5,
+        12: 0.5,
+        13: 1.0,
+        14: 2.0,
+    },
 }
+
+
+def test_manifest_uses_canonical_rack_module_tags():
+    manifest = json.loads((ROOT / "plugin.json").read_text(encoding="utf-8"))
+    published = {tag for module in manifest["modules"] for tag in module["tags"]}
+
+    assert published <= RACK_MODULE_TAGS
 
 
 def load_patch(name):
@@ -50,7 +137,13 @@ def test_smoke_patches_collectively_contain_every_triggerfish_module():
         for module in load_patch(name)["modules"]
         if module["plugin"] == "TriggerFish-Elements"
     }
-    assert models == {"TfSlop", "TfSlop4", "TfVCA", "TfVDPO"}
+    assert models == {
+        "TfSlop",
+        "TfSlop4",
+        "TfVCA",
+        "TfVDPO",
+        "TfDiodeLadderFilter",
+    }
 
 
 @pytest.mark.parametrize("name", PATCH_PATHS)
@@ -191,6 +284,31 @@ def test_vdpo_patch_selects_sine_saw_or_square_forcing():
         and cable["inputModuleId"] == selector["id"]
     } == {(0, 2), (2, 3), (3, 4)}
     assert has_cable(patch, selector["id"], 0, forced_vdpo_id, 1)
+
+
+def test_diode_ladder_patch_has_pitch_tracking_and_enveloped_filter_vca_chain():
+    patch = load_patch("diode_ladder")
+    midi = modules(patch, "MIDIToCVInterface")[0]
+    vco = modules(patch, "VCO")[0]
+    diode = modules(patch, "TfDiodeLadderFilter")[0]
+    master = modules(patch, "VCMixer")[0]
+
+    assert has_cable(patch, midi["id"], 0, vco["id"], 0)
+    assert has_cable(patch, midi["id"], 0, diode["id"], 1)
+    assert has_cable(patch, midi["id"], 1, diode["id"], 5)
+    assert has_cable(patch, vco["id"], 2, diode["id"], 0)
+    assert has_cable(patch, diode["id"], 1, master["id"], 1)
+
+
+def test_diode_ladder_default_cutoff_cv_range_reaches_fully_open():
+    diode = modules(load_patch("diode_ladder"), "TfDiodeLadderFilter")[0]
+    cutoff_pitch = diode["params"][0]["value"]
+    cv_amount = diode["params"][5]["value"]
+    cutoff_hz = 261.625565 * 2.0**cutoff_pitch
+    envelope_peak_cutoff_hz = cutoff_hz * 2.0 ** (10.0 * cv_amount)
+
+    assert cutoff_hz == pytest.approx(500.0, rel=1.0e-6)
+    assert envelope_peak_cutoff_hz == pytest.approx(20_000.0, rel=1.0e-6)
 
 
 @pytest.mark.parametrize("name", PATCH_PATHS)

@@ -12,3 +12,4 @@ extern Model *modelTfVCA;
 extern Model *modelTfSlop;
 extern Model *modelTfSlop4;
 extern Model *modelTfVDPO;
+extern Model *modelTfDiodeLadderFilter;

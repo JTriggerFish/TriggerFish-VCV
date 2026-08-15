@@ -34,6 +34,7 @@ Run the usual tasks from PowerShell:
 .\dev.ps1 run          # Install and launch Rack
 .\dev.ps1 smoke-slop4  # Install and open the Slop4/four-VCO patch
 .\dev.ps1 smoke-vdpo   # Install and open the two-VDPO patch
+.\dev.ps1 smoke-filter # Install and open the diode-ladder filter patch
 .\dev.ps1 dist         # Build the release .vcvplugin package
 .\dev.ps1 test         # Build and run standalone C++ DSP tests
 .\dev.ps1 python-test  # Build Python bindings and run pytest
@@ -95,6 +96,30 @@ Benchmark the Slop linear-Hz pitch conversion using:
 uv run python tests/python/benchmark_slop.py
 ```
 
+Benchmark the 2x/4x diode-ladder implementations and their high-drive quality
+difference using:
+
+```bash
+uv run python tests/python/benchmark_diode_ladder.py
+```
+
+Compare the reduced BA662 VCA with the pre-existing TriggerFish transistor and
+OTA VCA cores, with output level matched before calculating the residual:
+
+```bash
+uv run python tests/python/benchmark_ba662.py
+```
+
+Run the slower, manual transistor-level BA662-clone comparison with ngspice:
+
+```bash
+uv run python tests/python/reference_ba662_spice.py --ngspice /path/to/ngspice
+```
+
+This downloads the official Nexperia matched-transistor models only into the
+ignored `build/ba662-reference` directory. It is not part of the plugin build
+or required for the automated tests.
+
 The GitHub Actions workflow performs both a Linux Rack SDK package build and
 the standalone tests, so Linux compatibility is checked continuously.
 
@@ -109,7 +134,12 @@ Slop/VDPO/VCA voices. One VDPO is self-resonating. The other is forced by a
 Fundamental VCO; click the Push module to cycle its forcing waveform through
 sine, saw, and square.
 
-Both patches use only Rack Core, Fundamental, and TriggerFish modules. Their
+[test-diode-ladder.vcv](test-diode-ladder.vcv) is a MIDI-controlled Fundamental
+VCO into `TfDiodeLadderFilter`. Pitch is also routed to the filter's V/OCT
+input, while Gate drives the internal TB-303 filter/volume envelopes and the
+patch monitors the module's post-VCA output.
+
+All patches use only Rack Core, Fundamental, and TriggerFish modules. Their
 final stereo masters are set to -6 dB. `dev.ps1 smoke` remains an alias for
 `dev.ps1 smoke-vdpo`.
 
@@ -120,6 +150,20 @@ monitor volume low on first use.
 The patch files are generated from `tools/generate_test_patches.py`. Edit that
 source and run `uv run python tools/generate_test_patches.py` when changing the
 patch topology or defaults.
+
+The editable diode-ladder panel is in `res-src`. Rack's NanoSVG renderer does
+not support SVG text, so regenerate the runtime asset after changing labels,
+using the DejaVu Sans font bundled with a Rack runtime (or the system copy on
+Linux):
+
+```text
+uv run python tools/svg_text_to_paths.py \
+  res-src/TfDiodeLadderFilter.svg res/TfDiodeLadderFilter.svg \
+  --font /path/to/DejaVuSans.ttf
+```
+
+An optional `--bold-font` can supply real bold outlines; otherwise the helper
+adds a small outline to bold labels. The font itself is not copied or committed.
 
 The smoke commands use ignored `*.local.vcv` copies, allowing Rack to save MIDI
 and audio device selections without putting machine-specific state in Git. Each
