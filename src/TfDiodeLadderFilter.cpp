@@ -354,10 +354,12 @@ struct TfDiodeLadderFilterWidget : ModuleWidget
 		setPanel(APP->window->loadSvg(asset::plugin(
 			pluginInstance, "res/TfDiodeLadderFilter.svg")));
 
-		auto* transistorGraphic = new SvgWidget;
-		transistorGraphic->setSvg(APP->window->loadSvg(asset::plugin(
-			pluginInstance, "res/TfDiodeConnectedTransistor.svg")));
-		transistorGraphic->box.pos = Vec(1, 44);
+		auto* transistorGraphic = new TfSvgWatermark;
+		transistorGraphic->setScaledSvg(APP->window->loadSvg(asset::plugin(
+			pluginInstance, "res/TfDiodeConnectedTransistor.svg")),
+			Vec(112, 112));
+		transistorGraphic->box.pos = Vec(64, 266);
+		transistorGraphic->opacity = 0.32f;
 		addChild(transistorGraphic);
 
 		addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, 0)));

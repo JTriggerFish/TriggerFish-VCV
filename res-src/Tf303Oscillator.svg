@@ -1,41 +1,54 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="180" height="380" viewBox="0 0 180 380">
   <rect width="180" height="380" fill="#cecece"/>
-  <path d="M0 27h180M0 190h180M0 310h180" stroke="#777" stroke-width="0.7"/>
+  <path id="section-dividers" d="M28 27h124M28 222h124M28 324h124" stroke="#777" stroke-width="0.7"/>
+
+  <g id="octave-detents" fill="#777">
+    <circle cx="18.1" cy="82.4" r="1.05"/>
+    <circle cx="19.4" cy="59.8" r="1.05"/>
+    <circle cx="29.4" cy="46.9" r="1.05"/>
+    <circle cx="42.5" cy="43.0" r="1.05"/>
+    <circle cx="55.6" cy="46.9" r="1.05"/>
+    <circle cx="65.6" cy="59.8" r="1.05"/>
+    <circle cx="66.9" cy="82.4" r="1.05"/>
+  </g>
 
   <g font-family="DejaVu Sans, sans-serif" text-anchor="middle" fill="#1f1f1f">
-    <text x="90" y="14" font-size="10" font-weight="bold" letter-spacing="1.1">TRIGGERFISH</text>
-    <text x="90" y="24" font-size="7.8" letter-spacing="1.5">303 OSCILLATOR</text>
+    <text x="90.5054" y="14" font-size="10" font-weight="bold" letter-spacing="1.1" data-center-x="90">TRIGGERFISH</text>
+    <text x="89.8153" y="24" font-size="7.8" letter-spacing="1.5" data-center-x="90">303 OSCILLATOR</text>
 
-    <text x="18" y="41" font-size="7.2" font-weight="bold">OCT</text>
-    <text x="54" y="41" font-size="7.2" font-weight="bold">TUNE</text>
-    <text x="90" y="41" font-size="7.2" font-weight="bold">SLIDE</text>
-    <text x="126" y="41" font-size="7.2" font-weight="bold">SHAPE</text>
-    <text x="162" y="41" font-size="7.2" font-weight="bold">WAVE</text>
+    <text x="42.5332" y="37" font-size="8.5" font-weight="bold" data-control="OCTAVE">OCTAVE</text>
+    <text x="89.8838" y="37" font-size="6.8" font-weight="bold" data-control="FM_MODE">FM MODE</text>
+    <text x="137.2843" y="37" font-size="8.5" font-weight="bold" data-control="TUNE">TUNE</text>
+    <g fill="#686868">
+      <text x="89.7953" y="50" font-size="6.4" font-weight="bold" data-control="FM_MODE">EXP</text>
+      <text x="90.1531" y="85" font-size="6.4" font-weight="bold" data-control="FM_MODE">TZ</text>
+    </g>
 
-    <text x="27" y="106" font-size="7" font-weight="bold">FM</text>
-    <text x="69" y="106" font-size="7" font-weight="bold">TIME CV</text>
-    <text x="111" y="106" font-size="7" font-weight="bold">SHAPE CV</text>
-    <text x="153" y="106" font-size="7" font-weight="bold">WAVE CV</text>
+    <text x="32.9922" y="112" font-size="8" font-weight="bold" data-control="SLIDE_TIME">SL.TIME</text>
+    <text x="89.9922" y="112" font-size="8" font-weight="bold" data-control="SHAPE">SHAPE</text>
+    <text x="147.123" y="112" font-size="8" font-weight="bold" data-control="WAVE">WAVE</text>
 
-    <text x="90" y="146" font-size="7.2" font-weight="bold">FM MODE</text>
-    <text x="109" y="158" font-size="6.8" font-weight="bold">EXP</text>
-    <text x="109" y="181" font-size="6.8" font-weight="bold">LIN</text>
+    <text x="24.172" y="171" font-size="7.5" font-weight="bold" data-control="FM_AMOUNT">FM</text>
+    <text x="67.9721" y="171" font-size="7.0" font-weight="bold" data-control="TIME_AMOUNT">SL.TIME CV</text>
+    <text x="111.9664" y="171" font-size="7.2" font-weight="bold" data-control="SHAPE_AMOUNT">SHAPE CV</text>
+    <text x="156.0841" y="171" font-size="7.2" font-weight="bold" data-control="WAVE_AMOUNT">WAVE CV</text>
 
-    <text x="18" y="199" font-size="7.2" font-weight="bold">1V/OCT</text>
-    <text x="60" y="199" font-size="7.2" font-weight="bold">SLIDE</text>
-    <text x="102" y="199" font-size="7.2" font-weight="bold">TIME CV</text>
+    <text x="23.4439" y="235" font-size="7.2" font-weight="bold" data-control="VOCT_INPUT">1V/OCT</text>
+    <text x="67.843" y="235" font-size="7.2" font-weight="bold" data-control="SLIDE_INPUT">SLIDE</text>
+    <text x="111.6483" y="235" font-size="7.0" font-weight="bold" data-control="TIME_INPUT">SL.TIME CV</text>
+    <text x="155.8078" y="235" font-size="7.2" font-weight="bold" data-control="SYNC_INPUT">SYNC</text>
 
-    <text x="18" y="257" font-size="7.2" font-weight="bold">FM</text>
-    <text x="60" y="257" font-size="7.2" font-weight="bold">SHAPE CV</text>
-    <text x="102" y="257" font-size="7.2" font-weight="bold">WAVE CV</text>
+    <text x="38.8482" y="278" font-size="7.5" font-weight="bold" data-control="FM_INPUT">FM</text>
+    <text x="89.6426" y="278" font-size="7.2" font-weight="bold" data-control="SHAPE_INPUT">SHAPE CV</text>
+    <text x="140.7604" y="278" font-size="7.2" font-weight="bold" data-control="WAVE_INPUT">WAVE CV</text>
 
-    <text x="60" y="324" font-size="7.2" font-weight="bold">CV OUT</text>
-    <text x="120" y="324" font-size="7.2" font-weight="bold">OUT</text>
+    <text x="59.6373" y="335" font-size="7.2" font-weight="bold" data-control="CV_OUTPUT">CV OUT</text>
+    <text x="119.6373" y="335" font-size="7.2" font-weight="bold" data-control="AUDIO_OUTPUT">OUT</text>
   </g>
 
   <g id="output-jack-blocks" fill="#545454" stroke="#2e2e2e" stroke-width="0.45">
-    <rect x="39" y="327" width="42" height="37" rx="7"/>
-    <rect x="99" y="327" width="42" height="37" rx="7"/>
+    <rect x="39" y="338" width="42" height="36" rx="7" fill="#858585" stroke="#666666"/>
+    <rect x="99" y="338" width="42" height="36" rx="7"/>
   </g>
 </svg>

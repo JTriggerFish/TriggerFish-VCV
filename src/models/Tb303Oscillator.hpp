@@ -7,6 +7,7 @@
 #include <memory>
 
 #include "tfdsp/approx.hpp"
+#include "tfdsp/oscillator.hpp"
 #include "tfdsp/sampleRate.hpp"
 
 namespace tfdsp
@@ -113,35 +114,10 @@ private:
 	std::unique_ptr<ResamplerType> _squareDecimator;
 	std::unique_ptr<ResamplerType> _mixedDecimator;
 	Tb303SquareShaper _squareShaper;
+	tfdsp::BandlimitedSawOscillator<> _sawOscillator;
 	double _sampleRate{48000.0};
-	double _phase{};
 	double _pitch{};
 	bool _pitchInitialized{};
-	static double PolyBlep(double phase, double increment)
-	{
-		if (!(increment > 0.0) || increment >= 1.0)
-			return 0.0;
-		if (phase < increment)
-		{
-			const double x = phase / increment;
-			return x + x - x * x - 1.0;
-		}
-		if (phase > 1.0 - increment)
-		{
-			const double x = (phase - 1.0) / increment;
-			return x * x + x + x + 1.0;
-		}
-		return 0.0;
-	}
-
-	static double SignedPolyBlep(double phase, double increment)
-	{
-		if (increment > 0.0)
-			return PolyBlep(phase, increment);
-		if (increment < 0.0)
-			return -PolyBlep(1.0 - phase, -increment);
-		return 0.0;
-	}
 
 	static double LimitFrequency(double frequency, double sampleRate)
 	{
@@ -186,14 +162,14 @@ public:
 		_squareDecimator->Reset();
 		_mixedDecimator->Reset();
 		_squareShaper.Reset();
-		_phase = 0.0;
+		_sawOscillator.Reset();
 		_pitch = 0.0;
 		_pitchInitialized = false;
 	}
 
 	Output Step(double targetPitch, bool slide, double slideTime,
 		double tuningOffset, double fmVoltage, bool linearFm, double shape,
-		double wave)
+		double wave, double syncCrossing = -1.0)
 	{
 		if (!std::isfinite(targetPitch) || !std::isfinite(slideTime) ||
 			!std::isfinite(tuningOffset) || !std::isfinite(fmVoltage) ||
@@ -216,6 +192,8 @@ public:
 		const double tau = std::clamp(slideTime * (22.0 / 60.0),
 			0.0001, 2.0);
 		const double slideAlpha = -std::expm1(-1.0 / (internalRate * tau));
+		const auto syncEvent = tfdsp::MapEventToOversampledFrame<
+			OversamplingFactor>(syncCrossing);
 		for (int index = 0; index < OversamplingFactor; ++index)
 		{
 			if (slide)
@@ -239,8 +217,8 @@ public:
 			}
 			frequency = LimitFrequency(frequency, _sampleRate);
 			const double phaseIncrement = frequency / internalRate;
-			const double saw = 2.0 * _phase - 1.0 -
-				SignedPolyBlep(_phase, phaseIncrement);
+			const double saw = _sawOscillator.Step(phaseIncrement,
+				index == syncEvent.segment ? syncEvent.position : -1.0);
 			const double square = _squareShaper.Step(saw, std::abs(frequency),
 				std::clamp(shapeValues(index), -1.0, 1.0));
 			const double blend = std::clamp(waveValues(index), 0.0, 1.0);
@@ -254,9 +232,6 @@ public:
 			squareValues(index) = squareRack;
 			mixedValues(index) = (1.0 - blend) * sawRack +
 				blend * squareRack;
-
-			_phase += phaseIncrement;
-			_phase -= std::floor(_phase);
 		}
 
 		Output output;

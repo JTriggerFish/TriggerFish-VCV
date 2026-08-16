@@ -62,4 +62,33 @@ struct TfSnapKnob : RoundBlackSnapKnob
 	}
 };
 
+struct TfRotarySwitchKnob : RoundBigBlackKnob
+{
+	TfRotarySwitchKnob()
+	{
+		snap = true;
+		shadow->blurRadius = 3;
+	}
+};
+
+struct TfSvgWatermark : SvgWidget
+{
+	Vec drawScale = Vec(1, 1);
+	float opacity = 1.0f;
+
+	void setScaledSvg(std::shared_ptr<window::Svg> svg, Vec size)
+	{
+		setSvg(svg);
+		drawScale = Vec(size.x / box.size.x, size.y / box.size.y);
+		box.size = size;
+	}
+
+	void draw(const DrawArgs& args) override
+	{
+		nvgGlobalAlpha(args.vg, opacity);
+		nvgScale(args.vg, drawScale.x, drawScale.y);
+		SvgWidget::draw(args);
+	}
+};
+
 } // namespace rack

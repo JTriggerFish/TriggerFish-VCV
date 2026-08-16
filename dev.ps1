@@ -131,6 +131,11 @@ switch ($Command) {
         Assert-Path $panelFont "Rack panel font"
         Push-Location $repoRoot
         try {
+            & uv run python tools/align_panel_labels.py `
+                --rack-runtime $rackRuntime --module TfDiodeLadderFilter
+            if ($LASTEXITCODE -ne 0) {
+                throw "Filter label alignment failed with exit code $LASTEXITCODE."
+            }
             & uv run python tools/svg_text_to_paths.py `
                 res-src/TfDiodeLadderFilter.svg res/TfDiodeLadderFilter.svg `
                 --font $panelFont
@@ -140,6 +145,11 @@ switch ($Command) {
             & uv run python tools/render_panel_preview.py --rack-runtime $rackRuntime
             if ($LASTEXITCODE -ne 0) {
                 throw "Panel preview failed with exit code $LASTEXITCODE."
+            }
+            & uv run python tools/align_panel_labels.py `
+                --rack-runtime $rackRuntime --module Tf303Oscillator
+            if ($LASTEXITCODE -ne 0) {
+                throw "Oscillator label alignment failed with exit code $LASTEXITCODE."
             }
             & uv run python tools/svg_text_to_paths.py `
                 res-src/Tf303Oscillator.svg res/Tf303Oscillator.svg `

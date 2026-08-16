@@ -8,6 +8,68 @@
 
 namespace tfdsp
 {
+	class FractionalSchmittTrigger
+	{
+	public:
+		struct Event
+		{
+			bool triggered{};
+			double position{1.0};
+		};
+
+		void Reset()
+		{
+			_initialized = false;
+			_high = false;
+			_previous = 0.0;
+		}
+
+		Event Process(double input, double lowThreshold = 0.1,
+			double highThreshold = 1.0)
+		{
+			if (!std::isfinite(input))
+				input = 0.0;
+			if (!std::isfinite(lowThreshold) || !std::isfinite(highThreshold) ||
+				lowThreshold >= highThreshold)
+			{
+				lowThreshold = 0.1;
+				highThreshold = 1.0;
+			}
+
+			if (!_initialized)
+			{
+				_initialized = true;
+				_high = input >= highThreshold;
+				_previous = input;
+				return {};
+			}
+
+			Event event;
+			if (!_high && input >= highThreshold)
+			{
+				_high = true;
+				event.triggered = true;
+				const double difference = input - _previous;
+				event.position = difference > 1.0e-15 ?
+					std::clamp((highThreshold - _previous) / difference, 0.0, 1.0) :
+					1.0;
+			}
+			else if (_high && input <= lowThreshold)
+			{
+				_high = false;
+			}
+			_previous = input;
+			return event;
+		}
+
+		bool IsHigh() const { return _high; }
+
+	private:
+		double _previous{};
+		bool _initialized{};
+		bool _high{};
+	};
+
 	/** A fixed-frequency sine oscillator using a complex rotation.
 	 *
 	 * Compared with calling sin() for every sample, this trades a tiny amount of

@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.signal import resample_poly
 
 import _triggerfish_dsp as dsp
 
@@ -16,8 +17,10 @@ def render(
     wave=0.0,
     slide_time=0.060,
     linear_fm=False,
+    sync=None,
+    sample_rate=SAMPLE_RATE,
 ):
-    samples = int(SAMPLE_RATE * seconds)
+    samples = int(sample_rate * seconds)
 
     def signal(value):
         if np.isscalar(value):
@@ -30,9 +33,10 @@ def render(
         signal(fm),
         signal(shape),
         signal(wave),
-        sample_rate=SAMPLE_RATE,
+        sample_rate=sample_rate,
         slide_time=slide_time,
         linear_fm=linear_fm,
+        sync=None if sync is None else signal(sync),
     )
 
 
@@ -42,6 +46,20 @@ def dominant_frequency(signal, low, high):
     frequencies = np.fft.rfftfreq(signal.size, 1.0 / SAMPLE_RATE)
     selection = (frequencies >= low) & (frequencies <= high)
     return frequencies[selection][np.argmax(spectrum[selection])]
+
+
+def magnitude_error_db(candidate, reference):
+    window = np.hanning(reference.size)
+    candidate_spectrum = np.abs(np.fft.rfft(candidate * window))
+    reference_spectrum = np.abs(np.fft.rfft(reference * window))
+    candidate_spectrum /= np.linalg.norm(candidate_spectrum)
+    reference_spectrum /= np.linalg.norm(reference_spectrum)
+    return 20.0 * np.log10(np.linalg.norm(candidate_spectrum - reference_spectrum))
+
+
+def sync_wave(sample_rate, seconds, frequency, phase=0.37):
+    time = np.arange(int(sample_rate * seconds)) / sample_rate
+    return 5.0 * np.sin(2.0 * np.pi * frequency * time + phase)
 
 
 def test_x4_oscillator_tracks_one_volt_per_octave():
@@ -145,3 +163,52 @@ def test_oversampling_variants_remain_finite_at_extended_pitch():
         rendered = render(function, pitch, seconds=0.1, shape=1.0, wave=1.0)
         assert np.isfinite(rendered).all()
         assert np.max(np.abs(rendered[:, :3])) < 12.0
+
+
+def test_fractional_hard_sync_converges_toward_high_rate_reference():
+    seconds = 1.0
+    high_rate = 16.0 * SAMPLE_RATE
+    for slave_frequency in (1_500.0, 6_100.0):
+        pitch = np.log2(slave_frequency / 261.625565)
+        reference = render(
+            dsp.tb303_oscillator_x1,
+            pitch,
+            seconds=seconds,
+            sync=sync_wave(high_rate, seconds, 997.3),
+            sample_rate=high_rate,
+        )[:, 0]
+        reference = resample_poly(reference, 1, 16, window=("kaiser", 12.0))
+        reference = reference[reference.size // 2 :]
+
+        errors = []
+        for function in (dsp.tb303_oscillator_x2, dsp.tb303_oscillator_x4):
+            candidate = render(
+                function,
+                pitch,
+                seconds=seconds,
+                sync=sync_wave(SAMPLE_RATE, seconds, 997.3),
+            )[:, 0]
+            candidate = candidate[candidate.size // 2 :]
+            errors.append(magnitude_error_db(candidate, reference))
+
+        assert errors[0] < -14.0
+        assert errors[1] < -20.0
+
+
+def test_hard_sync_is_bounded_during_through_zero_fm():
+    seconds = 0.5
+    samples = int(SAMPLE_RATE * seconds)
+    time = np.arange(samples) / SAMPLE_RATE
+    fm = 2.0 * np.sin(2.0 * np.pi * 73.1 * time)
+    rendered = render(
+        dsp.tb303_oscillator_x4,
+        0.0,
+        seconds=seconds,
+        fm=fm,
+        linear_fm=True,
+        sync=sync_wave(SAMPLE_RATE, seconds, 127.7),
+    )
+
+    assert np.isfinite(rendered).all()
+    assert np.max(np.abs(rendered[:, :3])) < 12.0
+    assert np.std(rendered[samples // 2 :, 0]) > 2.0

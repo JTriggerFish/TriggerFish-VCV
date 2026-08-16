@@ -1,5 +1,6 @@
 import importlib.util
 from pathlib import Path
+import sys
 import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).parents[2]
@@ -11,12 +12,20 @@ PREVIEW_SPEC = importlib.util.spec_from_file_location(
 assert PREVIEW_SPEC is not None and PREVIEW_SPEC.loader is not None
 PREVIEW_MODULE = importlib.util.module_from_spec(PREVIEW_SPEC)
 PREVIEW_SPEC.loader.exec_module(PREVIEW_MODULE)
+sys.modules["render_panel_preview"] = PREVIEW_MODULE
+ALIGNMENT_SPEC = importlib.util.spec_from_file_location(
+    "align_panel_labels", ROOT / "tools" / "align_panel_labels.py"
+)
+assert ALIGNMENT_SPEC is not None and ALIGNMENT_SPEC.loader is not None
+ALIGNMENT_MODULE = importlib.util.module_from_spec(ALIGNMENT_SPEC)
+ALIGNMENT_SPEC.loader.exec_module(ALIGNMENT_MODULE)
 COMPONENTS = PREVIEW_MODULE.COMPONENTS
 CONTROL_PATTERN = PREVIEW_MODULE.CONTROL_PATTERN
 control_pattern = PREVIEW_MODULE.control_pattern
 PANEL_GRAPHICS = PREVIEW_MODULE.PANEL_GRAPHICS
 render_preview = PREVIEW_MODULE.render_preview
 svg_dimensions = PREVIEW_MODULE.svg_dimensions
+aligned_source = ALIGNMENT_MODULE.aligned_source
 
 
 def test_diode_ladder_runtime_panel_outlines_all_editable_text():
@@ -37,31 +46,117 @@ def test_303_oscillator_runtime_panel_outlines_all_editable_text():
     assert source.findall(f".//{SVG}text")
     assert not runtime.findall(f".//{SVG}text")
     assert len(runtime.findall(f".//{SVG}path")) > len(source.findall(f".//{SVG}path"))
+    assert b"\r\n" not in (ROOT / "res-src" / "Tf303Oscillator.svg").read_bytes()
     assert b"\r\n" not in (ROOT / "res" / "Tf303Oscillator.svg").read_bytes()
 
 
 def test_303_oscillator_panel_matches_widget_layout():
     widget_source = (ROOT / "src" / "Tf303Oscillator.cpp").read_text(encoding="utf-8")
     controls = list(control_pattern("Tf303Oscillator").finditer(widget_source))
-    assert len(controls) == 18
+    assert len(controls) == 19
     by_id = {control.group("id"): control for control in controls}
     assert [
         by_id[name].group("type")
         for name in ("OCTAVE", "TUNE", "SLIDE_TIME", "SHAPE", "WAVE")
-    ] == ["TfSnapKnob", "TfCvKnob", "TfCvKnob", "TfCvKnob", "TfCvKnob"]
+    ] == [
+        "TfRotarySwitchKnob",
+        "TfLargeAudioKnob",
+        "TfAudioKob",
+        "TfAudioKob",
+        "TfAudioKob",
+    ]
     assert [
-        float(by_id[name].group("x"))
+        (float(by_id[name].group("x")), float(by_id[name].group("y")))
         for name in ("OCTAVE", "TUNE", "SLIDE_TIME", "SHAPE", "WAVE")
-    ] == [4.0, 40.0, 76.0, 112.0, 148.0]
+    ] == [
+        (20.0, 49.0),
+        (110.0, 45.0),
+        (15.0, 120.0),
+        (72.0, 120.0),
+        (129.0, 120.0),
+    ]
+    amount_ids = ("FM_AMOUNT", "TIME_AMOUNT", "SHAPE_AMOUNT", "WAVE_AMOUNT")
+    assert [by_id[name].group("type") for name in amount_ids] == ["TfCvKnob"] * 4
+    assert [
+        (float(by_id[name].group("x")), float(by_id[name].group("y")))
+        for name in amount_ids
+    ] == [(10.0, 178.0), (54.0, 178.0), (98.0, 178.0), (142.0, 178.0)]
+    assert (
+        float(by_id["FM_MODE"].group("x")),
+        float(by_id["FM_MODE"].group("y")),
+    ) == (83.0, 54.0)
+    assert [
+        (float(by_id[name].group("x")), float(by_id[name].group("y")))
+        for name in ("VOCT_INPUT", "SLIDE_INPUT", "TIME_INPUT", "SYNC_INPUT")
+    ] == [(12.0, 241.0), (56.0, 241.0), (100.0, 241.0), (144.0, 241.0)]
+    assert [
+        (float(by_id[name].group("x")), float(by_id[name].group("y")))
+        for name in ("FM_INPUT", "SHAPE_INPUT", "WAVE_INPUT")
+    ] == [(27.0, 284.0), (78.0, 284.0), (129.0, 284.0)]
     assert [
         (float(by_id[name].group("x")), float(by_id[name].group("y")))
         for name in ("CV_OUTPUT", "AUDIO_OUTPUT")
-    ] == [(48.0, 334.0), (108.0, 334.0)]
+    ] == [(48.0, 344.0), (108.0, 344.0)]
+    assert (
+        float(by_id["SYNC_INPUT"].group("x")),
+        float(by_id["SYNC_INPUT"].group("y")),
+    ) == (144.0, 241.0)
 
     source = ET.parse(ROOT / "res-src" / "Tf303Oscillator.svg").getroot()
+    detents = source.find(f".//{SVG}g[@id='octave-detents']")
+    assert detents is not None
+    assert len(detents.findall(f"{SVG}circle")) == 7
+    dividers = source.find(f".//{SVG}path[@id='section-dividers']")
+    assert dividers is not None
+    assert dividers.attrib["d"] == "M28 27h124M28 222h124M28 324h124"
+    labels = ["".join(label.itertext()) for label in source.findall(f".//{SVG}text")]
+    assert labels.count("SL.TIME") == 1
+    assert labels.count("SL.TIME CV") == 2
+    aligned_labels = [
+        label
+        for label in source.findall(f".//{SVG}text")
+        if "data-control" in label.attrib
+    ]
+    centered_labels = [
+        label
+        for label in source.findall(f".//{SVG}text")
+        if "data-control" in label.attrib or "data-center-x" in label.attrib
+    ]
+    assert len(aligned_labels) == 21
+    assert len(centered_labels) == 23
     output_blocks = source.find(f".//{SVG}g[@id='output-jack-blocks']")
     assert output_blocks is not None
     assert output_blocks.attrib["fill"] == "#545454"
+    blocks = output_blocks.findall(f"{SVG}rect")
+    assert [
+        (float(block.attrib["x"]), float(block.attrib["y"])) for block in blocks
+    ] == [
+        (39.0, 338.0),
+        (99.0, 338.0),
+    ]
+    assert blocks[0].attrib["fill"] == "#858585"
+    assert blocks[1].attrib.get("fill", output_blocks.attrib["fill"]) == "#545454"
+
+    logo = PREVIEW_MODULE.MODULE_GRAPHICS["Tf303Oscillator"]
+    assert logo == ((ROOT / "res" / "logo.svg", 16.0, 232.0, 148.0, 80.8, 0.12),)
+    assert 'pluginInstance, "res/logo.svg"' in widget_source
+    assert "logoGraphic->box.pos = Vec(16, 232);" in widget_source
+    assert "logoGraphic->opacity = 0.12f;" in widget_source
+
+
+def test_panel_label_alignment_uses_control_center_and_optical_offset():
+    class FixedOpticalCentering:
+        @staticmethod
+        def offset(text, font_size, letter_spacing):
+            assert text == "LABEL"
+            assert font_size == 7.0
+            assert letter_spacing == 0.0
+            return 0.375
+
+    source = '<text x="1" y="2" font-size="7" ' 'data-control="CONTROL">LABEL</text>'
+    aligned, count = aligned_source(source, {"CONTROL": 12.5}, FixedOpticalCentering())
+    assert count == 1
+    assert 'x="12.875"' in aligned
 
 
 def test_diode_ladder_documentation_includes_rendered_module_preview():
@@ -91,24 +186,41 @@ def test_diode_ladder_uses_separate_diode_connected_transistor_artwork():
         "none"
     }
     assert len(PANEL_GRAPHICS) == 1
-    assert PANEL_GRAPHICS[0] == (asset, 1.0, 44.0)
+    assert PANEL_GRAPHICS[0] == (asset, 64.0, 266.0, 112.0, 112.0, 0.32)
 
     widget_source = (ROOT / "src" / "TfDiodeLadderFilter.cpp").read_text(
         encoding="utf-8"
     )
     assert 'pluginInstance, "res/TfDiodeConnectedTransistor.svg"' in widget_source
-    assert "transistorGraphic->box.pos = Vec(1, 44);" in widget_source
+    assert "transistorGraphic->box.pos = Vec(64, 266);" in widget_source
+    assert "transistorGraphic->opacity = 0.32f;" in widget_source
 
 
 def test_diode_ladder_panel_uses_triggerfish_output_block_convention():
     source = ET.parse(ROOT / "res-src" / "TfDiodeLadderFilter.svg").getroot()
     assert source.attrib["width"] == "240"
 
+    dividers = source.find(f".//{SVG}path[@id='section-dividers']")
+    assert dividers is not None
+    assert dividers.attrib["d"] == "M28 27h184M28 264h184"
+
     labels = {
         "".join(label.itertext()): label for label in source.findall(f".//{SVG}text")
     }
     assert labels["DRIVE"].attrib["x"] == "47.5"
     assert labels["BASS"].attrib["x"] == "189"
+    assert labels["RES RANGE"].attrib["data-control"] == "HIGH_RESONANCE"
+    assert labels["STOCK"].attrib["data-control"] == "HIGH_RESONANCE"
+    assert labels["HIGH"].attrib["data-control"] == "HIGH_RESONANCE"
+    assert labels["RES RANGE"].attrib["y"] == "48"
+    assert labels["STOCK"].attrib["y"] == "61"
+    assert labels["HIGH"].attrib["y"] == "96"
+    secondary_labels = source.find(f".//{SVG}g[@fill='#686868']")
+    assert secondary_labels is not None
+    assert ["".join(label.itertext()) for label in secondary_labels] == [
+        "STOCK",
+        "HIGH",
+    ]
 
     output_blocks = source.find(f".//{SVG}g[@id='output-jack-blocks']")
     assert output_blocks is not None

@@ -49,15 +49,28 @@ COMPONENTS = {
     "TfAudioKob": ("Davies1900hBlack_bg.svg", "Davies1900hBlack.svg"),
     "TfCvKnob": ("RoundBlackKnob_bg.svg", "RoundBlackKnob.svg"),
     "TfSnapKnob": ("RoundBlackKnob_bg.svg", "RoundBlackKnob.svg"),
+    "TfRotarySwitchKnob": (
+        "RoundBigBlackKnob_bg.svg",
+        "RoundBigBlackKnob.svg",
+    ),
     "TfTrimpot": ("Trimpot_bg.svg", "Trimpot.svg"),
     "CKSS": ("CKSS_0.svg",),
     "PJ301MPort": ("PJ301M.svg",),
 }
 
-PANEL_GRAPHICS = ((ROOT / "res" / "TfDiodeConnectedTransistor.svg", 1.0, 44.0),)
+PANEL_GRAPHICS = (
+    (
+        ROOT / "res" / "TfDiodeConnectedTransistor.svg",
+        64.0,
+        266.0,
+        112.0,
+        112.0,
+        0.32,
+    ),
+)
 MODULE_GRAPHICS = {
     "TfDiodeLadderFilter": PANEL_GRAPHICS,
-    "Tf303Oscillator": (),
+    "Tf303Oscillator": ((ROOT / "res" / "logo.svg", 16.0, 232.0, 148.0, 80.8, 0.12),),
 }
 
 # Representative positions make the preview read naturally. They affect only
@@ -122,9 +135,18 @@ def embedded_image(path: Path) -> str:
 
 
 def image_element(
-    asset: Path, x: float, y: float, *, angle: float | None = None
+    asset: Path,
+    x: float,
+    y: float,
+    *,
+    angle: float | None = None,
+    width: float | None = None,
+    height: float | None = None,
+    opacity: float = 1.0,
 ) -> str:
-    width, height = svg_dimensions(asset)
+    source_width, source_height = svg_dimensions(asset)
+    width = source_width if width is None else width
+    height = source_height if height is None else height
     transform = ""
     if angle is not None:
         transform = (
@@ -132,8 +154,16 @@ def image_element(
         )
     return (
         f'  <image x="{x:g}" y="{y:g}" width="{width:g}" height="{height:g}"'
-        f'{transform} href="{embedded_image(asset)}"/>\n'
+        f' opacity="{opacity:g}"{transform} href="{embedded_image(asset)}"/>\n'
     )
+
+
+def graphic_element(spec: tuple[object, ...]) -> str:
+    asset, x, y, *appearance = spec
+    if not appearance:
+        return image_element(asset, x, y)
+    width, height, opacity = appearance
+    return image_element(asset, x, y, width=width, height=height, opacity=opacity)
 
 
 def find_browser() -> Path | None:
@@ -180,6 +210,7 @@ def render_preview(
     output_directory: Path,
     png: bool,
     module_name: str = "TfDiodeLadderFilter",
+    include_components: bool = True,
 ) -> Path:
     if module_name not in MODULE_GRAPHICS:
         raise ValueError(f"Unsupported panel module: {module_name}")
@@ -205,41 +236,45 @@ def render_preview(
     if not controls:
         raise RuntimeError(f"No panel controls were found in {module_name}.cpp")
 
-    overlays = ['\n<g id="rack-component-preview">\n']
-    for asset, x, y in MODULE_GRAPHICS[module_name]:
-        overlays.append(image_element(asset, x, y))
-
-    screw = component_directory / "ScrewSilver.svg"
-    for x, y in (
-        (15.0, 0.0),
-        (panel_width - 30.0, 0.0),
-        (15.0, panel_height - 15.0),
-        (panel_width - 30.0, panel_height - 15.0),
-    ):
-        overlays.append(image_element(screw, x, y))
-
-    for control in controls:
-        component_type = control.group("type")
-        asset_names = COMPONENTS.get(component_type)
-        if asset_names is None:
-            raise KeyError(f"No preview assets configured for {component_type}")
-        x = float(control.group("x"))
-        y = float(control.group("y"))
-        parameter_id = control.group("id")
-        for index, asset_name in enumerate(asset_names):
-            module_angles = MODULE_KNOB_ANGLES.get(module_name, {})
-            angle = (
-                module_angles.get(parameter_id, KNOB_ANGLES.get(parameter_id))
-                if index == len(asset_names) - 1
-                else None
-            )
-            overlays.append(
-                image_element(component_directory / asset_name, x, y, angle=angle)
-            )
+    overlays = ['\n<g id="module-graphics-preview">\n']
+    for graphic in MODULE_GRAPHICS[module_name]:
+        overlays.append(graphic_element(graphic))
     overlays.append("</g>\n")
 
+    if include_components:
+        overlays.append('\n<g id="rack-component-preview">\n')
+        screw = component_directory / "ScrewSilver.svg"
+        for x, y in (
+            (15.0, 0.0),
+            (panel_width - 30.0, 0.0),
+            (15.0, panel_height - 15.0),
+            (panel_width - 30.0, panel_height - 15.0),
+        ):
+            overlays.append(image_element(screw, x, y))
+
+        for control in controls:
+            component_type = control.group("type")
+            asset_names = COMPONENTS.get(component_type)
+            if asset_names is None:
+                raise KeyError(f"No preview assets configured for {component_type}")
+            x = float(control.group("x"))
+            y = float(control.group("y"))
+            parameter_id = control.group("id")
+            for index, asset_name in enumerate(asset_names):
+                module_angles = MODULE_KNOB_ANGLES.get(module_name, {})
+                angle = (
+                    module_angles.get(parameter_id, KNOB_ANGLES.get(parameter_id))
+                    if index == len(asset_names) - 1
+                    else None
+                )
+                overlays.append(
+                    image_element(component_directory / asset_name, x, y, angle=angle)
+                )
+        overlays.append("</g>\n")
+
     output_directory.mkdir(parents=True, exist_ok=True)
-    preview = output_directory / f"{module_name}-preview.svg"
+    suffix = "preview" if include_components else "panel"
+    preview = output_directory / f"{module_name}-{suffix}.svg"
     preview.write_text(
         panel.replace("</svg>", "".join(overlays) + "</svg>"), encoding="utf-8"
     )
@@ -253,7 +288,7 @@ def render_preview(
         render_png(
             browser,
             preview,
-            output_directory / f"{module_name}-preview.png",
+            output_directory / f"{module_name}-{suffix}.png",
             panel_width,
             panel_height,
         )
@@ -273,6 +308,7 @@ def main() -> None:
         default=ROOT / "build" / "panel-preview",
     )
     parser.add_argument("--no-png", action="store_true")
+    parser.add_argument("--panel-only", action="store_true")
     parser.add_argument(
         "--module",
         choices=sorted(MODULE_GRAPHICS),
@@ -284,6 +320,7 @@ def main() -> None:
         arguments.output_directory,
         not arguments.no_png,
         arguments.module,
+        not arguments.panel_only,
     )
     print(preview)
 

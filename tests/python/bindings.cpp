@@ -16,6 +16,7 @@
 #include "models/Tb303Oscillator.hpp"
 #include "models/VdpOscillator.hpp"
 #include "models/VdpSplitOscillator.hpp"
+#include "tfdsp/control.hpp"
 #include "tfdsp/noise.hpp"
 #include "tfdsp/sampleRate.hpp"
 
@@ -347,7 +348,7 @@ namespace
 		py::array_t<double, py::array::c_style | py::array::forcecast> fm,
 		py::array_t<double, py::array::c_style | py::array::forcecast> shape,
 		py::array_t<double, py::array::c_style | py::array::forcecast> wave,
-		double sampleRate, double slideTime, bool linearFm)
+		double sampleRate, double slideTime, bool linearFm, py::object sync)
 	{
 		const auto pitchInfo = pitch.request();
 		const auto slideInfo = slide.request();
@@ -358,6 +359,16 @@ namespace
 		RequireSameSize(pitchInfo, fmInfo, "pitch", "fm");
 		RequireSameSize(pitchInfo, shapeInfo, "pitch", "shape");
 		RequireSameSize(pitchInfo, waveInfo, "pitch", "wave");
+		py::array_t<double, py::array::c_style | py::array::forcecast> syncArray;
+		const double* syncValues = nullptr;
+		if (!sync.is_none())
+		{
+			syncArray = py::cast<py::array_t<double,
+				py::array::c_style | py::array::forcecast>>(sync);
+			const auto syncInfo = syncArray.request();
+			RequireSameSize(pitchInfo, syncInfo, "pitch", "sync");
+			syncValues = static_cast<const double*>(syncInfo.ptr);
+		}
 		if (!(sampleRate > 0.0) || !(slideTime > 0.0))
 			throw std::invalid_argument(
 				"sample_rate and slide_time must be positive");
@@ -388,11 +399,15 @@ namespace
 				return tfdsp::CreateX4Resampler_Cheby7();
 		});
 		oscillator.SetSampleRate(sampleRate);
+		tfdsp::FractionalSchmittTrigger syncTrigger;
 		for (py::ssize_t i = 0; i < pitchInfo.shape[0]; ++i)
 		{
+			const auto syncEvent = syncTrigger.Process(
+				syncValues ? syncValues[i] : 0.0);
 			const auto value = oscillator.Step(pitchValues(i),
 				slideValues(i) >= 1.0, slideTime, 0.0, fmValues(i),
-				linearFm, shapeValues(i), waveValues(i));
+				linearFm, shapeValues(i), waveValues(i),
+				syncEvent.triggered ? syncEvent.position : -1.0);
 			output(i, 0) = value.saw;
 			output(i, 1) = value.square;
 			output(i, 2) = value.mixed;
@@ -685,24 +700,29 @@ PYBIND11_MODULE(_triggerfish_dsp, module)
 	module.def("tb303_oscillator_x1", &RenderTb303Oscillator<Tb303OscillatorX1>,
 		py::arg("pitch"), py::arg("slide"), py::arg("fm"),
 		py::arg("shape"), py::arg("wave"), py::arg("sample_rate") = 48000.0,
-		py::arg("slide_time") = 0.060, py::arg("linear_fm") = false);
+		py::arg("slide_time") = 0.060, py::arg("linear_fm") = false,
+		py::arg("sync") = py::none());
 	module.def("tb303_oscillator_x2", &RenderTb303Oscillator<Tb303OscillatorX2>,
 		py::arg("pitch"), py::arg("slide"), py::arg("fm"),
 		py::arg("shape"), py::arg("wave"), py::arg("sample_rate") = 48000.0,
-		py::arg("slide_time") = 0.060, py::arg("linear_fm") = false);
+		py::arg("slide_time") = 0.060, py::arg("linear_fm") = false,
+		py::arg("sync") = py::none());
 	module.def("tb303_oscillator_x2_order5",
 		&RenderTb303Oscillator<Tb303OscillatorX2Order5>,
 		py::arg("pitch"), py::arg("slide"), py::arg("fm"),
 		py::arg("shape"), py::arg("wave"), py::arg("sample_rate") = 48000.0,
-		py::arg("slide_time") = 0.060, py::arg("linear_fm") = false);
+		py::arg("slide_time") = 0.060, py::arg("linear_fm") = false,
+		py::arg("sync") = py::none());
 	module.def("tb303_oscillator_x4", &RenderTb303Oscillator<Tb303OscillatorX4>,
 		py::arg("pitch"), py::arg("slide"), py::arg("fm"),
 		py::arg("shape"), py::arg("wave"), py::arg("sample_rate") = 48000.0,
-		py::arg("slide_time") = 0.060, py::arg("linear_fm") = false);
+		py::arg("slide_time") = 0.060, py::arg("linear_fm") = false,
+		py::arg("sync") = py::none());
 	module.def("tb303_oscillator_x4_order5",
 		&RenderTb303Oscillator<Tb303OscillatorX4Order5>,
 		py::arg("pitch"), py::arg("slide"), py::arg("fm"),
 		py::arg("shape"), py::arg("wave"), py::arg("sample_rate") = 48000.0,
-		py::arg("slide_time") = 0.060, py::arg("linear_fm") = false);
+		py::arg("slide_time") = 0.060, py::arg("linear_fm") = false,
+		py::arg("sync") = py::none());
 
 }

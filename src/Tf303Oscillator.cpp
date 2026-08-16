@@ -7,6 +7,7 @@
 
 #include "plugin.hpp"
 #include "components.hpp"
+#include "tfdsp/control.hpp"
 #include "tfdsp/sampleRate.hpp"
 
 struct Tf303Oscillator : Module
@@ -33,6 +34,7 @@ struct Tf303Oscillator : Module
 		FM_INPUT,
 		SHAPE_INPUT,
 		WAVE_INPUT,
+		SYNC_INPUT,
 		NUM_INPUTS
 	};
 	enum OutputIds
@@ -51,6 +53,8 @@ struct Tf303Oscillator : Module
 	std::array<std::unique_ptr<OscillatorX2>, PORT_MAX_CHANNELS> oscillatorsX2;
 	std::array<std::unique_ptr<OscillatorX4>, PORT_MAX_CHANNELS> oscillatorsX4;
 	std::array<dsp::SchmittTrigger, PORT_MAX_CHANNELS> slideTriggers{};
+	std::array<tfdsp::FractionalSchmittTrigger,
+		PORT_MAX_CHANNELS> syncTriggers{};
 	// 2x preserves substantially more harmonic phase while the 4x option is
 	// available for comparison at extreme pitch and modulation settings.
 	int oversampling = 0;
@@ -83,6 +87,7 @@ struct Tf303Oscillator : Module
 		configInput(VOCT_INPUT, "Pitch (1V/octave)");
 		configInput(SLIDE_INPUT, "Slide gate");
 		configInput(TIME_INPUT, "Slide time CV");
+		configInput(SYNC_INPUT, "Hard sync");
 		configInput(FM_INPUT,
 			"Frequency modulation (exponential or through-zero linear)");
 		configInput(SHAPE_INPUT, "Square shape CV");
@@ -116,6 +121,7 @@ struct Tf303Oscillator : Module
 			oscillatorsX2[channel]->Reset();
 			oscillatorsX4[channel]->Reset();
 			slideTriggers[channel].reset();
+			syncTriggers[channel].Reset();
 		}
 	}
 
@@ -136,6 +142,7 @@ struct Tf303Oscillator : Module
 		const int channels = std::clamp(std::max({
 			inputs[VOCT_INPUT].getChannels(), inputs[SLIDE_INPUT].getChannels(),
 			inputs[TIME_INPUT].getChannels(), inputs[FM_INPUT].getChannels(),
+			inputs[SYNC_INPUT].getChannels(),
 			inputs[SHAPE_INPUT].getChannels(),
 			inputs[WAVE_INPUT].getChannels(), 1}), 1, PORT_MAX_CHANNELS);
 		outputs[CV_OUTPUT].setChannels(channels);
@@ -172,6 +179,10 @@ struct Tf303Oscillator : Module
 			const float slideVoltage = static_cast<float>(finiteInput(SLIDE_INPUT));
 			slideTriggers[channel].process(slideVoltage, 0.1f, 1.0f);
 			const bool slide = slideTriggers[channel].isHigh();
+			const auto syncEvent = syncTriggers[channel].Process(
+				finiteInput(SYNC_INPUT));
+			const double syncCrossing = syncEvent.triggered ?
+				syncEvent.position : -1.0;
 			float renderedPitch;
 			float renderedAudio;
 			if (activeOversampling == 0)
@@ -179,7 +190,7 @@ struct Tf303Oscillator : Module
 				const auto rendered = oscillatorsX2[channel]->Step(
 					finiteInput(VOCT_INPUT), slide,
 					slideTime, tuningOffset, fmAmount * finiteInput(FM_INPUT),
-					linearFm, shape, wave);
+					linearFm, shape, wave, syncCrossing);
 				renderedPitch = rendered.pitch;
 				renderedAudio = rendered.mixed;
 			}
@@ -188,7 +199,7 @@ struct Tf303Oscillator : Module
 				const auto rendered = oscillatorsX4[channel]->Step(
 					finiteInput(VOCT_INPUT), slide,
 					slideTime, tuningOffset, fmAmount * finiteInput(FM_INPUT),
-					linearFm, shape, wave);
+					linearFm, shape, wave, syncCrossing);
 				renderedPitch = rendered.pitch;
 				renderedAudio = rendered.mixed;
 			}
@@ -235,6 +246,13 @@ struct Tf303OscillatorWidget : ModuleWidget
 		setPanel(APP->window->loadSvg(asset::plugin(
 			pluginInstance, "res/Tf303Oscillator.svg")));
 
+		auto* logoGraphic = new TfSvgWatermark;
+		logoGraphic->setScaledSvg(APP->window->loadSvg(asset::plugin(
+			pluginInstance, "res/logo.svg")), Vec(148, 80.8));
+		logoGraphic->box.pos = Vec(16, 232);
+		logoGraphic->opacity = 0.12f;
+		addChild(logoGraphic);
+
 		addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, 0)));
 		addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, 0)));
 		addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH,
@@ -242,43 +260,45 @@ struct Tf303OscillatorWidget : ModuleWidget
 		addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH,
 			RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
 
-		addParam(createParam<TfSnapKnob>(Vec(4, 48), module,
+		addParam(createParam<TfRotarySwitchKnob>(Vec(20, 49), module,
 			Tf303Oscillator::OCTAVE));
-		addParam(createParam<TfCvKnob>(Vec(40, 48), module,
+		addParam(createParam<TfLargeAudioKnob>(Vec(110, 45), module,
 			Tf303Oscillator::TUNE));
-		addParam(createParam<TfCvKnob>(Vec(76, 48), module,
+		addParam(createParam<TfAudioKob>(Vec(15, 120), module,
 			Tf303Oscillator::SLIDE_TIME));
-		addParam(createParam<TfCvKnob>(Vec(112, 48), module,
+		addParam(createParam<TfAudioKob>(Vec(72, 120), module,
 			Tf303Oscillator::SHAPE));
-		addParam(createParam<TfCvKnob>(Vec(148, 48), module,
+		addParam(createParam<TfAudioKob>(Vec(129, 120), module,
 			Tf303Oscillator::WAVE));
 
-		addParam(createParam<TfTrimpot>(Vec(18, 113), module,
+		addParam(createParam<TfCvKnob>(Vec(10, 178), module,
 			Tf303Oscillator::FM_AMOUNT));
-		addParam(createParam<TfTrimpot>(Vec(60, 113), module,
+		addParam(createParam<TfCvKnob>(Vec(54, 178), module,
 			Tf303Oscillator::TIME_AMOUNT));
-		addParam(createParam<TfTrimpot>(Vec(102, 113), module,
+		addParam(createParam<TfCvKnob>(Vec(98, 178), module,
 			Tf303Oscillator::SHAPE_AMOUNT));
-		addParam(createParam<TfTrimpot>(Vec(144, 113), module,
+		addParam(createParam<TfCvKnob>(Vec(142, 178), module,
 			Tf303Oscillator::WAVE_AMOUNT));
-		addParam(createParam<CKSS>(Vec(84, 151), module,
+		addParam(createParam<CKSS>(Vec(83, 54), module,
 			Tf303Oscillator::FM_MODE));
 
-		addInput(createInput<PJ301MPort>(Vec(6, 202), module,
+		addInput(createInput<PJ301MPort>(Vec(12, 241), module,
 			Tf303Oscillator::VOCT_INPUT));
-		addInput(createInput<PJ301MPort>(Vec(48, 202), module,
+		addInput(createInput<PJ301MPort>(Vec(56, 241), module,
 			Tf303Oscillator::SLIDE_INPUT));
-		addInput(createInput<PJ301MPort>(Vec(90, 202), module,
+		addInput(createInput<PJ301MPort>(Vec(100, 241), module,
 			Tf303Oscillator::TIME_INPUT));
-		addInput(createInput<PJ301MPort>(Vec(6, 260), module,
+		addInput(createInput<PJ301MPort>(Vec(144, 241), module,
+			Tf303Oscillator::SYNC_INPUT));
+		addInput(createInput<PJ301MPort>(Vec(27, 284), module,
 			Tf303Oscillator::FM_INPUT));
-		addInput(createInput<PJ301MPort>(Vec(48, 260), module,
+		addInput(createInput<PJ301MPort>(Vec(78, 284), module,
 			Tf303Oscillator::SHAPE_INPUT));
-		addInput(createInput<PJ301MPort>(Vec(90, 260), module,
+		addInput(createInput<PJ301MPort>(Vec(129, 284), module,
 			Tf303Oscillator::WAVE_INPUT));
-		addOutput(createOutput<PJ301MPort>(Vec(48, 334), module,
+		addOutput(createOutput<PJ301MPort>(Vec(48, 344), module,
 			Tf303Oscillator::CV_OUTPUT));
-		addOutput(createOutput<PJ301MPort>(Vec(108, 334), module,
+		addOutput(createOutput<PJ301MPort>(Vec(108, 344), module,
 			Tf303Oscillator::AUDIO_OUTPUT));
 	}
 

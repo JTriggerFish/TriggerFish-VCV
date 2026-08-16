@@ -13,8 +13,10 @@
 #include "models/VCAcore.hpp"
 #include "models/VdpSplitOscillator.hpp"
 #include "tfdsp/control.hpp"
+#include "tfdsp/minblep.hpp"
 #include "tfdsp/noise.hpp"
 #include "tfdsp/nonlinear.hpp"
+#include "tfdsp/oscillator.hpp"
 #include "tfdsp/sampleRate.hpp"
 
 namespace
@@ -69,6 +71,70 @@ int main()
 	for (int i = 0; i < 48000; ++i)
 		peak = std::max(peak, std::abs(sine.Step()));
 	Check(std::abs(peak - 1.0) < 1e-10, "recursive sine oscillator holds amplitude");
+
+	tfdsp::FractionalSchmittTrigger fractionalTrigger;
+	Check(!fractionalTrigger.Process(0.0).triggered,
+		"fractional trigger initializes without a false edge");
+	const auto halfSampleEdge = fractionalTrigger.Process(2.0);
+	Check(halfSampleEdge.triggered &&
+		std::abs(halfSampleEdge.position - 0.5) < 1.0e-12,
+		"fractional trigger interpolates a rising threshold crossing");
+	Check(!fractionalTrigger.Process(0.5).triggered && fractionalTrigger.IsHigh(),
+		"fractional trigger applies hysteresis while high");
+	Check(!fractionalTrigger.Process(0.0).triggered && !fractionalTrigger.IsHigh(),
+		"fractional trigger releases at its low threshold");
+
+	using TestMinBlep = tfdsp::MinBlepGenerator<8, 32, double>;
+	const auto& minBlepKernel = TestMinBlep::Kernel();
+	Check(std::all_of(minBlepKernel.begin(), minBlepKernel.end(),
+		[](double value) { return std::isfinite(value); }),
+		"minBLEP kernel contains only finite values");
+	Check(std::abs(minBlepKernel.back() - 1.0) < 1.0e-15,
+		"minBLEP kernel reaches its normalized final value");
+	double earlyImpulseEnergy = 0.0;
+	double lateImpulseEnergy = 0.0;
+	for (std::size_t i = 0; i + 1 < minBlepKernel.size(); ++i)
+	{
+		const double impulse = minBlepKernel[i + 1] - minBlepKernel[i];
+		if (i < minBlepKernel.size() / 2)
+			earlyImpulseEnergy += impulse * impulse;
+		else
+			lateImpulseEnergy += impulse * impulse;
+	}
+	Check(earlyImpulseEnergy > 100.0 * lateImpulseEnergy,
+		"minBLEP reconstruction concentrates energy at minimum delay");
+	TestMinBlep unitMinBlep;
+	TestMinBlep doubleMinBlep;
+	unitMinBlep.InsertDiscontinuity(-0.375, 1.0);
+	doubleMinBlep.InsertDiscontinuity(-0.375, 2.0);
+	double maximumLinearityError = 0.0;
+	for (int i = 0; i < TestMinBlep::CorrectionSamples; ++i)
+		maximumLinearityError = std::max(maximumLinearityError,
+			std::abs(doubleMinBlep.Process() - 2.0 * unitMinBlep.Process()));
+	Check(maximumLinearityError < 1.0e-14,
+		"minBLEP correction is linear in discontinuity magnitude");
+	Check(std::abs(unitMinBlep.Process()) < 1.0e-15,
+		"minBLEP correction ends after its finite support");
+
+	const auto startEvent = tfdsp::MapEventToOversampledFrame<4>(0.0);
+	const auto middleEvent = tfdsp::MapEventToOversampledFrame<4>(0.625);
+	const auto endEvent = tfdsp::MapEventToOversampledFrame<4>(1.0);
+	Check(startEvent.segment == 0 && startEvent.position == 0.0 &&
+		middleEvent.segment == 2 && middleEvent.position == 0.5 &&
+		endEvent.segment == 3 && endEvent.position == 1.0,
+		"host-frame events map to the correct oversampled segment");
+	tfdsp::BandlimitedSawOscillator<> genericSaw;
+	genericSaw.Step(0.2);
+	genericSaw.Step(0.1, 0.25);
+	Check(std::abs(genericSaw.Phase() - 0.075) < 1.0e-12,
+		"generic hard sync resets phase at the fractional crossing");
+	genericSaw.Reset();
+	bool reverseSyncFinite = true;
+	for (int i = 0; i < 1000; ++i)
+		reverseSyncFinite = reverseSyncFinite && std::isfinite(genericSaw.Step(
+			-0.013, i % 97 == 0 ? 0.37 : -1.0));
+	Check(reverseSyncFinite,
+		"generic hard sync remains finite while running backwards");
 
 	tfdsp::InterpolatedOrnsteinUhlenbeck ou;
 	ou.Configure(48000.0, 60.0, 2.0, 100.0);
