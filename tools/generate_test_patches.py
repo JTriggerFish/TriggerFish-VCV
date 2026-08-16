@@ -71,6 +71,7 @@ DEFAULT_PARAMS = {
         0.5,
         math.log10(0.300),
         0.0,
+        0.0,
         math.log10(0.005),
         math.log10(0.300),
         1.0,

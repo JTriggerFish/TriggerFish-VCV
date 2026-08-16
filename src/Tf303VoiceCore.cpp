@@ -8,7 +8,6 @@
 
 #include "plugin.hpp"
 #include "components.hpp"
-#include "tfdsp/approx.hpp"
 #include "tfdsp/filters.hpp"
 #include "tfdsp/sampleRate.hpp"
 
@@ -225,6 +224,7 @@ struct Tf303VoiceCore : Module
 		const float driveDb = params[DRIVE].getValue();
 		const double driveGain = driveDb <= -59.99f ? 0.0 :
 			std::pow(10.0, static_cast<double>(driveDb) / 20.0);
+		const double log2C4 = std::log2(dsp::FREQ_C4);
 
 		for (int channel = 0; channel < channels; ++channel)
 		{
@@ -243,10 +243,8 @@ struct Tf303VoiceCore : Module
 			const float gate = inputs[GATE_INPUT].getPolyVoltage(channel);
 
 			const float finiteAudio = std::isfinite(audio) ? audio : 0.0f;
-			const double resonance = std::clamp(
-				static_cast<double>(resonanceKnob + resonanceAmount *
-					(std::isfinite(resonanceCv) ? resonanceCv / 10.0f : 0.0f)),
-				0.0, 1.0);
+			const double resonance = resonanceKnob + resonanceAmount *
+				(std::isfinite(resonanceCv) ? resonanceCv / 10.0f : 0.0f);
 			const auto envelope = articulations[channel].Step(gate, accent,
 				resonance, normalDecay, accentDecay, vcaDecay);
 			// The Q9/R64/R65 bias makes Env Mod scale the envelope around an
@@ -259,16 +257,16 @@ struct Tf303VoiceCore : Module
 			const double envelopePitch = internalEnvelopePatched ?
 				6.0 * envelopeAmount * (envelope.mainEnvelope - envelopePivot) +
 					2.0 * accentAmount * envelope.filterAccent : 0.0;
-			const float pitch = std::clamp(static_cast<float>(cutoffKnob +
+			const double pitch = cutoffKnob +
 				(std::isfinite(voct) ? voct : 0.0f) + cvAmount *
-				(std::isfinite(cv) ? cv : 0.0f) + envelopePitch), -10.0f, 10.0f);
-			double cutoff = dsp::FREQ_C4 * tfdsp::Exp2Taylor5(pitch);
+				(std::isfinite(cv) ? cv : 0.0f) + envelopePitch;
+			const double log2CutoffHz = log2C4 + pitch;
 			const float acFm = fmHighPass[channel](
 				std::isfinite(fm) ? fm : 0.0f, normalizedFmHighPass);
 			// Linear-Hz modulation. At full amount a nominal +/-5 V Rack
 			// signal sweeps +/-1 kHz, keeping the negative half-cycle useful
 			// at ordinary cutoff settings instead of spending it on the floor.
-			cutoff += 200.0 * fmAmount * acFm;
+			const double linearFmHz = 200.0 * fmAmount * acFm;
 
 			const double externalVca = inputs[VCA_CV_INPUT].getPolyVoltage(channel);
 			const double baseVcaControl = vcaCvAmount * (externalVcaPatched ?
@@ -280,9 +278,11 @@ struct Tf303VoiceCore : Module
 			float vcaOutput = 0.0f;
 			if (activeOversampling == 0)
 			{
-				const auto rendered = filtersX2[channel]->StepWithPostProcessor(
-					finiteAudio, cutoff, resonance, highResonance, driveGain,
-					bass, baseVcaControl, [&](double audioValue, double control)
+				const auto rendered =
+					filtersX2[channel]->StepWithPostProcessorLogCutoffModulated(
+					finiteAudio, log2CutoffHz, linearFmHz, resonance,
+					highResonance, driveGain, bass, baseVcaControl,
+					[&](double audioValue, double control)
 					{
 						return vcasX2[channel].Step(audioValue, control,
 							vcaAccentControl);
@@ -292,9 +292,11 @@ struct Tf303VoiceCore : Module
 			}
 			else
 			{
-				const auto rendered = filtersX4[channel]->StepWithPostProcessor(
-					finiteAudio, cutoff, resonance, highResonance, driveGain,
-					bass, baseVcaControl, [&](double audioValue, double control)
+				const auto rendered =
+					filtersX4[channel]->StepWithPostProcessorLogCutoffModulated(
+					finiteAudio, log2CutoffHz, linearFmHz, resonance,
+					highResonance, driveGain, bass, baseVcaControl,
+					[&](double audioValue, double control)
 					{
 						return vcasX4[channel].Step(audioValue, control,
 							vcaAccentControl);

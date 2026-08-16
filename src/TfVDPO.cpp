@@ -4,7 +4,6 @@
 #include <cmath>
 #include "plugin.hpp"
 #include "components.hpp"
-#include "tfdsp/approx.hpp"
 #include "tfdsp/noise.hpp"
 
 // Analog style modulation of pitch for VCOs and filter cutoffs
@@ -86,21 +85,21 @@ void TfVDPO::process(const ProcessArgs &args)
 	const float pitchInput = inputs[VOCT_INPUT].getVoltage();
 	const float dampingInput = inputs[DAMPING_INPUT].getVoltage();
 	const float x = (std::isfinite(audioInput) ? audioInput : 0.0f) * params[INPUT_GAIN].getValue();
-	float vOct = (std::isfinite(pitchInput) ? pitchInput : 0.0f) * params[VOCT_SCALING].getValue() + params[FREQ].getValue();
-	const float maxFrequency = 0.45f * args.sampleRate;
-	vOct = std::clamp(vOct, -10.0f, std::log2(maxFrequency / dsp::FREQ_C4));
-	const float mu = std::clamp(params[DAMPING].getValue() + params[DAMPING_ATTENUVERT].getValue() *
-		(std::isfinite(dampingInput) ? dampingInput : 0.0f), 1.0e-8f, 9.0f);
-	// The shared approximation has at most 6e-6 relative error (about 0.01 cent)
-	// and avoids a comparatively expensive libm call in the per-sample path.
-	const float freq = dsp::FREQ_C4 * tfdsp::Exp2Taylor5(vOct);
+	const double vOct = (std::isfinite(pitchInput) ? pitchInput : 0.0f) *
+		params[VOCT_SCALING].getValue() + params[FREQ].getValue();
+	const double mu = params[DAMPING].getValue() +
+		params[DAMPING_ATTENUVERT].getValue() *
+		(std::isfinite(dampingInput) ? dampingInput : 0.0f);
+	const double log2AngularFrequency =
+		std::log2(2.0 * tfdsp::PI * dsp::FREQ_C4) + vOct;
 
 	//TODO: menu item for low quality, leave high quality by default for now.
 
 	//auto y = params[HQ_MODE].getValue() > 0 ?
 	//_vdpHq.Step(double(x), double(mu), double(2 * tfdsp::PI * freq))
 	//: _vdp.Step(double(x), double(mu), double(2 * tfdsp::PI * freq));
-	auto y = _vdpHq.Step(double(x), double(mu), double(2 * tfdsp::PI * freq));
+	auto y = _vdpHq.StepLogAngularFrequency(double(x), mu,
+		log2AngularFrequency);
 
 	const float output = y * params[LEVEL].getValue();
 	outputs[OUTPUT].setVoltage(std::isfinite(output) ? output : 0.0f);

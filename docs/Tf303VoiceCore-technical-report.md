@@ -273,8 +273,11 @@ seventh-order design runs at 2x or 4x, with 4x as the default.
 One interpolator feeds the input network, ladder, Bass correction, and OTA VCA.
 Independent decimators give both outputs the same resampling phase; the VCA's
 C38 coupling section contributes its intended low-frequency phase response.
-VCA CV is interpolated before the OTA stage. The envelope and accent state
-machines run at the host rate because their bandwidth is low.
+Exponential cutoff pitch, linear-Hz FM, resonance, and VCA CV use independent
+matching interpolators before their nonlinear stages. Pitch is converted to
+hertz and combined with linear FM at the internal rate. The envelope and accent
+state machines run at the host rate because their bandwidth is low; their
+contributions enter the corresponding reconstructed control paths.
 
 A coherent high-drive sine test measured the following non-harmonic residuals.
 The 16x result uses the ladder without an internal resampler followed by a

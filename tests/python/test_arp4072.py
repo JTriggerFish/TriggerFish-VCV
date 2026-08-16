@@ -1,7 +1,13 @@
 import numpy as np
+import pytest
 
 import _triggerfish_dsp as dsp
-from reference_arp4072 import circuit_values, midpoint_transfer
+from reference_arp4072 import (
+    circuit_values,
+    harmonic_amplitudes,
+    midpoint_transfer,
+    render_continuous_sine,
+)
 
 SAMPLE_RATE = 48_000.0
 
@@ -30,6 +36,7 @@ def test_circuit_ratios_match_the_independent_reference():
     ratio = actual["feedback_base_scale"] / actual["audio_base_scale"]
     assert 6.57 < ratio < 6.60
     assert 0.98 < actual["small_signal_input_gain"] < 1.03
+    assert np.isclose(actual["stage_base_resistance_ohms"], 212.280701754, rtol=1e-11)
 
 
 def test_small_signal_response_matches_the_circuit_transfer():
@@ -72,3 +79,57 @@ def test_high_resonance_self_oscillation_is_bounded_and_smooth():
     assert np.all(np.isfinite(output))
     assert 0.1 < np.max(np.abs(steady)) < 13.6
     assert np.max(np.abs(np.diff(steady))) < 1.0
+
+
+def test_high_drive_harmonics_match_continuous_dop853_reference():
+    frequency = 1_000.0
+    amplitude = 50.0
+    cutoff = 2_000.0
+    resonance = 0.55
+    duration = 0.08
+    time, reference = render_continuous_sine(
+        frequency, amplitude, cutoff, resonance, duration=duration
+    )
+    signal = amplitude * np.sin(2.0 * np.pi * frequency * time)
+    actual = dsp.arp4072_x4(signal, cutoff, resonance)
+
+    expected_harmonics = harmonic_amplitudes(
+        reference, frequency, SAMPLE_RATE, count=9, cycles=40
+    )
+    actual_harmonics = harmonic_amplitudes(
+        actual, frequency, SAMPLE_RATE, count=9, cycles=40
+    )
+    for harmonic, tolerance in (
+        (1, 0.025),
+        (3, 0.025),
+        (5, 0.025),
+        (7, 0.06),
+        (9, 0.06),
+    ):
+        index = harmonic - 1
+        assert actual_harmonics[index] == pytest.approx(
+            expected_harmonics[index], rel=tolerance
+        )
+
+
+def test_audio_rate_cutoff_and_resonance_use_polyphase_reconstruction():
+    sample_count = 4_096
+    time = np.arange(sample_count) / SAMPLE_RATE
+    audio = 2.0 * np.sin(2.0 * np.pi * 997.0 * time)
+    cutoff = 1_800.0 * np.exp2(1.5 * np.sin(2.0 * np.pi * 3_000.0 * time))
+    resonance = 0.5 + 0.45 * np.sin(2.0 * np.pi * 1_700.0 * time)
+
+    production = dsp.arp4072_controls_x4(audio, cutoff, resonance)
+
+    audio_x4 = dsp.resampler_upsample_x4_order7(audio)
+    pitch_x4 = dsp.resampler_upsample_x4_order7(np.log2(cutoff))
+    resonance_x4 = np.clip(dsp.resampler_upsample_x4_order7(resonance), 0.0, 1.0)
+    internal = dsp.arp4072_controls_x1(
+        audio_x4,
+        np.exp2(pitch_x4),
+        resonance_x4,
+        sample_rate=4.0 * SAMPLE_RATE,
+    )
+    reference = dsp.resampler_downsample_x4_order7(internal)
+
+    np.testing.assert_allclose(production[256:], reference[256:], atol=2.0e-6)

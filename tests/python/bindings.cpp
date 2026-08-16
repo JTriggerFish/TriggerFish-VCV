@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cmath>
+#include <limits>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -12,6 +13,7 @@
 #include "models/VCAcore.hpp"
 #include "models/Arp4019Vca.hpp"
 #include "models/Arp4072Filter.hpp"
+#include "models/ArpEnvelope.hpp"
 #include "models/DiodeLadderFilter.hpp"
 #include "models/OtaVca.hpp"
 #include "models/Tb303Voice.hpp"
@@ -33,6 +35,50 @@ namespace
 			throw std::invalid_argument("DSP inputs must be one-dimensional arrays");
 		if (left.shape[0] != right.shape[0])
 			throw std::invalid_argument(std::string(leftName) + " and " + rightName + " must have the same length");
+	}
+
+	template<typename Filter>
+	py::array_t<float> RenderDiodeLadderControls(
+		py::array_t<double, py::array::c_style | py::array::forcecast> audio,
+		py::array_t<double, py::array::c_style | py::array::forcecast> cutoff,
+		py::array_t<double, py::array::c_style | py::array::forcecast> linearFm,
+		py::array_t<double, py::array::c_style | py::array::forcecast> resonance,
+		bool highResonance, double driveGain, double bass, double sampleRate)
+	{
+		const auto audioInfo = audio.request();
+		const auto cutoffInfo = cutoff.request();
+		const auto linearFmInfo = linearFm.request();
+		const auto resonanceInfo = resonance.request();
+		RequireSameSize(audioInfo, cutoffInfo, "audio", "cutoff");
+		RequireSameSize(audioInfo, linearFmInfo, "audio", "linear_fm");
+		RequireSameSize(audioInfo, resonanceInfo, "audio", "resonance");
+		if (!(sampleRate > 0.0))
+			throw std::invalid_argument("sample_rate must be positive");
+
+		py::array_t<float> result(audioInfo.shape[0]);
+		auto output = result.mutable_unchecked<1>();
+		auto audioValues = audio.unchecked<1>();
+		auto cutoffValues = cutoff.unchecked<1>();
+		auto linearFmValues = linearFm.unchecked<1>();
+		auto resonanceValues = resonance.unchecked<1>();
+		Filter model([]
+		{
+			if constexpr (Filter::OversamplingFactor == 1)
+				return tfdsp::CreateDummyResampler();
+			else if constexpr (Filter::OversamplingFactor == 2)
+				return tfdsp::CreateX2Resampler_Chebychev7();
+			else
+				return tfdsp::CreateX4Resampler_Cheby7();
+		});
+		model.SetSampleRate(sampleRate);
+		for (py::ssize_t i = 0; i < audioInfo.shape[0]; ++i)
+		{
+			output(i) = model.StepLogCutoffModulated(audioValues(i),
+				std::log2(std::max(cutoffValues(i),
+					std::numeric_limits<double>::min())), linearFmValues(i),
+				resonanceValues(i), highResonance, driveGain, bass);
+		}
+		return result;
 	}
 
 	enum class DetuneMethod
@@ -224,6 +270,45 @@ namespace
 		return result;
 	}
 
+	template<typename Filter>
+	py::array_t<float> RenderArp4072Controls(
+		py::array_t<double, py::array::c_style | py::array::forcecast> audio,
+		py::array_t<double, py::array::c_style | py::array::forcecast> cutoff,
+		py::array_t<double, py::array::c_style | py::array::forcecast> resonance,
+		double driveGain, bool extendedCutoff, double sampleRate)
+	{
+		const auto audioInfo = audio.request();
+		const auto cutoffInfo = cutoff.request();
+		const auto resonanceInfo = resonance.request();
+		RequireSameSize(audioInfo, cutoffInfo, "audio", "cutoff");
+		RequireSameSize(audioInfo, resonanceInfo, "audio", "resonance");
+		if (!(sampleRate > 0.0))
+			throw std::invalid_argument("sample_rate must be positive");
+
+		py::array_t<float> result(audioInfo.shape[0]);
+		auto output = result.mutable_unchecked<1>();
+		auto audioValues = audio.unchecked<1>();
+		auto cutoffValues = cutoff.unchecked<1>();
+		auto resonanceValues = resonance.unchecked<1>();
+		Filter model([]
+		{
+			if constexpr (Filter::OversamplingFactor == 1)
+				return tfdsp::CreateDummyResampler();
+			else if constexpr (Filter::OversamplingFactor == 2)
+				return tfdsp::CreateX2Resampler_Chebychev7();
+			else
+				return tfdsp::CreateX4Resampler_Cheby7();
+		});
+		model.SetSampleRate(sampleRate);
+		for (py::ssize_t i = 0; i < audioInfo.shape[0]; ++i)
+		{
+			output(i) = model.StepLogCutoff(audioValues(i), std::log2(std::max(
+				cutoffValues(i), std::numeric_limits<double>::min())),
+				resonanceValues(i), driveGain, extendedCutoff);
+		}
+		return result;
+	}
+
 	template<typename Vca>
 	py::array_t<float> RenderArp4019(
 		py::array_t<double, py::array::c_style | py::array::forcecast> audio,
@@ -275,6 +360,83 @@ namespace
 		auto model = createResampler();
 		for (py::ssize_t i = 0; i < audioInfo.shape[0]; ++i)
 			output(i) = model->Downsample(model->Upsample(audioValues(i)));
+		return result;
+	}
+
+	template<typename Resampler>
+	py::array_t<double> RenderUpsampled(
+		py::array_t<double, py::array::c_style | py::array::forcecast> input,
+		std::function<std::unique_ptr<Resampler>()> createResampler)
+	{
+		const auto inputInfo = input.request();
+		if (inputInfo.ndim != 1)
+			throw std::invalid_argument("input must be a one-dimensional array");
+		py::array_t<double> result(inputInfo.shape[0] *
+			Resampler::ResamplingFactor);
+		auto output = result.mutable_unchecked<1>();
+		auto values = input.unchecked<1>();
+		auto model = createResampler();
+		for (py::ssize_t i = 0; i < inputInfo.shape[0]; ++i)
+		{
+			const auto frame = model->Upsample(values(i));
+			for (int j = 0; j < Resampler::ResamplingFactor; ++j)
+				output(i * Resampler::ResamplingFactor + j) = frame(j);
+		}
+		return result;
+	}
+
+	template<typename Resampler>
+	py::array_t<double> RenderDownsampled(
+		py::array_t<double, py::array::c_style | py::array::forcecast> input,
+		std::function<std::unique_ptr<Resampler>()> createResampler)
+	{
+		const auto inputInfo = input.request();
+		if (inputInfo.ndim != 1 ||
+			inputInfo.shape[0] % Resampler::ResamplingFactor != 0)
+		{
+			throw std::invalid_argument(
+				"input must be one-dimensional and contain complete frames");
+		}
+		py::array_t<double> result(
+			inputInfo.shape[0] / Resampler::ResamplingFactor);
+		auto output = result.mutable_unchecked<1>();
+		auto values = input.unchecked<1>();
+		auto model = createResampler();
+		for (py::ssize_t i = 0; i < result.shape(0); ++i)
+		{
+			Eigen::Array<double, Resampler::ResamplingFactor, 1> frame;
+			for (int j = 0; j < Resampler::ResamplingFactor; ++j)
+				frame(j) = values(i * Resampler::ResamplingFactor + j);
+			output(i) = model->Downsample(frame);
+		}
+		return result;
+	}
+
+	py::array_t<double> RenderArpEnvelope(
+		py::array_t<double, py::array::c_style | py::array::forcecast> gate,
+		py::array_t<double, py::array::c_style | py::array::forcecast> trigger,
+		double attack, double decay, double sustain, double release,
+		double curve, bool arMode, bool autoGateTrigger, double sampleRate)
+	{
+		const auto gateInfo = gate.request();
+		const auto triggerInfo = trigger.request();
+		RequireSameSize(gateInfo, triggerInfo, "gate", "trigger");
+		if (!(sampleRate > 0.0))
+			throw std::invalid_argument("sample_rate must be positive");
+
+		py::array_t<double> result(gateInfo.shape[0]);
+		auto output = result.mutable_unchecked<1>();
+		auto gateValues = gate.unchecked<1>();
+		auto triggerValues = trigger.unchecked<1>();
+		tfdsp::ArpEnvelope envelope;
+		envelope.SetSampleRate(sampleRate);
+		envelope.SetMode(arMode ? tfdsp::ArpEnvelope::Mode::Ar :
+			tfdsp::ArpEnvelope::Mode::Adsr);
+		for (py::ssize_t i = 0; i < gateInfo.shape[0]; ++i)
+		{
+			output(i) = envelope.Step(gateValues(i), triggerValues(i), attack,
+				decay, sustain, release, curve, autoGateTrigger);
+		}
 		return result;
 	}
 
@@ -684,6 +846,11 @@ PYBIND11_MODULE(_triggerfish_dsp, module)
 		tfdsp::DiodeLadderFilter<tfdsp::X2Resampler_Order9>;
 	using X4ResamplerOrder9 = tfdsp::X4Resampler<tfdsp::X2Resampler_Order9>;
 	using DiodeLadderX4Order9 = tfdsp::DiodeLadderFilter<X4ResamplerOrder9>;
+	module.def("diode_ladder_controls_x1",
+		&RenderDiodeLadderControls<DiodeLadderX1>, py::arg("audio"),
+		py::arg("cutoff"), py::arg("linear_fm"), py::arg("resonance"),
+		py::arg("high_resonance") = false, py::arg("drive_gain") = 1.0,
+		py::arg("bass") = 0.0, py::arg("sample_rate") = 48000.0);
 	module.def("diode_ladder_x1", &RenderDiodeLadder<DiodeLadderX1>,
 		py::arg("audio"), py::arg("cutoff"), py::arg("resonance") = 0.0,
 		py::arg("high_resonance") = false, py::arg("drive_gain") = 1.0,
@@ -701,6 +868,11 @@ PYBIND11_MODULE(_triggerfish_dsp, module)
 		py::arg("drive_gain"), py::arg("bass"), py::arg("cutoff"),
 		py::arg("resonance") = 0.0, py::arg("high_resonance") = false,
 		py::arg("sample_rate") = 48000.0);
+	module.def("diode_ladder_controls_x4",
+		&RenderDiodeLadderControls<DiodeLadderX4>, py::arg("audio"),
+		py::arg("cutoff"), py::arg("linear_fm"), py::arg("resonance"),
+		py::arg("high_resonance") = false, py::arg("drive_gain") = 1.0,
+		py::arg("bass") = 0.0, py::arg("sample_rate") = 48000.0);
 	module.def("diode_ladder_x2_order9",
 		&RenderDiodeLadder<DiodeLadderX2Order9, true>,
 		py::arg("audio"), py::arg("cutoff"), py::arg("resonance") = 0.0,
@@ -715,6 +887,10 @@ PYBIND11_MODULE(_triggerfish_dsp, module)
 	using Arp4072X1 = tfdsp::Arp4072Filter<tfdsp::DummyResampler>;
 	using Arp4072X2 = tfdsp::Arp4072Filter<tfdsp::X2Resampler_Order7>;
 	using Arp4072X4 = tfdsp::Arp4072Filter<tfdsp::X4Resampler_Order7>;
+	module.def("arp4072_controls_x1", &RenderArp4072Controls<Arp4072X1>,
+		py::arg("audio"), py::arg("cutoff"), py::arg("resonance"),
+		py::arg("drive_gain") = 1.0, py::arg("extended_cutoff") = false,
+		py::arg("sample_rate") = 48000.0);
 	module.def("arp4072_x1", &RenderArp4072<Arp4072X1>, py::arg("audio"),
 		py::arg("cutoff"), py::arg("resonance") = 0.0,
 		py::arg("drive_gain") = 1.0, py::arg("extended_cutoff") = false,
@@ -725,6 +901,10 @@ PYBIND11_MODULE(_triggerfish_dsp, module)
 		py::arg("sample_rate") = 48000.0);
 	module.def("arp4072_x4", &RenderArp4072<Arp4072X4>, py::arg("audio"),
 		py::arg("cutoff"), py::arg("resonance") = 0.0,
+		py::arg("drive_gain") = 1.0, py::arg("extended_cutoff") = false,
+		py::arg("sample_rate") = 48000.0);
+	module.def("arp4072_controls_x4", &RenderArp4072Controls<Arp4072X4>,
+		py::arg("audio"), py::arg("cutoff"), py::arg("resonance"),
 		py::arg("drive_gain") = 1.0, py::arg("extended_cutoff") = false,
 		py::arg("sample_rate") = 48000.0);
 	module.def("arp4072_circuit_values", []
@@ -738,8 +918,16 @@ PYBIND11_MODULE(_triggerfish_dsp, module)
 			Arp4072X4::LimiterTailCurrentAmps();
 		values["limiter_equivalent_peak_volts"] =
 			Arp4072X4::LimiterEquivalentPeakVolts();
-		values["stage_tanh_scale_per_volt"] =
-			Arp4072X4::StageTanhScalePerVolt();
+		values["nominal_limiter_equivalent_peak_volts"] =
+			Arp4072X4::NominalLimiterEquivalentPeakVolts();
+		values["limiter_gain_calibration"] =
+			Arp4072X4::LimiterGainCalibration();
+		values["limiter_differential_resistance_ohms"] =
+			Arp4072X4::LimiterDifferentialResistanceOhms();
+		values["stage_saturation_coefficient_per_volt"] =
+			Arp4072X4::StageSaturationCoefficientPerVolt();
+		values["stage_base_resistance_ohms"] =
+			Arp4072X4::StageBaseResistanceOhms();
 		values["output_level_shift_gain"] = Arp4072X4::OutputLevelShiftGain;
 		values["small_signal_input_gain"] =
 			Arp4072X4::SmallSignalInputGain();
@@ -760,6 +948,8 @@ PYBIND11_MODULE(_triggerfish_dsp, module)
 	{
 		py::dict values;
 		values["audio_input_scale"] = Arp4019X4::AudioInputScale();
+		values["audio_series_resistance_ohms"] =
+			Arp4019X4::AudioSeriesResistanceOhms;
 		values["unity_control_current_amps"] =
 			Arp4019X4::UnityControlCurrentAmps();
 		values["output_feedback_resistance_ohms"] =
@@ -771,6 +961,11 @@ PYBIND11_MODULE(_triggerfish_dsp, module)
 			Arp4019X4::ExponentialDecibelsPerVolt;
 		return values;
 	});
+	module.def("arp_envelope", &RenderArpEnvelope, py::arg("gate"),
+		py::arg("trigger"), py::arg("attack"), py::arg("decay"),
+		py::arg("sustain"), py::arg("release"), py::arg("curve") = 0.0,
+		py::arg("ar_mode") = false, py::arg("auto_gate_trigger") = true,
+		py::arg("sample_rate") = 48000.0);
 
 	module.def("resampler_round_trip_x2_order7", [](py::array_t<double,
 		py::array::c_style | py::array::forcecast> audio)
@@ -790,6 +985,18 @@ PYBIND11_MODULE(_triggerfish_dsp, module)
 		return RenderResamplerRoundTrip<tfdsp::X4Resampler_Order7>(audio,
 			tfdsp::CreateX4Resampler_Cheby7);
 	}, py::arg("audio"));
+	module.def("resampler_upsample_x4_order7", [](py::array_t<double,
+		py::array::c_style | py::array::forcecast> input)
+	{
+		return RenderUpsampled<tfdsp::X4Resampler_Order7>(input,
+			tfdsp::CreateX4Resampler_Cheby7);
+	}, py::arg("input"));
+	module.def("resampler_downsample_x4_order7", [](py::array_t<double,
+		py::array::c_style | py::array::forcecast> input)
+	{
+		return RenderDownsampled<tfdsp::X4Resampler_Order7>(input,
+			tfdsp::CreateX4Resampler_Cheby7);
+	}, py::arg("input"));
 	module.def("resampler_round_trip_x4_order9", [](py::array_t<double,
 		py::array::c_style | py::array::forcecast> audio)
 	{

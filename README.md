@@ -61,13 +61,16 @@ from harmonic locking through inharmonic and chaotic responses.
 
 The stiff differential equation is evaluated by a structure-aware, prewarped
 split integrator at 4x sample rate. Adaptive work is confined to the demanding
-high-frequency, high-damping region.
+high-frequency, high-damping region. Audio, pitch, and damping controls are
+reconstructed at 4x; pitch is converted to frequency inside that path.
 
 ### VCA
 
 VCA is a transistor-inspired amplifier with separate nonlinear audio and control
 paths, followed by a saturating output stage. The nonlinear amplifier core runs
-at 2x sample rate; CV bleed and final DC rejection run at Rack's sample rate.
+at 2x sample rate. Linear and exponential CV are reconstructed separately before
+the exponential control law and limiting are applied. CV bleed follows the
+reconstructed control; final DC rejection runs at Rack's sample rate.
 
 - **Drive** increases input saturation while compensating most of the associated
   level change.
@@ -152,7 +155,8 @@ around their circuit bias points.
 - **Input** covers attenuation through +24 dB of filter drive. **Range** selects
   the stock 4072 high-frequency limit or an extended 20 kHz range.
 - The two A/D/S/R slider rows generate 0–10 V envelopes. Each row can be switched
-  to AR; filter ADSR and amplifier AR are the defaults.
+  to AR; filter ADSR and amplifier AR are the defaults. **Curve** varies both
+  envelope shapes around the original circuit response.
 - `ENV CV` replaces the internal filter-envelope normalization. `LIN CV`
   replaces the amplifier-envelope normalization, while `EXP CV` accesses the
   4019's 10 dB/V exponential control path.
@@ -161,6 +165,8 @@ around their circuit bias points.
 
 The complete filter/VCA path runs at 4x sample rate by default. A 2x mode is
 available from the context menu for larger polyphonic patches.
+Circuit analysis, equations, calibration, and numerical validation are in the
+[4072 Voice Core technical report](docs/Tf4072VoiceCore-technical-report.md).
 
 ## Contributing
 

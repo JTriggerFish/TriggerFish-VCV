@@ -48,6 +48,7 @@
     <text x="303.7747" y="48" font-size="6.5" font-weight="bold" data-control="FILTER_RELEASE">R</text>
     <text x="336.0598" y="68" font-size="5.7" font-weight="bold" data-control="FILTER_ENV_MODE">AR</text>
     <text x="336.0598" y="113" font-size="5.7" font-weight="bold" data-control="FILTER_ENV_MODE">ADSR</text>
+    <text x="336.1961" y="139" font-size="5.7" font-weight="bold" data-control="ENVELOPE_CURVE">CURVE</text>
 
     <text x="244.2134" y="163" font-size="7.6" font-weight="bold" letter-spacing="0.7" data-center-x="244">AMPLIFIER ENVELOPE</text>
     <text x="184.0016" y="174" font-size="6.5" font-weight="bold" data-control="AMP_ATTACK">A</text>

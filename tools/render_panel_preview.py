@@ -211,6 +211,7 @@ KNOB_ANGLES = {
     "SHAPE_AMOUNT": 0.0,
     "WAVE_AMOUNT": 0.0,
     "FM_MODE": 0.0,
+    "ENVELOPE_CURVE": 0.0,
 }
 
 MODULE_KNOB_ANGLES = {

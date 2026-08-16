@@ -126,6 +126,7 @@ public:
 	static constexpr double ThermalVoltage = 25.85e-3;
 	static constexpr double Pi = 3.14159265358979323846;
 	static constexpr double AudioInputResistanceOhms = 100000.0;
+	static constexpr double AudioSeriesResistanceOhms = 1000.0;
 	static constexpr double AudioInputShuntOhms = 220.0;
 	static constexpr double OutputFeedbackResistanceOhms = 56000.0;
 	static constexpr double OutputFeedbackCapacitanceFarads = 100.0e-12;
@@ -135,7 +136,8 @@ public:
 	static constexpr double AudioInputScale()
 	{
 		return AudioInputShuntOhms /
-			(AudioInputResistanceOhms + AudioInputShuntOhms);
+			(AudioInputResistanceOhms + AudioSeriesResistanceOhms +
+				AudioInputShuntOhms);
 	}
 
 	static constexpr double UnityControlCurrentAmps()

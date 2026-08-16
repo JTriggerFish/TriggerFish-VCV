@@ -107,6 +107,8 @@ public:
 	};
 
 private:
+	std::unique_ptr<ResamplerType> _pitchInterpolator;
+	std::unique_ptr<ResamplerType> _slideTimeInterpolator;
 	std::unique_ptr<ResamplerType> _fmInterpolator;
 	std::unique_ptr<ResamplerType> _shapeInterpolator;
 	std::unique_ptr<ResamplerType> _waveInterpolator;
@@ -137,6 +139,8 @@ private:
 public:
 	explicit Tb303Oscillator(
 		std::function<std::unique_ptr<ResamplerType>()> createResampler) :
+		_pitchInterpolator(createResampler()),
+		_slideTimeInterpolator(createResampler()),
 		_fmInterpolator(createResampler()),
 		_shapeInterpolator(createResampler()),
 		_waveInterpolator(createResampler()),
@@ -155,6 +159,8 @@ public:
 
 	void Reset()
 	{
+		_pitchInterpolator->Reset();
+		_slideTimeInterpolator->Reset();
 		_fmInterpolator->Reset();
 		_shapeInterpolator->Reset();
 		_waveInterpolator->Reset();
@@ -176,11 +182,21 @@ public:
 			!std::isfinite(shape) || !std::isfinite(wave))
 			return {};
 
+		const double slideTimeLog = std::log(std::max(slideTime,
+			std::numeric_limits<double>::min()));
 		if (!_pitchInitialized)
 		{
+			_pitchInterpolator->PrimeUpsample(targetPitch);
+			_slideTimeInterpolator->PrimeUpsample(slideTimeLog);
+			_fmInterpolator->PrimeUpsample(fmVoltage);
+			_shapeInterpolator->PrimeUpsample(shape);
+			_waveInterpolator->PrimeUpsample(wave);
 			_pitch = targetPitch;
 			_pitchInitialized = true;
 		}
+		const auto targetPitchValues = _pitchInterpolator->Upsample(targetPitch);
+		const auto slideTimeLogValues = _slideTimeInterpolator->Upsample(
+			slideTimeLog);
 		const auto fm = _fmInterpolator->Upsample(fmVoltage);
 		const auto shapeValues = _shapeInterpolator->Upsample(shape);
 		const auto waveValues = _waveInterpolator->Upsample(wave);
@@ -189,17 +205,20 @@ public:
 		Eigen::Array<double, OversamplingFactor, 1> mixedValues;
 
 		const double internalRate = _sampleRate * OversamplingFactor;
-		const double tau = std::clamp(slideTime * (22.0 / 60.0),
-			0.0001, 2.0);
-		const double slideAlpha = -std::expm1(-1.0 / (internalRate * tau));
 		const auto syncEvent = tfdsp::MapEventToOversampledFrame<
 			OversamplingFactor>(syncCrossing);
 		for (int index = 0; index < OversamplingFactor; ++index)
 		{
 			if (slide)
-				_pitch += slideAlpha * (targetPitch - _pitch);
+			{
+				const double tau = std::clamp(std::exp(slideTimeLogValues(index)) *
+					(22.0 / 60.0), 0.0001, 2.0);
+				const double slideAlpha = -std::expm1(
+					-1.0 / (internalRate * tau));
+				_pitch += slideAlpha * (targetPitchValues(index) - _pitch);
+			}
 			else
-				_pitch = targetPitch;
+				_pitch = targetPitchValues(index);
 
 			double pitch = _pitch + tuningOffset;
 			double frequency;

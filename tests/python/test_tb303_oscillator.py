@@ -86,6 +86,25 @@ def test_stock_slide_uses_the_22_ms_pitch_cv_time_constant():
     assert abs(after_sixty_ms - expected) < 2e-3
 
 
+def test_v_oct_pitch_uses_the_oversampled_reconstruction_filter():
+    sample_count = 4_096
+    time = np.arange(sample_count) / SAMPLE_RATE
+    pitch = 1.5 * np.sin(2.0 * np.pi * 3_000.0 * time)
+    rendered = render(
+        dsp.tb303_oscillator_x4, pitch, seconds=sample_count / SAMPLE_RATE
+    )
+    reconstructed = dsp.resampler_upsample_x4_order7(pitch).reshape(-1, 4)
+
+    np.testing.assert_allclose(rendered[:, 3], reconstructed[:, -1], atol=1.0e-7)
+
+
+def test_initial_pitch_primes_the_reconstruction_filter_without_a_chirp():
+    pitch = np.full(64, 2.0)
+    for processor in (dsp.tb303_oscillator_x2, dsp.tb303_oscillator_x4):
+        rendered = render(processor, pitch, seconds=len(pitch) / SAMPLE_RATE)
+        np.testing.assert_allclose(rendered[:, 3], pitch, atol=1.0e-7)
+
+
 def test_wave_morph_reaches_both_waveform_endpoints():
     saw = render(dsp.tb303_oscillator_x4, 0.0, wave=0.0)
     square = render(dsp.tb303_oscillator_x4, 0.0, wave=1.0)

@@ -167,14 +167,13 @@ struct Tf303Oscillator : Module
 				return std::isfinite(value) ? static_cast<double>(value) : 0.0;
 			};
 			const double timeCv = finiteInput(TIME_INPUT);
-			const double channelSlideLog = std::clamp(slideLog + timeAmount *
-				(timeCv / 10.0) * slideRange, std::log10(0.002),
-				std::log10(0.360));
+			const double channelSlideLog = slideLog + timeAmount *
+				(timeCv / 10.0) * slideRange;
 			const double slideTime = std::pow(10.0, channelSlideLog);
-			const double shape = std::clamp(shapeKnob + shapeAmount *
-				finiteInput(SHAPE_INPUT) / 5.0, -1.0, 1.0);
-			const double wave = std::clamp(waveKnob + waveAmount *
-				finiteInput(WAVE_INPUT) / 10.0, 0.0, 1.0);
+			const double shape = shapeKnob + shapeAmount *
+				finiteInput(SHAPE_INPUT) / 5.0;
+			const double wave = waveKnob + waveAmount *
+				finiteInput(WAVE_INPUT) / 10.0;
 			const float slideVoltage = static_cast<float>(finiteInput(SLIDE_INPUT));
 			slideTriggers[channel].process(slideVoltage, 0.1f, 1.0f);
 			const bool slide = slideTriggers[channel].isHigh();

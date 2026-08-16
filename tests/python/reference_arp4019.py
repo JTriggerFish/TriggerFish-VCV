@@ -2,6 +2,7 @@ import math
 
 THERMAL_VOLTAGE = 25.85e-3
 AUDIO_INPUT_RESISTANCE_OHMS = 100_000.0
+AUDIO_SERIES_RESISTANCE_OHMS = 1_000.0
 AUDIO_INPUT_SHUNT_OHMS = 220.0
 OUTPUT_FEEDBACK_RESISTANCE_OHMS = 56_000.0
 OUTPUT_FEEDBACK_CAPACITANCE_FARADS = 100.0e-12
@@ -9,13 +10,16 @@ OUTPUT_FEEDBACK_CAPACITANCE_FARADS = 100.0e-12
 
 def circuit_values():
     audio_scale = AUDIO_INPUT_SHUNT_OHMS / (
-        AUDIO_INPUT_RESISTANCE_OHMS + AUDIO_INPUT_SHUNT_OHMS
+        AUDIO_INPUT_RESISTANCE_OHMS
+        + AUDIO_SERIES_RESISTANCE_OHMS
+        + AUDIO_INPUT_SHUNT_OHMS
     )
     unity_current = (
         2.0 * THERMAL_VOLTAGE / (OUTPUT_FEEDBACK_RESISTANCE_OHMS * audio_scale)
     )
     return {
         "audio_input_scale": audio_scale,
+        "audio_series_resistance_ohms": AUDIO_SERIES_RESISTANCE_OHMS,
         "unity_control_current_amps": unity_current,
         "output_feedback_resistance_ohms": OUTPUT_FEEDBACK_RESISTANCE_OHMS,
         "output_bandwidth_hz": 1.0

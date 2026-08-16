@@ -7,6 +7,7 @@
 #include <stdexcept>
 
 #include "../tfdsp/filters.hpp"
+#include "../tfdsp/approx.hpp"
 #include "../tfdsp/sampleRate.hpp"
 
 /**
@@ -122,6 +123,39 @@ public:
 		Eigen::Array<double, ResamplingFactor, 1> output;
 		for (int i = 0; i < ResamplingFactor; ++i)
 			output(i) = ModelStep(inputValues(i), dampingValues(i), frequencyValues(i));
+		const float result = _resamplerX->Downsample(output);
+		if (!std::isfinite(result))
+		{
+			Reset();
+			return 0.0f;
+		}
+		return result;
+	}
+
+	float StepLogAngularFrequency(double input, double damping,
+		double log2AngularFrequency)
+	{
+		if (!(_sampleRate > 0.0))
+			throw std::runtime_error("Sample rate invalid or not initialized");
+		if (!std::isfinite(input) || !std::isfinite(damping) ||
+			!std::isfinite(log2AngularFrequency))
+		{
+			Reset();
+			return 0.0f;
+		}
+		const auto inputValues = _resamplerX->Upsample(input);
+		const auto dampingValues = _resamplerMu->Upsample(damping);
+		const auto frequencyLogValues =
+			_resamplerW->Upsample(log2AngularFrequency);
+		Eigen::Array<double, ResamplingFactor, 1> output;
+		for (int i = 0; i < ResamplingFactor; ++i)
+		{
+			const double angularFrequency = tfdsp::Exp2Taylor5(
+				static_cast<float>(std::clamp(frequencyLogValues(i), -100.0,
+					100.0)));
+			output(i) = ModelStep(inputValues(i), dampingValues(i),
+				angularFrequency);
+		}
 		const float result = _resamplerX->Downsample(output);
 		if (!std::isfinite(result))
 		{

@@ -31,6 +31,14 @@ namespace tfdsp
 		{
 			Self()->_Reset();
 		}
+		// Initialize the interpolation-side all-pass states to the steady state
+		// for a constant input. Control signals use this after reset so their
+		// first reconstructed frame starts at the requested value rather than
+		// implying that the control was previously zero.
+		inline void PrimeUpsample(const double x)
+		{
+			Self()->_PrimeUpsample(x);
+		}
 	};
 
 	class DummyResampler : public Resampler<DummyResampler, 1>
@@ -40,6 +48,7 @@ namespace tfdsp
 		friend class Resampler<DummyResampler, 1>;
 	protected:
 		void _Reset() {}
+		void _PrimeUpsample(const double) {}
 		inline Eigen::Array<double, 1, 1> _Upsample(const double x)
 		{
 			Eigen::Array<double, 1, 1> xA;
@@ -89,6 +98,13 @@ namespace tfdsp
 			_sOutDirect.setZero();
 			_sOutDelayed.setZero();
 			_delay = 0.0;
+		}
+		void _PrimeUpsample(const double x)
+		{
+			for (int i = 0; i < N; ++i)
+				_sInDirect(i) = (1.0 - _coeffsDirect(i)) * x;
+			for (int i = 0; i < M; ++i)
+				_sInDelayed(i) = (1.0 - _coeffsDelayed(i)) * x;
 		}
 		Eigen::Array<double, 2, 1> _Upsample(const double x)
 		{
@@ -157,6 +173,11 @@ namespace tfdsp
 		{
 			_stage1->Reset();
 			_stage2->Reset();
+		}
+		void _PrimeUpsample(const double x)
+		{
+			_stage1->PrimeUpsample(x);
+			_stage2->PrimeUpsample(x);
 		}
 		Eigen::Array<double, 4, 1> _Upsample(const double x)
 		{

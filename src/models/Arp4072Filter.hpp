@@ -7,8 +7,10 @@
 #include <functional>
 #include <limits>
 #include <memory>
+#include <utility>
 
 #include "tfdsp/sampleRate.hpp"
+#include "tfdsp/approx.hpp"
 
 namespace tfdsp
 {
@@ -35,6 +37,8 @@ public:
 	explicit Arp4072Filter(
 		std::function<std::unique_ptr<ResamplerType>()> resamplerCreator)
 		: _resampler(resamplerCreator()),
+		  _cutoffPitchResampler(resamplerCreator()),
+		  _resonanceResampler(resamplerCreator()),
 		  _postOutputResampler(resamplerCreator()),
 		  _postLinearCvResampler(resamplerCreator()),
 		  _postExponentialCvResampler(resamplerCreator())
@@ -60,6 +64,8 @@ public:
 	{
 		_state = {};
 		_resampler->Reset();
+		_cutoffPitchResampler->Reset();
+		_resonanceResampler->Reset();
 		_postOutputResampler->Reset();
 		_postLinearCvResampler->Reset();
 		_postExponentialCvResampler->Reset();
@@ -70,7 +76,21 @@ public:
 	float Step(double inputRackVolts, double cutoffHz, double resonance,
 		double driveGain = 1.0, bool extendedCutoff = false)
 	{
-		if (!std::isfinite(inputRackVolts) || !std::isfinite(cutoffHz) ||
+		if (!std::isfinite(cutoffHz))
+		{
+			Reset();
+			return 0.0f;
+		}
+		return StepLogCutoff(inputRackVolts, std::log2(std::max(cutoffHz,
+			std::numeric_limits<double>::min())), resonance, driveGain,
+			extendedCutoff);
+	}
+
+	float StepLogCutoff(double inputRackVolts, double log2CutoffHz,
+		double resonance, double driveGain = 1.0,
+		bool extendedCutoff = false)
+	{
+		if (!std::isfinite(inputRackVolts) || !std::isfinite(log2CutoffHz) ||
 			!std::isfinite(resonance) || !std::isfinite(driveGain) ||
 			!(_sampleRate > 0.0))
 		{
@@ -78,12 +98,11 @@ public:
 			return 0.0f;
 		}
 
-		resonance = std::clamp(resonance, 0.0, 1.0);
 		driveGain = std::clamp(driveGain, 0.0, MaximumDriveGain);
 		const double circuitCeiling = extendedCutoff ?
 			ExtendedCutoffCeilingHz : StockCutoffCeilingHz;
 		const double numericalCeiling = 0.45 * _hostSampleRate;
-		cutoffHz = SoftLimitCutoff(cutoffHz,
+		const auto controls = UpsampleControls(log2CutoffHz, resonance,
 			std::min(circuitCeiling, numericalCeiling));
 
 		const auto upsampled = _resampler->Upsample(inputRackVolts * driveGain);
@@ -91,7 +110,8 @@ public:
 		for (int i = 0; i < OversamplingFactor; ++i)
 		{
 			const double physicalOutput = OutputLevelShiftGain *
-				ProcessOversampled(upsampled(i), cutoffHz, resonance);
+				ProcessOversampled(upsampled(i), controls.cutoffHz(i),
+					controls.resonance(i));
 			output(i) = SoftOutputCompliance(physicalOutput);
 		}
 
@@ -114,7 +134,25 @@ public:
 		bool extendedCutoff, double linearControlVolts,
 		double exponentialControlVolts, PostProcessor&& postProcessor)
 	{
-		if (!std::isfinite(inputRackVolts) || !std::isfinite(cutoffHz) ||
+		if (!std::isfinite(cutoffHz))
+		{
+			Reset();
+			return {};
+		}
+		return StepWithPostProcessorLogCutoff(inputRackVolts,
+			std::log2(std::max(cutoffHz,
+				std::numeric_limits<double>::min())), resonance, driveGain,
+			extendedCutoff, linearControlVolts, exponentialControlVolts,
+			std::forward<PostProcessor>(postProcessor));
+	}
+
+	template<typename PostProcessor>
+	ProcessedOutputs StepWithPostProcessorLogCutoff(double inputRackVolts,
+		double log2CutoffHz, double resonance, double driveGain,
+		bool extendedCutoff, double linearControlVolts,
+		double exponentialControlVolts, PostProcessor&& postProcessor)
+	{
+		if (!std::isfinite(inputRackVolts) || !std::isfinite(log2CutoffHz) ||
 			!std::isfinite(resonance) || !std::isfinite(driveGain) ||
 			!std::isfinite(linearControlVolts) ||
 			!std::isfinite(exponentialControlVolts) || !(_sampleRate > 0.0))
@@ -123,12 +161,11 @@ public:
 			return {};
 		}
 
-		resonance = std::clamp(resonance, 0.0, 1.0);
 		driveGain = std::clamp(driveGain, 0.0, MaximumDriveGain);
 		const double circuitCeiling = extendedCutoff ?
 			ExtendedCutoffCeilingHz : StockCutoffCeilingHz;
 		const double numericalCeiling = 0.45 * _hostSampleRate;
-		cutoffHz = SoftLimitCutoff(cutoffHz,
+		const auto controls = UpsampleControls(log2CutoffHz, resonance,
 			std::min(circuitCeiling, numericalCeiling));
 
 		const auto audio = _resampler->Upsample(inputRackVolts * driveGain);
@@ -141,7 +178,8 @@ public:
 		for (int i = 0; i < OversamplingFactor; ++i)
 		{
 			const double physicalOutput = OutputLevelShiftGain *
-				ProcessOversampled(audio(i), cutoffHz, resonance);
+				ProcessOversampled(audio(i), controls.cutoffHz(i),
+					controls.resonance(i));
 			// The final ARP level shifter and its supply compliance precede the
 			// normalled connection to the VCA. Both output paths therefore see
 			// exactly the same filter-node level and overload behavior.
@@ -214,13 +252,45 @@ public:
 
 	static constexpr double LimiterEquivalentPeakVolts()
 	{
-		return LimiterTailCurrentAmps() * StageInputResistanceOhms;
+		return NominalLimiterEquivalentPeakVolts() * LimiterGainCalibration();
 	}
 
-	static constexpr double StageTanhScalePerVolt()
+	static constexpr double LimiterDifferentialResistanceOhms()
 	{
-		return StageShuntResistanceOhms /
+		// The reference-side limiter base sees 220 ohm; the driven side sees
+		// the loaded stage resistance. Differential current develops voltage
+		// across their mean resistance.
+		return 0.5 * (StageShuntResistanceOhms + StageBaseResistanceOhms());
+	}
+
+	static constexpr double NominalLimiterEquivalentPeakVolts()
+	{
+		return LimiterTailCurrentAmps() * StageInputResistanceOhms *
+			LimiterDifferentialResistanceOhms() / StageBaseResistanceOhms();
+	}
+
+	static constexpr double LimiterGainCalibration()
+	{
+		// The module's pin-10 gain trim and the console's R163 adjustment set
+		// the open filter to unity. Keep that service calibration separate from
+		// the nominal component-ratio estimate above.
+		const double unityPeak = 2.0 * ThermalVoltage /
+			(OutputLevelShiftGain * AudioBaseScale());
+		return unityPeak / NominalLimiterEquivalentPeakVolts();
+	}
+
+	static constexpr double StageSaturationCoefficientPerVolt()
+	{
+		return StageBaseResistanceOhms() /
 			(StageInputResistanceOhms * 2.0 * ThermalVoltage);
+	}
+
+	static constexpr double StageBaseResistanceOhms()
+	{
+		// Each 220 ohm base shunt is loaded by the two 12.1 kohm signal
+		// resistors connected to the local differential-pair node.
+		return 1.0 / (1.0 / StageShuntResistanceOhms +
+			2.0 / StageInputResistanceOhms);
 	}
 
 	static constexpr double SmallSignalInputGain()
@@ -244,6 +314,8 @@ private:
 	static constexpr double OutputRailVolts = 13.5;
 
 	std::unique_ptr<ResamplerType> _resampler;
+	std::unique_ptr<ResamplerType> _cutoffPitchResampler;
+	std::unique_ptr<ResamplerType> _resonanceResampler;
 	std::unique_ptr<ResamplerType> _postOutputResampler;
 	std::unique_ptr<ResamplerType> _postLinearCvResampler;
 	std::unique_ptr<ResamplerType> _postExponentialCvResampler;
@@ -252,6 +324,12 @@ private:
 	double _sampleRate{};
 	int _lastIterations{};
 	std::size_t _solverFailures{};
+
+	struct OversampledControls
+	{
+		Eigen::Array<double, OversamplingFactor, 1> cutoffHz;
+		Eigen::Array<double, OversamplingFactor, 1> resonance;
+	};
 
 	static double Softplus(double value, double knee)
 	{
@@ -268,6 +346,25 @@ private:
 		const double positive = Softplus(requestedHz, CutoffFloorKneeHz);
 		return ceilingHz - Softplus(ceilingHz - positive,
 			CutoffCeilingKneeHz);
+	}
+
+	OversampledControls UpsampleControls(double log2CutoffHz,
+		double resonance, double ceilingHz)
+	{
+		// Reconstruct cutoff in its exponential control domain. Mapping to hertz
+		// after interpolation keeps audio-rate 1 V/octave modulation band-limited
+		// before it changes the nonlinear solver coefficients.
+		const auto cutoffPitch = _cutoffPitchResampler->Upsample(log2CutoffHz);
+		auto resonanceValues = _resonanceResampler->Upsample(resonance);
+		OversampledControls controls;
+		for (int i = 0; i < OversamplingFactor; ++i)
+		{
+			const double reconstructedHz = tfdsp::Exp2Taylor5(
+				static_cast<float>(std::clamp(cutoffPitch(i), -100.0, 100.0)));
+			controls.cutoffHz(i) = SoftLimitCutoff(reconstructedHz, ceilingHz);
+			controls.resonance(i) = std::clamp(resonanceValues(i), 0.0, 1.0);
+		}
+		return controls;
 	}
 
 	static double SoftOutputCompliance(double voltage)
@@ -295,8 +392,9 @@ private:
 		// The midpoint coefficient is prewarped so the small-signal one-pole
 		// sections reach their requested analog cutoff at the oversampled rate.
 		const double gamma = 2.0 * std::tan(Pi * cutoffHz / _sampleRate);
-		const double stageScale = StageTanhScalePerVolt();
-		const double stageStep = gamma / stageScale;
+		const double stageSaturationCoefficient =
+			StageSaturationCoefficientPerVolt();
+		const double stageStep = gamma / stageSaturationCoefficient;
 		const double limiterPeak = LimiterEquivalentPeakVolts();
 		const double feedbackScale = resonance * FeedbackBaseScale() *
 			OutputLevelShiftGain;
@@ -320,10 +418,10 @@ private:
 			const double firstInput = limiterPeak * limiterTanh;
 
 			std::array<double, 4> stageTanh{};
-			stageTanh[0] = std::tanh(stageScale *
+			stageTanh[0] = std::tanh(stageSaturationCoefficient *
 				(firstInput + midpoint[0]));
 			for (int i = 1; i < 4; ++i)
-				stageTanh[i] = std::tanh(stageScale *
+				stageTanh[i] = std::tanh(stageSaturationCoefficient *
 					(midpoint[i - 1] + midpoint[i]));
 
 			std::array<double, 4> residual{};

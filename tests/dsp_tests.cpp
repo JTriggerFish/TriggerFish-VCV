@@ -184,14 +184,17 @@ int main()
 	Check(Arp4072::FeedbackBaseVolts(5.0) >
 		2.5 * Arp4072::ThermalVoltage,
 		"ARP 4072 full resonance return spans several thermal voltages");
-	Check(std::abs(Arp4072::SmallSignalInputGain() - 1.0) < 0.03,
-		"ARP 4072 component ratios produce approximately unity audio gain");
+	Check(std::abs(Arp4072::SmallSignalInputGain() - 1.0) < 1.0e-12,
+		"ARP 4072 gain-trim calibration produces unity small-signal gain");
 	Check(Arp4072::SmallSignalFeedbackGain() > 6.0 &&
 		Arp4072::SmallSignalFeedbackGain() < 7.0,
 		"ARP 4072 feedback loop gain follows the circuit level shifting");
 	Check(Arp4072::LimiterEquivalentPeakVolts() > 3.0 &&
 		Arp4072::LimiterEquivalentPeakVolts() < 3.2,
 		"ARP 4072 limiter tail current sets the expected first-stage drive");
+	Check(Arp4072::StageBaseResistanceOhms() > 212.2 &&
+		Arp4072::StageBaseResistanceOhms() < 212.4,
+		"ARP 4072 stage model includes signal-resistor loading at each base");
 	Arp4072 arp4072(tfdsp::CreateX4Resampler_Cheby7);
 	arp4072.SetSampleRate(48000.0);
 	double arpPeak = 0.0;
@@ -257,7 +260,14 @@ int main()
 	double envelope = arpEnvelope.Step(10.0, 0.0, 0.1, 0.2, 0.4, 0.3);
 	Check(arpEnvelope.GetStage() == tfdsp::ArpEnvelope::Stage::Attack,
 		"ARP envelope exposes its active attack stage");
-	for (int i = 1; i < 4800; ++i)
+	for (int i = 1; i < 1200; ++i)
+		envelope = arpEnvelope.Step(10.0, 0.0, 0.1, 0.2, 0.4, 0.3);
+	const double expectedQuarterAttack = tfdsp::ArpEnvelope::NormalizedCurve(
+		0.25, tfdsp::ArpEnvelope::AttackCurve(0.0));
+	Check(std::abs(envelope - expectedQuarterAttack) < 1.0e-9 &&
+		envelope > 0.36 && envelope < 0.361,
+		"ARP attack follows the 15 V charge target at its default curve");
+	for (int i = 1200; i < 4800; ++i)
 		envelope = arpEnvelope.Step(10.0, 0.0, 0.1, 0.2, 0.4, 0.3);
 	Check(envelope > 0.998 && envelope <= 1.0,
 		"ARP ADSR reaches its attack peak at the calibrated time");
@@ -296,10 +306,27 @@ int main()
 		envelope = arpEnvelope.Step(10.0, 0.0, 0.1, 0.01, 0.25, 0.1);
 	Check(envelope > 0.999,
 		"switching a held ADSR envelope to AR returns to its peak smoothly");
+	std::array<double, 3> attackQuarterValues{};
+	for (int curveIndex = 0; curveIndex < 3; ++curveIndex)
+	{
+		arpEnvelope.Reset();
+		const double curve = static_cast<double>(curveIndex - 1);
+		for (int i = 0; i < 1200; ++i)
+			attackQuarterValues[curveIndex] = arpEnvelope.Step(10.0, 0.0,
+				0.1, 0.2, 0.4, 0.3, curve);
+	}
+	Check(attackQuarterValues[0] < attackQuarterValues[1] &&
+		attackQuarterValues[1] < attackQuarterValues[2],
+		"ARP envelope curve spans near-linear through tighter exponentials");
+	arpEnvelope.Reset();
+	for (int i = 0; i < 240; ++i)
+		envelope = arpEnvelope.Step(10.0, 0.0, 0.005, 0.2, 0.4, 0.3);
+	Check(envelope > 0.999,
+		"ARP-inspired attack remains usable at a five millisecond setting");
 
 	using Arp4019 = tfdsp::Arp4019Vca<tfdsp::X4Resampler_Order7>;
-	Check(std::abs(Arp4019::AudioInputScale() - 0.00219517) < 1.0e-7,
-		"ARP 4019 audio attenuator presents about 0.2% to its input pair");
+	Check(std::abs(Arp4019::AudioInputScale() - 0.0021734835) < 1.0e-10,
+		"ARP 4019 audio attenuator includes the external and internal series resistors");
 	Check(std::abs(Arp4019::SmallSignalGainAtUnityControl() - 1.0) < 1.0e-12,
 		"ARP 4019 unity-current calibration follows the circuit ratios");
 	Check(Arp4019::UnityControlCurrentAmps() > 0.0004 &&
@@ -410,6 +437,11 @@ int main()
 	VCA_TransistorCore<tfdsp::X2Resampler_Order7> vca(tfdsp::CreateX2Resampler_Chebychev7);
 	vca.SetSampleRate(48000.0f);
 	Check(std::isfinite(vca.Step(1.0f, 0.5f, 1.0f)), "VCA model produces finite output");
+	for (int i = 0; i < 128; ++i)
+		vca.StepControls(1.0f, 0.25f, 0.5f, 20.0f, 1.0f);
+	Check(std::isfinite(vca.LastControl()) && vca.LastControl() > 0.25f &&
+		vca.LastControl() < 1.0f,
+		"VCA reconstructs linear and exponential controls before shaping");
 	Check(vca.Step(std::numeric_limits<float>::infinity(), 0.5f, 1.0f) == 0.0f,
 		"VCA model rejects non-finite input");
 	vca.Reset();
@@ -420,6 +452,11 @@ int main()
 	for (int i = 0; i < 100; ++i)
 		oscillatorOutput = oscillator.Step(0.0, 0.5, 2.0 * tfdsp::PI * 261.625565);
 	Check(std::isfinite(oscillatorOutput), "VDPO model produces finite output");
+	for (int i = 0; i < 100; ++i)
+		oscillatorOutput = oscillator.StepLogAngularFrequency(0.0, 0.5,
+			std::log2(2.0 * tfdsp::PI * 261.625565));
+	Check(std::isfinite(oscillatorOutput),
+		"VDPO reconstructs pitch before conversion to angular frequency");
 	for (int i = 0; i < 100; ++i)
 		oscillatorOutput = oscillator.Step(0.0, 9.0, 2.0 * tfdsp::PI * 18000.0);
 	Check(std::isfinite(oscillatorOutput), "VDPO model remains stable above the legacy frequency limit");
@@ -461,10 +498,16 @@ int main()
 	Check(std::abs(tb303Output.pitch -
 		(1.0 - std::exp(-0.060 / 0.022))) < 2.0e-3,
 		"TB-303 stock slide follows the 22 ms pitch-CV time constant");
+	const double pitchBeforeStep = tb303Output.pitch;
 	tb303Output = tb303Oscillator.Step(2.0, false, 0.060, 0.0,
 		0.0, false, 0.0, 1.0);
-	Check(std::abs(tb303Output.pitch - 2.0f) < 1.0e-6f,
-		"TB-303 pitch changes immediately when slide is low");
+	Check(tb303Output.pitch > pitchBeforeStep && tb303Output.pitch < 2.01f,
+		"TB-303 pitch steps use the oversampled reconstruction filter");
+	for (int i = 0; i < 128; ++i)
+		tb303Output = tb303Oscillator.Step(2.0, false, 0.060, 0.0,
+			0.0, false, 0.0, 1.0);
+	Check(std::abs(tb303Output.pitch - 2.0f) < 1.0e-5f,
+		"TB-303 reconstructed pitch settles to the requested value");
 	const auto invalidTb303Output = tb303Oscillator.Step(
 		std::numeric_limits<double>::infinity(), false, 0.060, 0.0,
 		0.0, false, 0.0, 0.0);

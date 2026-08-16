@@ -449,3 +449,29 @@ def test_two_and_four_times_vca_overload_remain_consistent():
     x4_residual = off_harmonic_level(x4)
     assert x4_residual < -45.0
     assert x4_residual < x2_residual - 8.0
+
+
+def test_audio_rate_pitch_fm_and_resonance_use_polyphase_reconstruction():
+    sample_count = 4_096
+    time = np.arange(sample_count) / SAMPLE_RATE
+    audio = 2.0 * np.sin(2.0 * np.pi * 997.0 * time)
+    cutoff = 1_200.0 * np.exp2(0.7 * np.sin(2.0 * np.pi * 2_200.0 * time))
+    linear_fm = 900.0 * np.sin(2.0 * np.pi * 3_100.0 * time)
+    resonance = 0.45 + 0.4 * np.sin(2.0 * np.pi * 1_300.0 * time)
+
+    production = dsp.diode_ladder_controls_x4(audio, cutoff, linear_fm, resonance)
+
+    audio_x4 = dsp.resampler_upsample_x4_order7(audio)
+    pitch_x4 = dsp.resampler_upsample_x4_order7(np.log2(cutoff))
+    linear_fm_x4 = dsp.resampler_upsample_x4_order7(linear_fm)
+    resonance_x4 = np.clip(dsp.resampler_upsample_x4_order7(resonance), 0.0, 1.0)
+    internal = dsp.diode_ladder_controls_x1(
+        audio_x4,
+        np.exp2(pitch_x4),
+        linear_fm_x4,
+        resonance_x4,
+        sample_rate=4.0 * SAMPLE_RATE,
+    )
+    reference = dsp.resampler_downsample_x4_order7(internal)
+
+    np.testing.assert_allclose(production[256:], reference[256:], atol=2.0e-6)

@@ -108,16 +108,12 @@ void TfVCA::process(const ProcessArgs &args)
 	//If no input plugged in then pass zero.
 	const float linearInput = inputs[LIN_CV_INPUT].getNormalVoltage(0.f);
 	const float exponentialInput = inputs[EXP_CV_INPUT].getNormalVoltage(0.f);
-	float linCv = std::clamp(std::isfinite(linearInput) ? linearInput / 10.f * params[LIN_INPUT_LEVEL].getValue() : 0.0f, 0.0f, 1.0f);
-	float expCv = std::clamp(std::isfinite(exponentialInput) ? exponentialInput / 10.f * params[EXP_INPUT_LEVEL].getValue() : 0.0f, 0.0f, 1.0f);
+	const float linearCv = std::isfinite(linearInput) ? linearInput / 10.f *
+		params[LIN_INPUT_LEVEL].getValue() : 0.0f;
+	const float exponentialCv = std::isfinite(exponentialInput) ?
+		exponentialInput / 10.f * params[EXP_INPUT_LEVEL].getValue() : 0.0f;
 
-	float expBase = params[EXP_CV_BASE].getValue();
-	expCv = (powf(expBase, expCv) - 1.f) / (expBase - 1.f);
-
-	float cv = std::clamp(linCv + expCv, 0.0f, 1.0f);
-
-	//cv bleed
-	const float cvBleed = _cvHighPass(cv, _normalisedHighPassCv) * params[CV_BLEED].getValue() * _maxCvBleed;
+	const float expBase = params[EXP_CV_BASE].getValue();
 
 	// Compensate most of the drive-induced level change. This makes DRIVE
 	// primarily a saturation control; OUTPUT_LEVEL remains the volume control.
@@ -125,7 +121,14 @@ void TfVCA::process(const ProcessArgs &args)
 	finalGain *= params[OUTPUT_LEVEL].getValue();
 
 	//VCA core
-	audio = _vcaTransi->Step(audio, cv, finalGain);
+	audio = _vcaTransi->StepControls(audio, linearCv, exponentialCv, expBase,
+		finalGain);
+	const float reconstructedCv = _vcaTransi->LastControl();
+
+	// CV bleed follows the reconstructed control path so exponential audio-rate
+	// modulation cannot introduce host-rate images directly at the output.
+	const float cvBleed = _cvHighPass(reconstructedCv, _normalisedHighPassCv) *
+		params[CV_BLEED].getValue() * _maxCvBleed;
 
 	//DC rejection in case there is some DC offset due to aliasing
 	audio = _audioHighPass(audio, _normalisedHighPassAudio);
@@ -134,7 +137,8 @@ void TfVCA::process(const ProcessArgs &args)
 	outputs[MAIN_OUTPUT].setVoltage(std::isfinite(output) ? output : 0.0f);
 
 	//Deal with input monitoring lights
-	lights[CV_LIGHT].setSmoothBrightness(std::max(0.f, cv), args.sampleTime);
+	lights[CV_LIGHT].setSmoothBrightness(std::max(0.f, reconstructedCv),
+		args.sampleTime);
 }
 void TfVCA::onReset(const ResetEvent& event)
 {

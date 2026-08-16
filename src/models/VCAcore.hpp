@@ -24,6 +24,7 @@ private:
 	static constexpr unsigned int ResamplingFactor{ Oversampler::ResamplingFactor };
 	std::unique_ptr<Oversampler> _audioResampler;
 	std::unique_ptr<Oversampler> _cvResampler;
+	std::unique_ptr<Oversampler> _exponentialCvResampler;
 	//-------------------------------------------------------------------------------
 
 	//Models for audio and cv inputs:
@@ -40,12 +41,14 @@ private:
 	double _cvScaling{3.0}; // For additional cv staturation. TODO trimmer for this ?
 	double _powerSupplyVoltage{ 12.0 };
 	TanhBlock<double, ResamplingFactor> _outputStage{};
+	float _lastControl{};
 
 
 public:
 	EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 	explicit VCACore(std::function<std::unique_ptr<Oversampler>()> resamplerCreator) :
-		_audioResampler{ resamplerCreator() }, _cvResampler{ resamplerCreator() }
+		_audioResampler{ resamplerCreator() }, _cvResampler{ resamplerCreator() },
+		_exponentialCvResampler{ resamplerCreator() }
 	{
 		_rolloffs << Model::DefaultRolloff, Model::DefaultRolloff;
 	}
@@ -65,8 +68,10 @@ public:
 			model.Reset();
 		_audioResampler->Reset();
 		_cvResampler->Reset();
+		_exponentialCvResampler->Reset();
 		_noise.Reset();
 		_outputStage.Reset();
+		_lastControl = 0.0f;
 	}
 	float Step(const float audio, const float cv, const float finalGain)
 	{
@@ -86,8 +91,58 @@ public:
 		auto cvA = _cvResampler->Upsample(double(_cvScaling*cv));
 
 		Step(audioA, cvA, finalGain);
+		const Eigen::Array<double, ResamplingFactor, 1> normalizedCv =
+			cvA / _cvScaling;
+		_lastControl = static_cast<float>(
+			_cvResampler->Downsample(normalizedCv));
 
 		const float output = float(_audioResampler->Downsample(audioA));
+		if (!std::isfinite(output))
+		{
+			Reset();
+			return 0.0f;
+		}
+		return output;
+	}
+	float LastControl() const { return _lastControl; }
+
+	float StepControls(const float audio, const float linearCv,
+		const float exponentialCv, const float exponentialBase,
+		const float finalGain)
+	{
+		if (_sampleRate <= 0.f)
+			throw std::runtime_error("Sample rate invalid or not initialized");
+		if (!std::isfinite(audio) || !std::isfinite(linearCv) ||
+			!std::isfinite(exponentialCv) || !std::isfinite(exponentialBase) ||
+			!std::isfinite(finalGain))
+		{
+			Reset();
+			return 0.0f;
+		}
+
+		const double noise = _noiseStdDev * _noise.Step();
+		auto audioValues = _audioResampler->Upsample(noise + audio);
+		auto linearValues = _cvResampler->Upsample(linearCv);
+		const auto exponentialValues =
+			_exponentialCvResampler->Upsample(exponentialCv);
+		const double base = std::max<double>(exponentialBase, 1.0e-6);
+		for (unsigned int i = 0; i < ResamplingFactor; ++i)
+		{
+			const double linear = std::clamp(linearValues(i), 0.0, 1.0);
+			const double exponent = std::clamp(exponentialValues(i), 0.0, 1.0);
+			const double shaped = std::abs(base - 1.0) < 1.0e-8 ? exponent :
+				(std::pow(base, exponent) - 1.0) / (base - 1.0);
+			linearValues(i) = _cvScaling *
+				std::clamp(linear + shaped, 0.0, 1.0);
+		}
+		Step(audioValues, linearValues, finalGain);
+		const Eigen::Array<double, ResamplingFactor, 1> normalizedCv =
+			linearValues / _cvScaling;
+		_lastControl = static_cast<float>(
+			_cvResampler->Downsample(normalizedCv));
+
+		const float output = static_cast<float>(
+			_audioResampler->Downsample(audioValues));
 		if (!std::isfinite(output))
 		{
 			Reset();

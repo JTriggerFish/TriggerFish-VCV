@@ -65,7 +65,7 @@ def test_4072_voice_core_panel_matches_the_wide_dual_envelope_layout():
 
     widget_source = (ROOT / "src" / "Tf4072VoiceCore.cpp").read_text(encoding="utf-8")
     controls = list(control_pattern("Tf4072VoiceCore").finditer(widget_source))
-    assert len(controls) == 34
+    assert len(controls) == 35
     by_id = {control.group("id"): control for control in controls}
     envelope_params = (
         "FILTER_ATTACK",
@@ -135,6 +135,11 @@ def test_4072_voice_core_panel_matches_the_wide_dual_envelope_layout():
     ]
     assert "configSwitch(FILTER_ENV_MODE, 0.0f, 1.0f, 0.0f" in widget_source
     assert "configSwitch(AMP_ENV_MODE, 0.0f, 1.0f, 1.0f" in widget_source
+    assert by_id["ENVELOPE_CURVE"].group("type") == "TfCvKnob"
+    assert (
+        float(by_id["ENVELOPE_CURVE"].group("x")),
+        float(by_id["ENVELOPE_CURVE"].group("y")),
+    ) == (322.0, 143.0)
     assert '{"2x (lower CPU)", "4x (default)"}' in widget_source
     assert "lightDivider.setDivision(512);" in widget_source
     assert "args.sampleTime * lightDivider.getDivision()" in widget_source

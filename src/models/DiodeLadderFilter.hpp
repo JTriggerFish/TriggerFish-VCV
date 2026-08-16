@@ -12,6 +12,7 @@
 #include "AnalogOutputStage.hpp"
 #include "tfdsp/filters.hpp"
 #include "tfdsp/sampleRate.hpp"
+#include "tfdsp/approx.hpp"
 
 namespace tfdsp
 {
@@ -136,6 +137,9 @@ public:
 	explicit DiodeLadderFilter(
 		std::function<std::unique_ptr<ResamplerType>()> resamplerCreator)
 		: _resampler(resamplerCreator()),
+		  _cutoffPitchResampler(resamplerCreator()),
+		  _linearFmResampler(resamplerCreator()),
+		  _resonanceResampler(resamplerCreator()),
 		  _postResampler(resamplerCreator())
 	{
 	}
@@ -192,6 +196,9 @@ public:
 		for (auto& section : _bassCorrection)
 			section.Reset();
 		_resampler->Reset();
+		_cutoffPitchResampler->Reset();
+		_linearFmResampler->Reset();
+		_resonanceResampler->Reset();
 		_postResampler->Reset();
 		_smoothedBass = 0.0;
 		_smoothedDrive = 0.0;
@@ -203,7 +210,33 @@ public:
 	float Step(double inputVolts, double cutoffHz, double resonance,
 		bool highResonance, double driveGain, double bass)
 	{
-		if (!std::isfinite(inputVolts) || !std::isfinite(cutoffHz) ||
+		const double exponentialCutoffHz = std::max(cutoffHz,
+			std::numeric_limits<double>::min());
+		return StepModulated(inputVolts, exponentialCutoffHz,
+			cutoffHz - exponentialCutoffHz, resonance,
+			highResonance, driveGain, bass);
+	}
+
+	float StepModulated(double inputVolts, double exponentialCutoffHz,
+		double linearFmHz, double resonance, bool highResonance,
+		double driveGain, double bass)
+	{
+		if (!std::isfinite(exponentialCutoffHz))
+		{
+			Reset();
+			return 0.0f;
+		}
+		return StepLogCutoffModulated(inputVolts, std::log2(std::max(
+			exponentialCutoffHz, std::numeric_limits<double>::min())),
+			linearFmHz, resonance, highResonance, driveGain, bass);
+	}
+
+	float StepLogCutoffModulated(double inputVolts, double log2CutoffHz,
+		double linearFmHz, double resonance, bool highResonance,
+		double driveGain, double bass)
+	{
+		if (!std::isfinite(inputVolts) ||
+			!std::isfinite(log2CutoffHz) || !std::isfinite(linearFmHz) ||
 			!std::isfinite(resonance) || !std::isfinite(driveGain) ||
 			!std::isfinite(bass) || !(_sampleRate > 0.0))
 		{
@@ -212,8 +245,8 @@ public:
 		}
 
 		const double maximumCutoff = std::min(20000.0, 0.45 * _hostSampleRate);
-		cutoffHz = MapCutoffControl(cutoffHz, maximumCutoff);
-		resonance = std::clamp(resonance, 0.0, 1.0);
+		const auto controls = UpsampleControls(log2CutoffHz, linearFmHz,
+			resonance, maximumCutoff);
 		driveGain = std::clamp(driveGain, 0.0, 66.6);
 		bass = std::clamp(bass, 0.0, 1.0);
 
@@ -224,13 +257,15 @@ public:
 		// Devil Fish range then extends to 66.6 times the stock level.
 		const auto upsampled = _resampler->Upsample(inputVolts * StockInputScale);
 		Eigen::Array<double, OversamplingFactor, 1> output;
-		const double resonanceMakeup = 1.0 + resonance *
-			(highResonance ? HighResonanceMakeup : StockResonanceMakeup);
-		const double outputScale = RackOutputScale * resonanceMakeup;
 		for (int i = 0; i < OversamplingFactor; ++i)
-			output(i) = AnalogOutputStage::Process(outputScale *
-				ProcessOversampled(upsampled(i), cutoffHz, resonance,
+		{
+			const double resonanceMakeup = 1.0 + controls.resonance(i) *
+				(highResonance ? HighResonanceMakeup : StockResonanceMakeup);
+			output(i) = AnalogOutputStage::Process(
+				RackOutputScale * resonanceMakeup * ProcessOversampled(
+					upsampled(i), controls.cutoffHz(i), controls.resonance(i),
 					highResonance, driveGain, bass));
+		}
 
 		// Open303 and tbvcf both use resonance-dependent output makeup. The
 		// calibration is based on AC signal level after the output coupling
@@ -253,7 +288,40 @@ public:
 		double resonance, bool highResonance, double driveGain, double bass,
 		double postControl, PostProcessor&& postProcessor)
 	{
-		if (!std::isfinite(inputVolts) || !std::isfinite(cutoffHz) ||
+		const double exponentialCutoffHz = std::max(cutoffHz,
+			std::numeric_limits<double>::min());
+		return StepWithPostProcessorModulated(inputVolts, exponentialCutoffHz,
+			cutoffHz - exponentialCutoffHz, resonance, highResonance, driveGain,
+			bass, postControl,
+			std::forward<PostProcessor>(postProcessor));
+	}
+
+	template<typename PostProcessor>
+	ProcessedOutputs StepWithPostProcessorModulated(double inputVolts,
+		double exponentialCutoffHz, double linearFmHz, double resonance,
+		bool highResonance, double driveGain, double bass, double postControl,
+		PostProcessor&& postProcessor)
+	{
+		if (!std::isfinite(exponentialCutoffHz))
+		{
+			Reset();
+			return {};
+		}
+		return StepWithPostProcessorLogCutoffModulated(inputVolts,
+			std::log2(std::max(exponentialCutoffHz,
+				std::numeric_limits<double>::min())), linearFmHz, resonance,
+			highResonance, driveGain, bass, postControl,
+			std::forward<PostProcessor>(postProcessor));
+	}
+
+	template<typename PostProcessor>
+	ProcessedOutputs StepWithPostProcessorLogCutoffModulated(double inputVolts,
+		double log2CutoffHz, double linearFmHz, double resonance,
+		bool highResonance, double driveGain, double bass, double postControl,
+		PostProcessor&& postProcessor)
+	{
+		if (!std::isfinite(inputVolts) ||
+			!std::isfinite(log2CutoffHz) || !std::isfinite(linearFmHz) ||
 			!std::isfinite(resonance) || !std::isfinite(driveGain) ||
 			!std::isfinite(bass) || !std::isfinite(postControl) ||
 			!(_sampleRate > 0.0))
@@ -263,8 +331,8 @@ public:
 		}
 
 		const double maximumCutoff = std::min(20000.0, 0.45 * _hostSampleRate);
-		cutoffHz = MapCutoffControl(cutoffHz, maximumCutoff);
-		resonance = std::clamp(resonance, 0.0, 1.0);
+		const auto controls = UpsampleControls(log2CutoffHz, linearFmHz,
+			resonance, maximumCutoff);
 		driveGain = std::clamp(driveGain, 0.0, 66.6);
 		bass = std::clamp(bass, 0.0, 1.0);
 
@@ -272,16 +340,16 @@ public:
 		const auto upsampledControl = _postResampler->Upsample(postControl);
 		Eigen::Array<double, OversamplingFactor, 1> lowPass;
 		Eigen::Array<double, OversamplingFactor, 1> postProcessed;
-		const double resonanceMakeup = 1.0 + resonance *
-			(highResonance ? HighResonanceMakeup : StockResonanceMakeup);
-		const double lowPassOutputScale = RackOutputScale * resonanceMakeup;
 		const double vcaInputScale = RackOutputScale;
 		for (int i = 0; i < OversamplingFactor; ++i)
 		{
-			const double filtered = ProcessOversampled(upsampled(i), cutoffHz,
-				resonance, highResonance, driveGain, bass);
+			const double resonanceMakeup = 1.0 + controls.resonance(i) *
+				(highResonance ? HighResonanceMakeup : StockResonanceMakeup);
+			const double filtered = ProcessOversampled(upsampled(i),
+				controls.cutoffHz(i), controls.resonance(i), highResonance,
+				driveGain, bass);
 			lowPass(i) = AnalogOutputStage::Process(
-				lowPassOutputScale * filtered);
+				RackOutputScale * resonanceMakeup * filtered);
 			// Resonance makeup is a Rack output calibration rather than part of
 			// the circuit. Apply it after the nonlinear VCA so it cannot change
 			// the BA662 drive and then pass it through the modeled output rail.
@@ -334,6 +402,9 @@ private:
 	static constexpr double CutoffCeilingKneeHz = 10.0;
 
 	std::unique_ptr<ResamplerType> _resampler;
+	std::unique_ptr<ResamplerType> _cutoffPitchResampler;
+	std::unique_ptr<ResamplerType> _linearFmResampler;
+	std::unique_ptr<ResamplerType> _resonanceResampler;
 	std::unique_ptr<ResamplerType> _postResampler;
 	AnalogRatioCascade<4> _forward;
 	AnalogRatioCascade<6> _feedback;
@@ -349,6 +420,34 @@ private:
 	double _driveSmoothing{};
 	int _lastIterations{};
 	std::size_t _solverFailures{};
+
+	struct OversampledControls
+	{
+		Eigen::Array<double, OversamplingFactor, 1> cutoffHz;
+		Eigen::Array<double, OversamplingFactor, 1> resonance;
+	};
+
+	OversampledControls UpsampleControls(double log2CutoffHz,
+		double linearFmHz, double resonance, double maximumCutoff)
+	{
+		// The exponential cutoff path is reconstructed in pitch space, while
+		// linear FM remains in hertz. Combining them at the internal rate keeps
+		// both control laws intact and removes host-rate images before the
+		// nonlinear ladder.
+		const auto cutoffPitch = _cutoffPitchResampler->Upsample(log2CutoffHz);
+		const auto linearFm = _linearFmResampler->Upsample(linearFmHz);
+		auto resonanceValues = _resonanceResampler->Upsample(resonance);
+		OversampledControls controls;
+		for (int i = 0; i < OversamplingFactor; ++i)
+		{
+			controls.cutoffHz(i) = MapCutoffControl(
+				static_cast<double>(tfdsp::Exp2Taylor5(static_cast<float>(
+					std::clamp(cutoffPitch(i), -100.0, 100.0)))) +
+					linearFm(i), maximumCutoff);
+			controls.resonance(i) = std::clamp(resonanceValues(i), 0.0, 1.0);
+		}
+		return controls;
+	}
 
 	static double Softplus(double value, double knee)
 	{

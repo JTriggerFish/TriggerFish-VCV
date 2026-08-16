@@ -118,9 +118,12 @@ control without a cancellation notch near the centre.
 
 ## Oversampling and control interpolation
 
-FM, Shape, and Wave CV are interpolated into the oversampled domain. The saw
-core, sync correction, Q8 shaper, and waveform mix are evaluated there, followed
-by separate seventh-order decimators for the saw, square, and mixed signals.
+V/oct pitch, logarithmic Slide Time, FM, Shape, and Wave CV are interpolated
+into the oversampled domain. Pitch is converted to frequency after
+reconstruction, while Shape and Wave limits are applied at the internal rate.
+The saw core, sync correction, Q8 shaper, and waveform mix are evaluated there,
+followed by separate seventh-order decimators for the saw, square, and mixed
+signals.
 Keeping the nonlinear shaper inside the oversampled path suppresses aliases from
 its steep transitions. The 4x default gives additional margin for high-pitch FM
 and sync sounds. The 2x mode approximately halves the oscillator's DSP cost for
