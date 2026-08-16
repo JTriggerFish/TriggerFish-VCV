@@ -10,7 +10,7 @@ using namespace std;
 namespace rack
 {
 
-struct TfSlider : SVGSlider
+struct TfSlider : SvgSlider
 {
 	TfSlider()
 	{

@@ -23,7 +23,34 @@ jobs:
             --output rack-sdk.zip
           unzip -q rack-sdk.zip
       - name: Build and package plugin
-        run: make RACK_DIR="$GITHUB_WORKSPACE/Rack-SDK" -j2 dist
+        run: |
+          make RACK_DIR="$GITHUB_WORKSPACE/Rack-SDK" cleandep
+          make RACK_DIR="$GITHUB_WORKSPACE/Rack-SDK" dep
+          make RACK_DIR="$GITHUB_WORKSPACE/Rack-SDK" -j2 dist
+
+  plugin-build-mac:
+    strategy:
+      matrix:
+        include:
+          - runner: macos-15-intel
+            arch: x64
+          - runner: macos-15
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Download Rack SDK
+        run: |
+          curl --fail --location \
+            "https://vcvrack.com/downloads/Rack-SDK-${RACK_SDK_VERSION}-mac-${{ matrix.arch }}.zip" \
+            --output rack-sdk.zip
+          unzip -q rack-sdk.zip
+      - name: Build and package plugin
+        run: |
+          make RACK_DIR="$GITHUB_WORKSPACE/Rack-SDK" cleandep
+          make RACK_DIR="$GITHUB_WORKSPACE/Rack-SDK" dep
+          make RACK_DIR="$GITHUB_WORKSPACE/Rack-SDK" -j2 dist
 
   dsp-tests:
     runs-on: ubuntu-latest

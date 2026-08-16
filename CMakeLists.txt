@@ -13,7 +13,7 @@ add_library(triggerfish_dsp STATIC
 set_target_properties(triggerfish_dsp PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_include_directories(triggerfish_dsp PUBLIC
 	${CMAKE_CURRENT_SOURCE_DIR}/src
-	${CMAKE_CURRENT_SOURCE_DIR}/dep/eigen
+	${CMAKE_CURRENT_SOURCE_DIR}/vendor/eigen
 )
 
 # Give clangd accurate commands for the Rack-facing sources without making the
@@ -34,7 +34,7 @@ if(EXISTS "${RACK_SDK_DIR}/include/rack.hpp")
 	target_include_directories(triggerfish_rack_index PRIVATE
 		${CMAKE_CURRENT_SOURCE_DIR}/src
 		${CMAKE_CURRENT_SOURCE_DIR}/src/models
-		${CMAKE_CURRENT_SOURCE_DIR}/dep/eigen
+		${CMAKE_CURRENT_SOURCE_DIR}/vendor/eigen
 		${RACK_SDK_DIR}/include
 		${RACK_SDK_DIR}/dep/include
 	)

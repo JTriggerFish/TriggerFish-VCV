@@ -7,10 +7,8 @@ SLUG = TriggerFish-Elements
 VERSION = 2.2.0
 
 
-# FLAGS will be passed to both the C and C++ compiler
-FLAGS += -std=c++17 #-faligned-allocation -faligned-new# -fopt-info-loop-optimized # -fopt-info-vec-missed
-CFLAGS +=
-CXXFLAGS += -Isrc -Isrc/models -Idep/eigen
+# FLAGS are passed to both the C and C++ compiler by the Rack SDK.
+FLAGS += -std=c++17 -Isrc -Isrc/models -Ivendor/eigen
 
 # Careful about linking to shared libraries, since you can't assume much about the user's environment and library search path.
 # Static libraries are fine.

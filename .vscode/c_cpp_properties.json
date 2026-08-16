@@ -11,8 +11,7 @@
                 "${workspaceFolder}/*",
                 "${workspaceFolder}/../../include",
                 "${workspaceFolder}/../../dep/include",
-                "${workspaceFolder}/Eigen",
-                "${workspaceFolder}/Eigen/src/*"
+                "${workspaceFolder}/vendor/eigen"
             ],
             "defines": [
                 "_DEBUG",
@@ -24,9 +23,7 @@
                     "${workspaceFolder}/*",
                     "${workspaceFolder}/dsp",
                     "${workspaceFolder}/models",
-                    "${workspaceFolder}/dep",
-                    "${workspaceFolder}/Eigen",
-                    "${workspaceFolder}/Eigen/src/*",
+                    "${workspaceFolder}/vendor/eigen",
                     "${workspaceFolder}/../../*"
                 ],
                 "limitSymbolsToIncludedHeaders": true,
@@ -40,7 +37,8 @@
                 "${workspaceFolder}",
                 "${workspaceFolder}/*",
                 "${workspaceFolder}/../../include",
-                "${workspaceFolder}/../../dep/include"
+                "${workspaceFolder}/../../dep/include",
+                "${workspaceFolder}/vendor/eigen"
             ],
             "defines": [
                 "_DEBUG",
@@ -53,7 +51,7 @@
                     "${workspaceFolder}/*",
                     "${workspaceFolder}/dsp",
                     "${workspaceFolder}/models",
-                    "${workspaceFolder}/dep",
+                    "${workspaceFolder}/vendor/eigen",
                     "${workspaceFolder}/../../*"
                 ],
                 "limitSymbolsToIncludedHeaders": true,
