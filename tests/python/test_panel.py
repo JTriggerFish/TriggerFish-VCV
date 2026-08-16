@@ -1,5 +1,6 @@
 import importlib.util
 from pathlib import Path
+import re
 import sys
 import xml.etree.ElementTree as ET
 
@@ -21,21 +22,24 @@ ALIGNMENT_MODULE = importlib.util.module_from_spec(ALIGNMENT_SPEC)
 ALIGNMENT_SPEC.loader.exec_module(ALIGNMENT_MODULE)
 COMPONENTS = PREVIEW_MODULE.COMPONENTS
 CONTROL_PATTERN = PREVIEW_MODULE.CONTROL_PATTERN
+MODULE_NAMES = PREVIEW_MODULE.MODULE_NAMES
 control_pattern = PREVIEW_MODULE.control_pattern
+control_coordinates = PREVIEW_MODULE.control_coordinates
+light_pattern = PREVIEW_MODULE.light_pattern
 PANEL_GRAPHICS = PREVIEW_MODULE.PANEL_GRAPHICS
 render_preview = PREVIEW_MODULE.render_preview
 svg_dimensions = PREVIEW_MODULE.svg_dimensions
 aligned_source = ALIGNMENT_MODULE.aligned_source
 
 
-def test_diode_ladder_runtime_panel_outlines_all_editable_text():
-    source = ET.parse(ROOT / "res-src" / "TfDiodeLadderFilter.svg").getroot()
-    runtime = ET.parse(ROOT / "res" / "TfDiodeLadderFilter.svg").getroot()
+def test_303_voice_core_runtime_panel_outlines_all_editable_text():
+    source = ET.parse(ROOT / "res-src" / "Tf303VoiceCore.svg").getroot()
+    runtime = ET.parse(ROOT / "res" / "Tf303VoiceCore.svg").getroot()
 
     assert source.findall(f".//{SVG}text")
     assert not runtime.findall(f".//{SVG}text")
     assert len(runtime.findall(f".//{SVG}path")) > len(source.findall(f".//{SVG}path"))
-    assert b"\r\n" not in (ROOT / "res" / "TfDiodeLadderFilter.svg").read_bytes()
+    assert b"\r\n" not in (ROOT / "res" / "Tf303VoiceCore.svg").read_bytes()
 
 
 def test_303_oscillator_runtime_panel_outlines_all_editable_text():
@@ -52,6 +56,9 @@ def test_303_oscillator_runtime_panel_outlines_all_editable_text():
 
 def test_303_oscillator_panel_matches_widget_layout():
     widget_source = (ROOT / "src" / "Tf303Oscillator.cpp").read_text(encoding="utf-8")
+    assert widget_source.count("oversampling = 1;") == 2
+    assert widget_source.count("activeOversampling = 1;") == 2
+    assert '{"2x (lower CPU)", "4x (default)"}' in widget_source
     controls = list(control_pattern("Tf303Oscillator").finditer(widget_source))
     assert len(controls) == 19
     by_id = {control.group("id"): control for control in controls}
@@ -112,6 +119,11 @@ def test_303_oscillator_panel_matches_widget_layout():
     labels = ["".join(label.itertext()) for label in source.findall(f".//{SVG}text")]
     assert labels.count("SL.TIME") == 1
     assert labels.count("SL.TIME CV") == 2
+    labels_by_text = {
+        "".join(label.itertext()): label for label in source.findall(f".//{SVG}text")
+    }
+    assert labels_by_text["TZ"].attrib["y"] == "50"
+    assert labels_by_text["EXP"].attrib["y"] == "85"
     aligned_labels = [
         label
         for label in source.findall(f".//{SVG}text")
@@ -159,16 +171,78 @@ def test_panel_label_alignment_uses_control_center_and_optical_offset():
     assert 'x="12.875"' in aligned
 
 
-def test_diode_ladder_documentation_includes_rendered_module_preview():
-    preview = ROOT / "doc" / "TfDiodeLadderFilter.png"
-    assert preview.is_file()
-    assert 'src="doc/TfDiodeLadderFilter.png"' in (ROOT / "README.md").read_text(
-        encoding="utf-8"
+def test_documentation_includes_every_rendered_module_preview_and_technical_report():
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    for module_name in MODULE_NAMES:
+        assert (ROOT / "doc" / f"{module_name}.png").is_file()
+        assert f'src="doc/{module_name}.png"' in readme
+    for report in (
+        "Tf303Oscillator-technical-report.md",
+        "Tf303VoiceCore-technical-report.md",
+    ):
+        assert (ROOT / "docs" / report).is_file()
+        assert f"docs/{report}" in readme
+
+
+def test_readme_and_technical_report_local_links_resolve():
+    documents = [ROOT / "README.md", *sorted((ROOT / "docs").glob("*.md"))]
+    link_pattern = re.compile(r"\[[^]]*\]\(([^)]+)\)|(?:src|href)=\"([^\"]+)\"")
+    for document in documents:
+        source = document.read_text(encoding="utf-8")
+        for match in link_pattern.finditer(source):
+            target = next(value for value in match.groups() if value)
+            if target.startswith(("#", "http://", "https://")):
+                continue
+            local_path = target.split("#", 1)[0]
+            assert (
+                document.parent / local_path
+            ).is_file(), f"Broken local link in {document.relative_to(ROOT)}: {target}"
+
+
+def test_legacy_panel_coordinate_expressions_are_resolved():
+    for module_name, expected in (
+        ("TfSlop4", {"TRACK_SCALING4": (118.0, 223.0), "VOCT_OUTPUT4": (115.0, 319.0)}),
+        ("TfVCA", {"LIN_CV_INPUT": (15.0, 313.0), "MAIN_OUTPUT": (141.0, 313.0)}),
+    ):
+        source = (ROOT / "src" / f"{module_name}.cpp").read_text(encoding="utf-8")
+        controls = list(control_pattern(module_name).finditer(source))
+        positions = {
+            control.group("id"): control_coordinates(control, source)
+            for control in controls
+        }
+        for control_id, position in expected.items():
+            assert positions[control_id] == position
+
+
+def test_vca_preview_includes_activity_light(tmp_path):
+    component_directory = tmp_path / "Rack2" / "res" / "ComponentLibrary"
+    component_directory.mkdir(parents=True)
+    asset_names = {"ScrewSilver.svg", "MediumLight.svg"}
+    for names in COMPONENTS.values():
+        asset_names.update(names)
+    minimal_svg = (
+        '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" '
+        'viewBox="0 0 10 10"><circle cx="5" cy="5" r="4"/></svg>'
     )
+    for asset_name in asset_names:
+        (component_directory / asset_name).write_text(minimal_svg, encoding="utf-8")
+
+    widget_source = (ROOT / "src" / "TfVCA.cpp").read_text(encoding="utf-8")
+    lights = list(light_pattern("TfVCA").finditer(widget_source))
+    assert len(lights) == 1
+    assert lights[0].group("type") == "MediumLight<BlueLight>"
+    assert control_coordinates(lights[0], widget_source) == (85.0, 250.0)
+
+    preview = render_preview(
+        tmp_path / "Rack2", tmp_path / "output", png=False, module_name="TfVCA"
+    )
+    preview_source = preview.read_text(encoding="utf-8")
+    assert 'fill="#333"' in preview_source
+    assert "MediumLight.svg" not in preview_source
 
 
-def test_diode_ladder_uses_separate_diode_connected_transistor_artwork():
-    source = ET.parse(ROOT / "res-src" / "TfDiodeLadderFilter.svg").getroot()
+def test_303_voice_core_uses_separate_diode_connected_transistor_artwork():
+    source = ET.parse(ROOT / "res-src" / "Tf303VoiceCore.svg").getroot()
     assert source.find(f".//{SVG}g[@id='diode-connected-transistor']") is None
 
     asset = ROOT / "res" / "TfDiodeConnectedTransistor.svg"
@@ -188,16 +262,14 @@ def test_diode_ladder_uses_separate_diode_connected_transistor_artwork():
     assert len(PANEL_GRAPHICS) == 1
     assert PANEL_GRAPHICS[0] == (asset, 64.0, 266.0, 112.0, 112.0, 0.32)
 
-    widget_source = (ROOT / "src" / "TfDiodeLadderFilter.cpp").read_text(
-        encoding="utf-8"
-    )
+    widget_source = (ROOT / "src" / "Tf303VoiceCore.cpp").read_text(encoding="utf-8")
     assert 'pluginInstance, "res/TfDiodeConnectedTransistor.svg"' in widget_source
     assert "transistorGraphic->box.pos = Vec(64, 266);" in widget_source
     assert "transistorGraphic->opacity = 0.32f;" in widget_source
 
 
-def test_diode_ladder_panel_uses_triggerfish_output_block_convention():
-    source = ET.parse(ROOT / "res-src" / "TfDiodeLadderFilter.svg").getroot()
+def test_303_voice_core_panel_uses_triggerfish_output_block_convention():
+    source = ET.parse(ROOT / "res-src" / "Tf303VoiceCore.svg").getroot()
     assert source.attrib["width"] == "240"
 
     dividers = source.find(f".//{SVG}path[@id='section-dividers']")
@@ -207,19 +279,20 @@ def test_diode_ladder_panel_uses_triggerfish_output_block_convention():
     labels = {
         "".join(label.itertext()): label for label in source.findall(f".//{SVG}text")
     }
+    assert "303 VOICE CORE" in labels
     assert labels["DRIVE"].attrib["x"] == "47.5"
     assert labels["BASS"].attrib["x"] == "189"
     assert labels["RES RANGE"].attrib["data-control"] == "HIGH_RESONANCE"
     assert labels["STOCK"].attrib["data-control"] == "HIGH_RESONANCE"
     assert labels["HIGH"].attrib["data-control"] == "HIGH_RESONANCE"
     assert labels["RES RANGE"].attrib["y"] == "48"
-    assert labels["STOCK"].attrib["y"] == "61"
-    assert labels["HIGH"].attrib["y"] == "96"
+    assert labels["HIGH"].attrib["y"] == "61"
+    assert labels["STOCK"].attrib["y"] == "96"
     secondary_labels = source.find(f".//{SVG}g[@fill='#686868']")
     assert secondary_labels is not None
     assert ["".join(label.itertext()) for label in secondary_labels] == [
-        "STOCK",
         "HIGH",
+        "STOCK",
     ]
 
     output_blocks = source.find(f".//{SVG}g[@id='output-jack-blocks']")
@@ -232,9 +305,7 @@ def test_diode_ladder_panel_uses_triggerfish_output_block_convention():
 
 
 def test_panel_preview_embeds_rack_components_at_cpp_widget_positions(tmp_path):
-    widget_source = (ROOT / "src" / "TfDiodeLadderFilter.cpp").read_text(
-        encoding="utf-8"
-    )
+    widget_source = (ROOT / "src" / "Tf303VoiceCore.cpp").read_text(encoding="utf-8")
     controls = list(CONTROL_PATTERN.finditer(widget_source))
     assert len(controls) == 25
 

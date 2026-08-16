@@ -11,7 +11,7 @@ void init(Plugin *p)
 	p->addModel(modelTfSlop);
 	p->addModel(modelTfSlop4);
 	p->addModel(modelTfVDPO);
-	p->addModel(modelTfDiodeLadderFilter);
+	p->addModel(modelTf303VoiceCore);
 	p->addModel(modelTf303Oscillator);
 
 	// Any other pluginInstance initialization may go here.

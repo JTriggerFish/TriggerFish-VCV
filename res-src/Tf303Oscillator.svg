@@ -21,8 +21,8 @@
     <text x="89.8838" y="37" font-size="6.8" font-weight="bold" data-control="FM_MODE">FM MODE</text>
     <text x="137.2843" y="37" font-size="8.5" font-weight="bold" data-control="TUNE">TUNE</text>
     <g fill="#686868">
-      <text x="89.7953" y="50" font-size="6.4" font-weight="bold" data-control="FM_MODE">EXP</text>
-      <text x="90.1531" y="85" font-size="6.4" font-weight="bold" data-control="FM_MODE">TZ</text>
+      <text x="90.1531" y="50" font-size="6.4" font-weight="bold" data-control="FM_MODE">TZ</text>
+      <text x="89.7953" y="85" font-size="6.4" font-weight="bold" data-control="FM_MODE">EXP</text>
     </g>
 
     <text x="32.9922" y="112" font-size="8" font-weight="bold" data-control="SLIDE_TIME">SL.TIME</text>

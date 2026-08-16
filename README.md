@@ -1,136 +1,143 @@
+# TriggerFish Elements
 
-# TriggerFish Elements plugins
-
-<img src="doc/modules.png" width="600">
+Circuit-inspired sound generators, processors, and pitch utilities for VCV Rack 2.
 
 [![CI](https://github.com/JTriggerFish/TriggerFish-VCV/actions/workflows/ci.yml/badge.svg)](https://github.com/JTriggerFish/TriggerFish-VCV/actions/workflows/ci.yml)
 
-## Modules
-- [Slop and Slop 4](#slop-and-slop-4)
-- [VDPO](#vdpo)
-- [VCA](#vca)
-- [Diode Ladder Filter](#diode-ladder-filter)
+<table>
+  <tr>
+    <td align="center"><a href="#slop-and-slop-4"><img src="doc/TfSlop.png" height="260" alt="Slop module"><br><strong>Slop</strong></a></td>
+    <td align="center"><a href="#slop-and-slop-4"><img src="doc/TfSlop4.png" height="260" alt="Slop 4 module"><br><strong>Slop 4</strong></a></td>
+    <td align="center"><a href="#vdpo"><img src="doc/TfVDPO.png" height="260" alt="VDPO module"><br><strong>VDPO</strong></a></td>
+  </tr>
+  <tr>
+    <td align="center"><a href="#vca"><img src="doc/TfVCA.png" height="260" alt="VCA module"><br><strong>VCA</strong></a></td>
+    <td align="center"><a href="#303-oscillator"><img src="doc/Tf303Oscillator.png" height="260" alt="303 Oscillator module"><br><strong>303 Oscillator</strong></a></td>
+    <td align="center"><a href="#303-voice-core"><img src="doc/Tf303VoiceCore.png" height="260" alt="303 Voice Core module"><br><strong>303 Voice Core</strong></a></td>
+  </tr>
+</table>
 
+## Polyphony
+
+| Module | Handling | Output voice count |
+| --- | --- | --- |
+| Slop | Monophonic; reads channel 1 of `1V/OCT` | One |
+| Slop 4 | Four independent monophonic signal paths | One per output jack |
+| VDPO | Monophonic; reads channel 1 of each input | One |
+| VCA | Monophonic; reads channel 1 of each input | One |
+| 303 Oscillator | Fully polyphonic, with independent DSP state per voice; mono inputs are broadcast | Widest connected input, up to 16 |
+| 303 Voice Core | Fully polyphonic, with independent filter, envelope, accent, and VCA state; mono controls are broadcast | Channel count of `IN`, up to 16 |
+
+## Modules
 
 ### Slop and Slop 4
-Slop and Slop4 are utilities to add drift and hum to V/oct signals in order to add pleasant detuning to VCOs.
 
-Slop can add linear detuning ( Hz mode ) or proportional detuning ( cents mode ).
+Slop adds slow pitch drift and 60 Hz power-supply hum to a 1 V/octave signal.
+The drift can be proportional, measured in cents, or linear, measured in hertz.
+The tracking control also allows small oscillator-tracking errors to be modelled.
 
-In Slop4, the common detuning is in cents ( i.e. proportional ) and the individual detunings are linear to give a more stable and pleasant beating accross octaves.
-
-Hum adds 60hz frequency modulation to the V/Oct signals to replicate the power supply bleed and cross modulation in analog oscillators.
-
+Slop 4 applies shared proportional drift and hum to four independent monophonic
+paths, then adds a separate linear drift to each voice. This produces coherent
+ensemble motion with stable beating across the keyboard. Each path has its own
+tracking trim.
 
 ### VDPO
-VDPO or Van Der Pol oscillator is based on the classic differential equation [wikipedia](http://en.wikipedia.org/wiki/Van_der_Pol_oscillator)
 
-While it can self oscillate, best results are obtained by feeding it another oscillator at the input and playing with the self-freq, damping and input level to go from harmonic to inharmonic and chaotic.
+VDPO is a driven [Van der Pol oscillator](https://en.wikipedia.org/wiki/Van_der_Pol_oscillator).
+It can self-oscillate, or lock imperfectly to a signal patched into `IN`, moving
+from harmonic locking through inharmonic and chaotic responses.
 
-**self-freq** controls the natural resonance frequency of the oscillator
+- **Self freq** sets the oscillator's natural frequency.
+- **Damping** sets the nonlinear damping and therefore affects both tuning and
+  waveform complexity.
+- **In** controls the forcing-signal level.
+- **Damp** accepts bipolar damping modulation.
 
-**damping** controls the non linear damping of the oscillator. Note that it will affect the tuning as well as the harmonic and inharmonic content of the output waveform.
+The stiff differential equation is evaluated by a structure-aware, prewarped
+split integrator at 4x sample rate. Adaptive work is confined to the demanding
+high-frequency, high-damping region.
 
-**in** controls the level of the (forcing) input which will force the oscillator to run at the same frequency as the input signal.
+### VCA
 
-The higher the level the more the VDPO will follow the input, however if self-freq is too low the oscillator is too slow to follow it and all sorts of fun stuff happens.
+VCA is a transistor-inspired amplifier with separate nonlinear audio and control
+paths, followed by a saturating output stage. The nonlinear amplifier core runs
+at 2x sample rate; CV bleed and final DC rejection run at Rack's sample rate.
 
-The stiff differential equation is solved with a structure-aware, prewarped
-split integrator and 4x oversampling. This improves pitch tracking across the
-audio range while using adaptive work only for high damping at high frequency.
+- **Drive** increases input saturation while compensating most of the associated
+  level change.
+- **Lin** and **Exp** set the depth of the two 0–10 V control inputs. Both default
+  to 100%.
+- **Curve** changes the exponential CV response, while **Bleed** adds a small,
+  high-passed control transient to the output.
+- **Output** sets the final level and the amount driven into the output stage.
 
-## VCA
-TriggerFish VCA is an analog modelled VCA that is loosely based on the minimoog's circuit.
-Just like the original it includes 3 non linearities, one on the audio, one on the CV and one on the output.
+For conventional AR and ADSR envelopes, the linear input is usually the most
+predictable starting point.
 
-The input non linearities are tanh-like but with a 1 pole feedback loop, resulting in some amount of slew limiting. The output nonlinearity is also a tanh but with no feedback loop, it also serves to limit the output to +-12v.
+### 303 Oscillator
 
-**Drive** controls the level-compensated input drive. Its extended range mostly increases saturation and nonlinear slew rather than acting as another output-volume control.
-At very low levels more pink noise will be heard on the output, and with the knob fully counterclockwise the input will be cut out.
+303 Oscillator combines a band-limited saw core with a circuit-informed model of
+the TB-303 Q8 saw-to-square shaper. The module supports polyphony,
+voltage-controlled waveform morphing, hard sync, extended tuning, and two FM
+responses.
 
-**lin** and **exp** are controls for the gain of the linear and exponential cv inputs. 
-Exponential is more snappy but linear is typically better for normal enveloppe signals. Higher gains will result in more saturation and slew limiting of the CV.
+- **Octave** selects an integer offset from −3 to +3 octaves; **Tune** covers
+  ±7 semitones.
+- `1V/OCT` is the pitch input. `SLIDE` enables the internal pitch glide while
+  high, and **SL.Time** sets its nominal duration from 2 to 360 ms.
+- **Shape** shifts the square-wave switching point. **Wave** morphs continuously
+  from saw to square without a level notch around the middle.
+- `FM` is exponential in **EXP** mode and signed linear through-zero FM in **TZ**
+  mode. The attenuverter sets depth in either mode.
+- `SYNC` performs fractionally timed, minBLEP-corrected hard sync.
+- `CV OUT` exposes the post-slide pitch signal for driving another oscillator or
+  filter; `OUT` is the audio output.
 
-For standard useage with enveloppes ADSR or AR enveloppes I recommend using the linear input.
+The widest connected input sets the output channel count. Each voice has its own
+oscillator, shaper, slide, sync, and resampling state; mono modulation inputs are
+shared across the active voices.
 
-**cv curve** controls the curve of the exponential input - higher is more exponential and snappier, lower is more linear.
+The oscillator uses 4x oversampling by default. A 2x mode is available from the
+context menu for dense polyphonic patches where CPU use matters more than the
+extra alias suppression at high pitch or under complex FM and sync.
+The [303 Oscillator technical report](docs/Tf303Oscillator-technical-report.md)
+describes the model and its antialiasing in detail.
 
-**output** controls the output level, higher values will cause saturation as the level approach +-12v
+### 303 Voice Core
 
-**bleed** will send part of the input CV to the output to make it more clicky.
+303 Voice Core is the back end of a TB-303-style voice. It models the four-stage
+diode ladder, coupling and resonance networks, filter and volume envelopes,
+accent path, and BA662-style OTA VCA. `LP OUT` exposes the filter directly;
+`VCA OUT` provides the complete articulated signal.
 
-The model use antialiased integration for the nonlinearities and the whole module runs at 2x oversampling for low aliasing. 
-Because of this the CPU useage is relatively high.
+- **Cutoff** spans 10 Hz to 20 kHz. `1V/OCT` tracks directly, while `EXP CV`
+  provides a second exponential input with an attenuverter.
+- **FM** applies bipolar, AC-coupled linear cutoff modulation. **Res** modulates
+  resonance, and **Res Range** selects the stock or extended feedback range.
+- **Drive** sets the level entering the nonlinear ladder. **Bass** continuously
+  restores low-frequency response lost in the original coupling network.
+- `GATE` drives the internal filter and volume envelopes. `ACC` adds the accent
+  response. The five envelope controls set filter depth, normal and accented
+  decay, accent amount, and VCA decay/sustain.
+- **Accent Sweep** provides Off, Fast, Normal, and Slow responses. Normal is the
+  stock setting; Fast and Slow extend the timing in the spirit of Devil Fish.
+- Patching `VCA CV` replaces the internal volume envelope. Its attenuator controls
+  the external 0–10 V signal, while accent remains additive.
 
-## Diode Ladder Filter
+The `IN` cable sets the filter's polyphonic voice count. Each audio channel has
+independent filter, envelope, accent, and VCA state; mono control inputs are
+shared across those voices.
 
-<img src="doc/TfDiodeLadderFilter.png" width="240" alt="TfDiodeLadderFilter module">
-
-TfDiodeLadderFilter is a circuit-modelled four-stage diode ladder inspired by
-the Roland TB-303 filter. It combines the ladder with TB-303-style cutoff and
-amplitude envelopes, accent handling, a BA662-style OTA VCA, and selected
-Devil Fish-inspired extensions. `LP OUT` exposes the filter directly, while
-`VCA OUT` provides a complete articulated voice.
-
-**Cutoff** sets the base frequency from 10 Hz to 20 kHz. `1V/OCT` is a fixed,
-calibrated tracking input and is not affected by the **EXP CV** knob. `EXP CV`
-is a second exponential cutoff input with a bipolar attenuverter. At 100% it
-also follows 1 V/octave; its 53.2% default lets a 0--10 V envelope sweep the
-default 500 Hz cutoff to 20 kHz.
-
-**FM** controls the bipolar amount of AC-coupled linear-frequency modulation.
-It is intended for audio-rate filter FM and does not change the DC cutoff. At
-100%, a +/-5 V signal contributes approximately +/-1 kHz.
-
-**Resonance** sets the feedback level. The `RES` input has a bipolar
-attenuverter, and **Res Range** selects Stock or High feedback. High mode
-extends into self-oscillation at suitable cutoff settings. Resonance-dependent
-makeup keeps the filtered signal at a useful level as feedback increases.
-
-**Drive** controls the level entering the nonlinear ladder. The marked 0 dB
-position is the stock calibration; the full range extends from mute to
-+36.5 dB for stronger saturation and resonance interaction. **Bass** adds a
-continuous low-frequency extension to the stock coupling response.
-
-`GATE` drives the internal filter envelope and VCA envelope. A held gate does
-not retrigger, allowing legato notes and pitch slides to retain the current
-articulation. **Env Mod** sets the filter-envelope depth and **Env Decay** sets
-its normal decay from 30 ms to 3 s.
-
-`ACC` drives the accent path. **Accent** sets how strongly accents affect the
-filter and VCA, while **Acc Decay** sets the accented filter-envelope decay
-from 30 ms to 3 s. **Accent Sweep** selects Off, Fast, Normal, or Slow; Normal
-is the stock default, with Fast and Slow providing Devil Fish-inspired
-alternatives.
-
-**VCA Decay** moves from short decay through longer decay and into sustain.
-The `VCA CV` input is normalled to the internal volume envelope. Patching an
-external 0--10 V signal replaces that envelope, and the **VCA CV** knob sets
-its amount. Accent remains additive, so reducing **Accent** gives independent
-external VCA control.
-
-`IN` accepts the audio signal. `LP OUT` is the filter output before the
-internal VCA. `VCA OUT` passes the same filtered signal through the
-BA662-style VCA and its output coupling. The module is polyphonic: `IN` sets
-the channel count, and monophonic control signals are shared across voices.
-
-The module uses 4x oversampling by default. Right-click the panel to select 2x
-oversampling for lower CPU use, or to switch the articulation timing between
-TB-303 and Devil Fish modes.
-
-The circuit analysis, equations, numerical method, calibration, references,
-and validation results are in the
-[TfDiodeLadderFilter technical report](docs/TfDiodeLadderFilter-technical-report.md).
-
-
+The filter uses 4x oversampling by default, with a 2x context-menu option. The
+context menu also selects stock or Devil Fish volume-envelope timing. Circuit
+analysis, equations, calibration, and numerical validation are collected in the
+[303 Voice Core technical report](docs/Tf303VoiceCore-technical-report.md).
 
 ## Contributing
 
-Issues, pull requests and suggestions for improvement are all very welcome.
+Issues, pull requests, and suggestions are welcome.
 
 ## Development
 
-See [DEVELOPMENT.md](DEVELOPMENT.md) for the Windows toolchain and the
-one-command build, test, package, install, and Rack workflows. The old
-machine-specific Visual Studio/Python wrapper has been replaced by CMake,
-pybind11, scikit-build-core, and uv.
+See [DEVELOPMENT.md](DEVELOPMENT.md) for Windows and Linux setup and the build,
+test, package, install, panel-rendering, and Rack workflows.

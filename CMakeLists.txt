@@ -28,7 +28,7 @@ if(EXISTS "${RACK_SDK_DIR}/include/rack.hpp")
 		src/TfSlop4.cpp
 		src/TfVCA.cpp
 		src/TfVDPO.cpp
-		src/TfDiodeLadderFilter.cpp
+		src/Tf303VoiceCore.cpp
 		src/Tf303Oscillator.cpp
 	)
 	target_include_directories(triggerfish_rack_index PRIVATE

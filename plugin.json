@@ -46,9 +46,9 @@
       ]
     },
     {
-      "slug": "TfDiodeLadderFilter",
-      "name": "TfDiodeLadderFilter",
-      "description": "Circuit-modelled diode ladder filter with TB-303-style articulation and OTA VCA",
+      "slug": "Tf303VoiceCore",
+      "name": "303 Voice Core",
+      "description": "TB-303-style diode ladder, articulation envelopes, accent path, and OTA VCA",
       "tags": [
         "Filter",
         "Envelope generator",
@@ -58,7 +58,7 @@
     },
     {
       "slug": "Tf303Oscillator",
-      "name": "Tf303Oscillator",
+      "name": "303 Oscillator",
       "description": "Circuit-informed TB-303-style oscillator with slide and voltage-controlled waveform morphing",
       "tags": [
         "Oscillator",

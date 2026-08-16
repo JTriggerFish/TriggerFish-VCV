@@ -12,5 +12,5 @@ extern Model *modelTfVCA;
 extern Model *modelTfSlop;
 extern Model *modelTfSlop4;
 extern Model *modelTfVDPO;
-extern Model *modelTfDiodeLadderFilter;
+extern Model *modelTf303VoiceCore;
 extern Model *modelTf303Oscillator;

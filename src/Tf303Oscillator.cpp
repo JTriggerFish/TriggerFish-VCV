@@ -55,10 +55,9 @@ struct Tf303Oscillator : Module
 	std::array<dsp::SchmittTrigger, PORT_MAX_CHANNELS> slideTriggers{};
 	std::array<tfdsp::FractionalSchmittTrigger,
 		PORT_MAX_CHANNELS> syncTriggers{};
-	// 2x preserves substantially more harmonic phase while the 4x option is
-	// available for comparison at extreme pitch and modulation settings.
-	int oversampling = 0;
-	int activeOversampling = 0;
+	// 4x is the quality default; 2x remains available for dense polyphonic use.
+	int oversampling = 1;
+	int activeOversampling = 1;
 
 	Tf303Oscillator()
 	{
@@ -227,8 +226,8 @@ struct Tf303Oscillator : Module
 	void onReset(const ResetEvent& event) override
 	{
 		Module::onReset(event);
-		oversampling = 0;
-		activeOversampling = 0;
+		oversampling = 1;
+		activeOversampling = 1;
 		ResetDsp();
 	}
 
@@ -309,7 +308,7 @@ struct Tf303OscillatorWidget : ModuleWidget
 			return;
 		menu->addChild(new MenuSeparator);
 		menu->addChild(createIndexPtrSubmenuItem("Oversampling",
-			{"2x (lower phase smear)", "4x"}, &module->oversampling));
+			{"2x (lower CPU)", "4x (default)"}, &module->oversampling));
 	}
 };
 

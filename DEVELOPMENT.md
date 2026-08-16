@@ -136,11 +136,11 @@ Slop/VDPO/VCA voices. One VDPO is self-resonating. The other is forced by a
 Fundamental VCO; click the Push module to cycle its forcing waveform through
 sine, saw, and square.
 
-[test-303-voice.vcv](test-303-voice.vcv) combines `Tf303Oscillator` and
-`TfDiodeLadderFilter` with Impromptu Modular's Clocked and Foundry. The
-programmed 16-step pattern routes pitch, gate, per-step accent, and a separate
-slide lane through the complete oscillator/filter/VCA voice. Install Impromptu
-Modular from the Rack Library before opening it.
+[test-303-voice.vcv](test-303-voice.vcv) combines 303 Oscillator
+(`Tf303Oscillator`) and 303 Voice Core (`Tf303VoiceCore`) with Impromptu
+Modular's Clocked and Foundry. The programmed 16-step pattern routes pitch,
+gate, per-step accent, and a separate slide lane through the complete voice.
+Install Impromptu Modular from the Rack Library before opening it.
 
 The Slop4 and VDPO patches use Rack Core, Fundamental, and TriggerFish modules;
 the 303 patch also uses Impromptu Modular. Their final stereo masters are set
@@ -161,7 +161,7 @@ Linux):
 
 ```text
 uv run python tools/svg_text_to_paths.py \
-  res-src/TfDiodeLadderFilter.svg res/TfDiodeLadderFilter.svg \
+  res-src/Tf303VoiceCore.svg res/Tf303VoiceCore.svg \
   --font /path/to/DejaVuSans.ttf
 ```
 
@@ -175,13 +175,14 @@ and screws without launching Rack:
 uv run python tools/render_panel_preview.py --rack-runtime /path/to/Rack2
 ```
 
-Pass `--module Tf303Oscillator` to preview the oscillator. The tool reads
-widget positions from the corresponding module source, embeds the installed
-Rack component artwork into a self-contained SVG, and writes SVG and PNG
-previews under the ignored `build/panel-preview` directory. Set
-`PANEL_PREVIEW_BROWSER` if Edge, Chrome, or Chromium is not found automatically.
-On Windows, `dev.ps1 panel-preview` regenerates the runtime SVG and the preview
-in one command.
+Pass `--module Tf303Oscillator` to select one module, or use `--all` to render
+the complete collection. The tool reads widget positions from each module
+source, embeds the installed Rack component artwork into a self-contained SVG,
+and writes SVG and PNG previews under the ignored `build/panel-preview`
+directory. `--documentation-directory doc` also refreshes the stable PNG names
+used by the README. Set `PANEL_PREVIEW_BROWSER` if Edge, Chrome, or Chromium is
+not found automatically. On Windows, `dev.ps1 panel-preview` regenerates both
+editable runtime panels and all documentation previews in one command.
 
 The smoke commands use ignored `*.local.vcv` copies, allowing Rack to save MIDI
 and audio device selections, parameter changes, and extra test modules without

@@ -1,8 +1,14 @@
-# TfDiodeLadderFilter technical report
+# 303 Voice Core technical report
+
+<p align="center"><img src="../doc/Tf303VoiceCore.png" height="520" alt="303 Voice Core module"></p>
+
+The [module guide](../README.md#303-voice-core) describes the panel controls
+and patching interface.
 
 ## Overview
 
-`TfDiodeLadderFilter` models the Roland TB-303 diode ladder, its surrounding
+`Tf303VoiceCore` is the filter, articulation, and VCA section of a TB-303-style
+voice. It models the Roland TB-303 diode ladder, its surrounding
 AC-coupling and resonance network, and selected Devil Fish extensions. The
 module adds a TB-303-style filter envelope, volume envelope, accent paths, and
 a reduced BA662-style OTA VCA. Separate outputs expose the filter and the
@@ -599,7 +605,7 @@ the ignored `build/ba662-reference` directory.
 - `src/models/OtaVca.hpp`: reusable matched-pair OTA law.
 - `src/models/AnalogOutputStage.hpp`: smooth output-compliance characteristic.
 - `src/models/Tb303Voice.hpp`: envelopes, accent, VCA wrapper, and C38.
-- `src/TfDiodeLadderFilter.cpp`: Rack controls, ports, modulation, and
+- `src/Tf303VoiceCore.cpp`: Rack controls, ports, modulation, and
   polyphony.
 - `tests/python/reference_diode_ladder.py`: analytic and continuous-time filter
   references.

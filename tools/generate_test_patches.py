@@ -27,7 +27,7 @@ DEFAULT_PARAMS = {
     "TfSlop4": [1.0, 1.0, 1.0, 1.0, 0.1, 0.05, 0.05],
     "TfVCA": [0.5, 1.0, 1.0, 0.5, 50.0, 1.0],
     "TfVDPO": [0.5, 0.0, 1.0, 1.0, 1.0, 1.0],
-    "TfDiodeLadderFilter": [
+    "Tf303VoiceCore": [
         0.9344246,
         0.0,
         0.0,
@@ -376,7 +376,7 @@ def generate_303_voice_patch() -> None:
             "16-step pattern automatically.\n\n"
             "Foundry A sends pitch, gate, and per-step accent. Track B marks "
             "the legato notes for Tf303Oscillator's Slide input. The oscillator's "
-            "post-slide CV tracks TfDiodeLadderFilter cutoff, and VCA OUT feeds "
+            "post-slide CV tracks 303 Voice Core cutoff, and VCA OUT feeds "
             "the -6 dB stereo master. Isolated repeated E notes alternate normal "
             "and accented articulation; two legato pairs slide by one octave.\n\n"
             "All TriggerFish parameters start at their declared defaults. Try "
@@ -406,7 +406,7 @@ def generate_303_voice_patch() -> None:
     patch.add(mixer(6, (65, 0), (0.5011872336, 0.7, 0.0, 0.0, 0.0)))
     patch.add(audio(7, (74, 0)))
     patch.add(module(4, "TriggerFish-Elements", "Tf303Oscillator", (28, 1)))
-    patch.add(module(5, "TriggerFish-Elements", "TfDiodeLadderFilter", (40, 1)))
+    patch.add(module(5, "TriggerFish-Elements", "Tf303VoiceCore", (40, 1)))
 
     patch.cable(2, 1, 3, 6)  # Clocked x4 -> Foundry track A clock
     patch.cable(2, 4, 3, 5)  # reset

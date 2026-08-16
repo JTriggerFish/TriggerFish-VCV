@@ -131,36 +131,24 @@ switch ($Command) {
         Assert-Path $panelFont "Rack panel font"
         Push-Location $repoRoot
         try {
-            & uv run python tools/align_panel_labels.py `
-                --rack-runtime $rackRuntime --module TfDiodeLadderFilter
-            if ($LASTEXITCODE -ne 0) {
-                throw "Filter label alignment failed with exit code $LASTEXITCODE."
-            }
-            & uv run python tools/svg_text_to_paths.py `
-                res-src/TfDiodeLadderFilter.svg res/TfDiodeLadderFilter.svg `
-                --font $panelFont
-            if ($LASTEXITCODE -ne 0) {
-                throw "Panel asset generation failed with exit code $LASTEXITCODE."
-            }
-            & uv run python tools/render_panel_preview.py --rack-runtime $rackRuntime
-            if ($LASTEXITCODE -ne 0) {
-                throw "Panel preview failed with exit code $LASTEXITCODE."
-            }
-            & uv run python tools/align_panel_labels.py `
-                --rack-runtime $rackRuntime --module Tf303Oscillator
-            if ($LASTEXITCODE -ne 0) {
-                throw "Oscillator label alignment failed with exit code $LASTEXITCODE."
-            }
-            & uv run python tools/svg_text_to_paths.py `
-                res-src/Tf303Oscillator.svg res/Tf303Oscillator.svg `
-                --font $panelFont
-            if ($LASTEXITCODE -ne 0) {
-                throw "Oscillator panel asset generation failed with exit code $LASTEXITCODE."
+            foreach ($moduleName in @("Tf303VoiceCore", "Tf303Oscillator")) {
+                & uv run python tools/align_panel_labels.py `
+                    --rack-runtime $rackRuntime --module $moduleName
+                if ($LASTEXITCODE -ne 0) {
+                    throw "$moduleName label alignment failed with exit code $LASTEXITCODE."
+                }
+                & uv run python tools/svg_text_to_paths.py `
+                    "res-src/$moduleName.svg" "res/$moduleName.svg" `
+                    --font $panelFont
+                if ($LASTEXITCODE -ne 0) {
+                    throw "$moduleName panel generation failed with exit code $LASTEXITCODE."
+                }
             }
             & uv run python tools/render_panel_preview.py `
-                --rack-runtime $rackRuntime --module Tf303Oscillator
+                --rack-runtime $rackRuntime --all `
+                --documentation-directory (Join-Path $repoRoot "doc")
             if ($LASTEXITCODE -ne 0) {
-                throw "Oscillator panel preview failed with exit code $LASTEXITCODE."
+                throw "Panel preview generation failed with exit code $LASTEXITCODE."
             }
         }
         finally {

@@ -81,7 +81,7 @@ EXPECTED_DEFAULTS = {
     "TfSlop4": {0: 1.0, 1: 1.0, 2: 1.0, 3: 1.0, 4: 0.1, 5: 0.05, 6: 0.05},
     "TfVDPO": {0: 0.5, 1: 0.0, 2: 1.0, 3: 1.0, 4: 1.0, 5: 1.0},
     "TfVCA": {0: 0.5, 1: 1.0, 2: 1.0, 3: 0.5, 4: 50.0, 5: 1.0},
-    "TfDiodeLadderFilter": {
+    "Tf303VoiceCore": {
         0: 0.9344246,
         1: 0.0,
         2: 0.0,
@@ -120,6 +120,15 @@ def test_manifest_uses_canonical_rack_module_tags():
     assert published <= RACK_MODULE_TAGS
 
 
+def test_303_modules_have_final_public_names_and_slugs():
+    manifest = json.loads((ROOT / "plugin.json").read_text(encoding="utf-8"))
+    modules_by_slug = {module["slug"]: module for module in manifest["modules"]}
+
+    assert modules_by_slug["Tf303Oscillator"]["name"] == "303 Oscillator"
+    assert modules_by_slug["Tf303VoiceCore"]["name"] == "303 Voice Core"
+    assert "TfDiodeLadderFilter" not in modules_by_slug
+
+
 def load_patch(name):
     return json.loads(PATCH_PATHS[name].read_text(encoding="utf-8"))
 
@@ -154,7 +163,7 @@ def test_smoke_patches_collectively_contain_every_triggerfish_module():
         "TfSlop4",
         "TfVCA",
         "TfVDPO",
-        "TfDiodeLadderFilter",
+        "Tf303VoiceCore",
         "Tf303Oscillator",
     }
 
@@ -309,7 +318,7 @@ def test_303_voice_patch_connects_sequencer_oscillator_filter_and_vca():
     clock = modules(patch, "Clocked")[0]
     foundry = modules(patch, "Foundry")[0]
     oscillator = modules(patch, "Tf303Oscillator")[0]
-    diode = modules(patch, "TfDiodeLadderFilter")[0]
+    diode = modules(patch, "Tf303VoiceCore")[0]
     master = modules(patch, "VCMixer")[0]
 
     assert has_cable(patch, clock["id"], 1, foundry["id"], 6)
@@ -323,7 +332,7 @@ def test_303_voice_patch_connects_sequencer_oscillator_filter_and_vca():
 
 
 def test_diode_ladder_default_cutoff_cv_range_reaches_fully_open():
-    diode = modules(load_patch("303_voice"), "TfDiodeLadderFilter")[0]
+    diode = modules(load_patch("303_voice"), "Tf303VoiceCore")[0]
     cutoff_pitch = diode["params"][0]["value"]
     cv_amount = diode["params"][5]["value"]
     cutoff_hz = 261.625565 * 2.0**cutoff_pitch

@@ -5,15 +5,15 @@
 
   <g font-family="DejaVu Sans, sans-serif" text-anchor="middle" fill="#1f1f1f">
     <text x="120" y="14" font-size="10" font-weight="bold" letter-spacing="1.1">TRIGGERFISH</text>
-    <text x="120" y="24" font-size="7.8" letter-spacing="1.5">DIODE LADDER FILTER</text>
+    <text x="120" y="24" font-size="7.8" letter-spacing="1.5">303 VOICE CORE</text>
 
     <text x="62" y="39" font-size="8.5" font-weight="bold">CUTOFF</text>
     <text x="182" y="39" font-size="8.5" font-weight="bold">RESONANCE</text>
 
     <text x="119.8804" y="48" font-size="7" font-weight="bold" data-control="HIGH_RESONANCE">RES RANGE</text>
     <g fill="#686868">
-      <text x="119.7219" y="61" font-size="6.4" font-weight="bold" data-control="HIGH_RESONANCE">STOCK</text>
-      <text x="120" y="96" font-size="6.4" font-weight="bold" data-control="HIGH_RESONANCE">HIGH</text>
+      <text x="120" y="61" font-size="6.4" font-weight="bold" data-control="HIGH_RESONANCE">HIGH</text>
+      <text x="119.7219" y="96" font-size="6.4" font-weight="bold" data-control="HIGH_RESONANCE">STOCK</text>
     </g>
 
     <text x="47.5" y="118" font-size="8" font-weight="bold">DRIVE</text>

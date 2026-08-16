@@ -14,7 +14,7 @@
       "version": "2.6.6",
       "params": [],
       "data": {
-        "text": "TriggerFish 303 voice smoke test\n\nSETUP\nSelect an output device in Audio-8 and start with monitor volume low. Impromptu Clocked and Foundry run the programmed 16-step pattern automatically.\n\nFoundry A sends pitch, gate, and per-step accent. Track B marks the legato notes for Tf303Oscillator's Slide input. The oscillator's post-slide CV tracks TfDiodeLadderFilter cutoff, and VCA OUT feeds the -6 dB stereo master. Isolated repeated E notes alternate normal and accented articulation; two legato pairs slide by one octave.\n\nAll TriggerFish parameters start at their declared defaults. Try WAVE and SHAPE on the oscillator, then CUTOFF, RES, ENV, ACCENT, DRIVE, and BASS on the filter."
+        "text": "TriggerFish 303 voice smoke test\n\nSETUP\nSelect an output device in Audio-8 and start with monitor volume low. Impromptu Clocked and Foundry run the programmed 16-step pattern automatically.\n\nFoundry A sends pitch, gate, and per-step accent. Track B marks the legato notes for Tf303Oscillator's Slide input. The oscillator's post-slide CV tracks 303 Voice Core cutoff, and VCA OUT feeds the -6 dB stereo master. Isolated repeated E notes alternate normal and accented articulation; two legato pairs slide by one octave.\n\nAll TriggerFish parameters start at their declared defaults. Try WAVE and SHAPE on the oscillator, then CUTOFF, RES, ENV, ACCENT, DRIVE, and BASS on the filter."
       },
       "pos": [
         0,
@@ -650,7 +650,7 @@
     {
       "id": 5,
       "plugin": "TriggerFish-Elements",
-      "model": "TfDiodeLadderFilter",
+      "model": "Tf303VoiceCore",
       "version": "2.2.0",
       "params": [
         {

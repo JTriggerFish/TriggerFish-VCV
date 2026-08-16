@@ -12,7 +12,7 @@
 #include "tfdsp/filters.hpp"
 #include "tfdsp/sampleRate.hpp"
 
-struct TfDiodeLadderFilter : Module
+struct Tf303VoiceCore : Module
 {
 	enum ParamIds
 	{
@@ -73,7 +73,7 @@ struct TfDiodeLadderFilter : Module
 	int articulationMode = 0;
 	float normalizedFmHighPass{};
 
-	TfDiodeLadderFilter()
+	Tf303VoiceCore()
 	{
 		config(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS);
 		constexpr float minimumCutoffHz = 10.0f;
@@ -346,13 +346,13 @@ struct TfDiodeLadderFilter : Module
 	}
 };
 
-struct TfDiodeLadderFilterWidget : ModuleWidget
+struct Tf303VoiceCoreWidget : ModuleWidget
 {
-	TfDiodeLadderFilterWidget(TfDiodeLadderFilter* module)
+	Tf303VoiceCoreWidget(Tf303VoiceCore* module)
 	{
 		setModule(module);
 		setPanel(APP->window->loadSvg(asset::plugin(
-			pluginInstance, "res/TfDiodeLadderFilter.svg")));
+			pluginInstance, "res/Tf303VoiceCore.svg")));
 
 		auto* transistorGraphic = new TfSvgWatermark;
 		transistorGraphic->setScaledSvg(APP->window->loadSvg(asset::plugin(
@@ -370,64 +370,64 @@ struct TfDiodeLadderFilterWidget : ModuleWidget
 			RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
 
 		addParam(createParam<TfLargeAudioKnob>(Vec(35, 43), module,
-			TfDiodeLadderFilter::CUTOFF));
+			Tf303VoiceCore::CUTOFF));
 		addParam(createParam<TfLargeAudioKnob>(Vec(155, 43), module,
-			TfDiodeLadderFilter::RESONANCE));
+			Tf303VoiceCore::RESONANCE));
 		addParam(createParam<CKSS>(Vec(113, 65), module,
-			TfDiodeLadderFilter::HIGH_RESONANCE));
+			Tf303VoiceCore::HIGH_RESONANCE));
 
 		addParam(createParam<TfAudioKob>(Vec(31, 123), module,
-			TfDiodeLadderFilter::DRIVE));
+			Tf303VoiceCore::DRIVE));
 		addParam(createParam<TfSnapKnob>(Vec(106, 123), module,
-			TfDiodeLadderFilter::ACCENT_SWEEP_MODE));
+			Tf303VoiceCore::ACCENT_SWEEP_MODE));
 		addParam(createParam<TfAudioKob>(Vec(171, 123), module,
-			TfDiodeLadderFilter::BASS));
+			Tf303VoiceCore::BASS));
 
 		addParam(createParam<TfCvKnob>(Vec(10, 181), module,
-			TfDiodeLadderFilter::ENV_AMOUNT));
+			Tf303VoiceCore::ENV_AMOUNT));
 		addParam(createParam<TfCvKnob>(Vec(58, 181), module,
-			TfDiodeLadderFilter::NORMAL_DECAY));
+			Tf303VoiceCore::NORMAL_DECAY));
 		addParam(createParam<TfCvKnob>(Vec(106, 181), module,
-			TfDiodeLadderFilter::ACCENT_AMOUNT));
+			Tf303VoiceCore::ACCENT_AMOUNT));
 		addParam(createParam<TfCvKnob>(Vec(154, 181), module,
-			TfDiodeLadderFilter::ACCENT_DECAY));
+			Tf303VoiceCore::ACCENT_DECAY));
 		addParam(createParam<TfCvKnob>(Vec(202, 181), module,
-			TfDiodeLadderFilter::VCA_DECAY));
+			Tf303VoiceCore::VCA_DECAY));
 
 		addParam(createParam<TfCvKnob>(Vec(34, 228), module,
-			TfDiodeLadderFilter::CV_AMOUNT));
+			Tf303VoiceCore::CV_AMOUNT));
 		addParam(createParam<TfCvKnob>(Vec(82, 228), module,
-			TfDiodeLadderFilter::FM_AMOUNT));
+			Tf303VoiceCore::FM_AMOUNT));
 		addParam(createParam<TfCvKnob>(Vec(130, 228), module,
-			TfDiodeLadderFilter::RES_AMOUNT));
+			Tf303VoiceCore::RES_AMOUNT));
 		addParam(createParam<TfCvKnob>(Vec(178, 228), module,
-			TfDiodeLadderFilter::VCA_CV_AMOUNT));
+			Tf303VoiceCore::VCA_CV_AMOUNT));
 
 		addInput(createInput<PJ301MPort>(Vec(12, 282), module,
-			TfDiodeLadderFilter::VOCT_INPUT));
+			Tf303VoiceCore::VOCT_INPUT));
 		addInput(createInput<PJ301MPort>(Vec(60, 282), module,
-			TfDiodeLadderFilter::CV_INPUT));
+			Tf303VoiceCore::CV_INPUT));
 		addInput(createInput<PJ301MPort>(Vec(108, 282), module,
-			TfDiodeLadderFilter::GATE_INPUT));
+			Tf303VoiceCore::GATE_INPUT));
 		addInput(createInput<PJ301MPort>(Vec(156, 282), module,
-			TfDiodeLadderFilter::ACCENT_INPUT));
+			Tf303VoiceCore::ACCENT_INPUT));
 		addInput(createInput<PJ301MPort>(Vec(204, 282), module,
-			TfDiodeLadderFilter::VCA_CV_INPUT));
+			Tf303VoiceCore::VCA_CV_INPUT));
 		addInput(createInput<PJ301MPort>(Vec(12, 334), module,
-			TfDiodeLadderFilter::AUDIO_INPUT));
+			Tf303VoiceCore::AUDIO_INPUT));
 		addInput(createInput<PJ301MPort>(Vec(60, 334), module,
-			TfDiodeLadderFilter::FM_INPUT));
+			Tf303VoiceCore::FM_INPUT));
 		addInput(createInput<PJ301MPort>(Vec(108, 334), module,
-			TfDiodeLadderFilter::RES_INPUT));
+			Tf303VoiceCore::RES_INPUT));
 		addOutput(createOutput<PJ301MPort>(Vec(156, 334), module,
-			TfDiodeLadderFilter::LP_OUTPUT));
+			Tf303VoiceCore::LP_OUTPUT));
 		addOutput(createOutput<PJ301MPort>(Vec(204, 334), module,
-			TfDiodeLadderFilter::VCA_OUTPUT));
+			Tf303VoiceCore::VCA_OUTPUT));
 	}
 
 	void appendContextMenu(Menu* menu) override
 	{
-		TfDiodeLadderFilter* module = dynamic_cast<TfDiodeLadderFilter*>(this->module);
+		Tf303VoiceCore* module = dynamic_cast<Tf303VoiceCore*>(this->module);
 		if (!module)
 			return;
 		menu->addChild(new MenuSeparator);
@@ -438,5 +438,5 @@ struct TfDiodeLadderFilterWidget : ModuleWidget
 	}
 };
 
-Model* modelTfDiodeLadderFilter = createModel<TfDiodeLadderFilter,
-	TfDiodeLadderFilterWidget>("TfDiodeLadderFilter");
+Model* modelTf303VoiceCore = createModel<Tf303VoiceCore,
+	Tf303VoiceCoreWidget>("Tf303VoiceCore");

@@ -9,6 +9,7 @@ used for the optional PNG render when one is available.
 from __future__ import annotations
 
 import argparse
+import ast
 import base64
 import os
 from pathlib import Path
@@ -25,16 +26,35 @@ CONTROL_PATTERN = re.compile(
     r"add(?P<kind>Param|Input|Output)\s*\(\s*"
     r"create(?:Param|Input|Output)<(?P<type>[^>]+)>\s*\(\s*"
     r"Vec\(\s*(?P<x>[0-9.]+)\s*,\s*(?P<y>[0-9.]+)\s*\)\s*,\s*module\s*,\s*"
-    r"TfDiodeLadderFilter::(?P<id>[A-Z0-9_]+)",
+    r"Tf303VoiceCore::(?P<id>[A-Z0-9_]+)",
     re.MULTILINE,
+)
+
+MODULE_NAMES = (
+    "TfSlop",
+    "TfSlop4",
+    "TfVDPO",
+    "TfVCA",
+    "Tf303Oscillator",
+    "Tf303VoiceCore",
 )
 
 
 def control_pattern(module_name: str) -> re.Pattern[str]:
     return re.compile(
-        r"add(?P<kind>Param|Input|Output)\s*\(\s*"
+        r"^[ \t]*add(?P<kind>Param|Input|Output)\s*\(\s*"
         r"create(?:Param|Input|Output)<(?P<type>[^>]+)>\s*\(\s*"
-        r"Vec\(\s*(?P<x>[0-9.]+)\s*,\s*(?P<y>[0-9.]+)\s*\)\s*,\s*module\s*,\s*"
+        r"Vec\(\s*(?P<x>[^,]+?)\s*,\s*(?P<y>[^)]+?)\s*\)\s*,\s*module\s*,\s*"
+        + re.escape(module_name)
+        + r"::(?P<id>[A-Z0-9_]+)",
+        re.MULTILINE,
+    )
+
+
+def light_pattern(module_name: str) -> re.Pattern[str]:
+    return re.compile(
+        r"^[ \t]*addChild\s*\(\s*createLight<(?P<type>.+?)>\s*\(\s*"
+        r"Vec\(\s*(?P<x>[^,]+?)\s*,\s*(?P<y>[^)]+?)\s*\)\s*,\s*module\s*,\s*"
         + re.escape(module_name)
         + r"::(?P<id>[A-Z0-9_]+)",
         re.MULTILINE,
@@ -58,6 +78,12 @@ COMPONENTS = {
     "PJ301MPort": ("PJ301M.svg",),
 }
 
+# Rack draws the LED colour and bezel procedurally, then places the component
+# SVG's reflections over it. Dimensions are Rack units (3 mm at 96 DPI).
+LIGHTS = {
+    "MediumLight<BlueLight>": ("MediumLight.svg", 3.0 * 96.0 / 25.4),
+}
+
 PANEL_GRAPHICS = (
     (
         ROOT / "res" / "TfDiodeConnectedTransistor.svg",
@@ -69,9 +95,67 @@ PANEL_GRAPHICS = (
     ),
 )
 MODULE_GRAPHICS = {
-    "TfDiodeLadderFilter": PANEL_GRAPHICS,
+    "TfSlop": (),
+    "TfSlop4": (),
+    "TfVDPO": (),
+    "TfVCA": (),
+    "Tf303VoiceCore": PANEL_GRAPHICS,
     "Tf303Oscillator": ((ROOT / "res" / "logo.svg", 16.0, 232.0, 148.0, 80.8, 0.12),),
 }
+
+
+def _coordinate_variables(source: str, position: int) -> dict[str, float]:
+    assignments = re.compile(
+        r"(?:\b(?:auto|constexpr\s+float|float)\s+)?"
+        r"(?P<name>leftMargin|spacing|offset)\s*=\s*"
+        r"(?P<value>[+-]?[0-9.]+)f?\s*;"
+    )
+    values: dict[str, float] = {}
+    for assignment in assignments.finditer(source, 0, position):
+        values[assignment.group("name")] = float(assignment.group("value"))
+    return values
+
+
+def _evaluate_coordinate(expression: str, variables: dict[str, float]) -> float:
+    expression = re.sub(r"(?<=\d)f\b", "", expression.strip())
+    tree = ast.parse(expression, mode="eval")
+
+    def evaluate(node: ast.AST) -> float:
+        if isinstance(node, ast.Expression):
+            return evaluate(node.body)
+        if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
+            return float(node.value)
+        if isinstance(node, ast.Name) and node.id in variables:
+            return variables[node.id]
+        if isinstance(node, ast.BinOp) and isinstance(
+            node.op, (ast.Add, ast.Sub, ast.Mult, ast.Div)
+        ):
+            left = evaluate(node.left)
+            right = evaluate(node.right)
+            if isinstance(node.op, ast.Add):
+                return left + right
+            if isinstance(node.op, ast.Sub):
+                return left - right
+            if isinstance(node.op, ast.Mult):
+                return left * right
+            return left / right
+        if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
+            value = evaluate(node.operand)
+            return value if isinstance(node.op, ast.UAdd) else -value
+        raise ValueError(f"Unsupported widget coordinate: {expression}")
+
+    return evaluate(tree)
+
+
+def control_coordinates(
+    control: re.Match[str], widget_source: str
+) -> tuple[float, float]:
+    variables = _coordinate_variables(widget_source, control.start())
+    return (
+        _evaluate_coordinate(control.group("x"), variables),
+        _evaluate_coordinate(control.group("y"), variables),
+    )
+
 
 # Representative positions make the preview read naturally. They affect only
 # the rendered knob indicators; parameter behavior remains defined in C++.
@@ -119,7 +203,7 @@ def svg_dimensions(path: Path) -> tuple[float, float]:
 
     width = root.get("width")
     height = root.get("height")
-    if width is not None and height is not None:
+    if width is not None and height is not None and "%" not in width + height:
         return pixels(width), pixels(height)
 
     view_box = root.get("viewBox")
@@ -155,6 +239,17 @@ def image_element(
     return (
         f'  <image x="{x:g}" y="{y:g}" width="{width:g}" height="{height:g}"'
         f' opacity="{opacity:g}"{transform} href="{embedded_image(asset)}"/>\n'
+    )
+
+
+def light_element(asset: Path, x: float, y: float, size: float) -> str:
+    centre_x = x + size / 2.0
+    centre_y = y + size / 2.0
+    radius = size / 2.0
+    return (
+        f'  <circle cx="{centre_x:g}" cy="{centre_y:g}" r="{radius:g}" '
+        'fill="#333" stroke="#000" stroke-opacity="0.21" stroke-width="1"/>\n'
+        + image_element(asset, x, y, width=size, height=size)
     )
 
 
@@ -209,12 +304,17 @@ def render_preview(
     rack_runtime: Path,
     output_directory: Path,
     png: bool,
-    module_name: str = "TfDiodeLadderFilter",
+    module_name: str = "Tf303VoiceCore",
     include_components: bool = True,
 ) -> Path:
     if module_name not in MODULE_GRAPHICS:
         raise ValueError(f"Unsupported panel module: {module_name}")
-    panel_source = ROOT / "res-src" / f"{module_name}.svg"
+    editable_panel = ROOT / "res-src" / f"{module_name}.svg"
+    panel_source = (
+        editable_panel
+        if editable_panel.is_file()
+        else ROOT / "res" / f"{module_name}.svg"
+    )
     widget_source = ROOT / "src" / f"{module_name}.cpp"
     component_directory = rack_runtime / "res" / "ComponentLibrary"
     if not component_directory.is_dir():
@@ -226,13 +326,20 @@ def render_preview(
     panel_width, panel_height = svg_dimensions(panel_source)
     panel = panel_source.read_text(encoding="utf-8")
     panel = re.sub(
-        r'width="[0-9.]+" height="[0-9.]+"',
+        r'width="[^"]+" height="[^"]+"',
         f'width="{2 * panel_width:g}" height="{2 * panel_height:g}"',
         panel,
         count=1,
     )
+    if not re.search(r"<svg\b[^>]*\bviewBox=", panel):
+        panel = panel.replace(
+            "<svg ",
+            f'<svg viewBox="0 0 {panel_width:g} {panel_height:g}" ',
+            1,
+        )
     widgets = widget_source.read_text(encoding="utf-8")
     controls = list(control_pattern(module_name).finditer(widgets))
+    lights = list(light_pattern(module_name).finditer(widgets))
     if not controls:
         raise RuntimeError(f"No panel controls were found in {module_name}.cpp")
 
@@ -257,8 +364,7 @@ def render_preview(
             asset_names = COMPONENTS.get(component_type)
             if asset_names is None:
                 raise KeyError(f"No preview assets configured for {component_type}")
-            x = float(control.group("x"))
-            y = float(control.group("y"))
+            x, y = control_coordinates(control, widgets)
             parameter_id = control.group("id")
             for index, asset_name in enumerate(asset_names):
                 module_angles = MODULE_KNOB_ANGLES.get(module_name, {})
@@ -270,6 +376,14 @@ def render_preview(
                 overlays.append(
                     image_element(component_directory / asset_name, x, y, angle=angle)
                 )
+        for light in lights:
+            light_type = light.group("type")
+            light_spec = LIGHTS.get(light_type)
+            if light_spec is None:
+                raise KeyError(f"No preview assets configured for {light_type}")
+            asset_name, size = light_spec
+            x, y = control_coordinates(light, widgets)
+            overlays.append(light_element(component_directory / asset_name, x, y, size))
         overlays.append("</g>\n")
 
     output_directory.mkdir(parents=True, exist_ok=True)
@@ -309,20 +423,33 @@ def main() -> None:
     )
     parser.add_argument("--no-png", action="store_true")
     parser.add_argument("--panel-only", action="store_true")
+    parser.add_argument("--all", action="store_true", help="Render every module")
+    parser.add_argument(
+        "--documentation-directory",
+        type=Path,
+        help="Copy rendered PNGs here using stable documentation filenames",
+    )
     parser.add_argument(
         "--module",
         choices=sorted(MODULE_GRAPHICS),
-        default="TfDiodeLadderFilter",
+        default="Tf303VoiceCore",
     )
     arguments = parser.parse_args()
-    preview = render_preview(
-        arguments.rack_runtime,
-        arguments.output_directory,
-        not arguments.no_png,
-        arguments.module,
-        not arguments.panel_only,
-    )
-    print(preview)
+    module_names = MODULE_NAMES if arguments.all else (arguments.module,)
+    for module_name in module_names:
+        preview = render_preview(
+            arguments.rack_runtime,
+            arguments.output_directory,
+            not arguments.no_png,
+            module_name,
+            not arguments.panel_only,
+        )
+        print(preview)
+        if arguments.documentation_directory and not arguments.no_png:
+            arguments.documentation_directory.mkdir(parents=True, exist_ok=True)
+            source = arguments.output_directory / f"{module_name}-preview.png"
+            destination = arguments.documentation_directory / f"{module_name}.png"
+            shutil.copyfile(source, destination)
 
 
 if __name__ == "__main__":
