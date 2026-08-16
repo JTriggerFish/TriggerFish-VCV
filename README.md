@@ -4,6 +4,8 @@ Circuit-inspired sound generators, processors, and pitch utilities for VCV Rack 
 
 [![CI](https://github.com/JTriggerFish/TriggerFish-VCV/actions/workflows/ci.yml/badge.svg)](https://github.com/JTriggerFish/TriggerFish-VCV/actions/workflows/ci.yml)
 
+[Release notes for 2.2.0](docs/releases/2.2.0.md)
+
 <table>
   <tr>
     <td align="center"><a href="#slop-and-slop-4"><img src="doc/TfSlop.png" height="260" alt="Slop module"><br><strong>Slop</strong></a></td>

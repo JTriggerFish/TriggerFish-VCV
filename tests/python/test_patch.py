@@ -1,6 +1,7 @@
 import json
 import math
 from pathlib import Path
+import re
 
 import pytest
 
@@ -118,6 +119,30 @@ def test_manifest_uses_canonical_rack_module_tags():
     published = {tag for module in manifest["modules"] for tag in module["tags"]}
 
     assert published <= RACK_MODULE_TAGS
+
+
+def test_release_version_is_consistent_across_build_metadata():
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    cmake = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
+
+    make_version = re.search(r"^VERSION\s*=\s*([^\s]+)$", makefile, re.MULTILINE)
+    cmake_version = re.search(
+        r"^project\(TriggerFishDSP VERSION ([^\s]+) LANGUAGES CXX\)$",
+        cmake,
+        re.MULTILINE,
+    )
+    assert make_version is not None
+    assert cmake_version is not None
+    assert make_version.group(1) == PLUGIN_VERSION
+    assert cmake_version.group(1) == PLUGIN_VERSION
+
+
+def test_manifest_links_current_release_notes_and_module_guides():
+    manifest = json.loads((ROOT / "plugin.json").read_text(encoding="utf-8"))
+
+    assert manifest["changelogUrl"].endswith(f"/docs/releases/{PLUGIN_VERSION}.md")
+    assert (ROOT / "docs" / "releases" / f"{PLUGIN_VERSION}.md").is_file()
+    assert all(module.get("manualUrl") for module in manifest["modules"])
 
 
 def test_303_modules_have_final_public_names_and_slugs():
