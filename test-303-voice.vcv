@@ -599,7 +599,7 @@
       "id": 4,
       "plugin": "TriggerFish-Elements",
       "model": "Tf303Oscillator",
-      "version": "2.2.0",
+      "version": "2.3.0",
       "params": [
         {
           "id": 0,
@@ -651,7 +651,7 @@
       "id": 5,
       "plugin": "TriggerFish-Elements",
       "model": "Tf303VoiceCore",
-      "version": "2.2.0",
+      "version": "2.3.0",
       "params": [
         {
           "id": 0,

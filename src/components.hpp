@@ -10,21 +10,37 @@ using namespace std;
 namespace rack
 {
 
-struct TfSlider : SvgSlider
+struct TfSlider : app::SvgSlider
 {
 	TfSlider()
 	{
-		Vec margin = Vec(4, 4);
-		maxHandlePos = Vec(-1.5, -8).plus(margin);
-		minHandlePos = Vec(-1.5, 104).plus(margin);
-		background->svg = APP->window->loadSvg(asset::plugin(pluginInstance, "res/slider.svg"));
-		background->wrap();
-		background->box.pos = margin;
-		box.size = background->box.size.plus(margin.mult(2));
-		handle->svg = APP->window->loadSvg(asset::plugin(pluginInstance, "res/sliderHandle.svg"));
-		handle->wrap();
+		constexpr float width = 20.0f;
+		constexpr float height = 100.0f;
+		constexpr float handleHeight = 13.0f;
+		setBackgroundSvg(window::Svg::load(asset::plugin(
+			pluginInstance, "res/TfSlider.svg")));
+		setHandleSvg(window::Svg::load(asset::plugin(
+			pluginInstance, "res/TfSliderHandle.svg")));
+		setHandlePosCentered(
+			math::Vec(width / 2.0f, height - handleHeight / 2.0f),
+			math::Vec(width / 2.0f, handleHeight / 2.0f));
 	}
 };
+
+struct TfEnvelopeSliderLight : RectangleLight<YellowLight>
+{
+	TfEnvelopeSliderLight()
+	{
+		box.size = Vec(5.0f, 7.0f);
+		bgColor = nvgRGBA(0x25, 0x23, 0x18, 0xff);
+		borderColor = nvgRGBA(0, 0, 0, 0x50);
+	}
+};
+
+struct TfEnvelopeSlider : LightSlider<TfSlider, TfEnvelopeSliderLight>
+{
+};
+
 struct TfCvKnob : RoundBlackKnob
 {
 	TfCvKnob()

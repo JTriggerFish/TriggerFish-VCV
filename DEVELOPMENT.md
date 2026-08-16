@@ -36,6 +36,7 @@ Run the usual tasks from PowerShell:
 .\dev.ps1 smoke-slop4  # Install and open the Slop4/four-VCO patch
 .\dev.ps1 smoke-vdpo   # Install and open the two-VDPO patch
 .\dev.ps1 smoke-303    # Install and open the sequenced 303 voice patch
+.\dev.ps1 smoke-4072   # Install and open the MIDI-playable 4072 voice patch
 .\dev.ps1 dist         # Build the release .vcvplugin package
 .\dev.ps1 test         # Build and run standalone C++ DSP tests
 .\dev.ps1 python-test  # Build Python bindings and run pytest
@@ -141,6 +142,10 @@ sine, saw, and square.
 Modular's Clocked and Foundry. The programmed 16-step pattern routes pitch,
 gate, per-step accent, and a separate slide lane through the complete voice.
 Install Impromptu Modular from the Rack Library before opening it.
+
+[test-4072-voice.vcv](test-4072-voice.vcv) connects a Fundamental saw
+oscillator to 4072 Voice Core, with MIDI pitch tracking both oscillator and
+filter and MIDI gate driving the two internal envelopes.
 
 The Slop4 and VDPO patches use Rack Core, Fundamental, and TriggerFish modules;
 the 303 patch also uses Impromptu Modular. Their final stereo masters are set

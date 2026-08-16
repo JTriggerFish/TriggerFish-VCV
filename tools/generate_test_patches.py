@@ -56,6 +56,28 @@ DEFAULT_PARAMS = {
         0.0,
         0.0,
     ],
+    "Tf4072VoiceCore": [
+        0.9344246,
+        0.0,
+        0.0,
+        0.6,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        1.0,
+        math.log10(0.010),
+        math.log10(0.300),
+        0.5,
+        math.log10(0.300),
+        0.0,
+        math.log10(0.005),
+        math.log10(0.300),
+        1.0,
+        math.log10(0.300),
+        1.0,
+        0.0,
+    ],
     "VCO": [1.0, 1.0, 0.0, 0.0, 0.0, 0.5, 0.0, 0.0],
 }
 
@@ -422,7 +444,39 @@ def generate_303_voice_patch() -> None:
     patch.write("test-303-voice.vcv")
 
 
+def generate_4072_voice_patch() -> None:
+    patch = Patch(zoom=0.75, grid_offset=(-1, -0.1))
+    patch.add(
+        notes(
+            1,
+            "TriggerFish 4072 Voice Core smoke test\n\n"
+            "Select MIDI and audio devices, then play from a keyboard. A "
+            "Fundamental saw oscillator feeds the 4072 filter and normalled "
+            "4019 VCA. MIDI pitch tracks both oscillator and filter; MIDI "
+            "gate drives the two internal envelopes.\n\n"
+            "All TriggerFish parameters are at their declared defaults. The "
+            "final mixer is the master level, set to -6 dB and routed to "
+            "outputs 1/2.",
+        )
+    )
+    patch.add(midi(2, (16, 0)))
+    patch.add(module(3, "Fundamental", "VCO", (28, 0)))
+    patch.add(module(4, "TriggerFish-Elements", "Tf4072VoiceCore", (40, 0)))
+    patch.add(mixer(5, (65, 0), (0.5011872336, 0.7, 0.0, 0.0, 0.0)))
+    patch.add(audio(6, (74, 0)))
+
+    patch.cable(2, 0, 3, 0)  # MIDI pitch -> oscillator
+    patch.cable(2, 0, 4, 2)  # MIDI pitch -> filter 1V/oct
+    patch.cable(2, 1, 4, 8)  # MIDI gate -> both internal envelopes
+    patch.cable(3, 2, 4, 0)  # saw -> filter input
+    patch.cable(4, 1, 5, 1)  # VCA output -> master
+    patch.cable(5, 0, 6, 0)
+    patch.cable(5, 0, 6, 1)
+    patch.write("test-4072-voice.vcv")
+
+
 if __name__ == "__main__":
     generate_slop4_patch()
     generate_vdpo_patch()
     generate_303_voice_patch()
+    generate_4072_voice_patch()

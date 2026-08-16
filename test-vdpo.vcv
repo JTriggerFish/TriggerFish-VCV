@@ -235,7 +235,7 @@
       "id": 4,
       "plugin": "TriggerFish-Elements",
       "model": "TfSlop",
-      "version": "2.2.0",
+      "version": "2.3.0",
       "params": [
         {
           "id": 0,
@@ -263,7 +263,7 @@
       "id": 5,
       "plugin": "TriggerFish-Elements",
       "model": "TfVDPO",
-      "version": "2.2.0",
+      "version": "2.3.0",
       "params": [
         {
           "id": 0,
@@ -299,7 +299,7 @@
       "id": 6,
       "plugin": "TriggerFish-Elements",
       "model": "TfVCA",
-      "version": "2.2.0",
+      "version": "2.3.0",
       "params": [
         {
           "id": 0,
@@ -383,7 +383,7 @@
       "id": 8,
       "plugin": "TriggerFish-Elements",
       "model": "TfSlop",
-      "version": "2.2.0",
+      "version": "2.3.0",
       "params": [
         {
           "id": 0,
@@ -411,7 +411,7 @@
       "id": 9,
       "plugin": "TriggerFish-Elements",
       "model": "TfVDPO",
-      "version": "2.2.0",
+      "version": "2.3.0",
       "params": [
         {
           "id": 0,
@@ -447,7 +447,7 @@
       "id": 10,
       "plugin": "TriggerFish-Elements",
       "model": "TfVCA",
-      "version": "2.2.0",
+      "version": "2.3.0",
       "params": [
         {
           "id": 0,

@@ -10,6 +10,8 @@
 #include <pybind11/pybind11.h>
 
 #include "models/VCAcore.hpp"
+#include "models/Arp4019Vca.hpp"
+#include "models/Arp4072Filter.hpp"
 #include "models/DiodeLadderFilter.hpp"
 #include "models/OtaVca.hpp"
 #include "models/Tb303Voice.hpp"
@@ -188,6 +190,73 @@ namespace
 		for (py::ssize_t i = 0; i < audioInfo.shape[0]; ++i)
 			output(i) = model.Step(audioValues(i), cutoff, resonance,
 				highResonance, driveGain, bass);
+		return result;
+	}
+
+	template<typename Filter>
+	py::array_t<float> RenderArp4072(
+		py::array_t<double, py::array::c_style | py::array::forcecast> audio,
+		double cutoff, double resonance, double driveGain, bool extendedCutoff,
+		double sampleRate)
+	{
+		const auto audioInfo = audio.request();
+		if (audioInfo.ndim != 1)
+			throw std::invalid_argument("audio must be a one-dimensional array");
+		if (!(sampleRate > 0.0))
+			throw std::invalid_argument("sample_rate must be positive");
+
+		py::array_t<float> result(audioInfo.shape[0]);
+		auto output = result.mutable_unchecked<1>();
+		auto audioValues = audio.unchecked<1>();
+		Filter model([]
+		{
+			if constexpr (Filter::OversamplingFactor == 1)
+				return tfdsp::CreateDummyResampler();
+			else if constexpr (Filter::OversamplingFactor == 2)
+				return tfdsp::CreateX2Resampler_Chebychev7();
+			else
+				return tfdsp::CreateX4Resampler_Cheby7();
+		});
+		model.SetSampleRate(sampleRate);
+		for (py::ssize_t i = 0; i < audioInfo.shape[0]; ++i)
+			output(i) = model.Step(audioValues(i), cutoff, resonance,
+				driveGain, extendedCutoff);
+		return result;
+	}
+
+	template<typename Vca>
+	py::array_t<float> RenderArp4019(
+		py::array_t<double, py::array::c_style | py::array::forcecast> audio,
+		py::array_t<double, py::array::c_style | py::array::forcecast> linearCv,
+		py::array_t<double, py::array::c_style | py::array::forcecast> exponentialCv,
+		double initialGain, double sampleRate)
+	{
+		const auto audioInfo = audio.request();
+		const auto linearInfo = linearCv.request();
+		const auto exponentialInfo = exponentialCv.request();
+		RequireSameSize(audioInfo, linearInfo, "audio", "linear_cv");
+		RequireSameSize(audioInfo, exponentialInfo, "audio", "exponential_cv");
+		if (!(sampleRate > 0.0))
+			throw std::invalid_argument("sample_rate must be positive");
+
+		py::array_t<float> result(audioInfo.shape[0]);
+		auto output = result.mutable_unchecked<1>();
+		auto audioValues = audio.unchecked<1>();
+		auto linearValues = linearCv.unchecked<1>();
+		auto exponentialValues = exponentialCv.unchecked<1>();
+		Vca model([]
+		{
+			if constexpr (Vca::OversamplingFactor == 1)
+				return tfdsp::CreateDummyResampler();
+			else if constexpr (Vca::OversamplingFactor == 2)
+				return tfdsp::CreateX2Resampler_Chebychev7();
+			else
+				return tfdsp::CreateX4Resampler_Cheby7();
+		});
+		model.SetSampleRate(sampleRate);
+		for (py::ssize_t i = 0; i < audioInfo.shape[0]; ++i)
+			output(i) = model.Step(audioValues(i), 0.0, linearValues(i),
+				exponentialValues(i), initialGain);
 		return result;
 	}
 
@@ -642,6 +711,66 @@ PYBIND11_MODULE(_triggerfish_dsp, module)
 		py::arg("audio"), py::arg("cutoff"), py::arg("resonance") = 0.0,
 		py::arg("high_resonance") = false, py::arg("drive_gain") = 1.0,
 		py::arg("bass") = 0.0, py::arg("sample_rate") = 48000.0);
+
+	using Arp4072X1 = tfdsp::Arp4072Filter<tfdsp::DummyResampler>;
+	using Arp4072X2 = tfdsp::Arp4072Filter<tfdsp::X2Resampler_Order7>;
+	using Arp4072X4 = tfdsp::Arp4072Filter<tfdsp::X4Resampler_Order7>;
+	module.def("arp4072_x1", &RenderArp4072<Arp4072X1>, py::arg("audio"),
+		py::arg("cutoff"), py::arg("resonance") = 0.0,
+		py::arg("drive_gain") = 1.0, py::arg("extended_cutoff") = false,
+		py::arg("sample_rate") = 48000.0);
+	module.def("arp4072_x2", &RenderArp4072<Arp4072X2>, py::arg("audio"),
+		py::arg("cutoff"), py::arg("resonance") = 0.0,
+		py::arg("drive_gain") = 1.0, py::arg("extended_cutoff") = false,
+		py::arg("sample_rate") = 48000.0);
+	module.def("arp4072_x4", &RenderArp4072<Arp4072X4>, py::arg("audio"),
+		py::arg("cutoff"), py::arg("resonance") = 0.0,
+		py::arg("drive_gain") = 1.0, py::arg("extended_cutoff") = false,
+		py::arg("sample_rate") = 48000.0);
+	module.def("arp4072_circuit_values", []
+	{
+		py::dict values;
+		values["audio_base_scale"] = Arp4072X4::AudioBaseScale();
+		values["feedback_base_scale"] = Arp4072X4::FeedbackBaseScale();
+		values["audio_base_at_5v"] = Arp4072X4::AudioBaseVolts(5.0);
+		values["feedback_base_at_5v"] = Arp4072X4::FeedbackBaseVolts(5.0);
+		values["limiter_tail_current_amps"] =
+			Arp4072X4::LimiterTailCurrentAmps();
+		values["limiter_equivalent_peak_volts"] =
+			Arp4072X4::LimiterEquivalentPeakVolts();
+		values["stage_tanh_scale_per_volt"] =
+			Arp4072X4::StageTanhScalePerVolt();
+		values["output_level_shift_gain"] = Arp4072X4::OutputLevelShiftGain;
+		values["small_signal_input_gain"] =
+			Arp4072X4::SmallSignalInputGain();
+		values["small_signal_feedback_gain"] =
+			Arp4072X4::SmallSignalFeedbackGain();
+		return values;
+	});
+
+	using Arp4019X1 = tfdsp::Arp4019Vca<tfdsp::DummyResampler>;
+	using Arp4019X4 = tfdsp::Arp4019Vca<tfdsp::X4Resampler_Order7>;
+	module.def("arp4019_x1", &RenderArp4019<Arp4019X1>, py::arg("audio"),
+		py::arg("linear_cv"), py::arg("exponential_cv"),
+		py::arg("initial_gain") = 0.0, py::arg("sample_rate") = 48000.0);
+	module.def("arp4019_x4", &RenderArp4019<Arp4019X4>, py::arg("audio"),
+		py::arg("linear_cv"), py::arg("exponential_cv"),
+		py::arg("initial_gain") = 0.0, py::arg("sample_rate") = 48000.0);
+	module.def("arp4019_circuit_values", []
+	{
+		py::dict values;
+		values["audio_input_scale"] = Arp4019X4::AudioInputScale();
+		values["unity_control_current_amps"] =
+			Arp4019X4::UnityControlCurrentAmps();
+		values["output_feedback_resistance_ohms"] =
+			Arp4019X4::OutputFeedbackResistanceOhms;
+		values["output_bandwidth_hz"] = Arp4019X4::OutputBandwidthHz;
+		values["linear_unity_control_volts"] =
+			Arp4019X4::LinearUnityControlVolts;
+		values["exponential_decibels_per_volt"] =
+			Arp4019X4::ExponentialDecibelsPerVolt;
+		return values;
+	});
 
 	module.def("resampler_round_trip_x2_order7", [](py::array_t<double,
 		py::array::c_style | py::array::forcecast> audio)

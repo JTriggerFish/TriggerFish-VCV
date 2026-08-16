@@ -1,0 +1,295 @@
+{
+  "version": "2.6.6",
+  "path": "",
+  "zoom": 0.75,
+  "gridOffset": [
+    -1,
+    -0.1
+  ],
+  "modules": [
+    {
+      "id": 1,
+      "plugin": "Core",
+      "model": "Notes",
+      "version": "2.6.6",
+      "params": [],
+      "data": {
+        "text": "TriggerFish 4072 Voice Core smoke test\n\nSelect MIDI and audio devices, then play from a keyboard. A Fundamental saw oscillator feeds the 4072 filter and normalled 4019 VCA. MIDI pitch tracks both oscillator and filter; MIDI gate drives the two internal envelopes.\n\nAll TriggerFish parameters are at their declared defaults. The final mixer is the master level, set to -6 dB and routed to outputs 1/2."
+      },
+      "pos": [
+        0,
+        0
+      ]
+    },
+    {
+      "id": 2,
+      "plugin": "Core",
+      "model": "MIDIToCVInterface",
+      "version": "2.6.6",
+      "params": [],
+      "data": {
+        "channels": 1,
+        "pwRange": 2,
+        "midi": {
+          "driver": -1,
+          "channel": -1
+        }
+      },
+      "pos": [
+        16,
+        0
+      ]
+    },
+    {
+      "id": 3,
+      "plugin": "Fundamental",
+      "model": "VCO",
+      "version": "2.6.4",
+      "params": [
+        {
+          "id": 0,
+          "value": 1.0
+        },
+        {
+          "id": 1,
+          "value": 1.0
+        },
+        {
+          "id": 2,
+          "value": 0.0
+        },
+        {
+          "id": 3,
+          "value": 0.0
+        },
+        {
+          "id": 4,
+          "value": 0.0
+        },
+        {
+          "id": 5,
+          "value": 0.5
+        },
+        {
+          "id": 6,
+          "value": 0.0
+        },
+        {
+          "id": 7,
+          "value": 0.0
+        }
+      ],
+      "pos": [
+        28,
+        0
+      ]
+    },
+    {
+      "id": 4,
+      "plugin": "TriggerFish-Elements",
+      "model": "Tf4072VoiceCore",
+      "version": "2.3.0",
+      "params": [
+        {
+          "id": 0,
+          "value": 0.9344246
+        },
+        {
+          "id": 1,
+          "value": 0.0
+        },
+        {
+          "id": 2,
+          "value": 0.0
+        },
+        {
+          "id": 3,
+          "value": 0.6
+        },
+        {
+          "id": 4,
+          "value": 0.0
+        },
+        {
+          "id": 5,
+          "value": 0.0
+        },
+        {
+          "id": 6,
+          "value": 0.0
+        },
+        {
+          "id": 7,
+          "value": 1.0
+        },
+        {
+          "id": 8,
+          "value": 1.0
+        },
+        {
+          "id": 9,
+          "value": -2.0
+        },
+        {
+          "id": 10,
+          "value": -0.5228787452803376
+        },
+        {
+          "id": 11,
+          "value": 0.5
+        },
+        {
+          "id": 12,
+          "value": -0.5228787452803376
+        },
+        {
+          "id": 13,
+          "value": 0.0
+        },
+        {
+          "id": 14,
+          "value": -2.3010299956639813
+        },
+        {
+          "id": 15,
+          "value": -0.5228787452803376
+        },
+        {
+          "id": 16,
+          "value": 1.0
+        },
+        {
+          "id": 17,
+          "value": -0.5228787452803376
+        },
+        {
+          "id": 18,
+          "value": 1.0
+        },
+        {
+          "id": 19,
+          "value": 0.0
+        }
+      ],
+      "pos": [
+        40,
+        0
+      ]
+    },
+    {
+      "id": 5,
+      "plugin": "Fundamental",
+      "model": "VCMixer",
+      "version": "2.6.4",
+      "params": [
+        {
+          "id": 0,
+          "value": 0.5011872336
+        },
+        {
+          "id": 1,
+          "value": 0.7
+        },
+        {
+          "id": 2,
+          "value": 0.0
+        },
+        {
+          "id": 3,
+          "value": 0.0
+        },
+        {
+          "id": 4,
+          "value": 0.0
+        }
+      ],
+      "data": {
+        "chExp": false,
+        "mixExp": false
+      },
+      "pos": [
+        65,
+        0
+      ]
+    },
+    {
+      "id": 6,
+      "plugin": "Core",
+      "model": "AudioInterface",
+      "version": "2.6.6",
+      "params": [],
+      "data": {
+        "audio": {
+          "driver": -1,
+          "sampleRate": 48000,
+          "blockSize": 256,
+          "inputOffset": 0,
+          "outputOffset": 0
+        },
+        "dcFilter": true
+      },
+      "pos": [
+        74,
+        0
+      ]
+    }
+  ],
+  "cables": [
+    {
+      "id": 1000,
+      "outputModuleId": 2,
+      "outputId": 0,
+      "inputModuleId": 3,
+      "inputId": 0,
+      "color": "#f3374b"
+    },
+    {
+      "id": 1001,
+      "outputModuleId": 2,
+      "outputId": 0,
+      "inputModuleId": 4,
+      "inputId": 2,
+      "color": "#ffcc00"
+    },
+    {
+      "id": 1002,
+      "outputModuleId": 2,
+      "outputId": 1,
+      "inputModuleId": 4,
+      "inputId": 8,
+      "color": "#0c8e15"
+    },
+    {
+      "id": 1003,
+      "outputModuleId": 3,
+      "outputId": 2,
+      "inputModuleId": 4,
+      "inputId": 0,
+      "color": "#0986ad"
+    },
+    {
+      "id": 1004,
+      "outputModuleId": 4,
+      "outputId": 1,
+      "inputModuleId": 5,
+      "inputId": 1,
+      "color": "#c91847"
+    },
+    {
+      "id": 1005,
+      "outputModuleId": 5,
+      "outputId": 0,
+      "inputModuleId": 6,
+      "inputId": 0,
+      "color": "#7a3ec8"
+    },
+    {
+      "id": 1006,
+      "outputModuleId": 5,
+      "outputId": 0,
+      "inputModuleId": 6,
+      "inputId": 1,
+      "color": "#f3374b"
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 
-project(TriggerFishDSP VERSION 2.2.0 LANGUAGES CXX)
+project(TriggerFishDSP VERSION 2.3.0 LANGUAGES CXX)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 17)
@@ -30,6 +30,7 @@ if(EXISTS "${RACK_SDK_DIR}/include/rack.hpp")
 		src/TfVDPO.cpp
 		src/Tf303VoiceCore.cpp
 		src/Tf303Oscillator.cpp
+		src/Tf4072VoiceCore.cpp
 	)
 	target_include_directories(triggerfish_rack_index PRIVATE
 		${CMAKE_CURRENT_SOURCE_DIR}/src

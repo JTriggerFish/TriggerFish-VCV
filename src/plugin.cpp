@@ -13,6 +13,7 @@ void init(Plugin *p)
 	p->addModel(modelTfVDPO);
 	p->addModel(modelTf303VoiceCore);
 	p->addModel(modelTf303Oscillator);
+	p->addModel(modelTf4072VoiceCore);
 
 	// Any other pluginInstance initialization may go here.
 	// As an alternative, consider lazy-loading assets and lookup tables when your module is created to reduce startup times of Rack.

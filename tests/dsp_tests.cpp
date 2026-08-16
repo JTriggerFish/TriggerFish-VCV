@@ -6,6 +6,9 @@
 #include <random>
 
 #include "models/OTA1PoleIntegrator.hpp"
+#include "models/Arp4019Vca.hpp"
+#include "models/ArpEnvelope.hpp"
+#include "models/Arp4072Filter.hpp"
 #include "models/DiodeLadderFilter.hpp"
 #include "models/Transistor1PoleIntegrator.hpp"
 #include "models/Tb303Voice.hpp"
@@ -171,6 +174,238 @@ int main()
 	resampler->Reset();
 	Check(std::abs(resampler->Downsample(resampler->Upsample(0.0))) < 1e-15,
 		"resampler reset clears filter history");
+
+	using Arp4072 = tfdsp::Arp4072Filter<tfdsp::X4Resampler_Order7>;
+	Check(std::abs(Arp4072::FeedbackBaseScale() /
+		Arp4072::AudioBaseScale() - 6.583) < 0.01,
+		"ARP 4072 resonance return drives its limiter much harder than audio");
+	Check(Arp4072::AudioBaseVolts(5.0) < 0.5 * Arp4072::ThermalVoltage,
+		"ARP 4072 nominal audio remains below half a thermal voltage at its limiter");
+	Check(Arp4072::FeedbackBaseVolts(5.0) >
+		2.5 * Arp4072::ThermalVoltage,
+		"ARP 4072 full resonance return spans several thermal voltages");
+	Check(std::abs(Arp4072::SmallSignalInputGain() - 1.0) < 0.03,
+		"ARP 4072 component ratios produce approximately unity audio gain");
+	Check(Arp4072::SmallSignalFeedbackGain() > 6.0 &&
+		Arp4072::SmallSignalFeedbackGain() < 7.0,
+		"ARP 4072 feedback loop gain follows the circuit level shifting");
+	Check(Arp4072::LimiterEquivalentPeakVolts() > 3.0 &&
+		Arp4072::LimiterEquivalentPeakVolts() < 3.2,
+		"ARP 4072 limiter tail current sets the expected first-stage drive");
+	Arp4072 arp4072(tfdsp::CreateX4Resampler_Cheby7);
+	arp4072.SetSampleRate(48000.0);
+	double arpPeak = 0.0;
+	bool arpFinite = true;
+	for (int i = 0; i < 48000; ++i)
+	{
+		const double input = 0.1 * std::sin(2.0 * 3.14159265358979323846 *
+			100.0 * i / 48000.0);
+		const double output = arp4072.Step(input, 5000.0, 0.0);
+		arpFinite = arpFinite && std::isfinite(output);
+		if (i >= 24000)
+			arpPeak = std::max(arpPeak, std::abs(output));
+	}
+	Check(arpFinite, "ARP 4072 model remains finite");
+	Check(std::abs(arpPeak - 0.1) < 0.004,
+		"ARP 4072 open-filter small signal level is approximately unity");
+	Check(arp4072.SolverFailures() == 0,
+		"ARP 4072 nominal signal converges without solver failures");
+	Check(arp4072.Step(std::numeric_limits<double>::quiet_NaN(),
+		1000.0, 0.0) == 0.0f,
+		"ARP 4072 rejects non-finite input");
+	arp4072.SetSampleRate(48000.0);
+	bool arpStressFinite = true;
+	for (int i = 0; i < 48000; ++i)
+	{
+		const double input = (i & 16) ? 10.0 : -10.0;
+		arpStressFinite = arpStressFinite && std::isfinite(arp4072.Step(input,
+			20000.0, 1.0, 15.848931924611133, true));
+	}
+	Check(arpStressFinite,
+		"ARP 4072 remains finite at maximum drive, cutoff, and resonance");
+	Check(arp4072.SolverFailures() == 0,
+		"ARP 4072 extreme 4x stress converges without solver failures");
+
+	using Arp4072NoNewton = tfdsp::Arp4072Filter<tfdsp::DummyResampler, 0>;
+	Arp4072NoNewton arpFallback(tfdsp::CreateDummyResampler);
+	arpFallback.SetSampleRate(48000.0);
+	const auto fallbackState = arpFallback.State();
+	const double fallbackOutput = arpFallback.Step(5.0, 1000.0, 1.0);
+	Check(fallbackOutput == 0.0 && arpFallback.State() == fallbackState &&
+		arpFallback.SolverFailures() == 1,
+		"ARP 4072 solver failure holds the previous valid state");
+
+	using Arp4072X2 = tfdsp::Arp4072Filter<tfdsp::X2Resampler_Order7>;
+	Arp4072X2 arpPostSafety(tfdsp::CreateX2Resampler_Chebychev7);
+	arpPostSafety.SetSampleRate(48000.0);
+	double arpPostSafetyPeak = 0.0;
+	for (int i = 0; i < 4096; ++i)
+	{
+		const auto rendered = arpPostSafety.StepWithPostProcessor(0.0, 1000.0,
+			0.0, 1.0, false, 0.0, 0.0,
+			[](double, double, double) { return 1000.0; });
+		arpPostSafetyPeak = std::max(arpPostSafetyPeak,
+			std::abs(static_cast<double>(rendered.postProcessed)));
+	}
+	Check(arpPostSafetyPeak <= 14.500001,
+		"ARP integrated post-processor output retains decimator safety");
+
+	tfdsp::ArpEnvelope arpEnvelope;
+	arpEnvelope.SetSampleRate(48000.0);
+	Check(arpEnvelope.GetStage() == tfdsp::ArpEnvelope::Stage::Idle,
+		"ARP envelope exposes its idle stage for panel indication");
+	double envelope = arpEnvelope.Step(10.0, 0.0, 0.1, 0.2, 0.4, 0.3);
+	Check(arpEnvelope.GetStage() == tfdsp::ArpEnvelope::Stage::Attack,
+		"ARP envelope exposes its active attack stage");
+	for (int i = 1; i < 4800; ++i)
+		envelope = arpEnvelope.Step(10.0, 0.0, 0.1, 0.2, 0.4, 0.3);
+	Check(envelope > 0.998 && envelope <= 1.0,
+		"ARP ADSR reaches its attack peak at the calibrated time");
+	for (int i = 0; i < 9600; ++i)
+		envelope = arpEnvelope.Step(10.0, 0.0, 0.1, 0.2, 0.4, 0.3);
+	Check(std::abs(envelope - 0.4) < 0.002,
+		"ARP ADSR reaches sustain through an RC decay");
+	Check(arpEnvelope.GetStage() == tfdsp::ArpEnvelope::Stage::Sustain,
+		"ARP envelope exposes its active sustain stage");
+	envelope = arpEnvelope.Step(0.0, 0.0, 0.1, 0.2, 0.4, 0.3);
+	Check(arpEnvelope.GetStage() == tfdsp::ArpEnvelope::Stage::Release,
+		"ARP envelope exposes its active release stage");
+	for (int i = 1; i < 14400; ++i)
+		envelope = arpEnvelope.Step(0.0, 0.0, 0.1, 0.2, 0.4, 0.3);
+	Check(envelope < 0.001,
+		"ARP ADSR reaches zero through an RC release");
+	Check(arpEnvelope.GetStage() == tfdsp::ArpEnvelope::Stage::Idle,
+		"ARP envelope returns its stage indicator to idle");
+	arpEnvelope.Reset();
+	arpEnvelope.SetMode(tfdsp::ArpEnvelope::Mode::Ar);
+	for (int i = 0; i < 4800; ++i)
+		envelope = arpEnvelope.Step(10.0, 0.0, 0.1, 0.01, 0.0, 0.1);
+	for (int i = 0; i < 4800; ++i)
+		envelope = arpEnvelope.Step(10.0, 10.0, 0.1, 0.01, 0.0, 0.1);
+	Check(envelope > 0.999,
+		"ARP mode holds its peak and ignores trigger retriggering");
+	Check(arpEnvelope.GetStage() == tfdsp::ArpEnvelope::Stage::Hold,
+		"ARP mode exposes its held attack stage");
+	arpEnvelope.SetMode(tfdsp::ArpEnvelope::Mode::Adsr);
+	for (int i = 0; i < 480; ++i)
+		envelope = arpEnvelope.Step(10.0, 0.0, 0.1, 0.01, 0.25, 0.1);
+	Check(envelope < 0.5,
+		"switching a held AR envelope to ADSR enters decay");
+	arpEnvelope.SetMode(tfdsp::ArpEnvelope::Mode::Ar);
+	for (int i = 0; i < 4800; ++i)
+		envelope = arpEnvelope.Step(10.0, 0.0, 0.1, 0.01, 0.25, 0.1);
+	Check(envelope > 0.999,
+		"switching a held ADSR envelope to AR returns to its peak smoothly");
+
+	using Arp4019 = tfdsp::Arp4019Vca<tfdsp::X4Resampler_Order7>;
+	Check(std::abs(Arp4019::AudioInputScale() - 0.00219517) < 1.0e-7,
+		"ARP 4019 audio attenuator presents about 0.2% to its input pair");
+	Check(std::abs(Arp4019::SmallSignalGainAtUnityControl() - 1.0) < 1.0e-12,
+		"ARP 4019 unity-current calibration follows the circuit ratios");
+	Check(Arp4019::UnityControlCurrentAmps() > 0.0004 &&
+		Arp4019::UnityControlCurrentAmps() < 0.00045,
+		"ARP 4019 unity control current is in the component-derived range");
+	Check(Arp4019::OutputBandwidthHz > 28000.0 &&
+		Arp4019::OutputBandwidthHz < 29000.0,
+		"ARP 4019 feedback capacitor retains the original HF rolloff");
+	Arp4019 arp4019(tfdsp::CreateX4Resampler_Cheby7);
+	arp4019.SetSampleRate(48000.0);
+	double arpVcaLinearPeak = 0.0;
+	double arpVcaExponentialPeak = 0.0;
+	for (int i = 0; i < 48000; ++i)
+	{
+		const double input = 0.1 * std::sin(2.0 *
+			3.14159265358979323846 * 1000.0 * i / 48000.0);
+		const double output = arp4019.Step(input, 0.0, 10.0, -10.0);
+		if (i >= 24000)
+			arpVcaLinearPeak = std::max(arpVcaLinearPeak, std::abs(output));
+	}
+	arp4019.Reset();
+	for (int i = 0; i < 48000; ++i)
+	{
+		const double input = 0.1 * std::sin(2.0 *
+			3.14159265358979323846 * 1000.0 * i / 48000.0);
+		const double output = arp4019.Step(input, 0.0, -1.0, 9.0);
+		if (i >= 24000)
+			arpVcaExponentialPeak = std::max(arpVcaExponentialPeak,
+				std::abs(output));
+	}
+	Check(std::abs(arpVcaLinearPeak - 0.1) < 0.004,
+		"ARP 4019 linear 10 V control gives approximately unity gain");
+	Check(std::abs(arpVcaExponentialPeak / arpVcaLinearPeak -
+		0.316227766) < 0.01,
+		"ARP 4019 exponential control follows the specified 10 dB/V law");
+	Check(arp4019.Step(std::numeric_limits<double>::infinity(), 0.0,
+		10.0, 0.0) == 0.0f,
+		"ARP 4019 rejects non-finite input");
+
+	Arp4072 arpVoiceFilter(tfdsp::CreateX4Resampler_Cheby7);
+	Arp4019 arpVoiceVca(tfdsp::CreateX4Resampler_Cheby7);
+	arpVoiceFilter.SetSampleRate(48000.0);
+	arpVoiceVca.SetSampleRate(48000.0);
+	double arpVoiceFilterPeak = 0.0;
+	double arpVoiceVcaPeak = 0.0;
+	bool arpVoiceFinite = true;
+	for (int i = 0; i < 48000; ++i)
+	{
+		const double input = 0.01 * std::sin(2.0 *
+			3.14159265358979323846 * 200.0 * i / 48000.0);
+		const auto rendered = arpVoiceFilter.StepWithPostProcessor(input,
+			8000.0, 0.0, 1.0, false, 10.0, -10.0,
+			[&](double filtered, double linearCv, double exponentialCv)
+			{
+				return arpVoiceVca.ProcessOversampled(filtered, linearCv,
+					exponentialCv);
+			});
+		arpVoiceFinite = arpVoiceFinite && std::isfinite(rendered.lowPass) &&
+			std::isfinite(rendered.postProcessed);
+		if (i >= 24000)
+		{
+			arpVoiceFilterPeak = std::max(arpVoiceFilterPeak,
+				std::abs(static_cast<double>(rendered.lowPass)));
+			arpVoiceVcaPeak = std::max(arpVoiceVcaPeak,
+				std::abs(static_cast<double>(rendered.postProcessed)));
+		}
+	}
+	Check(arpVoiceFinite && arpVoiceVcaPeak > 0.005,
+		"ARP 4072 and 4019 share one finite oversampled signal path");
+	Check(std::abs(arpVoiceVcaPeak / arpVoiceFilterPeak - 1.0) < 0.04,
+		"ARP voice-core VCA preserves the filter level at unity control");
+
+	Arp4072X2 arpVoiceFilterX2(tfdsp::CreateX2Resampler_Chebychev7);
+	tfdsp::Arp4019Vca<tfdsp::X2Resampler_Order7> arpVoiceVcaX2(
+		tfdsp::CreateX2Resampler_Chebychev7);
+	arpVoiceFilterX2.SetSampleRate(48000.0);
+	arpVoiceVcaX2.SetSampleRate(48000.0);
+	double arpVoiceFilterPeakX2 = 0.0;
+	double arpVoiceVcaPeakX2 = 0.0;
+	bool arpVoiceFiniteX2 = true;
+	for (int i = 0; i < 48000; ++i)
+	{
+		const double input = 0.01 * std::sin(2.0 *
+			3.14159265358979323846 * 200.0 * i / 48000.0);
+		const auto rendered = arpVoiceFilterX2.StepWithPostProcessor(input,
+			8000.0, 0.0, 1.0, false, 10.0, -10.0,
+			[&](double filtered, double linearCv, double exponentialCv)
+			{
+				return arpVoiceVcaX2.ProcessOversampled(filtered, linearCv,
+					exponentialCv);
+			});
+		arpVoiceFiniteX2 = arpVoiceFiniteX2 &&
+			std::isfinite(rendered.lowPass) &&
+			std::isfinite(rendered.postProcessed);
+		if (i >= 24000)
+		{
+			arpVoiceFilterPeakX2 = std::max(arpVoiceFilterPeakX2,
+				std::abs(static_cast<double>(rendered.lowPass)));
+			arpVoiceVcaPeakX2 = std::max(arpVoiceVcaPeakX2,
+				std::abs(static_cast<double>(rendered.postProcessed)));
+		}
+	}
+	Check(arpVoiceFiniteX2 && arpVoiceVcaPeakX2 > 0.005,
+		"ARP 4072 and 4019 share one finite 2x signal path");
+	Check(std::abs(arpVoiceVcaPeakX2 / arpVoiceFilterPeakX2 - 1.0) < 0.04,
+		"ARP 2x voice-core VCA preserves the filter level at unity control");
 
 	VCA_TransistorCore<tfdsp::X2Resampler_Order7> vca(tfdsp::CreateX2Resampler_Chebychev7);
 	vca.SetSampleRate(48000.0f);

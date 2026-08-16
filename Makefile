@@ -4,7 +4,7 @@ SLUG = TriggerFish-Elements
 
 # Must follow the format in the Versioning section of
 # https://vcvrack.com/manual/PluginDevelopmentTutorial.html
-VERSION = 2.2.0
+VERSION = 2.3.0
 
 
 # FLAGS are passed to both the C and C++ compiler by the Rack SDK.

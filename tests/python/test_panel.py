@@ -54,6 +54,131 @@ def test_303_oscillator_runtime_panel_outlines_all_editable_text():
     assert b"\r\n" not in (ROOT / "res" / "Tf303Oscillator.svg").read_bytes()
 
 
+def test_4072_voice_core_panel_matches_the_wide_dual_envelope_layout():
+    source = ET.parse(ROOT / "res-src" / "Tf4072VoiceCore.svg").getroot()
+    runtime = ET.parse(ROOT / "res" / "Tf4072VoiceCore.svg").getroot()
+    assert source.attrib["width"] == "360"
+    assert source.findall(f".//{SVG}text")
+    assert not runtime.findall(f".//{SVG}text")
+    assert b"\r\n" not in (ROOT / "res-src" / "Tf4072VoiceCore.svg").read_bytes()
+    assert b"\r\n" not in (ROOT / "res" / "Tf4072VoiceCore.svg").read_bytes()
+
+    widget_source = (ROOT / "src" / "Tf4072VoiceCore.cpp").read_text(encoding="utf-8")
+    controls = list(control_pattern("Tf4072VoiceCore").finditer(widget_source))
+    assert len(controls) == 34
+    by_id = {control.group("id"): control for control in controls}
+    envelope_params = (
+        "FILTER_ATTACK",
+        "FILTER_DECAY",
+        "FILTER_SUSTAIN",
+        "FILTER_RELEASE",
+        "AMP_ATTACK",
+        "AMP_DECAY",
+        "AMP_SUSTAIN",
+        "AMP_RELEASE",
+    )
+    assert [by_id[name].group("type") for name in envelope_params] == [
+        "TfEnvelopeSlider"
+    ] * 8
+    assert [
+        (float(by_id[name].group("x")), float(by_id[name].group("y")))
+        for name in envelope_params
+    ] == [
+        (174.0, 52.0),
+        (214.0, 52.0),
+        (254.0, 52.0),
+        (294.0, 52.0),
+        (174.0, 177.0),
+        (214.0, 177.0),
+        (254.0, 177.0),
+        (294.0, 177.0),
+    ]
+    assert svg_dimensions(ROOT / "res" / "TfSlider.svg") == (20.0, 100.0)
+    assert svg_dimensions(ROOT / "res" / "TfSliderHandle.svg") == (7.0, 13.0)
+
+    dividers = source.find(f".//{SVG}path[@id='section-dividers']")
+    assert dividers is not None
+    assert dividers.attrib["d"] == "M28 27h304"
+    assert "v" not in dividers.attrib["d"]
+
+    input_blocks = source.find(f".//{SVG}g[@id='input-jack-blocks']")
+    output_blocks = source.find(f".//{SVG}g[@id='output-jack-blocks']")
+    assert input_blocks is not None
+    assert output_blocks is not None
+    assert len(input_blocks.findall(f"{SVG}rect")) == 10
+    assert len(output_blocks.findall(f"{SVG}rect")) == 4
+    assert [
+        block.attrib.get("fill", output_blocks.attrib["fill"])
+        for block in output_blocks.findall(f"{SVG}rect")
+    ] == ["#545454", "#545454", "#858585", "#858585"]
+    assert [
+        (float(by_id[name].group("x")), float(by_id[name].group("y")))
+        for name in (
+            "DRIVE",
+            "FILTER_ENV_AMOUNT",
+            "CUTOFF_CV_AMOUNT",
+            "RES_CV_AMOUNT",
+            "VCA_INITIAL_GAIN",
+            "VCA_LINEAR_AMOUNT",
+            "VCA_EXP_AMOUNT",
+            "FILTER_RANGE",
+        )
+    ] == [
+        (62.0, 112.0),
+        (16.0, 173.0),
+        (66.0, 173.0),
+        (116.0, 173.0),
+        (16.0, 231.0),
+        (66.0, 231.0),
+        (116.0, 231.0),
+        (73.0, 65.0),
+    ]
+    assert "configSwitch(FILTER_ENV_MODE, 0.0f, 1.0f, 0.0f" in widget_source
+    assert "configSwitch(AMP_ENV_MODE, 0.0f, 1.0f, 1.0f" in widget_source
+    assert '{"2x (lower CPU)", "4x (default)"}' in widget_source
+    assert "lightDivider.setDivision(512);" in widget_source
+    assert "args.sampleTime * lightDivider.getDivision()" in widget_source
+    assert widget_source.count("createLightParam<TfEnvelopeSlider>") == 8
+
+
+def test_4072_voice_core_wrapper_preserves_normals_polyphony_and_runtime_state():
+    source = (ROOT / "src" / "Tf4072VoiceCore.cpp").read_text(encoding="utf-8")
+
+    # Every connected signal can establish the voice count, and monophonic
+    # ports are explicitly broadcast by Rack's getPolyVoltage() contract.
+    assert "for (int input = 0; input < NUM_INPUTS; ++input)" in source
+    assert "channels = std::max(channels, inputs[input].getChannels());" in source
+    assert source.count("getPolyVoltage(channel)") >= 10
+    assert "for (int channel = channels; channel < activeChannels; ++channel)" in source
+    assert "ResetChannel(channel);" in source
+    assert "activeChannels = channels;" in source
+
+    # The external filter and VCA controls replace their corresponding
+    # normalled envelopes, while the audio VCA override selects its independent
+    # oversampled path.
+    assert "inputs[FILTER_ENV_CV_INPUT].isConnected() ?" in source
+    assert "inputs[VCA_LINEAR_CV_INPUT].isConnected() ?" in source
+    assert "const bool vcaOverride = inputs[VCA_AUDIO_INPUT].isConnected();" in source
+    assert "if (vcaOverride)" in source
+
+    # Runtime quality changes reset the newly selected DSP path rather than
+    # resuming stale filter and resampler history.
+    assert "if (oversampling != activeOversampling)" in source
+    assert "activeOversampling = oversampling;" in source
+    assert "ResetActivePath();" in source
+
+    # Bypass follows the VCA input normalization instead of always routing the
+    # filter input, and non-audio envelope outputs do not retain stale channels.
+    assert "void processBypass(const ProcessArgs& args) override" in source
+    assert "configBypass(" not in source
+    assert (
+        "route(inputs[VCA_AUDIO_INPUT].isConnected() ? VCA_AUDIO_INPUT :\n"
+        "\t\t\tAUDIO_INPUT, VCA_OUTPUT);"
+    ) in source
+    assert "outputs[FILTER_ENV_OUTPUT].setChannels(0);" in source
+    assert "outputs[AMP_ENV_OUTPUT].setChannels(0);" in source
+
+
 def test_303_oscillator_panel_matches_widget_layout():
     widget_source = (ROOT / "src" / "Tf303Oscillator.cpp").read_text(encoding="utf-8")
     assert widget_source.count("oversampling = 1;") == 2

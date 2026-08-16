@@ -14,3 +14,4 @@ extern Model *modelTfSlop4;
 extern Model *modelTfVDPO;
 extern Model *modelTf303VoiceCore;
 extern Model *modelTf303Oscillator;
+extern Model *modelTf4072VoiceCore;

@@ -4,7 +4,7 @@ Circuit-inspired sound generators, processors, and pitch utilities for VCV Rack 
 
 [![CI](https://github.com/JTriggerFish/TriggerFish-VCV/actions/workflows/ci.yml/badge.svg)](https://github.com/JTriggerFish/TriggerFish-VCV/actions/workflows/ci.yml)
 
-[Release notes for 2.2.0](docs/releases/2.2.0.md)
+[Release notes for 2.3.0](docs/releases/2.3.0.md)
 
 <table>
   <tr>
@@ -16,6 +16,9 @@ Circuit-inspired sound generators, processors, and pitch utilities for VCV Rack 
     <td align="center"><a href="#vca"><img src="doc/TfVCA.png" height="260" alt="VCA module"><br><strong>VCA</strong></a></td>
     <td align="center"><a href="#303-oscillator"><img src="doc/Tf303Oscillator.png" height="260" alt="303 Oscillator module"><br><strong>303 Oscillator</strong></a></td>
     <td align="center"><a href="#303-voice-core"><img src="doc/Tf303VoiceCore.png" height="260" alt="303 Voice Core module"><br><strong>303 Voice Core</strong></a></td>
+  </tr>
+  <tr>
+    <td colspan="3" align="center"><a href="#4072-voice-core"><img src="doc/Tf4072VoiceCore.png" height="260" alt="4072 Voice Core module"><br><strong>4072 Voice Core</strong></a></td>
   </tr>
 </table>
 
@@ -29,6 +32,7 @@ Circuit-inspired sound generators, processors, and pitch utilities for VCV Rack 
 | VCA | Monophonic; reads channel 1 of each input | One |
 | 303 Oscillator | Fully polyphonic, with independent DSP state per voice; mono inputs are broadcast | Widest connected input, up to 16 |
 | 303 Voice Core | Fully polyphonic, with independent filter, envelope, accent, and VCA state; mono controls are broadcast | Channel count of `IN`, up to 16 |
+| 4072 Voice Core | Fully polyphonic, with independent filter, dual-envelope, and VCA state; mono controls are broadcast | Widest connected input, up to 16 |
 
 ## Modules
 
@@ -134,6 +138,29 @@ The filter uses 4x oversampling by default, with a 2x context-menu option. The
 context menu also selects stock or Devil Fish volume-envelope timing. Circuit
 analysis, equations, calibration, and numerical validation are collected in the
 [303 Voice Core technical report](docs/Tf303VoiceCore-technical-report.md).
+
+### 4072 Voice Core
+
+4072 Voice Core combines a circuit-scaled ARP 4072 four-pole low-pass filter,
+two switchable ADSR/AR envelope generators, and an ARP 4019-style discrete VCA.
+The filter's outer differential pair preserves the original unequal audio and
+resonance-return levels, while the four locally fed-back filter stages operate
+around their circuit bias points.
+
+- **Cutoff** and `1V/OCT` set the filter frequency. `CUTOFF CV`, `RES CV`, and
+  the internal filter envelope have independent amount controls.
+- **Input** covers attenuation through +24 dB of filter drive. **Range** selects
+  the stock 4072 high-frequency limit or an extended 20 kHz range.
+- The two A/D/S/R slider rows generate 0–10 V envelopes. Each row can be switched
+  to AR; filter ADSR and amplifier AR are the defaults.
+- `ENV CV` replaces the internal filter-envelope normalization. `LIN CV`
+  replaces the amplifier-envelope normalization, while `EXP CV` accesses the
+  4019's 10 dB/V exponential control path.
+- `VCA IN` replaces the normalled filter-to-VCA audio connection. `LP OUT`,
+  `VCA OUT`, and both envelope outputs expose each stage independently.
+
+The complete filter/VCA path runs at 4x sample rate by default. A 2x mode is
+available from the context menu for larger polyphonic patches.
 
 ## Contributing
 

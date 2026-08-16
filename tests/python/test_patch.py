@@ -2,6 +2,7 @@ import json
 import math
 from pathlib import Path
 import re
+import tomllib
 
 import pytest
 
@@ -13,6 +14,7 @@ PATCH_PATHS = {
     "slop4": ROOT / "test-slop4.vcv",
     "vdpo": ROOT / "test-vdpo.vcv",
     "303_voice": ROOT / "test-303-voice.vcv",
+    "4072_voice": ROOT / "test-4072-voice.vcv",
 }
 
 # Canonical Rack 2.6 module tags. Rack accepts a few historical aliases, but
@@ -111,6 +113,28 @@ EXPECTED_DEFAULTS = {
         8: 0.0,
         9: 0.0,
     },
+    "Tf4072VoiceCore": {
+        0: 0.9344246,
+        1: 0.0,
+        2: 0.0,
+        3: 0.6,
+        4: 0.0,
+        5: 0.0,
+        6: 0.0,
+        7: 1.0,
+        8: 1.0,
+        9: math.log10(0.010),
+        10: math.log10(0.300),
+        11: 0.5,
+        12: math.log10(0.300),
+        13: 0.0,
+        14: math.log10(0.005),
+        15: math.log10(0.300),
+        16: 1.0,
+        17: math.log10(0.300),
+        18: 1.0,
+        19: 0.0,
+    },
 }
 
 
@@ -124,6 +148,8 @@ def test_manifest_uses_canonical_rack_module_tags():
 def test_release_version_is_consistent_across_build_metadata():
     makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
     cmake = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
+    pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    uv_lock = tomllib.loads((ROOT / "uv.lock").read_text(encoding="utf-8"))
 
     make_version = re.search(r"^VERSION\s*=\s*([^\s]+)$", makefile, re.MULTILINE)
     cmake_version = re.search(
@@ -135,6 +161,13 @@ def test_release_version_is_consistent_across_build_metadata():
     assert cmake_version is not None
     assert make_version.group(1) == PLUGIN_VERSION
     assert cmake_version.group(1) == PLUGIN_VERSION
+    assert pyproject["project"]["version"] == PLUGIN_VERSION
+    triggerfish_lock = next(
+        package
+        for package in uv_lock["package"]
+        if package["name"] == "triggerfish-vcv-dsp"
+    )
+    assert triggerfish_lock["version"] == PLUGIN_VERSION
 
 
 def test_manifest_links_current_release_notes_and_module_guides():
@@ -190,6 +223,7 @@ def test_smoke_patches_collectively_contain_every_triggerfish_module():
         "TfVDPO",
         "Tf303VoiceCore",
         "Tf303Oscillator",
+        "Tf4072VoiceCore",
     }
 
 
@@ -354,6 +388,20 @@ def test_303_voice_patch_connects_sequencer_oscillator_filter_and_vca():
     assert has_cable(patch, foundry["id"], 8, diode["id"], 5)
     assert has_cable(patch, foundry["id"], 4, diode["id"], 6)
     assert has_cable(patch, diode["id"], 1, master["id"], 1)
+
+
+def test_4072_voice_patch_connects_midi_oscillator_filter_envelopes_and_vca():
+    patch = load_patch("4072_voice")
+    midi = modules(patch, "MIDIToCVInterface")[0]
+    oscillator = modules(patch, "VCO")[0]
+    voice = modules(patch, "Tf4072VoiceCore")[0]
+    master = modules(patch, "VCMixer")[0]
+
+    assert has_cable(patch, midi["id"], 0, oscillator["id"], 0)
+    assert has_cable(patch, midi["id"], 0, voice["id"], 2)
+    assert has_cable(patch, midi["id"], 1, voice["id"], 8)
+    assert has_cable(patch, oscillator["id"], 2, voice["id"], 0)
+    assert has_cable(patch, voice["id"], 1, master["id"], 1)
 
 
 def test_diode_ladder_default_cutoff_cv_range_reaches_fully_open():

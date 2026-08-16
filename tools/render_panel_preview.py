@@ -11,20 +11,24 @@ from __future__ import annotations
 import argparse
 import ast
 import base64
+import binascii
 import os
 from pathlib import Path
 import re
 import shutil
+import struct
 import subprocess
 import tempfile
+import time
 import xml.etree.ElementTree as ET
+import zlib
 
 ROOT = Path(__file__).resolve().parents[1]
 SVG = "{http://www.w3.org/2000/svg}"
 
 CONTROL_PATTERN = re.compile(
     r"add(?P<kind>Param|Input|Output)\s*\(\s*"
-    r"create(?:Param|Input|Output)<(?P<type>[^>]+)>\s*\(\s*"
+    r"create(?:LightParam|Param|Input|Output)<(?P<type>[^>]+)>\s*\(\s*"
     r"Vec\(\s*(?P<x>[0-9.]+)\s*,\s*(?P<y>[0-9.]+)\s*\)\s*,\s*module\s*,\s*"
     r"Tf303VoiceCore::(?P<id>[A-Z0-9_]+)",
     re.MULTILINE,
@@ -37,13 +41,14 @@ MODULE_NAMES = (
     "TfVCA",
     "Tf303Oscillator",
     "Tf303VoiceCore",
+    "Tf4072VoiceCore",
 )
 
 
 def control_pattern(module_name: str) -> re.Pattern[str]:
     return re.compile(
         r"^[ \t]*add(?P<kind>Param|Input|Output)\s*\(\s*"
-        r"create(?:Param|Input|Output)<(?P<type>[^>]+)>\s*\(\s*"
+        r"create(?:LightParam|Param|Input|Output)<(?P<type>[^>]+)>\s*\(\s*"
         r"Vec\(\s*(?P<x>[^,]+?)\s*,\s*(?P<y>[^)]+?)\s*\)\s*,\s*module\s*,\s*"
         + re.escape(module_name)
         + r"::(?P<id>[A-Z0-9_]+)",
@@ -74,8 +79,30 @@ COMPONENTS = {
         "RoundBigBlackKnob.svg",
     ),
     "TfTrimpot": ("Trimpot_bg.svg", "Trimpot.svg"),
+    "TfSlider": ("TfSlider.svg", "TfSliderHandle.svg"),
+    "TfEnvelopeSlider": ("TfSlider.svg", "TfSliderHandle.svg"),
     "CKSS": ("CKSS_0.svg",),
     "PJ301MPort": ("PJ301M.svg",),
+}
+
+LOCAL_COMPONENT_ASSETS = {"TfSlider.svg", "TfSliderHandle.svg"}
+
+# Representative envelope positions make the two banks legible without
+# pretending that the static preview is a saved patch.
+SLIDER_VALUES = {
+    "FILTER_ATTACK": 0.16,
+    "FILTER_DECAY": 0.46,
+    "FILTER_SUSTAIN": 0.64,
+    "FILTER_RELEASE": 0.40,
+    "AMP_ATTACK": 0.10,
+    "AMP_DECAY": 0.40,
+    "AMP_SUSTAIN": 0.82,
+    "AMP_RELEASE": 0.34,
+}
+
+SLIDER_LIGHT_BRIGHTNESS = {
+    "FILTER_DECAY": 0.68,
+    "AMP_SUSTAIN": 0.85,
 }
 
 # Rack draws the LED colour and bezel procedurally, then places the component
@@ -101,6 +128,7 @@ MODULE_GRAPHICS = {
     "TfVCA": (),
     "Tf303VoiceCore": PANEL_GRAPHICS,
     "Tf303Oscillator": ((ROOT / "res" / "logo.svg", 16.0, 232.0, 148.0, 80.8, 0.12),),
+    "Tf4072VoiceCore": (),
 }
 
 
@@ -218,6 +246,12 @@ def embedded_image(path: Path) -> str:
     return f"data:image/svg+xml;base64,{encoded}"
 
 
+def component_asset(component_directory: Path, asset_name: str) -> Path:
+    if asset_name in LOCAL_COMPONENT_ASSETS:
+        return ROOT / "res" / asset_name
+    return component_directory / asset_name
+
+
 def image_element(
     asset: Path,
     x: float,
@@ -278,26 +312,114 @@ def find_browser() -> Path | None:
     return None
 
 
+def crop_png_height(path: Path, target_height: int) -> None:
+    """Crop Chromium's unscaled RGB/RGBA screenshot without image dependencies."""
+    signature = b"\x89PNG\r\n\x1a\n"
+    source = path.read_bytes()
+    if not source.startswith(signature):
+        raise ValueError(f"Browser screenshot is not a PNG: {path}")
+
+    chunks: list[tuple[bytes, bytes]] = []
+    position = len(signature)
+    while position < len(source):
+        length = struct.unpack(">I", source[position : position + 4])[0]
+        chunk_type = source[position + 4 : position + 8]
+        chunk_data = source[position + 8 : position + 8 + length]
+        chunks.append((chunk_type, chunk_data))
+        position += 12 + length
+
+    ihdr = next(data for chunk_type, data in chunks if chunk_type == b"IHDR")
+    width, height, bit_depth, colour_type, compression, filtering, interlace = (
+        struct.unpack(">IIBBBBB", ihdr)
+    )
+    if height <= target_height:
+        return
+    channels = {0: 1, 2: 3, 4: 2, 6: 4}.get(colour_type)
+    if bit_depth != 8 or channels is None or interlace != 0:
+        raise ValueError("Unsupported Chromium screenshot PNG format")
+
+    compressed = b"".join(data for kind, data in chunks if kind == b"IDAT")
+    scanlines = zlib.decompress(compressed)
+    stride = 1 + width * channels
+    cropped = scanlines[: stride * target_height]
+    replacement_ihdr = struct.pack(
+        ">IIBBBBB",
+        width,
+        target_height,
+        bit_depth,
+        colour_type,
+        compression,
+        filtering,
+        interlace,
+    )
+
+    def png_chunk(kind: bytes, data: bytes) -> bytes:
+        return (
+            struct.pack(">I", len(data))
+            + kind
+            + data
+            + struct.pack(">I", binascii.crc32(kind + data) & 0xFFFFFFFF)
+        )
+
+    output = bytearray(signature)
+    inserted_pixels = False
+    for kind, data in chunks:
+        if kind == b"IHDR":
+            output.extend(png_chunk(kind, replacement_ihdr))
+        elif kind == b"IDAT":
+            if not inserted_pixels:
+                output.extend(png_chunk(kind, zlib.compress(cropped, level=9)))
+                inserted_pixels = True
+        else:
+            output.extend(png_chunk(kind, data))
+    path.write_bytes(output)
+
+
 def render_png(
     browser: Path, preview: Path, output: Path, width: float, height: float
 ) -> None:
-    with tempfile.TemporaryDirectory(prefix="browser-", dir=output.parent) as profile:
-        command = [
-            str(browser),
-            "--headless",
-            "--disable-gpu",
-            "--hide-scrollbars",
-            "--no-first-run",
-            "--force-device-scale-factor=1",
-            f"--window-size={int(2 * width)},{int(2 * height)}",
-            f"--user-data-dir={profile}",
-            f"--screenshot={output.resolve()}",
-            preview.resolve().as_uri(),
-        ]
-        completed = subprocess.run(command, check=False, capture_output=True, text=True)
-    if completed.returncode != 0 or not output.exists():
+    output.unlink(missing_ok=True)
+    failures = []
+    # Edge occasionally refuses a second headless profile immediately after a
+    # previous process exits. Retrying with a fresh profile makes --all renders
+    # deterministic without sharing browser state between modules.
+    for attempt in range(3):
+        with tempfile.TemporaryDirectory(
+            prefix="browser-", dir=output.parent, ignore_cleanup_errors=True
+        ) as profile:
+            command = [
+                str(browser),
+                "--headless",
+                "--disable-gpu",
+                "--hide-scrollbars",
+                "--no-first-run",
+                "--force-device-scale-factor=1",
+                # Chromium reserves a small vertical strip in some headless
+                # builds. The extra viewport avoids clipping the panel; the
+                # dependency-free PNG crop below removes the blank tail.
+                f"--window-size={int(2 * width)},{int(2 * height) + 64}",
+                f"--user-data-dir={profile}",
+                f"--screenshot={output.resolve()}",
+                preview.resolve().as_uri(),
+            ]
+            completed = subprocess.run(
+                command, check=False, capture_output=True, text=True
+            )
+            if completed.returncode == 0:
+                deadline = time.monotonic() + 2.0
+                while not output.exists() and time.monotonic() < deadline:
+                    time.sleep(0.05)
+                if output.exists():
+                    # On Windows the Edge launcher can return before the
+                    # renderer has replaced its initial screenshot file.
+                    time.sleep(0.75)
+        if completed.returncode == 0 and output.exists():
+            crop_png_height(output, int(2 * height))
+            return
         detail = completed.stderr.strip() or completed.stdout.strip()
-        raise RuntimeError(f"browser PNG render failed: {detail}")
+        failures.append(f"exit {completed.returncode}: {detail or 'no output'}")
+        time.sleep(0.2 * (attempt + 1))
+    raise RuntimeError("browser PNG render failed; " + "; ".join(failures))
 
 
 def render_preview(
@@ -366,6 +488,31 @@ def render_preview(
                 raise KeyError(f"No preview assets configured for {component_type}")
             x, y = control_coordinates(control, widgets)
             parameter_id = control.group("id")
+            if component_type in {"TfSlider", "TfEnvelopeSlider"}:
+                background = component_asset(component_directory, asset_names[0])
+                handle = component_asset(component_directory, asset_names[1])
+                background_width, background_height = svg_dimensions(background)
+                handle_width, handle_height = svg_dimensions(handle)
+                value = SLIDER_VALUES.get(parameter_id, 0.5)
+                handle_x = x + (background_width - handle_width) / 2.0
+                handle_y = y + (1.0 - value) * (background_height - handle_height)
+                overlays.append(image_element(background, x, y))
+                overlays.append(image_element(handle, handle_x, handle_y))
+                brightness = SLIDER_LIGHT_BRIGHTNESS.get(parameter_id, 0.0)
+                if component_type == "TfEnvelopeSlider" and brightness > 0.0:
+                    light_x = handle_x + (handle_width - 5.0) / 2.0
+                    light_y = handle_y + (handle_height - 7.0) / 2.0
+                    overlays.append(
+                        f'  <rect x="{light_x - 2.0:g}" y="{light_y - 2.0:g}" '
+                        f'width="9" height="11" rx="2" fill="#ffd229" '
+                        f'opacity="{0.14 * brightness:g}"/>\n'
+                    )
+                    overlays.append(
+                        f'  <rect x="{light_x:g}" y="{light_y:g}" width="5" '
+                        f'height="7" rx="0.6" fill="#ffd229" '
+                        f'opacity="{brightness:g}"/>\n'
+                    )
+                continue
             for index, asset_name in enumerate(asset_names):
                 module_angles = MODULE_KNOB_ANGLES.get(module_name, {})
                 angle = (
@@ -374,7 +521,12 @@ def render_preview(
                     else None
                 )
                 overlays.append(
-                    image_element(component_directory / asset_name, x, y, angle=angle)
+                    image_element(
+                        component_asset(component_directory, asset_name),
+                        x,
+                        y,
+                        angle=angle,
+                    )
                 )
         for light in lights:
             light_type = light.group("type")

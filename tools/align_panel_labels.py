@@ -15,7 +15,12 @@ import re
 from fontTools.pens.boundsPen import BoundsPen
 from fontTools.ttLib import TTFont
 
-from render_panel_preview import COMPONENTS, control_pattern, svg_dimensions
+from render_panel_preview import (
+    COMPONENTS,
+    component_asset,
+    control_pattern,
+    svg_dimensions,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 TEXT_PATTERN = re.compile(r"<text\b(?P<attributes>[^>]*)>(?P<content>[^<]*)</text>")
@@ -38,7 +43,7 @@ def control_centers(
         if asset_names is None:
             raise KeyError(f"No preview assets configured for {component_type}")
         widths = [
-            svg_dimensions(component_directory / asset_name)[0]
+            svg_dimensions(component_asset(component_directory, asset_name))[0]
             for asset_name in asset_names
         ]
         centers[control.group("id")] = float(control.group("x")) + max(widths) / 2.0

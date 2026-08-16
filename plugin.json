@@ -1,7 +1,7 @@
 {
   "slug": "TriggerFish-Elements",
   "name": "TriggerFish-Elements",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "license": "BSD-3-Clause",
   "brand": "TriggerFish",
   "author": "JTriggerFish",
@@ -11,7 +11,7 @@
   "manualUrl": "https://github.com/JTriggerFish/TriggerFish-VCV",
   "sourceUrl": "https://github.com/JTriggerFish/TriggerFish-VCV",
   "donateUrl": "https://paypal.me/jtriggerfish",
-  "changelogUrl": "https://github.com/JTriggerFish/TriggerFish-VCV/blob/master/docs/releases/2.2.0.md",
+  "changelogUrl": "https://github.com/JTriggerFish/TriggerFish-VCV/blob/master/docs/releases/2.3.0.md",
   "modules": [
     {
       "slug": "TfSlop",
@@ -68,6 +68,18 @@
       "manualUrl": "https://github.com/JTriggerFish/TriggerFish-VCV#303-oscillator",
       "tags": [
         "Oscillator",
+        "Polyphonic"
+      ]
+    },
+    {
+      "slug": "Tf4072VoiceCore",
+      "name": "4072 Voice Core",
+      "description": "ARP 4072-style low-pass filter, dual envelopes, and 4019-style VCA",
+      "manualUrl": "https://github.com/JTriggerFish/TriggerFish-VCV#4072-voice-core",
+      "tags": [
+        "Filter",
+        "Envelope generator",
+        "Voltage-controlled amplifier",
         "Polyphonic"
       ]
     }

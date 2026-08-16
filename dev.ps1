@@ -12,6 +12,7 @@ param(
         "smoke-slop4",
         "smoke-vdpo",
         "smoke-303",
+        "smoke-4072",
         "test",
         "python-test",
         "shell",
@@ -131,7 +132,9 @@ switch ($Command) {
         Assert-Path $panelFont "Rack panel font"
         Push-Location $repoRoot
         try {
-            foreach ($moduleName in @("Tf303VoiceCore", "Tf303Oscillator")) {
+            foreach ($moduleName in @(
+                "Tf303VoiceCore", "Tf303Oscillator", "Tf4072VoiceCore"
+            )) {
                 & uv run python tools/align_panel_labels.py `
                     --rack-runtime $rackRuntime --module $moduleName
                 if ($LASTEXITCODE -ne 0) {
@@ -168,6 +171,7 @@ switch ($Command) {
     "smoke-slop4" { Start-SmokePatch "test-slop4.vcv" }
     "smoke-vdpo" { Start-SmokePatch "test-vdpo.vcv" }
     "smoke-303" { Start-SmokePatch "test-303-voice.vcv" }
+    "smoke-4072" { Start-SmokePatch "test-4072-voice.vcv" }
     "test" {
         Invoke-Mingw "cd '$repoMsys' && cmake -S . -B build/dsp-tests -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DTRIGGERFISH_BUILD_PYTHON=OFF && cmake --build build/dsp-tests -j$Jobs && ctest --test-dir build/dsp-tests --output-on-failure"
     }
