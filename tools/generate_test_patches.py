@@ -66,16 +66,19 @@ DEFAULT_PARAMS = {
         0.0,
         1.0,
         1.0,
-        math.log10(0.010),
-        math.log10(0.300),
+        math.log10(0.0014),
+        math.log10(1.0),
         0.5,
-        math.log10(0.300),
+        math.log10(1.0),
+        2.0,
         0.0,
-        0.0,
-        math.log10(0.005),
-        math.log10(0.300),
+        math.log10(0.0014),
+        math.log10(1.0),
         1.0,
-        math.log10(0.300),
+        math.log10(1.0),
+        2.0,
+        1.0,
+        1.0,
         1.0,
         0.0,
     ],
@@ -468,7 +471,7 @@ def generate_4072_voice_patch() -> None:
 
     patch.cable(2, 0, 3, 0)  # MIDI pitch -> oscillator
     patch.cable(2, 0, 4, 2)  # MIDI pitch -> filter 1V/oct
-    patch.cable(2, 1, 4, 8)  # MIDI gate -> both internal envelopes
+    patch.cable(2, 1, 4, 6)  # MIDI gate -> both internal envelopes
     patch.cable(3, 2, 4, 0)  # saw -> filter input
     patch.cable(4, 1, 5, 1)  # VCA output -> master
     patch.cable(5, 0, 6, 0)

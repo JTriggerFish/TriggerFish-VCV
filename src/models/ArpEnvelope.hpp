@@ -6,10 +6,11 @@
 namespace tfdsp
 {
 
-// Retriggerable envelope based on the ARP 2600's 4020 ADSR and board-4 AR
-// circuits. At the default curve, the attack follows a capacitor charging
-// toward 15 V and crossing the 10 V peak threshold. Decay and release
-// use the approximately three-time-constant interval reported for the 4020.
+// Envelope based on the ARP 2600's 4020 ADSR and board-4 AR circuits, with a
+// retriggerable AD extension. At the default curve, the ADSR attack follows a
+// capacitor charging toward 15 V and crossing the 10 V peak threshold. Decay
+// and release use the approximately three-time-constant interval reported for
+// the 4020.
 // The curve control varies those normalized exponentials while preserving the
 // selected segment duration and continuous output.
 class ArpEnvelope
@@ -18,6 +19,7 @@ public:
 	enum class Mode
 	{
 		Adsr,
+		Ad,
 		Ar,
 	};
 	enum class Stage
@@ -41,12 +43,18 @@ public:
 		if (mode == _mode)
 			return;
 		_mode = mode;
-		if (!_gateHigh)
-			return;
 		if (_mode == Mode::Ar)
 		{
+			if (!_gateHigh)
+				return;
 			if (_stage != Stage::Attack && _stage != Stage::Hold)
 				BeginAttack(_lastCurve);
+		}
+		else if (_mode == Mode::Ad)
+		{
+			if (_stage != Stage::Idle && _stage != Stage::Attack &&
+				_stage != Stage::Decay)
+				BeginStage(Stage::Decay);
 		}
 		else if (_stage == Stage::Hold)
 		{
@@ -91,12 +99,17 @@ public:
 		else if (_triggerHigh && triggerVolts <= TriggerLowVolts)
 			_triggerHigh = false;
 
-		// A gate edge provides the practical gate-only trigger used by the 2600
-		// keyboard interface. A patched trigger can retrigger ADSR while its gate
-		// remains high. The separate AR circuit ignores trigger.
+		// AR follows the board-4 gated envelope and ignores Trigger. AD is a
+		// retriggerable software extension: either rising input starts its one-shot.
+		// ADSR retains the 4020 Gate/Trigger relationship.
 		if (_mode == Mode::Ar)
 		{
 			if (gateRising)
+				BeginAttack(curve);
+		}
+		else if (_mode == Mode::Ad)
+		{
+			if (gateRising || triggerRising)
 				BeginAttack(curve);
 		}
 		else if (_gateHigh && triggerRising)
@@ -110,7 +123,7 @@ public:
 			else
 				BeginStage(Stage::Decay);
 		}
-		if (gateFalling)
+		if (gateFalling && _mode != Mode::Ad)
 			BeginStage(Stage::Release);
 
 		switch (_stage)
@@ -120,7 +133,7 @@ public:
 			break;
 		case Stage::Attack:
 			AdvanceSegment(1.0, attackSeconds,
-				_mode == Mode::Ar ? FallingCurve(curve) : AttackCurve(curve));
+				_mode == Mode::Adsr ? AttackCurve(curve) : FallingCurve(curve));
 			if (_phase >= 1.0)
 			{
 				_value = 1.0;
@@ -131,11 +144,20 @@ public:
 			}
 			break;
 		case Stage::Decay:
-			AdvanceSegment(sustain, decaySeconds, FallingCurve(curve));
+			AdvanceSegment(_mode == Mode::Ad ? 0.0 : sustain, decaySeconds,
+				FallingCurve(curve));
 			if (_phase >= 1.0)
 			{
-				_value = sustain;
-				BeginStage(Stage::Sustain);
+				if (_mode == Mode::Ad)
+				{
+					_value = 0.0;
+					BeginStage(Stage::Idle);
+				}
+				else
+				{
+					_value = sustain;
+					BeginStage(Stage::Sustain);
+				}
 			}
 			break;
 		case Stage::Sustain:
@@ -154,7 +176,8 @@ public:
 			break;
 		}
 
-		if (!_gateHigh && _stage != Stage::Idle && _stage != Stage::Release)
+		if (_mode != Mode::Ad && !_gateHigh && _stage != Stage::Idle &&
+			_stage != Stage::Release)
 			BeginStage(Stage::Release);
 		return _value;
 	}
@@ -240,8 +263,8 @@ private:
 	void BeginAttack(double curve)
 	{
 		_stage = Stage::Attack;
-		const double shape = _mode == Mode::Ar ? FallingCurve(curve) :
-			AttackCurve(curve);
+		const double shape = _mode == Mode::Adsr ? AttackCurve(curve) :
+			FallingCurve(curve);
 		_phase = InverseNormalizedCurve(_value, shape);
 	}
 

@@ -133,3 +133,29 @@ def test_audio_rate_cutoff_and_resonance_use_polyphase_reconstruction():
     reference = dsp.resampler_downsample_x4_order7(internal)
 
     np.testing.assert_allclose(production[256:], reference[256:], atol=2.0e-6)
+
+
+def test_linear_filter_modulation_is_reconstructed_before_cutoff_mapping():
+    sample_count = 4_096
+    time = np.arange(sample_count) / SAMPLE_RATE
+    audio = 2.0 * np.sin(2.0 * np.pi * 997.0 * time)
+    cutoff = 2_000.0 * np.exp2(0.4 * np.sin(2.0 * np.pi * 700.0 * time))
+    linear_fm = 800.0 * np.sin(2.0 * np.pi * 2_300.0 * time)
+    resonance = 0.35 + 0.2 * np.sin(2.0 * np.pi * 1_100.0 * time)
+
+    production = dsp.arp4072_modulated_controls_x4(audio, cutoff, linear_fm, resonance)
+
+    audio_x4 = dsp.resampler_upsample_x4_order7(audio)
+    pitch_x4 = dsp.resampler_upsample_x4_order7(np.log2(cutoff))
+    linear_fm_x4 = dsp.resampler_upsample_x4_order7(linear_fm)
+    resonance_x4 = np.clip(dsp.resampler_upsample_x4_order7(resonance), 0.0, 1.0)
+    effective_cutoff_x4 = np.exp2(pitch_x4) + linear_fm_x4
+    internal = dsp.arp4072_controls_x1(
+        audio_x4,
+        effective_cutoff_x4,
+        resonance_x4,
+        sample_rate=4.0 * SAMPLE_RATE,
+    )
+    reference = dsp.resampler_downsample_x4_order7(internal)
+
+    np.testing.assert_allclose(production[256:], reference[256:], atol=3.0e-6)

@@ -19,7 +19,7 @@ def _render_gate(
     sustain=0.4,
     release=0.3,
     curve=0.0,
-    ar_mode=False,
+    mode=0,
     trigger=None,
     auto_gate_trigger=True,
 ):
@@ -35,7 +35,7 @@ def _render_gate(
         sustain,
         release,
         curve,
-        ar_mode,
+        mode,
         auto_gate_trigger,
         SAMPLE_RATE,
     )
@@ -72,7 +72,7 @@ def test_curve_changes_shape_without_changing_attack_duration():
 def test_ar_uses_ordinary_rc_attack_and_ignores_trigger():
     trigger = np.zeros(int(0.1 * SAMPLE_RATE))
     trigger[1200:1202] = 10.0
-    output = _render_gate(0.1, attack=0.1, ar_mode=True, trigger=trigger)
+    output = _render_gate(0.1, attack=0.1, mode=2, trigger=trigger)
     phase = np.arange(1, len(output) + 1) / (0.1 * SAMPLE_RATE)
     expected = production_ordinary_segment(phase)
     assert np.max(np.abs(output - expected)) < 2.0e-12
@@ -92,13 +92,32 @@ def test_patched_trigger_enables_strict_gate_and_trigger_behavior():
         0.4,
         0.1,
         0.0,
-        False,
+        0,
         False,
         SAMPLE_RATE,
     )
     assert 0.39 < output[trigger_sample - 1] <= 0.4
     assert output[trigger_sample] > output[trigger_sample - 1]
     assert output[-1] == 0.4
+
+
+def test_ad_runs_attack_then_decay_without_waiting_for_gate_fall():
+    attack = 0.05
+    decay = 0.1
+    output = _render_gate(
+        0.3,
+        attack=attack,
+        decay=decay,
+        sustain=0.8,
+        release=0.25,
+        mode=1,
+    )
+    peak = int(round(attack * SAMPLE_RATE)) - 1
+    end = int(round((attack + decay) * SAMPLE_RATE)) - 1
+    assert output[peak] == 1.0
+    assert output[peak + 1] < 1.0
+    assert output[end] == 0.0
+    assert np.all(output[end:] == 0.0)
 
 
 def test_five_millisecond_attack_remains_available():

@@ -3,22 +3,10 @@
   <rect width="360" height="380" fill="#cecece"/>
   <path id="section-dividers" d="M28 27h304" stroke="#777" stroke-width="0.7"/>
 
-  <g id="input-jack-blocks" fill="#a9a9a9" stroke="#777" stroke-width="0.45">
-    <rect x="10" y="289" width="40" height="32" rx="7"/>
-    <rect x="60" y="289" width="40" height="32" rx="7"/>
-    <rect x="110" y="289" width="40" height="32" rx="7"/>
-    <rect x="160" y="289" width="40" height="32" rx="7"/>
-    <rect x="210" y="289" width="40" height="32" rx="7"/>
-    <rect x="260" y="289" width="40" height="32" rx="7"/>
-    <rect x="310" y="289" width="40" height="32" rx="7"/>
-    <rect x="10" y="330" width="40" height="32" rx="7"/>
-    <rect x="60" y="330" width="40" height="32" rx="7"/>
-    <rect x="110" y="330" width="40" height="32" rx="7"/>
-  </g>
   <g id="output-jack-blocks" fill="#545454" stroke="#2e2e2e" stroke-width="0.45">
-    <rect x="160" y="330" width="40" height="32" rx="7"/>
-    <rect x="210" y="330" width="40" height="32" rx="7"/>
-    <rect x="260" y="330" width="40" height="32" rx="7" fill="#858585" stroke="#666666"/>
+    <rect x="130" y="330" width="40" height="32" rx="7"/>
+    <rect x="190" y="330" width="40" height="32" rx="7"/>
+    <rect x="250" y="330" width="40" height="32" rx="7" fill="#858585" stroke="#666666"/>
     <rect x="310" y="330" width="40" height="32" rx="7" fill="#858585" stroke="#666666"/>
   </g>
 
@@ -28,26 +16,40 @@
 
     <text x="34.008" y="38" font-size="8.2" font-weight="bold" data-control="CUTOFF">CUTOFF</text>
     <text x="125.8599" y="38" font-size="8.2" font-weight="bold" data-control="RESONANCE">RESONANCE</text>
-    <text x="79.6361" y="107" font-size="7.2" font-weight="bold" data-control="DRIVE">INPUT</text>
-    <text x="29.8352" y="166" font-size="6.7" font-weight="bold" data-control="FILTER_ENV_AMOUNT">ENV AMT</text>
-    <text x="79.9759" y="166" font-size="6.7" font-weight="bold" data-control="CUTOFF_CV_AMOUNT">CV AMT</text>
-    <text x="129.8728" y="166" font-size="6.7" font-weight="bold" data-control="RES_CV_AMOUNT">RES CV</text>
-    <text x="30.1389" y="224" font-size="6.5" font-weight="bold" data-control="VCA_INITIAL_GAIN">VCA INIT</text>
-    <text x="79.8863" y="224" font-size="6.4" font-weight="bold" data-control="VCA_LINEAR_AMOUNT">LIN CV</text>
-    <text x="129.8863" y="224" font-size="6.4" font-weight="bold" data-control="VCA_EXP_AMOUNT">EXP CV</text>
-    <text x="79.8906" y="48" font-size="6.4" font-weight="bold" data-control="FILTER_RANGE">HF RANGE</text>
+    <text x="79.877" y="103" font-size="7.2" font-weight="bold" data-control="DRIVE">DRIVE</text>
+    <text x="31.0219" y="106" font-size="5.6" font-weight="bold" data-control="FILTER_MOD_ROUTING">CUT ROUTE</text>
+    <text x="129.1572" y="106" font-size="5.6" font-weight="bold" data-control="VCA_MOD_ROUTING">VCA ROUTE</text>
     <g fill="#686868">
-      <text x="79.7069" y="61" font-size="5.8" font-weight="bold" data-control="FILTER_RANGE">EXT</text>
-      <text x="80.1487" y="96" font-size="5.8" font-weight="bold" data-control="FILTER_RANGE">4072</text>
+      <text x="31" y="113" font-size="5.6" font-weight="bold" data-control="FILTER_MOD_ROUTING">+</text>
+      <text x="30.717" y="145" font-size="5.6" font-weight="bold" data-control="FILTER_MOD_ROUTING">EXT</text>
+      <text x="129" y="113" font-size="5.6" font-weight="bold" data-control="VCA_MOD_ROUTING">+</text>
+      <text x="128.717" y="145" font-size="5.6" font-weight="bold" data-control="VCA_MOD_ROUTING">EXT</text>
     </g>
-
+    <text x="30.8352" y="154" font-size="6.7" font-weight="bold" data-control="FILTER_ENV_AMOUNT">ENV→CUT</text>
+    <text x="80.0429" y="154" font-size="6.7" font-weight="bold" data-control="RES_CV_AMOUNT">RES MOD</text>
+    <text x="129.1836" y="154" font-size="6.7" font-weight="bold" data-control="FILTER_MOD_AMOUNT">CUT MOD</text>
+    <text x="31.1389" y="198" font-size="6.5" font-weight="bold" data-control="VCA_INITIAL_GAIN">VCA INIT</text>
+    <text x="79.8863" y="198" font-size="6.4" font-weight="bold" data-control="VCA_LINEAR_AMOUNT">ENV→VCA</text>
+    <text x="129.3379" y="198" font-size="6.4" font-weight="bold" data-control="VCA_MOD_AMOUNT">VCA MOD</text>
+    <text x="26.0081" y="262" font-size="5.5" font-weight="bold" data-center-x="26">CUT MOD</text>
+    <text x="132.141" y="262" font-size="5.5" font-weight="bold" data-center-x="132">VCA MOD</text>
+    <g fill="#686868">
+      <text x="53.8241" y="246" font-size="5.5" font-weight="bold" data-control="FILTER_MOD_MODE">EXP</text>
+      <text x="54" y="275" font-size="5.5" font-weight="bold" data-control="FILTER_MOD_MODE">LIN</text>
+      <text x="105.8241" y="246" font-size="5.5" font-weight="bold" data-control="VCA_MOD_MODE">EXP</text>
+      <text x="106" y="275" font-size="5.5" font-weight="bold" data-control="VCA_MOD_MODE">LIN</text>
+    </g>
     <text x="243.8701" y="39" font-size="7.6" font-weight="bold" letter-spacing="0.7" data-center-x="244">FILTER ENVELOPE</text>
     <text x="184.0016" y="48" font-size="6.5" font-weight="bold" data-control="FILTER_ATTACK">A</text>
     <text x="223.873" y="48" font-size="6.5" font-weight="bold" data-control="FILTER_DECAY">D</text>
     <text x="263.9667" y="48" font-size="6.5" font-weight="bold" data-control="FILTER_SUSTAIN">S</text>
     <text x="303.7747" y="48" font-size="6.5" font-weight="bold" data-control="FILTER_RELEASE">R</text>
-    <text x="336.0598" y="68" font-size="5.7" font-weight="bold" data-control="FILTER_ENV_MODE">AR</text>
-    <text x="336.0598" y="113" font-size="5.7" font-weight="bold" data-control="FILTER_ENV_MODE">ADSR</text>
+    <text x="335.6345" y="70" font-size="5.5" font-weight="bold" data-control="FILTER_ENV_MODE">MODE</text>
+    <g fill="#686868">
+      <text x="335.7883" y="76" font-size="5.7" font-weight="bold" data-control="FILTER_ENV_MODE">AR</text>
+      <text x="351.1461" y="93" font-size="5.7" font-weight="bold" data-center-x="351">AD</text>
+      <text x="335.7883" y="113" font-size="5.7" font-weight="bold" data-control="FILTER_ENV_MODE">ADSR</text>
+    </g>
     <text x="336.1961" y="139" font-size="5.7" font-weight="bold" data-control="ENVELOPE_CURVE">CURVE</text>
 
     <text x="244.2134" y="163" font-size="7.6" font-weight="bold" letter-spacing="0.7" data-center-x="244">AMPLIFIER ENVELOPE</text>
@@ -55,23 +57,25 @@
     <text x="223.873" y="174" font-size="6.5" font-weight="bold" data-control="AMP_DECAY">D</text>
     <text x="263.9667" y="174" font-size="6.5" font-weight="bold" data-control="AMP_SUSTAIN">S</text>
     <text x="303.7747" y="174" font-size="6.5" font-weight="bold" data-control="AMP_RELEASE">R</text>
-    <text x="336.0598" y="193" font-size="5.7" font-weight="bold" data-control="AMP_ENV_MODE">AR</text>
-    <text x="336.0598" y="238" font-size="5.7" font-weight="bold" data-control="AMP_ENV_MODE">ADSR</text>
+    <text x="335.6345" y="195" font-size="5.5" font-weight="bold" data-control="AMP_ENV_MODE">MODE</text>
+    <g fill="#686868">
+      <text x="335.7883" y="201" font-size="5.7" font-weight="bold" data-control="AMP_ENV_MODE">AR</text>
+      <text x="351.1461" y="218" font-size="5.7" font-weight="bold" data-center-x="351">AD</text>
+      <text x="335.7883" y="238" font-size="5.7" font-weight="bold" data-control="AMP_ENV_MODE">ADSR</text>
+    </g>
 
-    <text x="29.5173" y="287" font-size="5.9" font-weight="bold" data-control="VOCT_INPUT">1V/OCT</text>
-    <text x="79.7136" y="287" font-size="5.7" font-weight="bold" data-control="CUTOFF_CV_INPUT">CUTOFF CV</text>
-    <text x="129.585" y="287" font-size="5.9" font-weight="bold" data-control="RES_CV_INPUT">RES CV</text>
-    <text x="179.8738" y="287" font-size="6.1" font-weight="bold" data-control="GATE_INPUT">GATE</text>
-    <text x="230.1091" y="287" font-size="6.1" font-weight="bold" data-control="TRIGGER_INPUT">TRIG</text>
-    <text x="279.585" y="287" font-size="5.9" font-weight="bold" data-control="FILTER_ENV_CV_INPUT">ENV CV</text>
-    <text x="329.85" y="287" font-size="5.8" font-weight="bold" data-control="AUDIO_INPUT">FILTER IN</text>
+    <text x="29.85" y="287" font-size="5.8" font-weight="bold" data-control="AUDIO_INPUT">FILTER IN</text>
+    <text x="89.5518" y="287" font-size="5.9" font-weight="bold" data-control="VOCT_INPUT">F 1V/OCT</text>
+    <text x="149.8583" y="287" font-size="5.7" font-weight="bold" data-control="FILTER_MOD_INPUT">CUT MOD</text>
+    <text x="209.7348" y="287" font-size="5.9" font-weight="bold" data-control="RES_CV_INPUT">RES MOD</text>
+    <text x="269.8738" y="287" font-size="6.1" font-weight="bold" data-control="GATE_INPUT">GATE</text>
+    <text x="330.1091" y="287" font-size="6.1" font-weight="bold" data-control="TRIGGER_INPUT">TRIG</text>
 
     <text x="30.112" y="328" font-size="5.8" font-weight="bold" data-control="VCA_AUDIO_INPUT">VCA IN</text>
-    <text x="79.5895" y="328" font-size="5.8" font-weight="bold" data-control="VCA_LINEAR_CV_INPUT">LIN CV</text>
-    <text x="129.5895" y="328" font-size="5.8" font-weight="bold" data-control="VCA_EXP_CV_INPUT">EXP CV</text>
-    <text x="179.5569" y="328" font-size="5.8" font-weight="bold" data-control="LP_OUTPUT">LP OUT</text>
-    <text x="229.8188" y="328" font-size="5.8" font-weight="bold" data-control="VCA_OUTPUT">VCA OUT</text>
-    <text x="279.5984" y="328" font-size="5.6" font-weight="bold" data-control="FILTER_ENV_OUTPUT">F ENV</text>
+    <text x="89.9987" y="328" font-size="5.8" font-weight="bold" data-control="VCA_MOD_INPUT">VCA MOD</text>
+    <text x="149.5569" y="328" font-size="5.8" font-weight="bold" data-control="LP_OUTPUT">LP OUT</text>
+    <text x="209.8188" y="328" font-size="5.8" font-weight="bold" data-control="VCA_OUTPUT">VCA OUT</text>
+    <text x="269.5984" y="328" font-size="5.6" font-weight="bold" data-control="FILTER_ENV_OUTPUT">F ENV</text>
     <text x="329.8514" y="328" font-size="5.6" font-weight="bold" data-control="AMP_ENV_OUTPUT">A ENV</text>
   </g>
 </svg>

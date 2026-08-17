@@ -28,6 +28,7 @@ control_coordinates = PREVIEW_MODULE.control_coordinates
 light_pattern = PREVIEW_MODULE.light_pattern
 PANEL_GRAPHICS = PREVIEW_MODULE.PANEL_GRAPHICS
 render_preview = PREVIEW_MODULE.render_preview
+switch_defaults = PREVIEW_MODULE.switch_defaults
 svg_dimensions = PREVIEW_MODULE.svg_dimensions
 aligned_source = ALIGNMENT_MODULE.aligned_source
 
@@ -65,7 +66,7 @@ def test_4072_voice_core_panel_matches_the_wide_dual_envelope_layout():
 
     widget_source = (ROOT / "src" / "Tf4072VoiceCore.cpp").read_text(encoding="utf-8")
     controls = list(control_pattern("Tf4072VoiceCore").finditer(widget_source))
-    assert len(controls) == 35
+    assert len(controls) == 36
     by_id = {control.group("id"): control for control in controls}
     envelope_params = (
         "FILTER_ATTACK",
@@ -103,9 +104,8 @@ def test_4072_voice_core_panel_matches_the_wide_dual_envelope_layout():
 
     input_blocks = source.find(f".//{SVG}g[@id='input-jack-blocks']")
     output_blocks = source.find(f".//{SVG}g[@id='output-jack-blocks']")
-    assert input_blocks is not None
+    assert input_blocks is None
     assert output_blocks is not None
-    assert len(input_blocks.findall(f"{SVG}rect")) == 10
     assert len(output_blocks.findall(f"{SVG}rect")) == 4
     assert [
         block.attrib.get("fill", output_blocks.attrib["fill"])
@@ -116,34 +116,81 @@ def test_4072_voice_core_panel_matches_the_wide_dual_envelope_layout():
         for name in (
             "DRIVE",
             "FILTER_ENV_AMOUNT",
-            "CUTOFF_CV_AMOUNT",
+            "FILTER_MOD_AMOUNT",
             "RES_CV_AMOUNT",
+            "FILTER_MOD_MODE",
             "VCA_INITIAL_GAIN",
             "VCA_LINEAR_AMOUNT",
-            "VCA_EXP_AMOUNT",
-            "FILTER_RANGE",
+            "VCA_MOD_AMOUNT",
+            "VCA_MOD_MODE",
         )
     ] == [
-        (62.0, 112.0),
-        (16.0, 173.0),
-        (66.0, 173.0),
-        (116.0, 173.0),
-        (16.0, 231.0),
-        (66.0, 231.0),
-        (116.0, 231.0),
-        (73.0, 65.0),
+        (62.0, 108.0),
+        (17.0, 161.0),
+        (115.0, 161.0),
+        (66.0, 161.0),
+        (47.0, 249.0),
+        (17.0, 205.0),
+        (66.0, 205.0),
+        (115.0, 205.0),
+        (99.0, 249.0),
     ]
-    assert "configSwitch(FILTER_ENV_MODE, 0.0f, 1.0f, 0.0f" in widget_source
-    assert "configSwitch(AMP_ENV_MODE, 0.0f, 1.0f, 1.0f" in widget_source
+    assert "configSwitch(FILTER_ENV_MODE, 0.0f, 2.0f, 2.0f" in widget_source
+    assert "configSwitch(AMP_ENV_MODE, 0.0f, 2.0f, 2.0f" in widget_source
+    assert by_id["FILTER_ENV_MODE"].group("type") == "CKSSThree"
+    assert by_id["AMP_ENV_MODE"].group("type") == "CKSSThree"
+    assert "configSwitch(FILTER_MOD_ROUTING, 0.0f, 1.0f, 1.0f" in widget_source
+    assert "configSwitch(VCA_MOD_ROUTING, 0.0f, 1.0f, 1.0f" in widget_source
+    assert by_id["FILTER_MOD_ROUTING"].group("type") == "CKSS"
+    assert by_id["VCA_MOD_ROUTING"].group("type") == "CKSS"
+    assert by_id["FILTER_MOD_MODE"].group("type") == "CKSS"
+    assert by_id["VCA_MOD_MODE"].group("type") == "CKSS"
+    assert control_coordinates(by_id["FILTER_MOD_ROUTING"], widget_source) == (
+        24.0,
+        115.0,
+    )
+    assert control_coordinates(by_id["VCA_MOD_ROUTING"], widget_source) == (
+        122.0,
+        115.0,
+    )
     assert by_id["ENVELOPE_CURVE"].group("type") == "TfCvKnob"
     assert (
         float(by_id["ENVELOPE_CURVE"].group("x")),
         float(by_id["ENVELOPE_CURVE"].group("y")),
     ) == (322.0, 143.0)
+    assert control_coordinates(by_id["FILTER_ENV_MODE"], widget_source) == (
+        329.0,
+        78.0,
+    )
+    assert control_coordinates(by_id["AMP_ENV_MODE"], widget_source) == (
+        329.0,
+        203.0,
+    )
     assert '{"2x (lower CPU)", "4x (default)"}' in widget_source
     assert "lightDivider.setDivision(512);" in widget_source
     assert "args.sampleTime * lightDivider.getDivision()" in widget_source
     assert widget_source.count("createLightParam<TfEnvelopeSlider>") == 8
+    components = (ROOT / "src" / "components.hpp").read_text(encoding="utf-8")
+    assert "TfEnvelopeSliderLight : RectangleLight<BlueLight>" in components
+    assert "displayGain = 2.0f" in widget_source
+    defaults = switch_defaults(widget_source)
+    assert defaults["FILTER_ENV_MODE"] == 2.0
+    assert defaults["AMP_ENV_MODE"] == 2.0
+    assert defaults["FILTER_MOD_ROUTING"] == 1.0
+    assert defaults["VCA_MOD_ROUTING"] == 1.0
+    assert defaults["FILTER_MOD_MODE"] == 1.0
+    assert defaults["VCA_MOD_MODE"] == 0.0
+    assert [
+        (float(by_id[name].group("x")), float(by_id[name].group("y")))
+        for name in (
+            "AUDIO_INPUT",
+            "VOCT_INPUT",
+            "FILTER_MOD_INPUT",
+            "RES_CV_INPUT",
+            "GATE_INPUT",
+            "TRIGGER_INPUT",
+        )
+    ] == [(18.0 + 60.0 * index, 293.0) for index in range(6)]
 
 
 def test_4072_voice_core_wrapper_preserves_normals_polyphony_and_runtime_state():
@@ -153,16 +200,21 @@ def test_4072_voice_core_wrapper_preserves_normals_polyphony_and_runtime_state()
     # ports are explicitly broadcast by Rack's getPolyVoltage() contract.
     assert "for (int input = 0; input < NUM_INPUTS; ++input)" in source
     assert "channels = std::max(channels, inputs[input].getChannels());" in source
-    assert source.count("getPolyVoltage(channel)") >= 10
+    assert source.count("getPolyVoltage(channel)") >= 8
     assert "for (int channel = channels; channel < activeChannels; ++channel)" in source
     assert "ResetChannel(channel);" in source
     assert "activeChannels = channels;" in source
 
-    # The external filter and VCA controls replace their corresponding
-    # normalled envelopes, while the audio VCA override selects its independent
-    # oversampled path.
-    assert "inputs[FILTER_ENV_CV_INPUT].isConnected() ?" in source
-    assert "inputs[VCA_LINEAR_CV_INPUT].isConnected() ?" in source
+    # An unpatched modulation input retains its internal envelope. A patched
+    # input can add to it or replace it, and each destination selects its law.
+    assert "const bool includeFilterEnvelope = !filterModConnected ||" in source
+    assert "const bool includeAmpEnvelope = !vcaModConnected ||" in source
+    assert "exponentialFilterModulation ? filterModulation : 0.0" in source
+    assert "LinearFilterModulationHzPerVolt * filterModulation" in source
+    assert "if (exponentialVcaModulation)" in source
+    assert "linearControl += vcaModulation;" in source
+
+    # The audio VCA override selects its independent oversampled path.
     assert "const bool vcaOverride = inputs[VCA_AUDIO_INPUT].isConnected();" in source
     assert "if (vcaOverride)" in source
 
@@ -496,7 +548,14 @@ def test_panel_preview_embeds_rack_components_at_cpp_widget_positions(tmp_path):
     expected_images = (
         len(PANEL_GRAPHICS)
         + 4
-        + sum(len(COMPONENTS[control.group("type")]) for control in controls)
+        + sum(
+            (
+                1
+                if control.group("type") in {"CKSS", "CKSSThree"}
+                else len(COMPONENTS[control.group("type")])
+            )
+            for control in controls
+        )
     )
     assert len(images) == expected_images
     assert all(

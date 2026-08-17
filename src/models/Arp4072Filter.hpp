@@ -38,6 +38,7 @@ public:
 		std::function<std::unique_ptr<ResamplerType>()> resamplerCreator)
 		: _resampler(resamplerCreator()),
 		  _cutoffPitchResampler(resamplerCreator()),
+		  _linearFmResampler(resamplerCreator()),
 		  _resonanceResampler(resamplerCreator()),
 		  _postOutputResampler(resamplerCreator()),
 		  _postLinearCvResampler(resamplerCreator()),
@@ -65,6 +66,7 @@ public:
 		_state = {};
 		_resampler->Reset();
 		_cutoffPitchResampler->Reset();
+		_linearFmResampler->Reset();
 		_resonanceResampler->Reset();
 		_postOutputResampler->Reset();
 		_postLinearCvResampler->Reset();
@@ -74,7 +76,7 @@ public:
 	}
 
 	float Step(double inputRackVolts, double cutoffHz, double resonance,
-		double driveGain = 1.0, bool extendedCutoff = false)
+		double driveGain = 1.0)
 	{
 		if (!std::isfinite(cutoffHz))
 		{
@@ -82,15 +84,21 @@ public:
 			return 0.0f;
 		}
 		return StepLogCutoff(inputRackVolts, std::log2(std::max(cutoffHz,
-			std::numeric_limits<double>::min())), resonance, driveGain,
-			extendedCutoff);
+			std::numeric_limits<double>::min())), resonance, driveGain);
 	}
 
 	float StepLogCutoff(double inputRackVolts, double log2CutoffHz,
-		double resonance, double driveGain = 1.0,
-		bool extendedCutoff = false)
+		double resonance, double driveGain = 1.0)
+	{
+		return StepModulatedLogCutoff(inputRackVolts, log2CutoffHz, 0.0,
+			resonance, driveGain);
+	}
+
+	float StepModulatedLogCutoff(double inputRackVolts, double log2CutoffHz,
+		double linearFmHz, double resonance, double driveGain = 1.0)
 	{
 		if (!std::isfinite(inputRackVolts) || !std::isfinite(log2CutoffHz) ||
+			!std::isfinite(linearFmHz) ||
 			!std::isfinite(resonance) || !std::isfinite(driveGain) ||
 			!(_sampleRate > 0.0))
 		{
@@ -99,11 +107,9 @@ public:
 		}
 
 		driveGain = std::clamp(driveGain, 0.0, MaximumDriveGain);
-		const double circuitCeiling = extendedCutoff ?
-			ExtendedCutoffCeilingHz : StockCutoffCeilingHz;
 		const double numericalCeiling = 0.45 * _hostSampleRate;
-		const auto controls = UpsampleControls(log2CutoffHz, resonance,
-			std::min(circuitCeiling, numericalCeiling));
+		const auto controls = UpsampleControls(log2CutoffHz, linearFmHz, resonance,
+			std::min(CutoffCeilingHz, numericalCeiling));
 
 		const auto upsampled = _resampler->Upsample(inputRackVolts * driveGain);
 		Eigen::Array<double, OversamplingFactor, 1> output;
@@ -131,7 +137,7 @@ public:
 	template<typename PostProcessor>
 	ProcessedOutputs StepWithPostProcessor(double inputRackVolts,
 		double cutoffHz, double resonance, double driveGain,
-		bool extendedCutoff, double linearControlVolts,
+		double linearControlVolts,
 		double exponentialControlVolts, PostProcessor&& postProcessor)
 	{
 		if (!std::isfinite(cutoffHz))
@@ -142,17 +148,29 @@ public:
 		return StepWithPostProcessorLogCutoff(inputRackVolts,
 			std::log2(std::max(cutoffHz,
 				std::numeric_limits<double>::min())), resonance, driveGain,
-			extendedCutoff, linearControlVolts, exponentialControlVolts,
+			linearControlVolts, exponentialControlVolts,
 			std::forward<PostProcessor>(postProcessor));
 	}
 
 	template<typename PostProcessor>
 	ProcessedOutputs StepWithPostProcessorLogCutoff(double inputRackVolts,
 		double log2CutoffHz, double resonance, double driveGain,
-		bool extendedCutoff, double linearControlVolts,
+		double linearControlVolts,
+		double exponentialControlVolts, PostProcessor&& postProcessor)
+	{
+		return StepWithPostProcessorModulatedLogCutoff(inputRackVolts,
+			log2CutoffHz, 0.0, resonance, driveGain, linearControlVolts,
+			exponentialControlVolts, std::forward<PostProcessor>(postProcessor));
+	}
+
+	template<typename PostProcessor>
+	ProcessedOutputs StepWithPostProcessorModulatedLogCutoff(
+		double inputRackVolts, double log2CutoffHz, double linearFmHz,
+		double resonance, double driveGain, double linearControlVolts,
 		double exponentialControlVolts, PostProcessor&& postProcessor)
 	{
 		if (!std::isfinite(inputRackVolts) || !std::isfinite(log2CutoffHz) ||
+			!std::isfinite(linearFmHz) ||
 			!std::isfinite(resonance) || !std::isfinite(driveGain) ||
 			!std::isfinite(linearControlVolts) ||
 			!std::isfinite(exponentialControlVolts) || !(_sampleRate > 0.0))
@@ -162,11 +180,9 @@ public:
 		}
 
 		driveGain = std::clamp(driveGain, 0.0, MaximumDriveGain);
-		const double circuitCeiling = extendedCutoff ?
-			ExtendedCutoffCeilingHz : StockCutoffCeilingHz;
 		const double numericalCeiling = 0.45 * _hostSampleRate;
-		const auto controls = UpsampleControls(log2CutoffHz, resonance,
-			std::min(circuitCeiling, numericalCeiling));
+		const auto controls = UpsampleControls(log2CutoffHz, linearFmHz, resonance,
+			std::min(CutoffCeilingHz, numericalCeiling));
 
 		const auto audio = _resampler->Upsample(inputRackVolts * driveGain);
 		const auto linearCv = _postLinearCvResampler->Upsample(
@@ -219,8 +235,7 @@ public:
 	static constexpr double PositiveSupplyVolts = 15.0;
 	static constexpr double LimiterEmitterDropVolts = 0.65;
 	static constexpr double OutputLevelShiftGain = 100.0 / 13.0;
-	static constexpr double StockCutoffCeilingHz = 12000.0;
-	static constexpr double ExtendedCutoffCeilingHz = 20000.0;
+	static constexpr double CutoffCeilingHz = 20000.0;
 
 	static constexpr double AudioBaseScale()
 	{
@@ -315,6 +330,7 @@ private:
 
 	std::unique_ptr<ResamplerType> _resampler;
 	std::unique_ptr<ResamplerType> _cutoffPitchResampler;
+	std::unique_ptr<ResamplerType> _linearFmResampler;
 	std::unique_ptr<ResamplerType> _resonanceResampler;
 	std::unique_ptr<ResamplerType> _postOutputResampler;
 	std::unique_ptr<ResamplerType> _postLinearCvResampler;
@@ -349,19 +365,21 @@ private:
 	}
 
 	OversampledControls UpsampleControls(double log2CutoffHz,
-		double resonance, double ceilingHz)
+		double linearFmHz, double resonance, double ceilingHz)
 	{
 		// Reconstruct cutoff in its exponential control domain. Mapping to hertz
 		// after interpolation keeps audio-rate 1 V/octave modulation band-limited
 		// before it changes the nonlinear solver coefficients.
 		const auto cutoffPitch = _cutoffPitchResampler->Upsample(log2CutoffHz);
+		const auto linearFm = _linearFmResampler->Upsample(linearFmHz);
 		auto resonanceValues = _resonanceResampler->Upsample(resonance);
 		OversampledControls controls;
 		for (int i = 0; i < OversamplingFactor; ++i)
 		{
 			const double reconstructedHz = tfdsp::Exp2Taylor5(
 				static_cast<float>(std::clamp(cutoffPitch(i), -100.0, 100.0)));
-			controls.cutoffHz(i) = SoftLimitCutoff(reconstructedHz, ceilingHz);
+			controls.cutoffHz(i) = SoftLimitCutoff(reconstructedHz + linearFm(i),
+				ceilingHz);
 			controls.resonance(i) = std::clamp(resonanceValues(i), 0.0, 1.0);
 		}
 		return controls;

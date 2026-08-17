@@ -123,18 +123,21 @@ EXPECTED_DEFAULTS = {
         6: 0.0,
         7: 1.0,
         8: 1.0,
-        9: math.log10(0.010),
-        10: math.log10(0.300),
+        9: math.log10(0.0014),
+        10: math.log10(1.0),
         11: 0.5,
-        12: math.log10(0.300),
-        13: 0.0,
+        12: math.log10(1.0),
+        13: 2.0,
         14: 0.0,
-        15: math.log10(0.005),
-        16: math.log10(0.300),
+        15: math.log10(0.0014),
+        16: math.log10(1.0),
         17: 1.0,
-        18: math.log10(0.300),
-        19: 1.0,
-        20: 0.0,
+        18: math.log10(1.0),
+        19: 2.0,
+        20: 1.0,
+        21: 1.0,
+        22: 1.0,
+        23: 0.0,
     },
 }
 
@@ -400,7 +403,7 @@ def test_4072_voice_patch_connects_midi_oscillator_filter_envelopes_and_vca():
 
     assert has_cable(patch, midi["id"], 0, oscillator["id"], 0)
     assert has_cable(patch, midi["id"], 0, voice["id"], 2)
-    assert has_cable(patch, midi["id"], 1, voice["id"], 8)
+    assert has_cable(patch, midi["id"], 1, voice["id"], 6)
     assert has_cable(patch, oscillator["id"], 2, voice["id"], 0)
     assert has_cable(patch, voice["id"], 1, master["id"], 1)
 

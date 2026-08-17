@@ -19,11 +19,11 @@ struct Tf4072VoiceCore : Module
 		RESONANCE,
 		DRIVE,
 		FILTER_ENV_AMOUNT,
-		CUTOFF_CV_AMOUNT,
+		FILTER_MOD_AMOUNT,
 		RES_CV_AMOUNT,
 		VCA_INITIAL_GAIN,
 		VCA_LINEAR_AMOUNT,
-		VCA_EXP_AMOUNT,
+		VCA_MOD_AMOUNT,
 		FILTER_ATTACK,
 		FILTER_DECAY,
 		FILTER_SUSTAIN,
@@ -35,7 +35,10 @@ struct Tf4072VoiceCore : Module
 		AMP_SUSTAIN,
 		AMP_RELEASE,
 		AMP_ENV_MODE,
-		FILTER_RANGE,
+		FILTER_MOD_ROUTING,
+		VCA_MOD_ROUTING,
+		FILTER_MOD_MODE,
+		VCA_MOD_MODE,
 		NUM_PARAMS
 	};
 
@@ -44,11 +47,9 @@ struct Tf4072VoiceCore : Module
 		AUDIO_INPUT,
 		VCA_AUDIO_INPUT,
 		VOCT_INPUT,
-		CUTOFF_CV_INPUT,
+		FILTER_MOD_INPUT,
 		RES_CV_INPUT,
-		FILTER_ENV_CV_INPUT,
-		VCA_LINEAR_CV_INPUT,
-		VCA_EXP_CV_INPUT,
+		VCA_MOD_INPUT,
 		GATE_INPUT,
 		TRIGGER_INPUT,
 		NUM_INPUTS
@@ -80,6 +81,7 @@ struct Tf4072VoiceCore : Module
 	using FilterX4 = tfdsp::Arp4072Filter<tfdsp::X4Resampler_Order7>;
 	using VcaX2 = tfdsp::Arp4019Vca<tfdsp::X2Resampler_Order7>;
 	using VcaX4 = tfdsp::Arp4019Vca<tfdsp::X4Resampler_Order7>;
+	static constexpr double LinearFilterModulationHzPerVolt = 200.0;
 
 	std::array<std::unique_ptr<FilterX2>, PORT_MAX_CHANNELS> filtersX2;
 	std::array<std::unique_ptr<FilterX4>, PORT_MAX_CHANNELS> filtersX4;
@@ -113,46 +115,49 @@ struct Tf4072VoiceCore : Module
 			defaultCutoffPitch, "Initial cutoff", " Hz", 2.0f, dsp::FREQ_C4);
 		configParam(RESONANCE, 0.0f, 1.0f, 0.0f, "Resonance", "%", 0.0f,
 			100.0f);
-		configParam(DRIVE, -60.0f, 24.0f, 0.0f, "Filter input level",
+		configParam(DRIVE, -60.0f, 24.0f, 0.0f, "Filter drive",
 			" dB");
 		configParam(FILTER_ENV_AMOUNT, -1.0f, 1.0f, 0.6f,
-			"Filter envelope amount", "%", 0.0f, 100.0f);
-		configParam(CUTOFF_CV_AMOUNT, -1.0f, 1.0f, 0.0f,
-			"Exponential cutoff CV amount", "%", 0.0f, 100.0f);
+			"Envelope to cutoff amount", "%", 0.0f, 100.0f);
+		configParam(FILTER_MOD_AMOUNT, -1.0f, 1.0f, 0.0f,
+			"Filter modulation amount", "%", 0.0f, 100.0f);
 		configParam(RES_CV_AMOUNT, -1.0f, 1.0f, 0.0f,
-			"Resonance CV amount", "%", 0.0f, 100.0f);
+			"Resonance modulation amount", "%", 0.0f, 100.0f);
 		configParam(VCA_INITIAL_GAIN, 0.0f, 1.0f, 0.0f,
 			"VCA initial gain", "%", 0.0f, 100.0f);
 		configParam(VCA_LINEAR_AMOUNT, 0.0f, 1.0f, 1.0f,
-			"Linear VCA CV amount", "%", 0.0f, 100.0f);
-		configParam(VCA_EXP_AMOUNT, 0.0f, 1.0f, 1.0f,
-			"Exponential VCA CV amount", "%", 0.0f, 100.0f);
+			"Envelope to VCA amount", "%", 0.0f, 100.0f);
+		configParam(VCA_MOD_AMOUNT, 0.0f, 1.0f, 1.0f,
+			"VCA modulation amount", "%", 0.0f, 100.0f);
 		ConfigureEnvelope(FILTER_ATTACK, FILTER_DECAY, FILTER_SUSTAIN,
-			FILTER_RELEASE, "Filter", 0.010f, 0.300f, 0.5f, 0.300f);
+			FILTER_RELEASE, "Filter", 0.0014f, 1.0f, 0.5f, 1.0f);
 		ConfigureEnvelope(AMP_ATTACK, AMP_DECAY, AMP_SUSTAIN, AMP_RELEASE,
-			"Amplifier", 0.005f, 0.300f, 1.0f, 0.300f);
-		configSwitch(FILTER_ENV_MODE, 0.0f, 1.0f, 0.0f,
-			"Filter envelope mode", {"ADSR", "AR"});
+			"Amplifier", 0.0014f, 1.0f, 1.0f, 1.0f);
+		configSwitch(FILTER_ENV_MODE, 0.0f, 2.0f, 2.0f,
+			"Filter envelope mode", {"ADSR", "AD", "AR"});
 		configParam(ENVELOPE_CURVE, -1.0f, 1.0f, 0.0f,
 			"Envelope curve", "%", 0.0f, 100.0f);
-		configSwitch(AMP_ENV_MODE, 0.0f, 1.0f, 1.0f,
-			"Amplifier envelope mode", {"ADSR", "AR"});
-		configSwitch(FILTER_RANGE, 0.0f, 1.0f, 0.0f, "Filter range",
-			{"Stock 4072", "Extended"});
-
+		configSwitch(AMP_ENV_MODE, 0.0f, 2.0f, 2.0f,
+			"Amplifier envelope mode", {"ADSR", "AD", "AR"});
+		configSwitch(FILTER_MOD_ROUTING, 0.0f, 1.0f, 1.0f,
+			"Filter modulation routing",
+			{"External modulation only", "Add to filter envelope"});
+		configSwitch(VCA_MOD_ROUTING, 0.0f, 1.0f, 1.0f,
+			"VCA modulation routing",
+			{"External modulation only", "Add to amplifier envelope"});
+		configSwitch(FILTER_MOD_MODE, 0.0f, 1.0f, 1.0f,
+			"Filter modulation law", {"Linear frequency", "Exponential pitch"});
+		configSwitch(VCA_MOD_MODE, 0.0f, 1.0f, 0.0f,
+			"VCA modulation law", {"Linear gain", "Exponential gain"});
 		configInput(AUDIO_INPUT, "Filter audio");
 		configInput(VCA_AUDIO_INPUT,
 			"VCA audio override (normalled from filter)");
 		configInput(VOCT_INPUT, "Filter cutoff (1V/octave)");
-		configInput(CUTOFF_CV_INPUT, "Attenuverted exponential cutoff CV");
-		configInput(RES_CV_INPUT, "Resonance CV");
-		configInput(FILTER_ENV_CV_INPUT,
-			"Filter envelope override (normalled from filter envelope)");
-		configInput(VCA_LINEAR_CV_INPUT,
-			"Linear VCA CV override (normalled from amplifier envelope)");
-		configInput(VCA_EXP_CV_INPUT, "Exponential VCA CV");
+		configInput(FILTER_MOD_INPUT, "Filter modulation");
+		configInput(RES_CV_INPUT, "Resonance modulation");
+		configInput(VCA_MOD_INPUT, "VCA modulation");
 		configInput(GATE_INPUT, "Envelope gate");
-		configInput(TRIGGER_INPUT, "ADSR retrigger");
+		configInput(TRIGGER_INPUT, "Envelope trigger/retrigger");
 		configOutput(LP_OUTPUT, "4072 low-pass");
 		configOutput(VCA_OUTPUT, "4019 VCA");
 		configOutput(FILTER_ENV_OUTPUT, "Filter envelope");
@@ -252,14 +257,28 @@ struct Tf4072VoiceCore : Module
 		return -1;
 	}
 
+	static tfdsp::ArpEnvelope::Mode EnvelopeMode(float value)
+	{
+		switch (std::clamp(static_cast<int>(std::round(value)), 0, 2))
+		{
+		case 1:
+			return tfdsp::ArpEnvelope::Mode::Ad;
+		case 2:
+			return tfdsp::ArpEnvelope::Mode::Ar;
+		default:
+			return tfdsp::ArpEnvelope::Mode::Adsr;
+		}
+	}
+
 	static void CaptureEnvelopeLight(const tfdsp::ArpEnvelope& envelope,
 		std::array<float, 4>& stagePeaks)
 	{
+		constexpr float displayGain = 2.0f;
 		const int stage = ActiveLightStage(envelope);
 		if (stage < 0)
 			return;
 		const float level = static_cast<float>(std::clamp(
-			envelope.Value(), 0.0, 1.0));
+			displayGain * envelope.Value(), 0.0, 1.0));
 		stagePeaks[stage] = std::max(stagePeaks[stage], level);
 	}
 
@@ -321,13 +340,20 @@ struct Tf4072VoiceCore : Module
 		const double driveGain = driveDb <= -59.99 ? 0.0 :
 			std::pow(10.0, driveDb / 20.0);
 		const double filterEnvAmount = params[FILTER_ENV_AMOUNT].getValue();
-		const double cutoffCvAmount = params[CUTOFF_CV_AMOUNT].getValue();
+		const double filterModAmount = params[FILTER_MOD_AMOUNT].getValue();
 		const double resonanceCvAmount = params[RES_CV_AMOUNT].getValue();
 		const double initialGain = params[VCA_INITIAL_GAIN].getValue();
 		const double linearAmount = params[VCA_LINEAR_AMOUNT].getValue();
-		const double exponentialAmount = params[VCA_EXP_AMOUNT].getValue();
+		const double vcaModAmount = params[VCA_MOD_AMOUNT].getValue();
 		const double envelopeCurve = params[ENVELOPE_CURVE].getValue();
-		const bool extendedCutoff = params[FILTER_RANGE].getValue() > 0.5f;
+		const bool addFilterModulationToEnvelope =
+			params[FILTER_MOD_ROUTING].getValue() > 0.5f;
+		const bool addVcaModulationToEnvelope =
+			params[VCA_MOD_ROUTING].getValue() > 0.5f;
+		const bool exponentialFilterModulation =
+			params[FILTER_MOD_MODE].getValue() > 0.5f;
+		const bool exponentialVcaModulation =
+			params[VCA_MOD_MODE].getValue() > 0.5f;
 		const bool vcaOverride = inputs[VCA_AUDIO_INPUT].isConnected();
 		const bool autoGateTrigger = !inputs[TRIGGER_INPUT].isConnected();
 		const double log2C4 = std::log2(dsp::FREQ_C4);
@@ -352,11 +378,9 @@ struct Tf4072VoiceCore : Module
 			const double gate = inputs[GATE_INPUT].getPolyVoltage(channel);
 			const double trigger = inputs[TRIGGER_INPUT].getPolyVoltage(channel);
 			filterEnvelopes[channel].SetMode(
-				params[FILTER_ENV_MODE].getValue() > 0.5f ?
-					tfdsp::ArpEnvelope::Mode::Ar : tfdsp::ArpEnvelope::Mode::Adsr);
+				EnvelopeMode(params[FILTER_ENV_MODE].getValue()));
 			ampEnvelopes[channel].SetMode(
-				params[AMP_ENV_MODE].getValue() > 0.5f ?
-					tfdsp::ArpEnvelope::Mode::Ar : tfdsp::ArpEnvelope::Mode::Adsr);
+				EnvelopeMode(params[AMP_ENV_MODE].getValue()));
 			const double filterEnvelope = 10.0 * filterEnvelopes[channel].Step(
 				gate, trigger, filterAttack, filterDecay, filterSustain,
 				filterRelease, envelopeCurve, autoGateTrigger);
@@ -368,17 +392,30 @@ struct Tf4072VoiceCore : Module
 			outputs[FILTER_ENV_OUTPUT].setVoltage(filterEnvelope, channel);
 			outputs[AMP_ENV_OUTPUT].setVoltage(ampEnvelope, channel);
 
-			const double filterModulation = inputs[FILTER_ENV_CV_INPUT].isConnected() ?
-				inputs[FILTER_ENV_CV_INPUT].getPolyVoltage(channel) : filterEnvelope;
-			const double linearControl = linearAmount *
-				(inputs[VCA_LINEAR_CV_INPUT].isConnected() ?
-					inputs[VCA_LINEAR_CV_INPUT].getPolyVoltage(channel) : ampEnvelope);
-			const double exponentialControl = exponentialAmount *
-				inputs[VCA_EXP_CV_INPUT].getPolyVoltage(channel);
+			const bool filterModConnected = inputs[FILTER_MOD_INPUT].isConnected();
+			const bool includeFilterEnvelope = !filterModConnected ||
+				addFilterModulationToEnvelope;
+			const double filterModulation = filterModAmount *
+				inputs[FILTER_MOD_INPUT].getPolyVoltage(channel);
+			const bool vcaModConnected = inputs[VCA_MOD_INPUT].isConnected();
+			const bool includeAmpEnvelope = !vcaModConnected ||
+				addVcaModulationToEnvelope;
+			const double vcaModulation = vcaModAmount *
+				inputs[VCA_MOD_INPUT].getPolyVoltage(channel);
+			double linearControl = includeAmpEnvelope ?
+				linearAmount * ampEnvelope : 0.0;
+			double exponentialControl = 0.0;
+			if (exponentialVcaModulation)
+				exponentialControl = vcaModulation;
+			else
+				linearControl += vcaModulation;
 			const double pitch = cutoffKnob +
-				inputs[VOCT_INPUT].getPolyVoltage(channel) + cutoffCvAmount *
-				inputs[CUTOFF_CV_INPUT].getPolyVoltage(channel) +
-				0.5 * filterEnvAmount * filterModulation;
+				inputs[VOCT_INPUT].getPolyVoltage(channel) +
+				(includeFilterEnvelope ?
+					0.5 * filterEnvAmount * filterEnvelope : 0.0) +
+				(exponentialFilterModulation ? filterModulation : 0.0);
+			const double linearFilterModulationHz = exponentialFilterModulation ?
+				0.0 : LinearFilterModulationHzPerVolt * filterModulation;
 			const double log2CutoffHz = log2C4 + pitch;
 			const double resonance = resonanceKnob + resonanceCvAmount *
 				inputs[RES_CV_INPUT].getPolyVoltage(channel) / 10.0;
@@ -390,8 +427,8 @@ struct Tf4072VoiceCore : Module
 			{
 				if (vcaOverride)
 				{
-					lowPass = filtersX2[channel]->StepLogCutoff(audio,
-						log2CutoffHz, resonance, driveGain, extendedCutoff);
+					lowPass = filtersX2[channel]->StepModulatedLogCutoff(audio,
+						log2CutoffHz, linearFilterModulationHz, resonance, driveGain);
 					vcaOutput = vcasX2[channel]->Step(
 						inputs[VCA_AUDIO_INPUT].getPolyVoltage(channel), 0.0,
 						linearControl, exponentialControl, initialGain);
@@ -399,8 +436,8 @@ struct Tf4072VoiceCore : Module
 				else
 				{
 					const auto rendered =
-						filtersX2[channel]->StepWithPostProcessorLogCutoff(
-						audio, log2CutoffHz, resonance, driveGain, extendedCutoff,
+						filtersX2[channel]->StepWithPostProcessorModulatedLogCutoff(
+						audio, log2CutoffHz, linearFilterModulationHz, resonance, driveGain,
 						linearControl, exponentialControl,
 						[&](double filtered, double linearCv, double exponentialCv)
 						{
@@ -415,8 +452,8 @@ struct Tf4072VoiceCore : Module
 			{
 				if (vcaOverride)
 				{
-					lowPass = filtersX4[channel]->StepLogCutoff(audio,
-						log2CutoffHz, resonance, driveGain, extendedCutoff);
+					lowPass = filtersX4[channel]->StepModulatedLogCutoff(audio,
+						log2CutoffHz, linearFilterModulationHz, resonance, driveGain);
 					vcaOutput = vcasX4[channel]->Step(
 						inputs[VCA_AUDIO_INPUT].getPolyVoltage(channel), 0.0,
 						linearControl, exponentialControl, initialGain);
@@ -424,8 +461,8 @@ struct Tf4072VoiceCore : Module
 				else
 				{
 					const auto rendered =
-						filtersX4[channel]->StepWithPostProcessorLogCutoff(
-						audio, log2CutoffHz, resonance, driveGain, extendedCutoff,
+						filtersX4[channel]->StepWithPostProcessorModulatedLogCutoff(
+						audio, log2CutoffHz, linearFilterModulationHz, resonance, driveGain,
 						linearControl, exponentialControl,
 						[&](double filtered, double linearCv, double exponentialCv)
 						{
@@ -510,23 +547,28 @@ struct Tf4072VoiceCoreWidget : ModuleWidget
 			Tf4072VoiceCore::CUTOFF));
 		addParam(createParam<TfLargeAudioKnob>(Vec(99, 40), module,
 			Tf4072VoiceCore::RESONANCE));
-		addParam(createParam<TfAudioKob>(Vec(62, 112), module,
+		addParam(createParam<TfAudioKob>(Vec(62, 108), module,
 			Tf4072VoiceCore::DRIVE));
-		addParam(createParam<TfCvKnob>(Vec(16, 173), module,
+		addParam(createParam<CKSS>(Vec(24, 115), module,
+			Tf4072VoiceCore::FILTER_MOD_ROUTING));
+		addParam(createParam<CKSS>(Vec(122, 115), module,
+			Tf4072VoiceCore::VCA_MOD_ROUTING));
+		addParam(createParam<TfCvKnob>(Vec(17, 161), module,
 			Tf4072VoiceCore::FILTER_ENV_AMOUNT));
-		addParam(createParam<TfCvKnob>(Vec(66, 173), module,
-			Tf4072VoiceCore::CUTOFF_CV_AMOUNT));
-		addParam(createParam<TfCvKnob>(Vec(116, 173), module,
+		addParam(createParam<TfCvKnob>(Vec(66, 161), module,
 			Tf4072VoiceCore::RES_CV_AMOUNT));
-		addParam(createParam<TfCvKnob>(Vec(16, 231), module,
+		addParam(createParam<TfCvKnob>(Vec(115, 161), module,
+			Tf4072VoiceCore::FILTER_MOD_AMOUNT));
+		addParam(createParam<CKSS>(Vec(47, 249), module,
+			Tf4072VoiceCore::FILTER_MOD_MODE));
+		addParam(createParam<TfCvKnob>(Vec(17, 205), module,
 			Tf4072VoiceCore::VCA_INITIAL_GAIN));
-		addParam(createParam<TfCvKnob>(Vec(66, 231), module,
+		addParam(createParam<TfCvKnob>(Vec(66, 205), module,
 			Tf4072VoiceCore::VCA_LINEAR_AMOUNT));
-		addParam(createParam<TfCvKnob>(Vec(116, 231), module,
-			Tf4072VoiceCore::VCA_EXP_AMOUNT));
-		addParam(createParam<CKSS>(Vec(73, 65), module,
-			Tf4072VoiceCore::FILTER_RANGE));
-
+		addParam(createParam<TfCvKnob>(Vec(115, 205), module,
+			Tf4072VoiceCore::VCA_MOD_AMOUNT));
+		addParam(createParam<CKSS>(Vec(99, 249), module,
+			Tf4072VoiceCore::VCA_MOD_MODE));
 		addParam(createLightParam<TfEnvelopeSlider>(Vec(174, 52), module,
 			Tf4072VoiceCore::FILTER_ATTACK,
 			Tf4072VoiceCore::FILTER_ATTACK_LIGHT));
@@ -551,38 +593,34 @@ struct Tf4072VoiceCoreWidget : ModuleWidget
 		addParam(createLightParam<TfEnvelopeSlider>(Vec(294, 177), module,
 			Tf4072VoiceCore::AMP_RELEASE,
 			Tf4072VoiceCore::AMP_RELEASE_LIGHT));
-		addParam(createParam<CKSS>(Vec(329, 78), module,
+		addParam(createParam<CKSSThree>(Vec(329, 78), module,
 			Tf4072VoiceCore::FILTER_ENV_MODE));
 		addParam(createParam<TfCvKnob>(Vec(322, 143), module,
 			Tf4072VoiceCore::ENVELOPE_CURVE));
-		addParam(createParam<CKSS>(Vec(329, 203), module,
+		addParam(createParam<CKSSThree>(Vec(329, 203), module,
 			Tf4072VoiceCore::AMP_ENV_MODE));
 
 		addInput(createInput<PJ301MPort>(Vec(18, 293), module,
-			Tf4072VoiceCore::VOCT_INPUT));
-		addInput(createInput<PJ301MPort>(Vec(68, 293), module,
-			Tf4072VoiceCore::CUTOFF_CV_INPUT));
-		addInput(createInput<PJ301MPort>(Vec(118, 293), module,
-			Tf4072VoiceCore::RES_CV_INPUT));
-		addInput(createInput<PJ301MPort>(Vec(168, 293), module,
-			Tf4072VoiceCore::GATE_INPUT));
-		addInput(createInput<PJ301MPort>(Vec(218, 293), module,
-			Tf4072VoiceCore::TRIGGER_INPUT));
-		addInput(createInput<PJ301MPort>(Vec(268, 293), module,
-			Tf4072VoiceCore::FILTER_ENV_CV_INPUT));
-		addInput(createInput<PJ301MPort>(Vec(318, 293), module,
 			Tf4072VoiceCore::AUDIO_INPUT));
+		addInput(createInput<PJ301MPort>(Vec(78, 293), module,
+			Tf4072VoiceCore::VOCT_INPUT));
+		addInput(createInput<PJ301MPort>(Vec(138, 293), module,
+			Tf4072VoiceCore::FILTER_MOD_INPUT));
+		addInput(createInput<PJ301MPort>(Vec(198, 293), module,
+			Tf4072VoiceCore::RES_CV_INPUT));
+		addInput(createInput<PJ301MPort>(Vec(258, 293), module,
+			Tf4072VoiceCore::GATE_INPUT));
+		addInput(createInput<PJ301MPort>(Vec(318, 293), module,
+			Tf4072VoiceCore::TRIGGER_INPUT));
 		addInput(createInput<PJ301MPort>(Vec(18, 334), module,
 			Tf4072VoiceCore::VCA_AUDIO_INPUT));
-		addInput(createInput<PJ301MPort>(Vec(68, 334), module,
-			Tf4072VoiceCore::VCA_LINEAR_CV_INPUT));
-		addInput(createInput<PJ301MPort>(Vec(118, 334), module,
-			Tf4072VoiceCore::VCA_EXP_CV_INPUT));
-		addOutput(createOutput<PJ301MPort>(Vec(168, 334), module,
+		addInput(createInput<PJ301MPort>(Vec(78, 334), module,
+			Tf4072VoiceCore::VCA_MOD_INPUT));
+		addOutput(createOutput<PJ301MPort>(Vec(138, 334), module,
 			Tf4072VoiceCore::LP_OUTPUT));
-		addOutput(createOutput<PJ301MPort>(Vec(218, 334), module,
+		addOutput(createOutput<PJ301MPort>(Vec(198, 334), module,
 			Tf4072VoiceCore::VCA_OUTPUT));
-		addOutput(createOutput<PJ301MPort>(Vec(268, 334), module,
+		addOutput(createOutput<PJ301MPort>(Vec(258, 334), module,
 			Tf4072VoiceCore::FILTER_ENV_OUTPUT));
 		addOutput(createOutput<PJ301MPort>(Vec(318, 334), module,
 			Tf4072VoiceCore::AMP_ENV_OUTPUT));

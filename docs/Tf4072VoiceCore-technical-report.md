@@ -13,11 +13,12 @@ generator. Audio passes through the filter and is normalled into the VCA. Both
 stages also have separate outputs, and an independent VCA input can replace the
 normalled filter signal.
 
-The two envelope generators can each operate as ADSR or AR. The left envelope
-is normalled to filter cutoff and the right envelope to VCA gain. Dedicated CV
-inputs replace these normalled connections, and both envelope signals are
-available as outputs. The default configuration uses the 4020-style ADSR for
-the filter and the board-4-style AR for the VCA.
+The two envelope generators can each operate as AR, AD, or ADSR. The left
+envelope controls filter cutoff and the right envelope controls VCA gain. One
+external modulation path per destination can add to or replace its internal
+envelope and can use a linear or exponential control law. Both internal
+envelopes are available as outputs. The default configuration uses the
+board-4-style AR response for both destinations and additive external routing.
 
 ## 4072 filter
 
@@ -278,22 +279,49 @@ resampler overshoot without producing a flat clipped segment.
 
 ### Cutoff and modulation
 
-Cutoff uses Rack's exponential pitch convention:
+The cutoff knob, `F 1V/OCT`, and the internal filter envelope use Rack's
+exponential pitch convention. Let $c_f$ equal one when the internal envelope is
+active and zero when a patched `CUT MOD` input is set to `EXT`. The internal
+pitch is
 
 $$
 f_c=f_{\mathrm{C4}}2^p,
 $$
 
 $$
-p=p_{\mathrm{knob}}+V_{\mathrm{1V/oct}}
-+a_{\mathrm{CV}}V_{\mathrm{CV}}
-+0.5a_{\mathrm{env}}V_{\mathrm{env}}.
+p_i=p_{\mathrm{knob}}+V_{\mathrm{F\ 1V/oct}}
++0.5c_fa_{\mathrm{env}}E_f.
 $$
 
-The knob spans 10 Hz to 20 kHz and defaults to 500 Hz. Stock mode follows the
-4072's documented high-frequency limit with a 12 kHz ceiling. Extended mode
-uses 20 kHz, informed by the published timing-resistor modification. Soft
-knees preserve finite coefficients at zero and at the selected ceiling.
+Here $E_f$ is the internal 0–10 V filter-envelope output. A patched `CUT MOD`
+input supplies the attenuverted voltage
+
+$$
+m_f=a_{\mathrm{mod}}V_{\mathrm{CUT\ MOD}}.
+$$
+
+In EXP mode the requested cutoff is
+
+$$
+f_c=f_{\mathrm{C4}}2^{p_i+m_f}.
+$$
+
+At 100% amount this gives the standard 1 V/oct response. In LIN mode it is
+
+$$
+f_c=f_{\mathrm{C4}}2^{p_i}+(200\ \mathrm{Hz/V})m_f.
+$$
+
+The linear mode is bipolar and can drive the requested frequency below zero;
+the filter's smooth low-frequency knee keeps the numerical coefficient finite.
+With `CUT MOD` patched, `+` leaves $c_f=1$ and `EXT` sets $c_f=0$. An unpatched
+input always leaves $c_f=1$.
+
+The knob spans 10 Hz to 20 kHz and defaults to 500 Hz. The filter follows the
+4072 topology, while its control range incorporates ARP's published change of
+the four stage-frequency resistors from 4.7 kΩ to 2.2 kΩ. This removes the
+original instrument's unintended cutoff limitation. A soft knee below 20 kHz
+keeps the numerical coefficients finite near the limit of Rack sample rates.
 
 Resonance CV is scaled so a 10 V signal at 100% traverses the full resonance
 range. Drive spans silence to +24 dB and defaults to 0 dB.
@@ -387,6 +415,25 @@ sensitivity, reaches unity at 10 V, and contributes $10^{-5}$ gain at 0 V,
 matching the specified 100 dB range. Initial Gain and the two CV contributions
 sum before setting the Q9/Q10 tail current.
 
+The internal amplifier envelope uses the circuit's linear control path. Let
+$c_a$ equal one when that envelope is active and zero when a patched `VCA MOD`
+input is set to `EXT`. With envelope amount $a_a$ and external modulation
+amount $a_m$,
+
+$$
+V_{L,\mathrm{int}}=c_aa_aE_a,
+$$
+
+$$
+m_a=a_mV_{\mathrm{VCA\ MOD}}.
+$$
+
+In LIN mode, $V_L=V_{L,\mathrm{int}}+m_a$ and $V_E=0$. In EXP mode,
+$V_L=V_{L,\mathrm{int}}$ and $V_E=m_a$. Thus the external modulation law can
+change without changing the circuit-appropriate linear law of the internal
+amplifier envelope. With `VCA MOD` patched, `+` leaves $c_a=1$ and `EXT` sets
+$c_a=0$; an unpatched input always leaves $c_a=1$.
+
 ### Output bandwidth
 
 The Q9/Q10 collector-current difference reaches the LM301 transimpedance
@@ -414,8 +461,9 @@ AR generator on Board 4.
 generator is at left, the 4020 ADSR is at upper right, and the 4019 VCA and its
 panel wiring are below them. Click the image for the source service manual.</em></p>
 
-The module makes both envelope responses available in each generator and
-selects between them with the ADSR/AR switches.
+The module makes both circuit responses available in each generator. A third
+AD position derives a one-shot envelope from the ordinary RC Attack curve and
+Decay control.
 
 ### 4020 ADSR
 
@@ -462,6 +510,13 @@ resistance and then holds the envelope at its peak. A low Gate discharges C69
 through the Release resistance. Its sequence is therefore Attack, Hold, and
 Release, with the direct RC curve set by C69 and the two timing resistances.
 
+### AD extension
+
+AD uses the AR circuit's ordinary RC Attack shape, then falls automatically to
+zero using the Decay slider. A rising Gate or Trigger starts the one-shot, and a
+Trigger pulse can restart it while Gate remains high. Sustain, Release, and the
+Gate falling edge do not alter an active AD cycle.
+
 ### Timing curves
 
 Decay, release, and both AR segments use ordinary RC responses. The reported
@@ -500,7 +555,7 @@ $$
 c_R=\log20
 $$
 
-for ADSR Decay/Release and AR Attack/Release.
+for ADSR Decay/Release, AR Attack/Release, and both AD segments.
 
 The shared Curve knob varies these coefficients geometrically. At its left
 limit, $c_A=0.1$ and $c_R=0.25$, approaching straight segments. At its right
@@ -517,16 +572,18 @@ The common slider ranges accommodate both generators:
 | Decay | 6.4 ms–6 s | 6.4 ms–6 s | — |
 | Release | 0.52 ms–6 s | 0.52 ms–6 s | 2.5 ms–5 s |
 
-The extended common range permits fast AR attacks; the amplifier envelope
-defaults to 5 ms. ADSR mode uses all four sliders. AR mode uses Attack and
-Release and holds its peak while Gate remains high.
+The extended common range permits fast AR attacks. Both envelopes default to
+AR with 1.4 ms Attack and 1 s Release; Decay also defaults to 1 s. ADSR mode
+uses all four sliders. AR uses Attack and Release and holds its peak while Gate
+remains high. AD uses Attack and Decay and falls without waiting for Gate to end.
 
 The original 4020 has separate Gate and Trigger inputs. The module follows that
 behaviour when Trigger is patched: Gate enables the ADSR, and Trigger starts or
 retriggers Attack while Gate is high. With Trigger unpatched, a Gate rising
-edge starts Attack for convenient gate-only patches. AR responds only to Gate.
-Gate removal starts Release continuously from the current value. Both envelope
-outputs are 0–10 V.
+edge starts Attack for convenient gate-only patches. AR responds only to Gate,
+and Gate removal starts Release continuously from the current value. In AD,
+either a Gate edge or Trigger pulse starts or retriggers the one-shot. Both
+envelope outputs are 0–10 V.
 
 ## Numerical comparisons
 
@@ -592,20 +649,20 @@ rate, avoiding an intermediate downsampling and upsampling stage. The LP and
 VCA outputs use independent decimators with matched phase. A patched VCA input
 uses the VCA's own audio interpolator.
 
-The envelopes are evaluated at the host rate. Their millisecond-to-second
-time constants leave little energy near the host Nyquist frequency. The summed
-cutoff pitch, resonance control, audio, and normalled VCA CV are reconstructed
-with independent matching polyphase interpolators before entering the nonlinear
-path. Cutoff is converted from pitch to hertz at the internal rate, preserving
-its exponential control law without introducing host-rate control images.
+The envelopes are evaluated at the host rate. Their millisecond-to-second time
+constants leave little energy near the host Nyquist frequency. Audio, cutoff
+pitch, linear cutoff FM, resonance, and the two VCA control voltages are
+reconstructed with independent matching polyphase interpolators before entering
+the nonlinear path. Exponential cutoff is converted from pitch to hertz at the
+internal rate and then summed with reconstructed linear FM.
 
 ## Model boundaries
 
 The filter reduction omits transistor mismatch, finite beta and Early effect,
 LM3900 mirror error, op-amp slew and offset, temperature drift, component
-tolerance, parasitics, and supply asymmetry. Its stock cutoff ceiling represents
-the documented 4072 range; the control-current converter is reduced to its
-frequency calibration.
+tolerance, parasitics, and supply asymmetry. The control-current converter is
+reduced to its frequency calibration, including ARP's published correction for
+the original cutoff-range limitation.
 
 The VCA reduction omits component-dependent offset, control feedthrough, noise,
 mirror asymmetry, and LM301 open-loop dynamics beyond the feedback pole. These

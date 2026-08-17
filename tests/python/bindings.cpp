@@ -242,8 +242,7 @@ namespace
 	template<typename Filter>
 	py::array_t<float> RenderArp4072(
 		py::array_t<double, py::array::c_style | py::array::forcecast> audio,
-		double cutoff, double resonance, double driveGain, bool extendedCutoff,
-		double sampleRate)
+		double cutoff, double resonance, double driveGain, double sampleRate)
 	{
 		const auto audioInfo = audio.request();
 		if (audioInfo.ndim != 1)
@@ -266,7 +265,7 @@ namespace
 		model.SetSampleRate(sampleRate);
 		for (py::ssize_t i = 0; i < audioInfo.shape[0]; ++i)
 			output(i) = model.Step(audioValues(i), cutoff, resonance,
-				driveGain, extendedCutoff);
+				driveGain);
 		return result;
 	}
 
@@ -275,7 +274,7 @@ namespace
 		py::array_t<double, py::array::c_style | py::array::forcecast> audio,
 		py::array_t<double, py::array::c_style | py::array::forcecast> cutoff,
 		py::array_t<double, py::array::c_style | py::array::forcecast> resonance,
-		double driveGain, bool extendedCutoff, double sampleRate)
+		double driveGain, double sampleRate)
 	{
 		const auto audioInfo = audio.request();
 		const auto cutoffInfo = cutoff.request();
@@ -304,7 +303,51 @@ namespace
 		{
 			output(i) = model.StepLogCutoff(audioValues(i), std::log2(std::max(
 				cutoffValues(i), std::numeric_limits<double>::min())),
-				resonanceValues(i), driveGain, extendedCutoff);
+				resonanceValues(i), driveGain);
+		}
+		return result;
+	}
+
+	template<typename Filter>
+	py::array_t<float> RenderArp4072ModulatedControls(
+		py::array_t<double, py::array::c_style | py::array::forcecast> audio,
+		py::array_t<double, py::array::c_style | py::array::forcecast> cutoff,
+		py::array_t<double, py::array::c_style | py::array::forcecast> linearFm,
+		py::array_t<double, py::array::c_style | py::array::forcecast> resonance,
+		double driveGain, double sampleRate)
+	{
+		const auto audioInfo = audio.request();
+		const auto cutoffInfo = cutoff.request();
+		const auto linearFmInfo = linearFm.request();
+		const auto resonanceInfo = resonance.request();
+		RequireSameSize(audioInfo, cutoffInfo, "audio", "cutoff");
+		RequireSameSize(audioInfo, linearFmInfo, "audio", "linear_fm");
+		RequireSameSize(audioInfo, resonanceInfo, "audio", "resonance");
+		if (!(sampleRate > 0.0))
+			throw std::invalid_argument("sample_rate must be positive");
+
+		py::array_t<float> result(audioInfo.shape[0]);
+		auto output = result.mutable_unchecked<1>();
+		auto audioValues = audio.unchecked<1>();
+		auto cutoffValues = cutoff.unchecked<1>();
+		auto linearFmValues = linearFm.unchecked<1>();
+		auto resonanceValues = resonance.unchecked<1>();
+		Filter model([]
+		{
+			if constexpr (Filter::OversamplingFactor == 1)
+				return tfdsp::CreateDummyResampler();
+			else if constexpr (Filter::OversamplingFactor == 2)
+				return tfdsp::CreateX2Resampler_Chebychev7();
+			else
+				return tfdsp::CreateX4Resampler_Cheby7();
+		});
+		model.SetSampleRate(sampleRate);
+		for (py::ssize_t i = 0; i < audioInfo.shape[0]; ++i)
+		{
+			output(i) = model.StepModulatedLogCutoff(audioValues(i),
+				std::log2(std::max(cutoffValues(i),
+					std::numeric_limits<double>::min())), linearFmValues(i),
+				resonanceValues(i), driveGain);
 		}
 		return result;
 	}
@@ -416,7 +459,7 @@ namespace
 		py::array_t<double, py::array::c_style | py::array::forcecast> gate,
 		py::array_t<double, py::array::c_style | py::array::forcecast> trigger,
 		double attack, double decay, double sustain, double release,
-		double curve, bool arMode, bool autoGateTrigger, double sampleRate)
+		double curve, int mode, bool autoGateTrigger, double sampleRate)
 	{
 		const auto gateInfo = gate.request();
 		const auto triggerInfo = trigger.request();
@@ -430,8 +473,18 @@ namespace
 		auto triggerValues = trigger.unchecked<1>();
 		tfdsp::ArpEnvelope envelope;
 		envelope.SetSampleRate(sampleRate);
-		envelope.SetMode(arMode ? tfdsp::ArpEnvelope::Mode::Ar :
-			tfdsp::ArpEnvelope::Mode::Adsr);
+		switch (std::clamp(mode, 0, 2))
+		{
+		case 1:
+			envelope.SetMode(tfdsp::ArpEnvelope::Mode::Ad);
+			break;
+		case 2:
+			envelope.SetMode(tfdsp::ArpEnvelope::Mode::Ar);
+			break;
+		default:
+			envelope.SetMode(tfdsp::ArpEnvelope::Mode::Adsr);
+			break;
+		}
 		for (py::ssize_t i = 0; i < gateInfo.shape[0]; ++i)
 		{
 			output(i) = envelope.Step(gateValues(i), triggerValues(i), attack,
@@ -889,24 +942,27 @@ PYBIND11_MODULE(_triggerfish_dsp, module)
 	using Arp4072X4 = tfdsp::Arp4072Filter<tfdsp::X4Resampler_Order7>;
 	module.def("arp4072_controls_x1", &RenderArp4072Controls<Arp4072X1>,
 		py::arg("audio"), py::arg("cutoff"), py::arg("resonance"),
-		py::arg("drive_gain") = 1.0, py::arg("extended_cutoff") = false,
-		py::arg("sample_rate") = 48000.0);
+		py::arg("drive_gain") = 1.0, py::arg("sample_rate") = 48000.0);
 	module.def("arp4072_x1", &RenderArp4072<Arp4072X1>, py::arg("audio"),
 		py::arg("cutoff"), py::arg("resonance") = 0.0,
-		py::arg("drive_gain") = 1.0, py::arg("extended_cutoff") = false,
-		py::arg("sample_rate") = 48000.0);
+		py::arg("drive_gain") = 1.0, py::arg("sample_rate") = 48000.0);
 	module.def("arp4072_x2", &RenderArp4072<Arp4072X2>, py::arg("audio"),
 		py::arg("cutoff"), py::arg("resonance") = 0.0,
-		py::arg("drive_gain") = 1.0, py::arg("extended_cutoff") = false,
-		py::arg("sample_rate") = 48000.0);
+		py::arg("drive_gain") = 1.0, py::arg("sample_rate") = 48000.0);
 	module.def("arp4072_x4", &RenderArp4072<Arp4072X4>, py::arg("audio"),
 		py::arg("cutoff"), py::arg("resonance") = 0.0,
-		py::arg("drive_gain") = 1.0, py::arg("extended_cutoff") = false,
-		py::arg("sample_rate") = 48000.0);
+		py::arg("drive_gain") = 1.0, py::arg("sample_rate") = 48000.0);
 	module.def("arp4072_controls_x4", &RenderArp4072Controls<Arp4072X4>,
 		py::arg("audio"), py::arg("cutoff"), py::arg("resonance"),
-		py::arg("drive_gain") = 1.0, py::arg("extended_cutoff") = false,
-		py::arg("sample_rate") = 48000.0);
+		py::arg("drive_gain") = 1.0, py::arg("sample_rate") = 48000.0);
+	module.def("arp4072_modulated_controls_x1",
+		&RenderArp4072ModulatedControls<Arp4072X1>, py::arg("audio"),
+		py::arg("cutoff"), py::arg("linear_fm"), py::arg("resonance"),
+		py::arg("drive_gain") = 1.0, py::arg("sample_rate") = 48000.0);
+	module.def("arp4072_modulated_controls_x4",
+		&RenderArp4072ModulatedControls<Arp4072X4>, py::arg("audio"),
+		py::arg("cutoff"), py::arg("linear_fm"), py::arg("resonance"),
+		py::arg("drive_gain") = 1.0, py::arg("sample_rate") = 48000.0);
 	module.def("arp4072_circuit_values", []
 	{
 		py::dict values;
@@ -964,7 +1020,7 @@ PYBIND11_MODULE(_triggerfish_dsp, module)
 	module.def("arp_envelope", &RenderArpEnvelope, py::arg("gate"),
 		py::arg("trigger"), py::arg("attack"), py::arg("decay"),
 		py::arg("sustain"), py::arg("release"), py::arg("curve") = 0.0,
-		py::arg("ar_mode") = false, py::arg("auto_gate_trigger") = true,
+		py::arg("mode") = 0, py::arg("auto_gate_trigger") = true,
 		py::arg("sample_rate") = 48000.0);
 
 	module.def("resampler_round_trip_x2_order7", [](py::array_t<double,

@@ -27,12 +27,14 @@ struct TfSlider : app::SvgSlider
 	}
 };
 
-struct TfEnvelopeSliderLight : RectangleLight<YellowLight>
+struct TfEnvelopeSliderLight : RectangleLight<BlueLight>
 {
 	TfEnvelopeSliderLight()
 	{
 		box.size = Vec(5.0f, 7.0f);
-		bgColor = nvgRGBA(0x25, 0x23, 0x18, 0xff);
+		// BlueLight supplies Rack's standard #29b2ef LED colour. Keep the
+		// unlit window neutral so it does not muddy the illuminated blue.
+		bgColor = nvgRGBA(0x18, 0x18, 0x18, 0xff);
 		borderColor = nvgRGBA(0, 0, 0, 0x50);
 	}
 };

@@ -145,21 +145,29 @@ analysis, equations, calibration, and numerical validation are collected in the
 ### 4072 Voice Core
 
 4072 Voice Core combines a circuit-scaled ARP 4072 four-pole low-pass filter,
-two switchable ADSR/AR envelope generators, and an ARP 4019-style discrete VCA.
+two switchable AR/AD/ADSR envelope generators, and an ARP 4019-style discrete
+VCA.
 The filter's outer differential pair preserves the original unequal audio and
 resonance-return levels, while the four locally fed-back filter stages operate
 around their circuit bias points.
 
-- **Cutoff** and `1V/OCT` set the filter frequency. `CUTOFF CV`, `RES CV`, and
-  the internal filter envelope have independent amount controls.
-- **Input** covers attenuation through +24 dB of filter drive. **Range** selects
-  the stock 4072 high-frequency limit or an extended 20 kHz range.
+- **Cutoff** and `F 1V/OCT` set the filter frequency. The internal filter
+  envelope uses the original exponential cutoff law through `ENV>CUT`.
+- **Input** covers attenuation through +24 dB of filter drive. The cutoff
+  control extends to 20 kHz using ARP's published correction for the original
+  4072 high-frequency limitation.
 - The two A/D/S/R slider rows generate 0–10 V envelopes. Each row can be switched
-  to AR; filter ADSR and amplifier AR are the defaults. **Curve** varies both
-  envelope shapes around the original circuit response.
-- `ENV CV` replaces the internal filter-envelope normalization. `LIN CV`
-  replaces the amplifier-envelope normalization, while `EXP CV` accesses the
-  4019's 10 dB/V exponential control path.
+  among AR, AD, and ADSR; both default to AR. AD is a retriggerable one-shot
+  using the Attack and Decay sliders. **Curve** varies both envelope shapes
+  around the original circuit response. Attack defaults to its 1.4 ms minimum;
+  Decay and Release default to 1 second.
+- `CUT MOD` and `VCA MOD` each have one input, one amount control, and a
+  `LIN / EXP` switch. Filter LIN is signed 200 Hz/V frequency modulation;
+  filter EXP is 1 V/oct at 100%. VCA LIN follows the 4019 linear-gain input,
+  while VCA EXP follows its 10 dB/V control law.
+- The adjacent `+ / EXT` switches add each external modulation signal to its
+  internal envelope or replace that envelope. With no modulation cable, the
+  internal envelope remains active in either position. Both default to `+`.
 - `VCA IN` replaces the normalled filter-to-VCA audio connection. `LP OUT`,
   `VCA OUT`, and both envelope outputs expose each stage independently.
 

@@ -66,6 +66,20 @@ def light_pattern(module_name: str) -> re.Pattern[str]:
     )
 
 
+SWITCH_DEFAULT_PATTERN = re.compile(
+    r"configSwitch\(\s*(?P<id>[A-Z0-9_]+)\s*,\s*[^,]+,\s*[^,]+,\s*"
+    r"(?P<default>-?[0-9.]+)f?\s*,",
+    re.MULTILINE,
+)
+
+
+def switch_defaults(source: str) -> dict[str, float]:
+    return {
+        match.group("id"): float(match.group("default"))
+        for match in SWITCH_DEFAULT_PATTERN.finditer(source)
+    }
+
+
 COMPONENTS = {
     "TfLargeAudioKnob": (
         "Davies1900hLargeBlack_bg.svg",
@@ -81,7 +95,8 @@ COMPONENTS = {
     "TfTrimpot": ("Trimpot_bg.svg", "Trimpot.svg"),
     "TfSlider": ("TfSlider.svg", "TfSliderHandle.svg"),
     "TfEnvelopeSlider": ("TfSlider.svg", "TfSliderHandle.svg"),
-    "CKSS": ("CKSS_0.svg",),
+    "CKSS": ("CKSS_0.svg", "CKSS_1.svg"),
+    "CKSSThree": ("CKSSThree_0.svg", "CKSSThree_1.svg", "CKSSThree_2.svg"),
     "PJ301MPort": ("PJ301M.svg",),
 }
 
@@ -101,8 +116,8 @@ SLIDER_VALUES = {
 }
 
 SLIDER_LIGHT_BRIGHTNESS = {
-    "FILTER_DECAY": 0.68,
-    "AMP_SUSTAIN": 0.85,
+    "FILTER_DECAY": 1.0,
+    "AMP_SUSTAIN": 1.0,
 }
 
 # Rack draws the LED colour and bezel procedurally, then places the component
@@ -463,6 +478,7 @@ def render_preview(
     widgets = widget_source.read_text(encoding="utf-8")
     controls = list(control_pattern(module_name).finditer(widgets))
     lights = list(light_pattern(module_name).finditer(widgets))
+    switch_values = switch_defaults(widgets)
     if not controls:
         raise RuntimeError(f"No panel controls were found in {module_name}.cpp")
 
@@ -489,6 +505,15 @@ def render_preview(
                 raise KeyError(f"No preview assets configured for {component_type}")
             x, y = control_coordinates(control, widgets)
             parameter_id = control.group("id")
+            if component_type in {"CKSS", "CKSSThree"}:
+                state = int(round(switch_values.get(parameter_id, 0.0)))
+                state = max(0, min(state, len(asset_names) - 1))
+                overlays.append(
+                    image_element(
+                        component_asset(component_directory, asset_names[state]), x, y
+                    )
+                )
+                continue
             if component_type in {"TfSlider", "TfEnvelopeSlider"}:
                 background = component_asset(component_directory, asset_names[0])
                 handle = component_asset(component_directory, asset_names[1])
@@ -505,12 +530,12 @@ def render_preview(
                     light_y = handle_y + (handle_height - 7.0) / 2.0
                     overlays.append(
                         f'  <rect x="{light_x - 2.0:g}" y="{light_y - 2.0:g}" '
-                        f'width="9" height="11" rx="2" fill="#ffd229" '
+                        f'width="9" height="11" rx="2" fill="#29b2ef" '
                         f'opacity="{0.14 * brightness:g}"/>\n'
                     )
                     overlays.append(
                         f'  <rect x="{light_x:g}" y="{light_y:g}" width="5" '
-                        f'height="7" rx="0.6" fill="#ffd229" '
+                        f'height="7" rx="0.6" fill="#29b2ef" '
                         f'opacity="{brightness:g}"/>\n'
                     )
                 continue

@@ -222,7 +222,7 @@ int main()
 	{
 		const double input = (i & 16) ? 10.0 : -10.0;
 		arpStressFinite = arpStressFinite && std::isfinite(arp4072.Step(input,
-			20000.0, 1.0, 15.848931924611133, true));
+			20000.0, 1.0, 15.848931924611133));
 	}
 	Check(arpStressFinite,
 		"ARP 4072 remains finite at maximum drive, cutoff, and resonance");
@@ -245,7 +245,7 @@ int main()
 	for (int i = 0; i < 4096; ++i)
 	{
 		const auto rendered = arpPostSafety.StepWithPostProcessor(0.0, 1000.0,
-			0.0, 1.0, false, 0.0, 0.0,
+			0.0, 1.0, 0.0, 0.0,
 			[](double, double, double) { return 1000.0; });
 		arpPostSafetyPeak = std::max(arpPostSafetyPeak,
 			std::abs(static_cast<double>(rendered.postProcessed)));
@@ -306,6 +306,23 @@ int main()
 		envelope = arpEnvelope.Step(10.0, 0.0, 0.1, 0.01, 0.25, 0.1);
 	Check(envelope > 0.999,
 		"switching a held ADSR envelope to AR returns to its peak smoothly");
+	tfdsp::ArpEnvelope adEnvelope;
+	adEnvelope.SetSampleRate(48000.0);
+	adEnvelope.SetMode(tfdsp::ArpEnvelope::Mode::Ad);
+	for (int i = 0; i < 4800; ++i)
+		envelope = adEnvelope.Step(10.0, 0.0, 0.1, 0.2, 0.75, 0.5);
+	Check(envelope > 0.999 &&
+		adEnvelope.GetStage() == tfdsp::ArpEnvelope::Stage::Decay,
+		"ARP AD reaches its peak and enters decay while Gate remains high");
+	for (int i = 0; i < 9600; ++i)
+		envelope = adEnvelope.Step(10.0, 0.0, 0.1, 0.2, 0.75, 0.5);
+	Check(envelope < 0.001 &&
+		adEnvelope.GetStage() == tfdsp::ArpEnvelope::Stage::Idle,
+		"ARP AD decays to zero without waiting for Gate to fall");
+	envelope = adEnvelope.Step(10.0, 10.0, 0.1, 0.2, 0.75, 0.5);
+	Check(envelope > 0.0 &&
+		adEnvelope.GetStage() == tfdsp::ArpEnvelope::Stage::Attack,
+		"ARP AD retriggers from Trigger while Gate remains high");
 	std::array<double, 3> attackQuarterValues{};
 	for (int curveIndex = 0; curveIndex < 3; ++curveIndex)
 	{
@@ -378,7 +395,7 @@ int main()
 		const double input = 0.01 * std::sin(2.0 *
 			3.14159265358979323846 * 200.0 * i / 48000.0);
 		const auto rendered = arpVoiceFilter.StepWithPostProcessor(input,
-			8000.0, 0.0, 1.0, false, 10.0, -10.0,
+			8000.0, 0.0, 1.0, 10.0, -10.0,
 			[&](double filtered, double linearCv, double exponentialCv)
 			{
 				return arpVoiceVca.ProcessOversampled(filtered, linearCv,
@@ -412,7 +429,7 @@ int main()
 		const double input = 0.01 * std::sin(2.0 *
 			3.14159265358979323846 * 200.0 * i / 48000.0);
 		const auto rendered = arpVoiceFilterX2.StepWithPostProcessor(input,
-			8000.0, 0.0, 1.0, false, 10.0, -10.0,
+			8000.0, 0.0, 1.0, 10.0, -10.0,
 			[&](double filtered, double linearCv, double exponentialCv)
 			{
 				return arpVoiceVcaX2.ProcessOversampled(filtered, linearCv,
