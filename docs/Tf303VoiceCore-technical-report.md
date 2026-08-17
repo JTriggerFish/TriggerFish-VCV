@@ -493,8 +493,9 @@ values because suitable original-BA662 compliance curves are unavailable.
 The resonance makeup is applied after the nonlinear VCA, followed by the same
 smooth output-stage rail. This prevents a software level correction from
 changing the OTA drive. Both nonlinear compliance stages run before the VCA's
-half-band decimator. Any residual decimator overshoot above 11 V passes through
-a second unity-slope compliance curve that approaches 12 V smoothly.
+half-band decimator. The shared Rack output adapter remains linear through
+11.5 V after decimation and approaches 11.7 V smoothly if the decimator rings
+beyond that point.
 
 ### C38 output coupling
 
@@ -524,7 +525,7 @@ $$
 
 The independent Python model represents every coupling section as a
 continuous one-pole state and integrates the complete nonlinear system with
-SciPy DOP853 at tight tolerances. Regression tests compare the production
+SciPy DOP853 at tight tolerances. Regression tests compare the model
 small-signal response from 30 Hz to 6 kHz, host rates from 44.1 to 192 kHz, DC
 rejection, resonance thresholds, extreme drive, and 2x/4x agreement.
 
@@ -575,18 +576,18 @@ transistor VCA cores measured 2.16 and 1.42 million samples/s. Their
 level-matched residuals are approximately 40% and 55%, reflecting their
 additional nonlinear poles and saturation. A 9 kHz host-rate render of the
 reduced VCA differed from an 8x reference by approximately 0.152% RMS; the
-production voice therefore evaluates it at the selected 2x or 4x rate.
+voice model therefore evaluates it at the selected 2x or 4x rate.
 
 ## Model boundaries
 
-The production filter omits component tolerance, temperature drift, individual
+The filter model omits component tolerance, temperature drift, individual
 diode mismatch, power-supply coupling, and transistor parasitics. The Bass
 response is a calibrated low-order reduction. Fast and Slow accent modes are
 behavioural implementations of published descriptions. The resonance makeup,
 FM range, and Rack output gains are software calibrations.
 
 The OTA reference uses a published clone topology with modern matched devices.
-Production omits device mismatch, Early effect, and parasitic capacitances at
+The VCA model omits device mismatch, Early effect, and parasitic capacitances at
 the measured operating levels.
 
 ## Reproducing the results

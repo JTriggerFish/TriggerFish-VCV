@@ -1,4 +1,5 @@
 #include "models/VCAcore.hpp"
+#include "tfdsp/rail.hpp"
 
 #include <memory>
 #include <algorithm>
@@ -133,7 +134,8 @@ void TfVCA::process(const ProcessArgs &args)
 	//DC rejection in case there is some DC offset due to aliasing
 	audio = _audioHighPass(audio, _normalisedHighPassAudio);
 
-	const float output = audio + cvBleed;
+	const float output = static_cast<float>(
+		tfdsp::RackOutputAdapter::ProcessPostDecimation(audio + cvBleed));
 	outputs[MAIN_OUTPUT].setVoltage(std::isfinite(output) ? output : 0.0f);
 
 	//Deal with input monitoring lights

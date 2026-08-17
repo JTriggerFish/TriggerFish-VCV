@@ -124,6 +124,10 @@ reconstruction, while Shape and Wave limits are applied at the internal rate.
 The saw core, sync correction, Q8 shaper, and waveform mix are evaluated there,
 followed by separate seventh-order decimators for the saw, square, and mixed
 signals.
+Each oversampled audio path passes through the shared Rack output adapter
+before its decimator. A normally inactive post-decimation stage catches IIR
+overshoot and keeps the final cable voltage below ±11.7 V without hard
+clipping. The nominal saw and square levels remain far below the adapter knee.
 Keeping the nonlinear shaper inside the oversampled path suppresses aliases from
 its steep transitions. The 4x default gives additional margin for high-pitch FM
 and sync sounds. The 2x mode approximately halves the oscillator's DSP cost for
@@ -162,7 +166,7 @@ uv run pytest tests/python/test_tb303_oscillator.py
 uv run python tests/python/benchmark_tb303_oscillator.py --seconds 2 --cpu-samples 960000 --cpu-repeats 9
 ```
 
-The published run uses a two-second analysis window. It compares each production
+The published run uses a two-second analysis window. It compares each model
 mode at 48 kHz with a 768 kHz render followed by high-rejection FIR decimation.
 The spectral metric includes aliasing and passband-magnitude differences;
 more-negative values are closer to the reference.

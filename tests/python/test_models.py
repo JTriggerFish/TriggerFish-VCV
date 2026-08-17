@@ -48,6 +48,7 @@ def test_vca_binding_is_finite_and_length_preserving():
     output = dsp.vca_transistor(audio, cv, 48_000.0)
     assert output.shape == audio.shape
     assert np.isfinite(output).all()
+    assert np.max(np.abs(output)) < 11.7
 
 
 def test_slop_linear_detune_is_exact_when_drift_is_zero():
@@ -83,6 +84,7 @@ def test_vdpo_binding_is_finite_and_length_preserving():
     output = dsp.vdpo(audio, damping, angular_frequency, 48_000.0)
     assert output.shape == audio.shape
     assert np.isfinite(output).all()
+    assert np.max(np.abs(output)) < 11.7
 
 
 @pytest.mark.parametrize("damping", (0.5, 9.0))
@@ -152,6 +154,7 @@ def test_vdpo_remains_finite_during_audio_rate_parameter_sweep():
         sample_rate,
     )
     assert np.isfinite(output).all()
+    assert np.max(np.abs(output)) < 11.7
 
 
 def test_bindings_reject_mismatched_lengths():

@@ -10,6 +10,7 @@
 #include <utility>
 
 #include "AnalogOutputStage.hpp"
+#include "tfdsp/rail.hpp"
 #include "tfdsp/filters.hpp"
 #include "tfdsp/sampleRate.hpp"
 #include "tfdsp/approx.hpp"
@@ -277,7 +278,8 @@ public:
 			Reset();
 			return 0.0f;
 		}
-		return static_cast<float>(AnalogOutputStage::ProcessSafety(result));
+		return static_cast<float>(
+			RackOutputAdapter::ProcessPostDecimation(result));
 	}
 
 	// Process a second nonlinear stage before decimation. The second resampler
@@ -366,8 +368,9 @@ public:
 		}
 		return {
 			static_cast<float>(
-				AnalogOutputStage::ProcessSafety(lowPassResult)),
-			static_cast<float>(AnalogOutputStage::ProcessSafety(postResult)),
+				RackOutputAdapter::ProcessPostDecimation(lowPassResult)),
+			static_cast<float>(
+				RackOutputAdapter::ProcessPostDecimation(postResult)),
 		};
 	}
 

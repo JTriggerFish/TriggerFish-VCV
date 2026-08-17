@@ -1,4 +1,4 @@
-"""Print reproducible ARP 4072 production/reference comparisons."""
+"""Print reproducible ARP 4072 model/reference comparisons."""
 
 from __future__ import annotations
 
@@ -53,15 +53,15 @@ def print_nonlinear_case(frequency, amplitude, cutoff, resonance):
         frequency, amplitude, cutoff, resonance, duration=duration
     )
     signal = amplitude * np.sin(2.0 * np.pi * frequency * time)
-    production = dsp.arp4072_x4(signal, cutoff, resonance)
+    model = dsp.arp4072_x4(signal, cutoff, resonance)
     expected = harmonic_amplitudes(reference, frequency, SAMPLE_RATE, 9, 40)
-    actual = harmonic_amplitudes(production, frequency, SAMPLE_RATE, 9, 40)
+    actual = harmonic_amplitudes(model, frequency, SAMPLE_RATE, 9, 40)
 
     print(
         f"\nnonlinear case: {frequency:g} Hz, {amplitude:g} V, "
         f"cutoff {cutoff:g} Hz, resonance {resonance:g}"
     )
-    print("harmonic | reference V | production V | relative error")
+    print("harmonic | reference V | model V | relative error")
     for harmonic in (1, 3, 5, 7, 9):
         index = harmonic - 1
         error = actual[index] / expected[index] - 1.0
@@ -80,9 +80,9 @@ def print_self_oscillation():
     )
     silence = np.zeros(int(SAMPLE_RATE * duration))
     silence[0] = 1.0e-6
-    production = dsp.arp4072_x4(silence, cutoff, resonance)
+    model = dsp.arp4072_x4(silence, cutoff, resonance)
     reference = reference[len(reference) // 2 :]
-    production = production[len(production) // 2 :]
+    model = model[len(model) // 2 :]
     print("\nself-oscillation at 800 Hz requested cutoff")
     print(
         "reference: "
@@ -90,9 +90,9 @@ def print_self_oscillation():
         f"{np.max(np.abs(reference)):.5f} V peak"
     )
     print(
-        "production: "
-        f"{positive_zero_crossing_frequency(production, SAMPLE_RATE):.3f} Hz, "
-        f"{np.max(np.abs(production)):.5f} V peak"
+        "model: "
+        f"{positive_zero_crossing_frequency(model, SAMPLE_RATE):.3f} Hz, "
+        f"{np.max(np.abs(model)):.5f} V peak"
     )
 
 

@@ -359,7 +359,7 @@ def test_vca_runs_inside_oversampled_path_without_changing_nominal_level():
     host_level = np.sqrt(np.mean(host_rate[selected] ** 2))
     oversampled_level = np.sqrt(np.mean(oversampled[selected] ** 2))
     assert np.isfinite(oversampled).all()
-    assert np.max(np.abs(oversampled)) <= 12.0001
+    assert np.max(np.abs(oversampled)) < 11.7
     assert oversampled_level == pytest.approx(host_level, rel=0.002)
 
 
@@ -386,7 +386,7 @@ def test_low_octave_bass_and_resonance_overload_has_no_hard_rail():
 
     assert np.isfinite(settled).all()
     assert 8.5 < np.max(np.abs(settled)) < 11.1
-    assert not np.any(np.abs(settled) == 12.0)
+    assert not np.any(np.abs(settled) == 11.7)
     assert np.count_nonzero(np.diff(settled) == 0.0) < 0.001 * settled.size
 
 
@@ -411,8 +411,8 @@ def test_extreme_modulated_voice_uses_smooth_safety_compliance():
 
     assert rendered[-1, 2] == 0.0
     assert np.isfinite(rendered[:, :2]).all()
-    assert 11.0 < np.max(np.abs(rendered[:, 1])) < 12.0
-    assert not np.any(np.abs(rendered[:, :2]) == 12.0)
+    assert 11.0 < np.max(np.abs(rendered[:, 1])) < 11.7
+    assert not np.any(np.abs(rendered[:, :2]) == 11.7)
 
 
 def test_two_and_four_times_vca_overload_remain_consistent():

@@ -66,7 +66,7 @@ def test_4072_voice_core_panel_matches_the_wide_dual_envelope_layout():
 
     widget_source = (ROOT / "src" / "Tf4072VoiceCore.cpp").read_text(encoding="utf-8")
     controls = list(control_pattern("Tf4072VoiceCore").finditer(widget_source))
-    assert len(controls) == 36
+    assert len(controls) == 37
     by_id = {control.group("id"): control for control in controls}
     envelope_params = (
         "FILTER_ATTACK",
@@ -135,8 +135,8 @@ def test_4072_voice_core_panel_matches_the_wide_dual_envelope_layout():
         (115.0, 205.0),
         (99.0, 249.0),
     ]
-    assert "configSwitch(FILTER_ENV_MODE, 0.0f, 2.0f, 2.0f" in widget_source
-    assert "configSwitch(AMP_ENV_MODE, 0.0f, 2.0f, 2.0f" in widget_source
+    assert "configSwitch(FILTER_ENV_MODE, 0.0f, 2.0f, 1.0f" in widget_source
+    assert "configSwitch(AMP_ENV_MODE, 0.0f, 2.0f, 1.0f" in widget_source
     assert by_id["FILTER_ENV_MODE"].group("type") == "CKSSThree"
     assert by_id["AMP_ENV_MODE"].group("type") == "CKSSThree"
     assert "configSwitch(FILTER_MOD_ROUTING, 0.0f, 1.0f, 1.0f" in widget_source
@@ -145,6 +145,7 @@ def test_4072_voice_core_panel_matches_the_wide_dual_envelope_layout():
     assert by_id["VCA_MOD_ROUTING"].group("type") == "CKSS"
     assert by_id["FILTER_MOD_MODE"].group("type") == "CKSS"
     assert by_id["VCA_MOD_MODE"].group("type") == "CKSS"
+    assert by_id["AMP_ENV_LAW"].group("type") == "CKSS"
     assert control_coordinates(by_id["FILTER_MOD_ROUTING"], widget_source) == (
         24.0,
         115.0,
@@ -164,7 +165,11 @@ def test_4072_voice_core_panel_matches_the_wide_dual_envelope_layout():
     )
     assert control_coordinates(by_id["AMP_ENV_MODE"], widget_source) == (
         329.0,
-        203.0,
+        194.0,
+    )
+    assert control_coordinates(by_id["AMP_ENV_LAW"], widget_source) == (
+        329.0,
+        241.0,
     )
     assert '{"2x (lower CPU)", "4x (default)"}' in widget_source
     assert "lightDivider.setDivision(512);" in widget_source
@@ -174,12 +179,13 @@ def test_4072_voice_core_panel_matches_the_wide_dual_envelope_layout():
     assert "TfEnvelopeSliderLight : RectangleLight<BlueLight>" in components
     assert "displayGain = 2.0f" in widget_source
     defaults = switch_defaults(widget_source)
-    assert defaults["FILTER_ENV_MODE"] == 2.0
-    assert defaults["AMP_ENV_MODE"] == 2.0
+    assert defaults["FILTER_ENV_MODE"] == 1.0
+    assert defaults["AMP_ENV_MODE"] == 1.0
     assert defaults["FILTER_MOD_ROUTING"] == 1.0
     assert defaults["VCA_MOD_ROUTING"] == 1.0
     assert defaults["FILTER_MOD_MODE"] == 1.0
     assert defaults["VCA_MOD_MODE"] == 0.0
+    assert defaults["AMP_ENV_LAW"] == 1.0
     assert [
         (float(by_id[name].group("x")), float(by_id[name].group("y")))
         for name in (
@@ -208,11 +214,12 @@ def test_4072_voice_core_wrapper_preserves_normals_polyphony_and_runtime_state()
     # An unpatched modulation input retains its internal envelope. A patched
     # input can add to it or replace it, and each destination selects its law.
     assert "const bool includeFilterEnvelope = !filterModConnected ||" in source
-    assert "const bool includeAmpEnvelope = !vcaModConnected ||" in source
     assert "exponentialFilterModulation ? filterModulation : 0.0" in source
     assert "LinearFilterModulationHzPerVolt * filterModulation" in source
-    assert "if (exponentialVcaModulation)" in source
-    assert "linearControl += vcaModulation;" in source
+    assert "const bool exponentialAmpEnvelope =" in source
+    assert "tfdsp::RouteArp4019ControlVoltages(" in source
+    assert "addVcaModulationToEnvelope, exponentialAmpEnvelope," in source
+    assert "exponentialVcaModulation);" in source
 
     # The audio VCA override selects its independent oversampled path.
     assert "const bool vcaOverride = inputs[VCA_AUDIO_INPUT].isConnected();" in source

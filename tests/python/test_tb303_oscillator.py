@@ -181,7 +181,7 @@ def test_oversampling_variants_remain_finite_at_extended_pitch():
     ):
         rendered = render(function, pitch, seconds=0.1, shape=1.0, wave=1.0)
         assert np.isfinite(rendered).all()
-        assert np.max(np.abs(rendered[:, :3])) < 12.0
+        assert np.max(np.abs(rendered[:, :3])) < 11.7
 
 
 def test_fractional_hard_sync_converges_toward_high_rate_reference():
@@ -229,5 +229,5 @@ def test_hard_sync_is_bounded_during_through_zero_fm():
     )
 
     assert np.isfinite(rendered).all()
-    assert np.max(np.abs(rendered[:, :3])) < 12.0
+    assert np.max(np.abs(rendered[:, :3])) < 11.7
     assert np.std(rendered[samples // 2 :, 0]) > 2.0

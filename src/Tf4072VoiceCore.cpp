@@ -39,6 +39,7 @@ struct Tf4072VoiceCore : Module
 		VCA_MOD_ROUTING,
 		FILTER_MOD_MODE,
 		VCA_MOD_MODE,
+		AMP_ENV_LAW,
 		NUM_PARAMS
 	};
 
@@ -133,11 +134,11 @@ struct Tf4072VoiceCore : Module
 			FILTER_RELEASE, "Filter", 0.0014f, 1.0f, 0.5f, 1.0f);
 		ConfigureEnvelope(AMP_ATTACK, AMP_DECAY, AMP_SUSTAIN, AMP_RELEASE,
 			"Amplifier", 0.0014f, 1.0f, 1.0f, 1.0f);
-		configSwitch(FILTER_ENV_MODE, 0.0f, 2.0f, 2.0f,
+		configSwitch(FILTER_ENV_MODE, 0.0f, 2.0f, 1.0f,
 			"Filter envelope mode", {"ADSR", "AD", "AR"});
 		configParam(ENVELOPE_CURVE, -1.0f, 1.0f, 0.0f,
 			"Envelope curve", "%", 0.0f, 100.0f);
-		configSwitch(AMP_ENV_MODE, 0.0f, 2.0f, 2.0f,
+		configSwitch(AMP_ENV_MODE, 0.0f, 2.0f, 1.0f,
 			"Amplifier envelope mode", {"ADSR", "AD", "AR"});
 		configSwitch(FILTER_MOD_ROUTING, 0.0f, 1.0f, 1.0f,
 			"Filter modulation routing",
@@ -149,6 +150,8 @@ struct Tf4072VoiceCore : Module
 			"Filter modulation law", {"Linear frequency", "Exponential pitch"});
 		configSwitch(VCA_MOD_MODE, 0.0f, 1.0f, 0.0f,
 			"VCA modulation law", {"Linear gain", "Exponential gain"});
+		configSwitch(AMP_ENV_LAW, 0.0f, 1.0f, 1.0f,
+			"Amplifier envelope VCA law", {"Linear gain", "Exponential gain"});
 		configInput(AUDIO_INPUT, "Filter audio");
 		configInput(VCA_AUDIO_INPUT,
 			"VCA audio override (normalled from filter)");
@@ -354,6 +357,8 @@ struct Tf4072VoiceCore : Module
 			params[FILTER_MOD_MODE].getValue() > 0.5f;
 		const bool exponentialVcaModulation =
 			params[VCA_MOD_MODE].getValue() > 0.5f;
+		const bool exponentialAmpEnvelope =
+			params[AMP_ENV_LAW].getValue() > 0.5f;
 		const bool vcaOverride = inputs[VCA_AUDIO_INPUT].isConnected();
 		const bool autoGateTrigger = !inputs[TRIGGER_INPUT].isConnected();
 		const double log2C4 = std::log2(dsp::FREQ_C4);
@@ -398,17 +403,14 @@ struct Tf4072VoiceCore : Module
 			const double filterModulation = filterModAmount *
 				inputs[FILTER_MOD_INPUT].getPolyVoltage(channel);
 			const bool vcaModConnected = inputs[VCA_MOD_INPUT].isConnected();
-			const bool includeAmpEnvelope = !vcaModConnected ||
-				addVcaModulationToEnvelope;
 			const double vcaModulation = vcaModAmount *
 				inputs[VCA_MOD_INPUT].getPolyVoltage(channel);
-			double linearControl = includeAmpEnvelope ?
-				linearAmount * ampEnvelope : 0.0;
-			double exponentialControl = 0.0;
-			if (exponentialVcaModulation)
-				exponentialControl = vcaModulation;
-			else
-				linearControl += vcaModulation;
+			const auto vcaControls = tfdsp::RouteArp4019ControlVoltages(
+				linearAmount * ampEnvelope, vcaModulation, vcaModConnected,
+				addVcaModulationToEnvelope, exponentialAmpEnvelope,
+				exponentialVcaModulation);
+			const double linearControl = vcaControls.linear;
+			const double exponentialControl = vcaControls.exponential;
 			const double pitch = cutoffKnob +
 				inputs[VOCT_INPUT].getPolyVoltage(channel) +
 				(includeFilterEnvelope ?
@@ -597,8 +599,10 @@ struct Tf4072VoiceCoreWidget : ModuleWidget
 			Tf4072VoiceCore::FILTER_ENV_MODE));
 		addParam(createParam<TfCvKnob>(Vec(322, 143), module,
 			Tf4072VoiceCore::ENVELOPE_CURVE));
-		addParam(createParam<CKSSThree>(Vec(329, 203), module,
-			Tf4072VoiceCore::AMP_ENV_MODE));
+addParam(createParam<CKSSThree>(Vec(329, 194), module,
+    Tf4072VoiceCore::AMP_ENV_MODE));
+addParam(createParam<CKSS>(Vec(329, 241), module,
+    Tf4072VoiceCore::AMP_ENV_LAW));
 
 		addInput(createInput<PJ301MPort>(Vec(18, 293), module,
 			Tf4072VoiceCore::AUDIO_INPUT));

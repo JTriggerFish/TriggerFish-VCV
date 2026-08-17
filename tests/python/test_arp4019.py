@@ -73,7 +73,7 @@ def test_control_current_saturates_without_a_hard_output_boundary():
     output = dsp.arp4019_x4(audio, linear_cv, exponential_cv)
 
     assert np.all(np.isfinite(output))
-    assert np.max(np.abs(output)) < 13.6
+    assert np.max(np.abs(output)) < 11.7
     assert np.max(np.abs(np.diff(output))) < 2.0
 
 

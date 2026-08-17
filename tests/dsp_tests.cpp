@@ -10,6 +10,7 @@
 #include "models/ArpEnvelope.hpp"
 #include "models/Arp4072Filter.hpp"
 #include "models/DiodeLadderFilter.hpp"
+#include "tfdsp/rail.hpp"
 #include "models/Transistor1PoleIntegrator.hpp"
 #include "models/Tb303Voice.hpp"
 #include "models/Tb303Oscillator.hpp"
@@ -250,8 +251,23 @@ int main()
 		arpPostSafetyPeak = std::max(arpPostSafetyPeak,
 			std::abs(static_cast<double>(rendered.postProcessed)));
 	}
-	Check(arpPostSafetyPeak <= 14.500001,
-		"ARP integrated post-processor output retains decimator safety");
+	Check(arpPostSafetyPeak > 11.0 &&
+		arpPostSafetyPeak < tfdsp::RackOutputAdapter::CableLimitVolts,
+		"ARP integrated post-processor output stays within Rack cable headroom");
+	Check(tfdsp::RackOutputAdapter::ProcessOversampled(10.0) == 10.0,
+		"Rack output adapter is linear at normal full-scale level");
+	Check(tfdsp::RackOutputAdapter::ProcessOversampled(10.5) == 10.5 &&
+		tfdsp::RackOutputAdapter::ProcessPostDecimation(11.5) == 11.5,
+		"Rack output adapter is continuous and linear through both knees");
+	Check(tfdsp::RackOutputAdapter::ProcessOversampled(-100.0) ==
+		-tfdsp::RackOutputAdapter::ProcessOversampled(100.0),
+		"Rack output adapter is symmetric");
+	Check(tfdsp::RackOutputAdapter::ProcessOversampled(1000.0) <
+		tfdsp::RackOutputAdapter::OversampledLimitVolts,
+		"oversampled Rack output reserves decimator headroom");
+	Check(tfdsp::RackOutputAdapter::ProcessPostDecimation(1000.0) <
+		tfdsp::RackOutputAdapter::CableLimitVolts,
+		"post-decimation Rack output stays below the protected-rail limit");
 
 	tfdsp::ArpEnvelope arpEnvelope;
 	arpEnvelope.SetSampleRate(48000.0);
@@ -352,6 +368,32 @@ int main()
 	Check(Arp4019::OutputBandwidthHz > 28000.0 &&
 		Arp4019::OutputBandwidthHz < 29000.0,
 		"ARP 4019 feedback capacitor retains the original HF rolloff");
+	const auto unpatchedExponentialEnvelope =
+		tfdsp::RouteArp4019ControlVoltages(10.0, 2.0, false, false, true,
+			false);
+	Check(unpatchedExponentialEnvelope.linear == 0.0 &&
+		unpatchedExponentialEnvelope.exponential == 10.0,
+		"unpatched VCA modulation retains the internal envelope law");
+	const auto addLinearControls = tfdsp::RouteArp4019ControlVoltages(
+		10.0, 2.0, true, true, false, false);
+	Check(addLinearControls.linear == 12.0 &&
+		addLinearControls.exponential == 0.0,
+		"VCA add routing sums linear envelope and modulation controls");
+	const auto addSplitControls = tfdsp::RouteArp4019ControlVoltages(
+		10.0, 2.0, true, true, true, false);
+	Check(addSplitControls.linear == 2.0 &&
+		addSplitControls.exponential == 10.0,
+		"VCA add routing preserves independent envelope and modulation laws");
+	const auto addExponentialControls = tfdsp::RouteArp4019ControlVoltages(
+		10.0, 2.0, true, true, true, true);
+	Check(addExponentialControls.linear == 0.0 &&
+		addExponentialControls.exponential == 12.0,
+		"VCA add routing sums controls which share the exponential input");
+	const auto replaceWithExternal = tfdsp::RouteArp4019ControlVoltages(
+		10.0, 2.0, true, false, false, true);
+	Check(replaceWithExternal.linear == 0.0 &&
+		replaceWithExternal.exponential == 2.0,
+		"VCA EXT routing replaces the envelope and retains modulation law");
 	Arp4019 arp4019(tfdsp::CreateX4Resampler_Cheby7);
 	arp4019.SetSampleRate(48000.0);
 	double arpVcaLinearPeak = 0.0;
@@ -644,9 +686,9 @@ int main()
 	Check(tfdsp::AnalogOutputStage::Process(100.0) <=
 		tfdsp::AnalogOutputStage::RailVolts,
 		"analog output stage approaches its rail without crossing it");
-	Check(tfdsp::AnalogOutputStage::ProcessSafety(100.0) <
-		tfdsp::AnalogOutputStage::SafetyLimitVolts,
-		"analog output safety stage approaches its limit without hard clipping");
+	Check(tfdsp::RackOutputAdapter::ProcessPostDecimation(100.0) <
+		tfdsp::RackOutputAdapter::CableLimitVolts,
+		"shared Rack output stage approaches its limit without hard clipping");
 	tb303Vca.Reset();
 	double overloadedPeak = 0.0;
 	for (int i = 0; i < 48000; ++i)
@@ -658,7 +700,7 @@ int main()
 			overloadedPeak = std::max(overloadedPeak, std::abs(output));
 	}
 	Check(overloadedPeak > tfdsp::AnalogOutputStage::KneeVolts &&
-		overloadedPeak < tfdsp::AnalogOutputStage::SafetyLimitVolts,
+		overloadedPeak < tfdsp::RackOutputAdapter::CableLimitVolts,
 		"TB-303 VCA overload bends smoothly inside the safety guard");
 	Check(tb303Vca.Step(std::numeric_limits<double>::quiet_NaN(),
 		1.0, 0.0) == 0.0,

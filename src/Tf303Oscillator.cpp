@@ -1,4 +1,5 @@
 #include "models/Tb303Oscillator.hpp"
+#include "tfdsp/rail.hpp"
 
 #include <algorithm>
 #include <array>
@@ -201,8 +202,9 @@ struct Tf303Oscillator : Module
 				renderedPitch = rendered.pitch;
 				renderedAudio = rendered.mixed;
 			}
-			outputs[CV_OUTPUT].setVoltage(std::clamp(renderedPitch,
-				-12.0f, 12.0f), channel);
+			outputs[CV_OUTPUT].setVoltage(static_cast<float>(
+				tfdsp::RackOutputAdapter::ProcessPostDecimation(renderedPitch)),
+				channel);
 			outputs[AUDIO_OUTPUT].setVoltage(
 				std::isfinite(renderedAudio) ? renderedAudio : 0.0f, channel);
 		}

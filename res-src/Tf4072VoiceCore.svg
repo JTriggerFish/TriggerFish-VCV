@@ -57,11 +57,16 @@
     <text x="223.873" y="174" font-size="6.5" font-weight="bold" data-control="AMP_DECAY">D</text>
     <text x="263.9667" y="174" font-size="6.5" font-weight="bold" data-control="AMP_SUSTAIN">S</text>
     <text x="303.7747" y="174" font-size="6.5" font-weight="bold" data-control="AMP_RELEASE">R</text>
-    <text x="335.6345" y="195" font-size="5.5" font-weight="bold" data-control="AMP_ENV_MODE">MODE</text>
+    <text x="335.6345" y="186" font-size="5.5" font-weight="bold" data-control="AMP_ENV_MODE">MODE</text>
     <g fill="#686868">
-      <text x="335.7883" y="201" font-size="5.7" font-weight="bold" data-control="AMP_ENV_MODE">AR</text>
-      <text x="351.1461" y="218" font-size="5.7" font-weight="bold" data-center-x="351">AD</text>
-      <text x="335.7883" y="238" font-size="5.7" font-weight="bold" data-control="AMP_ENV_MODE">ADSR</text>
+      <text x="335.7883" y="192" font-size="5.7" font-weight="bold" data-control="AMP_ENV_MODE">AR</text>
+      <text x="351.1461" y="209" font-size="5.7" font-weight="bold" data-center-x="351">AD</text>
+      <text x="335.7883" y="229" font-size="5.7" font-weight="bold" data-control="AMP_ENV_MODE">ADSR</text>
+    </g>
+    <text x="350.8201" y="254" font-size="5.5" font-weight="bold" data-center-x="351">LAW</text>
+    <g fill="#686868">
+      <text x="335.8241" y="238" font-size="5.5" font-weight="bold" data-control="AMP_ENV_LAW">EXP</text>
+      <text x="336" y="270" font-size="5.5" font-weight="bold" data-control="AMP_ENV_LAW">LIN</text>
     </g>
 
     <text x="29.85" y="287" font-size="5.8" font-weight="bold" data-control="AUDIO_INPUT">FILTER IN</text>

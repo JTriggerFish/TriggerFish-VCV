@@ -11,6 +11,7 @@
 
 #include "tfdsp/sampleRate.hpp"
 #include "tfdsp/approx.hpp"
+#include "tfdsp/rail.hpp"
 
 namespace tfdsp
 {
@@ -118,7 +119,8 @@ public:
 			const double physicalOutput = OutputLevelShiftGain *
 				ProcessOversampled(upsampled(i), controls.cutoffHz(i),
 					controls.resonance(i));
-			output(i) = SoftOutputCompliance(physicalOutput);
+			output(i) = RackOutputAdapter::ProcessOversampled(
+				SoftOutputCompliance(physicalOutput));
 		}
 
 		const double result = _resampler->Downsample(output);
@@ -127,7 +129,8 @@ public:
 			Reset();
 			return 0.0f;
 		}
-		return static_cast<float>(SoftDecimatorSafety(result));
+		return static_cast<float>(
+			RackOutputAdapter::ProcessPostDecimation(result));
 	}
 
 	// Run a second nonlinear stage at the same internal rate before either
@@ -200,9 +203,9 @@ public:
 			// normalled connection to the VCA. Both output paths therefore see
 			// exactly the same filter-node level and overload behavior.
 			const double limitedOutput = SoftOutputCompliance(physicalOutput);
-			lowPass(i) = limitedOutput;
-			postProcessed(i) = postProcessor(limitedOutput, linearCv(i),
-				exponentialCv(i));
+			lowPass(i) = RackOutputAdapter::ProcessOversampled(limitedOutput);
+			postProcessed(i) = RackOutputAdapter::ProcessOversampled(
+				postProcessor(limitedOutput, linearCv(i), exponentialCv(i)));
 		}
 
 		const double lowPassResult = _resampler->Downsample(lowPass);
@@ -213,8 +216,10 @@ public:
 			return {};
 		}
 		return {
-			static_cast<float>(SoftDecimatorSafety(lowPassResult)),
-			static_cast<float>(SoftDecimatorSafety(postResult)),
+			static_cast<float>(
+				RackOutputAdapter::ProcessPostDecimation(lowPassResult)),
+			static_cast<float>(
+				RackOutputAdapter::ProcessPostDecimation(postResult)),
 		};
 	}
 
@@ -393,16 +398,6 @@ private:
 		const double headroom = OutputRailVolts - OutputKneeVolts;
 		return std::copysign(OutputKneeVolts + headroom * std::tanh(
 			(magnitude - OutputKneeVolts) / headroom), voltage);
-	}
-
-	static double SoftDecimatorSafety(double voltage)
-	{
-		const double magnitude = std::abs(voltage);
-		if (magnitude <= OutputRailVolts)
-			return voltage;
-		const double excess = magnitude - OutputRailVolts;
-		return std::copysign(OutputRailVolts + excess /
-			std::sqrt(1.0 + excess * excess), voltage);
 	}
 
 	double ProcessOversampled(double input, double cutoffHz, double resonance)

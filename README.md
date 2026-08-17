@@ -157,10 +157,16 @@ around their circuit bias points.
   control extends to 20 kHz using ARP's published correction for the original
   4072 high-frequency limitation.
 - The two A/D/S/R slider rows generate 0–10 V envelopes. Each row can be switched
-  among AR, AD, and ADSR; both default to AR. AD is a retriggerable one-shot
-  using the Attack and Decay sliders. **Curve** varies both envelope shapes
-  around the original circuit response. Attack defaults to its 1.4 ms minimum;
-  Decay and Release default to 1 second.
+  among AR, AD, and ADSR. The playable default uses AD for both envelopes, with
+  minimum Attack and one-second Decay: a bright, gate-length-independent
+  starting point derived from the [ARP patch book's](https://www.korg.com/us/support/download/manual/0/877/4471/)
+  plucked-instrument settings. Sustain is inactive in AD, but defaults to 50%
+  for the filter and 100% for the amplifier so selecting ADSR gives an immediate
+  sustained sound. Release defaults to one second for AR and ADSR operation.
+  **Curve** varies both envelope shapes around the original circuit response.
+- The amplifier envelope's `LIN / EXP` switch selects the 4019 VCA response for
+  all three envelope modes. It defaults to EXP for the sharper 10 dB/V contour
+  used by classic plucked patches.
 - `CUT MOD` and `VCA MOD` each have one input, one amount control, and a
   `LIN / EXP` switch. Filter LIN is signed 200 Hz/V frequency modulation;
   filter EXP is 1 V/oct at 100%. VCA LIN follows the 4019 linear-gain input,
@@ -170,6 +176,30 @@ around their circuit bias points.
   internal envelope remains active in either position. Both default to `+`.
 - `VCA IN` replaces the normalled filter-to-VCA audio connection. `LP OUT`,
   `VCA OUT`, and both envelope outputs expose each stage independently.
+
+#### Envelope modes
+
+- **AR** attacks when Gate rises, holds its peak while Gate remains high, and
+  releases when Gate falls. It is useful for straightforward note-length
+  articulation, sustained sounds, and gate-following filter movement. AR uses
+  the Board-4 response and ignores Trigger.
+- **AD** is a retriggerable Attack–Decay one-shot independent of Gate length.
+  It is useful for plucks, percussion, sequencer steps, and repeatable filter
+  sweeps.
+- **ADSR** attacks, decays to Sustain, holds while Gate remains high, and then
+  releases. It is useful for keyboard articulation and sweeps with distinct
+  peak and held levels. At maximum Sustain it can reproduce an AR level
+  sequence; AR retains its different attack curve and Gate-only triggering.
+
+The amplifier envelope law is independent of these modes. LIN gives direct
+0–10 V gain control; EXP applies the original 10 dB/V VCA response for sharper
+attack, decay, and sustain contours.
+
+The original 2600 normally routes ADSR to filter cutoff. Its VCA receives AR
+through the linear control input and ADSR through the exponential input. Its
+plucked patches obtain an AD-like contour from ADSR with Sustain at zero. The
+module uses its dedicated AD mode for the same contour without gate-length
+dependence; select AR and LIN for the original gate-following AR path.
 
 The complete filter/VCA path runs at 4x sample rate by default. A 2x mode is
 available from the context menu for larger polyphonic patches.

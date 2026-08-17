@@ -2,6 +2,7 @@
 #include "VanDerPoleODE.hpp"
 #include "ode.hpp"
 #include <algorithm>
+#include "tfdsp/rail.hpp"
 #include "../tfdsp/sampleRate.hpp"
 
 using namespace ode;
@@ -100,7 +101,8 @@ public:
 
 		for(int i=0; i < ResamplingFactor; ++i)
 		{
-			output(i) =  ModelStep(xA(i), muA(i), wA(i));
+			output(i) = tfdsp::RackOutputAdapter::ProcessOversampled(
+				ModelStep(xA(i), muA(i), wA(i)));
 		}
 		const float result = _resamplerX->Downsample(output);
 		if (!std::isfinite(result))
@@ -108,7 +110,8 @@ public:
 			Reset();
 			return 0.0f;
 		}
-		return result;
+		return static_cast<float>(
+			tfdsp::RackOutputAdapter::ProcessPostDecimation(result));
 
 	}
 };

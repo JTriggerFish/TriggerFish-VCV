@@ -6,6 +6,7 @@
 #include <limits>
 #include <memory>
 
+#include "tfdsp/rail.hpp"
 #include "tfdsp/approx.hpp"
 #include "tfdsp/oscillator.hpp"
 #include "tfdsp/sampleRate.hpp"
@@ -247,18 +248,21 @@ public:
 			// polarity is immaterial on the hardware selector, but retaining it in
 			// a continuous morph creates a deep cancellation notch near the middle.
 			const double squareRack = -(20.0 / 5.5) * square;
-			sawValues(index) = sawRack;
-			squareValues(index) = squareRack;
-			mixedValues(index) = (1.0 - blend) * sawRack +
-				blend * squareRack;
+			sawValues(index) = RackOutputAdapter::ProcessOversampled(sawRack);
+			squareValues(index) = RackOutputAdapter::ProcessOversampled(squareRack);
+			mixedValues(index) = RackOutputAdapter::ProcessOversampled(
+				(1.0 - blend) * sawRack + blend * squareRack);
 		}
 
 		Output output;
-		output.saw = static_cast<float>(_sawDecimator->Downsample(sawValues));
+		output.saw = static_cast<float>(RackOutputAdapter::ProcessPostDecimation(
+			_sawDecimator->Downsample(sawValues)));
 		output.square = static_cast<float>(
-			_squareDecimator->Downsample(squareValues));
+			RackOutputAdapter::ProcessPostDecimation(
+				_squareDecimator->Downsample(squareValues)));
 		output.mixed = static_cast<float>(
-			_mixedDecimator->Downsample(mixedValues));
+			RackOutputAdapter::ProcessPostDecimation(
+				_mixedDecimator->Downsample(mixedValues)));
 		output.pitch = static_cast<float>(_pitch);
 		if (!std::isfinite(output.saw) || !std::isfinite(output.square) ||
 			!std::isfinite(output.mixed) || !std::isfinite(output.pitch))

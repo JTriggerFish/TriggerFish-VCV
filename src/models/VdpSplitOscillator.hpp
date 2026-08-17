@@ -6,6 +6,7 @@
 #include <memory>
 #include <stdexcept>
 
+#include "tfdsp/rail.hpp"
 #include "../tfdsp/filters.hpp"
 #include "../tfdsp/approx.hpp"
 #include "../tfdsp/sampleRate.hpp"
@@ -122,14 +123,16 @@ public:
 		const auto frequencyValues = _resamplerW->Upsample(angularFrequency);
 		Eigen::Array<double, ResamplingFactor, 1> output;
 		for (int i = 0; i < ResamplingFactor; ++i)
-			output(i) = ModelStep(inputValues(i), dampingValues(i), frequencyValues(i));
+			output(i) = tfdsp::RackOutputAdapter::ProcessOversampled(
+				ModelStep(inputValues(i), dampingValues(i), frequencyValues(i)));
 		const float result = _resamplerX->Downsample(output);
 		if (!std::isfinite(result))
 		{
 			Reset();
 			return 0.0f;
 		}
-		return result;
+		return static_cast<float>(
+			tfdsp::RackOutputAdapter::ProcessPostDecimation(result));
 	}
 
 	float StepLogAngularFrequency(double input, double damping,
@@ -153,8 +156,8 @@ public:
 			const double angularFrequency = tfdsp::Exp2Taylor5(
 				static_cast<float>(std::clamp(frequencyLogValues(i), -100.0,
 					100.0)));
-			output(i) = ModelStep(inputValues(i), dampingValues(i),
-				angularFrequency);
+			output(i) = tfdsp::RackOutputAdapter::ProcessOversampled(
+				ModelStep(inputValues(i), dampingValues(i), angularFrequency));
 		}
 		const float result = _resamplerX->Downsample(output);
 		if (!std::isfinite(result))
@@ -162,6 +165,7 @@ public:
 			Reset();
 			return 0.0f;
 		}
-		return result;
+		return static_cast<float>(
+			tfdsp::RackOutputAdapter::ProcessPostDecimation(result));
 	}
 };

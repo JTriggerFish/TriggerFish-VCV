@@ -9,6 +9,7 @@
 #include "../tfdsp/filters.hpp"
 #include "../tfdsp/noise.hpp"
 #include "OTA1PoleIntegrator.hpp"
+#include "tfdsp/rail.hpp"
 #include "Transistor1PoleIntegrator.hpp"
 
 
@@ -96,7 +97,9 @@ public:
 		_lastControl = static_cast<float>(
 			_cvResampler->Downsample(normalizedCv));
 
-		const float output = float(_audioResampler->Downsample(audioA));
+		const float output = static_cast<float>(
+			tfdsp::RackOutputAdapter::ProcessPostDecimation(
+				_audioResampler->Downsample(audioA)));
 		if (!std::isfinite(output))
 		{
 			Reset();
@@ -142,7 +145,8 @@ public:
 			_cvResampler->Downsample(normalizedCv));
 
 		const float output = static_cast<float>(
-			_audioResampler->Downsample(audioValues));
+			tfdsp::RackOutputAdapter::ProcessPostDecimation(
+				_audioResampler->Downsample(audioValues)));
 		if (!std::isfinite(output))
 		{
 			Reset();
@@ -165,6 +169,8 @@ private:
 		}
 		//Apply final gain and saturate to power supply voltage
 		audio = _powerSupplyVoltage *  _outputStage.Process(finalGain / _powerSupplyVoltage * audio);
+		for (unsigned int i = 0; i < ResamplingFactor; ++i)
+			audio(i) = tfdsp::RackOutputAdapter::ProcessOversampled(audio(i));
 	}
 };
 template<typename T>

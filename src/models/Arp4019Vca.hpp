@@ -5,10 +5,40 @@
 #include <functional>
 #include <memory>
 
+#include "tfdsp/rail.hpp"
 #include "tfdsp/sampleRate.hpp"
 
 namespace tfdsp
 {
+
+struct Arp4019ControlVoltages
+{
+	double linear{};
+	double exponential{};
+};
+
+inline Arp4019ControlVoltages RouteArp4019ControlVoltages(
+	double envelopeVolts, double modulationVolts, bool modulationConnected,
+	bool addEnvelope, bool envelopeIsExponential,
+	bool modulationIsExponential)
+{
+	Arp4019ControlVoltages routed;
+	if (!modulationConnected || addEnvelope)
+	{
+		if (envelopeIsExponential)
+			routed.exponential += envelopeVolts;
+		else
+			routed.linear += envelopeVolts;
+	}
+	if (modulationConnected)
+	{
+		if (modulationIsExponential)
+			routed.exponential += modulationVolts;
+		else
+			routed.linear += modulationVolts;
+	}
+	return routed;
+}
 
 // Circuit-scaled reduction of the ARP 4019 VCA.
 //
@@ -74,8 +104,9 @@ public:
 			exponentialControlVolts);
 		Eigen::Array<double, OversamplingFactor, 1> output;
 		for (int i = 0; i < OversamplingFactor; ++i)
-			output(i) = ProcessOversampled(audio(i), linearCv(i),
-				exponentialCv(i), initialGain);
+			output(i) = RackOutputAdapter::ProcessOversampled(
+				ProcessOversampled(audio(i), linearCv(i), exponentialCv(i),
+					initialGain));
 
 		const double result = _audioResampler->Downsample(output);
 		if (!std::isfinite(result))
@@ -83,7 +114,8 @@ public:
 			Reset();
 			return 0.0f;
 		}
-		return static_cast<float>(SoftDecimatorSafety(result));
+		return static_cast<float>(
+			RackOutputAdapter::ProcessPostDecimation(result));
 	}
 
 	// Process one sample already running at the module's internal rate. This is
@@ -218,15 +250,6 @@ private:
 			(magnitude - OutputKneeVolts) / headroom), voltage);
 	}
 
-	static double SoftDecimatorSafety(double voltage)
-	{
-		const double magnitude = std::abs(voltage);
-		if (magnitude <= OutputRailVolts)
-			return voltage;
-		const double excess = magnitude - OutputRailVolts;
-		return std::copysign(OutputRailVolts + excess /
-			std::sqrt(1.0 + excess * excess), voltage);
-	}
 };
 
 } // namespace tfdsp

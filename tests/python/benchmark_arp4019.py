@@ -1,4 +1,4 @@
-"""Print reproducible ARP 4019 production/reference comparisons."""
+"""Print reproducible ARP 4019 model/reference comparisons."""
 
 from __future__ import annotations
 
@@ -56,19 +56,19 @@ def main():
         print(f"{frequency:12.0f} | {20 * np.log10(measured / expected):+8.4f}")
 
     print("\n1 kHz nonlinear transfer against a 16x continuous-time proxy")
-    print("input Vpk | production THD | reference THD")
+    print("input Vpk | model THD | reference THD")
     for amplitude in (0.1, 1.0, 5.0, 10.0):
         count = int(0.25 * SAMPLE_RATE)
         time = np.arange(count) / SAMPLE_RATE
         audio = amplitude * np.sin(2.0 * np.pi * 1000.0 * time)
-        production = dsp.arp4019_x4(audio, np.full(count, 10.0), np.full(count, -10.0))
+        model = dsp.arp4019_x4(audio, np.full(count, 10.0), np.full(count, -10.0))
         reference, reference_rate = continuous_proxy(amplitude, 1000.0)
-        production_h = harmonic_amplitudes(production, 1000.0, SAMPLE_RATE)
+        model_h = harmonic_amplitudes(model, 1000.0, SAMPLE_RATE)
         reference_h = harmonic_amplitudes(reference, 1000.0, reference_rate)
-        production_thd = np.linalg.norm(production_h[1:]) / production_h[0]
+        model_thd = np.linalg.norm(model_h[1:]) / model_h[0]
         reference_thd = np.linalg.norm(reference_h[1:]) / reference_h[0]
         print(
-            f"{amplitude:9.1f} | {100 * production_thd:13.6f}% | "
+            f"{amplitude:9.1f} | {100 * model_thd:9.6f}% | "
             f"{100 * reference_thd:12.6f}%"
         )
 

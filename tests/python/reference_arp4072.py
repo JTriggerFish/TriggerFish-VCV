@@ -17,6 +17,8 @@ LIMITER_EMITTER_DROP = 0.65
 OUTPUT_LEVEL_SHIFT_GAIN = 100.0 / 13.0
 OUTPUT_KNEE_VOLTS = 10.0
 OUTPUT_RAIL_VOLTS = 13.5
+RACK_OUTPUT_KNEE_VOLTS = 10.5
+RACK_PRE_DECIMATION_LIMIT_VOLTS = 11.5
 
 
 def stage_base_resistance() -> float:
@@ -134,7 +136,7 @@ def midpoint_transfer(frequency_hz, cutoff_hz, resonance=0.0, sample_rate=48_000
 
 
 def output_compliance(voltage):
-    """Final level-shifter compliance used by the production filter."""
+    """4072 level-shifter compliance followed by the Rack output adapter."""
 
     voltage = np.asarray(voltage, dtype=float)
     magnitude = np.abs(voltage)
@@ -143,7 +145,19 @@ def output_compliance(voltage):
         OUTPUT_KNEE_VOLTS
         + headroom * np.tanh((magnitude - OUTPUT_KNEE_VOLTS) / headroom)
     )
-    return np.where(magnitude <= OUTPUT_KNEE_VOLTS, voltage, limited)
+    circuit_output = np.where(magnitude <= OUTPUT_KNEE_VOLTS, voltage, limited)
+    circuit_magnitude = np.abs(circuit_output)
+    rack_headroom = RACK_PRE_DECIMATION_LIMIT_VOLTS - RACK_OUTPUT_KNEE_VOLTS
+    rack_excess = (circuit_magnitude - RACK_OUTPUT_KNEE_VOLTS) / rack_headroom
+    rack_limited = np.sign(circuit_output) * (
+        RACK_OUTPUT_KNEE_VOLTS
+        + rack_headroom * rack_excess / np.hypot(1.0, rack_excess)
+    )
+    return np.where(
+        circuit_magnitude <= RACK_OUTPUT_KNEE_VOLTS,
+        circuit_output,
+        rack_limited,
+    )
 
 
 def continuous_rhs(
