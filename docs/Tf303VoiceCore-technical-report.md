@@ -2,630 +2,1019 @@
 
 <p align="center"><img src="../doc/Tf303VoiceCore.png" height="520" alt="303 Voice Core module"></p>
 
-The [module guide](../README.md#303-voice-core) describes the panel controls
-and patching interface.
+The [module guide](../README.md#303-voice-core) describes the panel controls and
+patching interface. This report describes the circuits represented by the
+module and the equations evaluated by its DSP model.
 
-## Overview
+## 1. Module architecture
 
-`Tf303VoiceCore` is the filter, articulation, and VCA section of a TB-303-style
-voice. It models the Roland TB-303 diode ladder, its surrounding
-AC-coupling and resonance network, and selected Devil Fish extensions. The
-module adds a TB-303-style filter envelope, volume envelope, accent paths, and
-a reduced BA662-style OTA VCA. Separate outputs expose the filter and the
-post-VCA voice.
+`Tf303VoiceCore` combines four functions from the TB-303 signal path:
 
-The circuit values and transfer functions come from the Roland service notes
-and Tim Stinchcombe's analyses. Devil Fish ranges and articulation behaviour
-come from Robin Whittle's published documentation. The OTA reduction was
-checked against the Open Music Labs BA662 clone populated with manufacturer
-models for modern matched transistors. Open303 and Soundpipe were consulted for
-software resonance-level comparisons.
+1. a four-stage resonant diode-ladder low-pass filter;
+2. a filter envelope with the original accent-sweep behaviour;
+3. a volume envelope with a separate accent pulse;
+4. a voltage-controlled amplifier (VCA) based on the BA662 circuit.
 
-## Diode ladder
+The audio path is:
 
-The ladder has four mutually loading stages. Its first capacitor is 18 nF and
-the remaining three are 33 nF. Define
+```text
+IN -> diode-ladder filter -> LP OUT
+                         -> VCA -> VCA OUT
+```
+
+`GATE` starts both internal envelopes. The filter envelope changes cutoff and
+the volume envelope controls the VCA. `ACC` shortens the filter-envelope decay,
+drives the filter's accent-sweep network, and adds a short pulse to the VCA
+control current.
+
+The cutoff control is the sum of the Cutoff knob, `1V/OCT`, attenuverted
+`EXP CV`, and the internal filter envelope. `FM` adds AC-coupled linear
+frequency modulation. Patching `VCA CV` replaces the internal volume envelope;
+its amount knob scales the external 0--10 V signal. The VCA accent pulse remains
+active with either control source.
+
+The panel also exposes selected Devil Fish extensions: up to 66.6 times the
+stock input drive, doubled resonance feedback, separate normal and accented
+filter-envelope decays, variable volume-envelope decay or sustain, linear
+filter FM, bass extension, and four accent-sweep modes.
+
+Each polyphonic channel has independent filter, envelope, accent-memory, and
+VCA state. `IN` determines the number of channels, and mono control inputs are
+broadcast across them. The filter and VCA run at 4x sample rate by default,
+with a 2x option in the context menu. The envelopes run at the Rack sample
+rate. The combined cutoff trajectory and the VCA's main control trajectory are
+interpolated to the internal audio rate.
+
+### 1.1 Nominal voltage mapping
+
+A Rack oscillator is expected to produce about 10 V peak-to-peak. At 0 dB
+Drive, this is mapped to the junction voltage produced by the original 5.5 V
+peak-to-peak oscillator after the 220 kΩ / 2.2 kΩ filter-input divider.
+The inverse mapping returns the ladder state to Rack volts before it reaches
+either output or the VCA.
+
+Gate and Accent follow Rack's 0--10 V convention, cutoff tracking uses
+1 V/octave, and the normalled volume envelope spans 0--10 V. Circuit overload
+and Rack cable headroom are handled by smooth output-compliance curves described
+in Section 3.7.
+
+## 2. Circuit analysis
+
+### 2.1 Diode ladder
+
+<p align="center">
+<a href="https://www.synfo.nl/servicemanuals/Roland/ROLAND_TB-303_SERVICE_NOTES.pdf"><img src="Tf303-filter-schematic.png" width="100%" alt="TB-303 diode-ladder filter and panel connections"></a>
+</p>
+
+<p align="center"><em>Figure 1. TB-303 VCF and its panel connections. Q12 is
+the input differential pair. The four ladder sections use C18, C19, C24, and
+C26. Q21 and the surrounding network convert the final ladder state to the
+filter output. Source: Roland TB-303 Service Notes, main-board schematic.</em></p>
+
+Audio and resonance feedback meet at the input differential pair. The pair's
+collector-current difference drives a chain of four capacitor states. The
+diode-connected transistors between adjacent states respond to their voltage
+differences, and the final junction connects the fourth state to the end of the
+ladder. All five junction currents therefore participate in the large-signal
+response.
+
+For a matched transistor pair with differential voltage $v$, the normalized
+current is
 
 $$
-r = \frac{33}{18}, \qquad
-c = r^{-1/4} = 0.8593887047640296, \qquad
-\Omega = 2\pi f_c c .
+\phi(v)=\tanh\!\left(\frac{v}{2V_T}\right),
 $$
 
-Let $x_0,\ldots,x_3$ be the ladder states, $u$ the forward-path signal,
-$F(x_3)$ the resonance-path signal, and $k$ the feedback amount. The normalized
-nonlinear junction currents are
+where $V_T$ is the thermal voltage. The DSP uses the dimensionless voltage
+$x=v/(2V_T)$, so each junction law becomes $\tanh(x)$.
+
+The first timing capacitor is 18 nF and the remaining three are 33 nF. Their
+ratio is
 
 $$
-\begin{aligned}
-j_0 &= \tanh\!\left(u-kF(x_3)\right),\\
-j_1 &= \tanh(x_0-x_1),\\
-j_2 &= \tanh(x_1-x_2),\\
-j_3 &= \tanh(x_2-x_3),\\
-j_4 &= \tanh(x_3).
-\end{aligned}
+r=\frac{33}{18}=1.8333\ldots
 $$
 
-The state equations are
-
 $$
-\begin{aligned}
-\dot{x}_0 &= \Omega r(j_0-j_1),\\
-\dot{x}_1 &= \Omega (j_1-j_2),\\
-\dot{x}_2 &= \Omega (j_2-j_3),\\
-\dot{x}_3 &= \Omega (j_3-j_4).
-\end{aligned}
+c=r^{-1/4}=0.8593887047640296.
 $$
 
-Linearization around zero gives the normalized denominator
+The four normalized stage-rate factors are $rc,c,c,c$. Because their product
+is $r c^4=1$, their geometric mean is one; $f_c$ therefore remains the
+reference cutoff while the 18 nF first stage retains its faster response. The
+common angular-rate factor is
+
+$$
+\Omega=2\pi f_c c.
+$$
+
+Let $x_0,\ldots,x_3$ be the four normalized capacitor voltages. Let $u$ be the
+normalized signal arriving through the forward coupling network, $y_r$ the
+normalized signal returned through the resonance network, and $k$ the feedback
+gain. The five normalized junction currents are
+
+$$
+j_0=\tanh(u-ky_r),
+$$
+
+$$
+j_1=\tanh(x_0-x_1),
+$$
+
+$$
+j_2=\tanh(x_1-x_2),
+$$
+
+$$
+j_3=\tanh(x_2-x_3),
+$$
+
+$$
+j_4=\tanh(x_3).
+$$
+
+The continuous large-signal model is
+
+$$
+\dot{x}_0=\Omega r(j_0-j_1),
+$$
+
+$$
+\dot{x}_1=\Omega(j_1-j_2),
+$$
+
+$$
+\dot{x}_2=\Omega(j_2-j_3),
+$$
+
+$$
+\dot{x}_3=\Omega(j_3-j_4).
+$$
+
+These four coupled nonlinear differential equations define the audio model.
+
+For frequency-response analysis, setting $\tanh z\approx z$ gives the
+small-signal ladder transfer. With complex frequency $s$ and normalized
+frequency
+
+$$
+p=\frac{s}{2\pi f_c},
+$$
+
+the denominator is
 
 $$
 D(p)=p^4+(r+6)cp^3+(5r+10)c^2p^2
- +(6r+4)c^3p+1,
-\qquad p=\frac{s}{2\pi f_c}.
++(6r+4)c^3p+1.
 $$
 
-For the idealized ratio $r=2$, this becomes Stinchcombe's polynomial
+The corresponding ladder transfer is
 
 $$
-D(p)=p^4+2^{11/4}p^3+10\sqrt{2}\,p^2+2^{13/4}p+1.
+L(s)=\frac{1}{D\!\left(s/(2\pi f_c)\right)}.
 $$
 
-The transition region is shallower than four buffered identical poles, while
-the asymptotic stop-band slope remains 24 dB/octave.
+Its high-frequency slope approaches 24 dB/octave. Mutual loading and the 18 nF
+first stage spread the poles, producing a broader transition than four
+identical buffered one-pole sections.
 
-## Coupling and resonance network
+### 2.2 Coupling and resonance network
 
-The input, output, and resonance paths contain several coupling sections. The
-complete fitted forward path is
+<p align="center">
+<a href="https://www.timstinchcombe.co.uk/index.php?pge=diode2"><img src="Tf303-coupling-sections.gif" width="70%" alt="Annotated TB-303 filter coupling sections"></a>
+</p>
+
+<p align="center"><em>Figure 2. AC-coupling groups surrounding the ladder,
+annotated by Tim Stinchcombe. These components form the forward and resonance
+transfer functions in addition to the four nonlinear ladder states.</em></p>
+
+The ladder sits inside a larger AC-coupled signal path. The oscillator enters
+through C17 and R62. The fourth ladder state reaches the filter output through
+the Q19/Q20/Q21 network and C14. The Resonance potentiometer returns a variable
+portion of that output through C15 to the input differential pair. This return
+path closes the feedback loop around the complete four-stage ladder.
+
+The surrounding RC networks contribute additional poles and zeros. Writing
+$s$ for complex angular frequency in rad/s, the complete forward transfer from
+the filter input to the ladder/output path is
 
 $$
-\begin{aligned}
-H_f(s)={}&1.06
-\frac{s}{s+578.1}
-\frac{s}{s+97.5}
-\frac{s}{s+38.5}\\
-&\times\frac{s+109.9}{s+20.0}
-\frac{s+34.0}{s+4.45}.
-\end{aligned}
-$$
-
-The resonance path is
-
-$$
-\begin{aligned}
-H_r(s)={}&18.7
+H_f(s)=1.06
 \frac{s}{s+578.1}
 \frac{s}{s+97.5}
 \frac{s}{s+38.5}
-\frac{s}{s+20.0}\\
-&\times\frac{s+46.5}{s+7.41}
+\frac{s+109.9}{s+20.0}
+\frac{s+34.0}{s+4.45}.
+$$
+
+The resonance-return transfer from the fourth ladder state back to the input
+pair is
+
+$$
+H_r(s)=18.7
+\frac{s}{s+578.1}
+\frac{s}{s+97.5}
+\frac{s}{s+38.5}
+\frac{s}{s+20.0}
+\frac{s+46.5}{s+7.41}
 \frac{s+4.40}{s+4.45}.
-\end{aligned}
 $$
 
-The constants are angular frequencies in radians per second. A common
-$(s+7.41)$ factor in the published forward numerator and coupling denominator
-has been cancelled. With $L(s)=1/D(s)$ denoting the linearized ladder, the
-closed-loop response is
+Combining these networks with the linearized ladder gives
 
 $$
-H(s)=\frac{L(s)H_f(s)}{1+kL(s)H_r(s)}.
+H(s)=\frac{L(s)H_f(s)}
+{1+kL(s)H_r(s)}.
 $$
 
-The stock and extended feedback mappings are
+Here $L(s)$ is the linearized ladder transfer from Section 2.1. This expression
+is used to verify low-level frequency response. Audio processing evaluates the
+five nonlinear junction laws, so drive and resonance change the waveform as
+well as the linear response.
+
+After the Resonance knob and CV are summed and limited to $q\in[0,1]$, the
+feedback gain maps to
 
 $$
 k_{\mathrm{stock}}=0.78q,
-\qquad
-k_{\mathrm{high}}=2(0.78q),
 $$
 
-where $0\le q\le1$ is the panel resonance. High mode follows the published
-Devil Fish doubled-feedback range and reaches self-oscillation.
-
-The output applies a resonance-dependent calibration
-
 $$
-G_{\mathrm{out}}=9.494\left(1+qm\right),
-\qquad
-m=\begin{cases}2,&\text{stock},\\3,&\text{high}.
-\end{cases}
+k_{\mathrm{high}}=1.56q.
 $$
 
-The fixed factor 9.494 converts the normalized ladder voltage back to the
-nominal Rack scale. The second factor is a
-software compensation informed by Open303 and `tbvcf`; it is calibrated from
-the AC signal after output coupling and retains part of the source-level
-reduction produced by the circuit.
+The coefficient 0.78 calibrates the stock end-stop against the complete closed
+loop. High mode follows the doubled-feedback Devil Fish modification and
+extends well into self-oscillation.
 
-## Bass extension
+### 2.3 Bass extension
 
-The Devil Fish modification increases two output-coupling capacitors by a
-factor of ten. The software uses a calibrated two-shelf reduction
+The Devil Fish Bass modification increases C20 and C21 by a factor of ten,
+lowering two AC-coupling corners after the ladder. These capacitors affect the
+signal delivered to the output and VCA; the resonance return retains its stock
+transfer.
+
+The continuously variable reduction is
 
 $$
-H_b(s,b)=\left(\frac{s+\omega_b}
- {s+\omega_b10^{-b}}\right)^2,
-\qquad
+H_b(s,b)=
+\left(\frac{s+\omega_b}{s+\omega_b10^{-b}}\right)^2,
+$$
+
+$$
 \omega_b=2\pi(24.66),
-\qquad 0\le b\le1.
 $$
 
-At $b=0$ the shelves cancel. At $b=1$ their poles move down one decade. The
-result adds approximately 4 dB at 32 Hz relative to the stock setting. The
-24.66 Hz corner and squared-shelf form are fitted software parameters. A 10 ms
-smoother prevents abrupt coefficient changes. The $s/(s+38.5)$ factor from
-the fitted forward path is evaluated after the nonlinear ladder. Multiplication
-commutes in the small-signal model, so this placement retains the published
-transfer while removing DC produced within the driven ladder before the Bass
-shelves.
+where $0\leq b\leq1$. At $b=0$ each ratio is unity. At $b=1$ both poles move
+down one decade, adding about 4 dB at 32 Hz while retaining DC blocking. The
+24.66 Hz corner and the two-shelf reduction are calibrated from the complete
+coupling response. A 10 ms parameter smoother prevents zipper noise when the
+Bass knob moves.
 
-## Discrete-time realization
+### 2.4 Filter and volume envelopes
 
-### Analog ratio sections
+<p align="center">
+<a href="https://www.synfo.nl/servicemanuals/Roland/ROLAND_TB-303_SERVICE_NOTES.pdf"><img src="Tf303-envelope-vca-schematic.png" width="90%" alt="TB-303 envelope generator and BA662 VCA circuit"></a>
+</p>
 
-Each coupling factor
+<p align="center"><em>Figure 3. Envelope and VCA area of the main board.
+IC12 and Q39–Q41 switch the envelope timing network. The upper control path
+drives the BA662A VCA. The filter envelope also feeds the cutoff and accent
+paths. C38 couples the VCA output to the Volume control.</em></p>
 
-$$
-H_a(s)=\frac{s+z}{s+p}
-$$
+The TB-303 has two articulation contours:
 
-uses a topology-preserving one-pole state. At sample rate $f_s$,
+- The filter envelope, called the main envelope generator (MEG) in the service
+  documentation, jumps to its peak when a note starts and then decays
+  exponentially. It controls cutoff and supplies both accent branches.
+- The volume envelope, called the volume envelope generator (VEG), has a short
+  delay and attack followed by decay while the gate is held. Releasing the gate
+  closes the VCA through a separate release path.
 
-$$
-g=\tan\!\left(\frac{p}{2f_s}\right),
-\qquad
-a=\frac{g}{1+g},
-$$
+Accent shortens the filter-envelope decay in the original instrument. The
+Normal and Accent Decay knobs expose the two endpoints independently, following
+the Devil Fish extension; the Accent voltage interpolates between them.
 
-followed by
+<p align="center">
+<a href="https://www.synfo.nl/servicemanuals/Roland/ROLAND_TB-303_SERVICE_NOTES.pdf"><img src="Tf303-envelope-modulation.png" width="90%" alt="Roland explanation of the TB-303 filter envelope bias"></a>
+</p>
 
-$$
-\begin{aligned}
-\ell &= ax+(1-a)s_1,\\
-y &= x+\left(\frac{z}{p}-1\right)\ell,\\
-s_1' &= 2\ell-s_1.
-\end{aligned}
-$$
+<p align="center"><em>Figure 4. Roland's explanation of the filter-envelope
+bias. Increasing Env raises the beginning of the cutoff sweep and lowers its
+tail, keeping more of the decay in the filter's responsive range. Source:
+TB-303 Service Notes, “VCF Envelope Modulation”.</em></p>
 
-Before updating the state, the section output is affine in its input:
+The resonance potentiometer has a second section in the accent circuit. At
+one end, the accented filter envelope reaches the cutoff summing node mainly
+through 47 kΩ and produces a sharp pulse. At the other end, it charges C13
+through 147 kΩ and produces a rounded sweep. C13 retains charge between
+closely spaced accents, so repeated accents interact.
 
-$$
-y=\left[1+\left(\frac{z}{p}-1\right)a\right]x
- +\left(\frac{z}{p}-1\right)(1-a)s_1.
-$$
+The VCA accent branch passes the accented filter envelope through 47 kΩ and
+33 nF. This short RC response softens the pulse before it adds to the VCA
+control current.
 
-Composing these gain and offset terms through the resonance cascade gives
+### 2.5 BA662 VCA
 
-$$
-F(x_3)=Ax_3+B.
-$$
+IC15 in Figure 3 is a BA662A operational transconductance amplifier. The
+filtered audio appears as a small differential voltage across its input pair.
+The envelope-derived control current $I_{\mathrm{ABC}}$ sets the pair's
+transconductance, so the same audio input produces more output current as the
+envelope rises. The output mirror drives the 220 kΩ load, and the BA662 output
+buffer drives C38 and the 50 kΩ Volume potentiometer.
 
-This expression enters the current nonlinear solve and preserves the
-instantaneous resonance-path response.
-
-### Ladder update and Newton solve
-
-The ladder junction differences use an implicit midpoint update. The resonance
-signal uses the current-sample affine TPT preview. For the previous and next
-state vectors,
-
-$$
-x_m=\frac{x_n+x_{n+1}}{2},
-$$
-
-Define the dimensionless junction-flow vector
+For a matched differential pair,
 
 $$
-\Phi(x)=
-\begin{bmatrix}
-r(j_0-j_1) & j_1-j_2 & j_2-j_3 & j_3-j_4
-\end{bmatrix}^{\mathsf T}.
+i_o=\eta I_{\mathrm{ABC}}
+\tanh\left(\frac{v_d}{2V_T}\right),
 $$
 
-The residual is
-
-$$
-R(x_{n+1})=x_{n+1}-x_n
--\Gamma\Phi(x_m,x_{3,n+1}),
-$$
-
-with the prewarped coefficient
-
-$$
-\Gamma=2c\tan\!\left(\frac{\pi f_c}{f_{s,\mathrm{internal}}}\right).
-$$
-
-Newton iterations solve
-
-$$
-J(x_i)\Delta_i=-R(x_i),
-\qquad
-x_{i+1}=x_i+d_i\Delta_i.
-$$
-
-The analytic $4\times4$ Jacobian uses
-
-$$
-\frac{d}{dz}\tanh z=1-\tanh^2z.
-$$
-
-Its ladder terms form a tridiagonal matrix, with an additional row-0,
-column-3 term from the resonance preview. Gaussian elimination uses partial
-pivoting. Updates larger than one normalized state unit are damped. The solve
-allows eight iterations and terminates when
-
-$$
-\max_i |R_i| < 10^{-11}.
-$$
-
-A finite bounded final iterate is retained when the iteration limit is reached,
-and a diagnostic counter records the event. Non-finite states or magnitudes
-above 100 reset the affected channel.
-
-### Oversampling
-
-The module uses the repository's polyphase IIR half-band resampler, derived
-from the Valenzuela--Constantinides elliptic half-band construction. The
-seventh-order design runs at 2x or 4x, with 4x as the default.
-
-One interpolator feeds the input network, ladder, Bass correction, and OTA VCA.
-Independent decimators give both outputs the same resampling phase; the VCA's
-C38 coupling section contributes its intended low-frequency phase response.
-Exponential cutoff pitch, linear-Hz FM, resonance, and VCA CV use independent
-matching interpolators before their nonlinear stages. Pitch is converted to
-hertz and combined with linear FM at the internal rate. The envelope and accent
-state machines run at the host rate because their bandwidth is low; their
-contributions enter the corresponding reconstructed control paths.
-
-A coherent high-drive sine test measured the following non-harmonic residuals.
-The 16x result uses the ladder without an internal resampler followed by a
-high-rejection FIR decimator.
-
-| Input | 2x, order 7 | 4x, order 7 | 16x + FIR |
-|---:|---:|---:|---:|
-| 5 kHz | -18.26 dBc | -23.84 dBc | -37.74 dBc |
-| 7 kHz | -14.89 dBc | -19.33 dBc | -36.32 dBc |
-| 9 kHz | -10.74 dBc | -16.33 dBc | -28.01 dBc |
-| 11 kHz | -8.21 dBc | -13.28 dBc | -32.15 dBc |
-
-The ninth-order repository design was also evaluated. At 4x its residual moved
-between 0.3 dB worse and 1.2 dB better across the same cases. Its flatter
-passband reduced the 20 kHz round-trip loss from 0.097 dB to below 0.001 dB,
-while group delay increased from 3.06 to 3.44 host samples at low frequency and
-from 6.34 to 7.80 samples at 20 kHz. The seventh-order design gives the better
-balance of alias rejection and phase dispersion for this module.
-
-Changing mode resets the selected filter, resampler, and VCA coupling states.
-Gate and accent articulation continue from their current state.
-
-## Input and modulation calibration
-
-The oscillator saw is approximately 5.5 V peak-to-peak and the service
-schematic shows it AC-coupled through 220 kohm into the input node held by
-2.2 kohm. For a 10 V peak-to-peak Rack
-oscillator,
-
-$$
-S_{\mathrm{in}}=
-\frac{5.5\,[2.2/(220+2.2)]}{2(0.02585)(10)}
-\approx0.10533
-$$
-
-normalized units per Rack volt. Drive applies
-
-$$
-u_{\mathrm{normalized}}
-=0.10533V_{\mathrm{in}}10^{D/20},
-$$
-
-where $D$ spans silence through the marked 0 dB stock point to 36.47 dB, or
-66.6 times stock. Gain changes use a 10 ms smoother at the oversampled rate.
-
-Cutoff follows the Rack pitch convention
-
-$$
-f_c=f_{\mathrm{C4}}2^P.
-$$
-
-The knob spans 10 Hz to 20 kHz and defaults to 500 Hz. The V/OCT input adds
-directly to $P$. The bipolar exponential CV attenuverter is 1 V/octave at 100%
-and defaults to 53.22%, allowing a 0--10 V envelope to move 500 Hz through
-5.3219 octaves to 20 kHz.
-
-The linear FM input is AC-coupled at approximately 5 Hz and applies
-
-$$
-\Delta f_c=200a_{\mathrm{FM}}V_{\mathrm{FM}}\ \mathrm{Hz}.
-$$
-
-At full depth, a $\pm5$ V signal produces a $\pm1$ kHz excursion.
-Linear FM can request a negative control current at low base cutoffs. A 1 Hz
-softplus knee models transistor pinch-off continuously. A 10 Hz soft knee at
-the numerical cutoff ceiling keeps the prewarped discrete coefficient within
-its supported range.
-
-Key calibration values are summarized below.
-
-| Value | Function | Basis |
-|---|---|---|
-| 18 nF / 33 nF | Ladder capacitor ratio | Roland schematic |
-| 0.10533 | Rack input scale | Schematic signal and divider estimate |
-| 0.78 | Stock feedback scale | Software fit |
-| 2x feedback | High resonance | Published Devil Fish range |
-| 9.494 | Rack output scale | Reciprocal normalized-voltage conversion |
-| $1+qm$ | Resonance makeup | Software calibration |
-| 24.66 Hz, two shelves | Bass response | Calibrated reduction |
-| 200 Hz/V | Linear FM depth | Modular range |
-| 53.22% | Default exponential CV depth | Modular range |
-| 8 V / 11 V | Output knee / asymptotic rail | Headroom calibration |
-
-## Filter and volume envelopes
-
-On a Gate rising edge, the main filter envelope is set to one and decays as
-
-$$
-e_{n+1}=e_n\exp\!\left(-\frac{1}{f_s\tau_e}\right).
-$$
-
-Accent interpolates geometrically between the normal and accented decay times:
-
-$$
-\tau_e=\exp\!\left[(1-a)\ln\tau_{\mathrm{normal}}
- +a\ln\tau_{\mathrm{accent}}\right].
-$$
-
-Both controls span 30 ms to 3 s. Filter-envelope pitch modulation is
-
-$$
-P_{\mathrm{env}}=
-6a_{\mathrm{env}}(e-0.3137)
-+2a_{\mathrm{accent}}e_{\mathrm{accent}}.
-$$
-
-The 0.3137 pivot represents the original bias network: increasing envelope
-depth opens the attack and lowers the tail.
-
-The stock volume envelope uses a 4 ms onset delay, a 3 ms attack, exponential
-decay, an 8 ms release hold, and an 8 ms linear close. Devil Fish mode uses a
-0.5 ms onset delay and an immediate exponential release with time constant
-
-$$
-\tau_{\mathrm{release}}=1.1581186\ \mathrm{ms},
-$$
-
-which reaches approximately -60 dB in 8 ms. A continuously high Gate preserves
-the current envelope states for tied-note slides.
-
-The first half of the VCA Decay control maps logarithmically from 16 ms to
-3.5 s. The second half keeps the 3.5 s decay and raises sustain from zero to
-one.
-
-## Accent sweep
-
-The normal accent sweep uses the published 47 kohm, 100 kohm, and 1 uF network.
-Its direct gain, capacitor target, attack time, and release time are
-
-$$
-G_d=\frac{100}{147},
-\qquad
-G_c=\frac{100}{247},
-$$
-
-$$
-\tau_a=(147\ \mathrm{k\Omega}\parallel100\ \mathrm{k\Omega})(1\ \mu\mathrm{F})
-=59.5\ \mathrm{ms},
-\qquad
-\tau_r=100\ \mathrm{ms}.
-$$
-
-Resonance interpolates between the direct and capacitor paths, preserving the
-capacitor state across repeated accents. Off disables this contribution. Fast
-and Slow implement the published Devil Fish performance descriptions; their
-switched component values remain unpublished.
-
-The VCA accent branch follows the 47 kohm and 33 nF time constant
-
-$$
-\tau_{\mathrm{VCA\ accent}}=(47\ \mathrm{k\Omega})(33\ \mathrm{nF})
-=1.551\ \mathrm{ms}.
-$$
-
-## BA662-style OTA VCA
-
-The reusable OTA core uses the matched-pair large-signal law
-
-$$
-i_{\mathrm{out}}=\eta I_{\mathrm{ABC}}
-\tanh\!\left(\frac{v_d}{2V_T}\right),
-$$
-
-with
-
-$$
-\eta=0.85,
-\qquad
-V_T=25.85\ \mathrm{mV}.
-$$
-
-Its small-signal transconductance is
+where $I_{\mathrm{ABC}}$ is the control current, $v_d$ is the differential
+audio input, $V_T$ is the thermal voltage, and $\eta$ is the current transferred
+through the input pair and output mirror. This equation gives both gain control
+and audio saturation. Its slope at $v_d=0$ is
 
 $$
 g_m=\frac{\eta I_{\mathrm{ABC}}}{2V_T}.
 $$
 
-The wrapper receives the Rack-scaled oversampled filter value before the
-software resonance makeup and applies
+This slope sets the fully-open gain calibration. The runtime model evaluates
+the complete $\tanh$ expression for every oversampled audio value.
+
+## 3. DSP implementation
+
+### 3.1 Sample-rate architecture
+
+Let $f_s$ be the Rack sample rate and let $N\in\{2,4\}$ be the selected
+oversampling factor. The internal audio rate is
 
 $$
-v_d=\sqrt{2}(10^{-3})V_{\mathrm{Rack}},
+f_i=Nf_s.
+$$
+
+The input audio, logarithmic cutoff, linear FM, resonance, and VCA control each
+pass through a matching seventh-order polyphase IIR interpolator. The forward
+coupling network, nonlinear ladder, resonance return, Bass response, VCA, and
+C38 output coupling are evaluated at the selected 2x or 4x internal sample
+rate. Separate matching decimators return `LP OUT` and `VCA OUT` to the Rack
+sample rate.
+
+The filter and volume envelopes update once per Rack sample. The filter
+envelope and filter accent are combined with cutoff before interpolation. The
+volume envelope or external VCA CV forms the interpolated main VCA control. The
+separate VCA accent state has a 1.551 ms RC time constant and is evaluated at
+the Rack rate.
+
+### 3.2 Coupling-section state
+
+Each pole-zero factor in $H_f(s)$, $H_r(s)$, and $H_b(s)$ has the analog form
+
+$$
+H_a(s)=\frac{s+z}{s+p}
+$$
+
+where $p$ and $z$ are angular frequencies in rad/s. It is realized as a
+topology-preserving one-pole state. At internal sample rate $f_i$, let $x$ be
+the current input, $s_1$ the stored integrator state, and $\ell$ the current
+low-pass value. The update is
+
+$$
+g=\tan\left(\frac{p}{2f_i}\right),
 $$
 
 $$
-I_{\mathrm{ABC}}=
-(20\ \mu\mathrm{A})e_{\mathrm{volume}}
-+(20\ \mu\mathrm{A})e_{\mathrm{accent}}.
+a=\frac{g}{1+g},
 $$
 
-The OTA current first drives the physical 220 kohm load. A factor of 9.8181818
-then restores a practical modular level. The efficiency value is calibrated
-against modern 662-family data and the modern-device clone reference.
-
-Output-mirror and buffer compliance use a smooth rail function
+$$
+\ell=ax+(1-a)s_1,
+$$
 
 $$
-S(x)=
+y=x+\left(\frac{z}{p}-1\right)\ell,
+$$
+
+$$
+s_1'=2\ell-s_1.
+$$
+
+Before committing the state update, the output can be written as an affine
+function of the current input:
+
+$$
+y=Ax+B.
+$$
+
+For one section,
+
+$$
+A=1+\left(\frac{z}{p}-1\right)a,
+$$
+
+$$
+B=\left(\frac{z}{p}-1\right)(1-a)s_1.
+$$
+
+If one section has $y=A_1x+B_1$ and the next has
+$w=A_2y+B_2$, their cascade is
+
+$$
+w=(A_2A_1)x+(A_2B_1+B_2).
+$$
+
+Applying this composition to the six resonance sections gives
+
+$$
+y_r=A_rx_3^{n+1}+B_r,
+$$
+
+where $x_3^{n+1}$ is the fourth ladder state being solved for. The coefficients
+$A_r$ and $B_r$ depend only on the stored RC states at the beginning of the
+sample. This preview includes the complete resonance network in the nonlinear
+solve; after the ladder state converges, the six RC states are advanced using
+the solved $x_3^{n+1}$.
+
+Four forward sections are evaluated before the ladder. The remaining
+$s/(s+38.5)$ forward factor is evaluated after it, where it removes DC produced
+inside the driven ladder. Together these sections realize the complete
+$H_f(s)$ from Section 2.2.
+
+### 3.3 Implicit ladder update
+
+Let $\mathbf{x}^{n}$ be the four ladder states from the previous internal
+sample and $\mathbf{x}^{n+1}$ the unknown states for the current sample. Their
+midpoint is
+
+$$
+\mathbf{x}^{m}=\frac{\mathbf{x}^{n}+\mathbf{x}^{n+1}}{2}.
+$$
+
+The input junction is evaluated from the current forward signal and the
+resonance preview $A_r x_3^{n+1}+B_r$. The other four junctions use the
+midpoint states $\mathbf{x}^{m}$. Frequency prewarping gives the dimensionless
+step coefficient
+
+$$
+\Gamma=2c\tan\left(\frac{\pi f_c}{f_i}\right),
+$$
+
+For trial state $\mathbf{x}$, evaluate the junction currents from Section 2.1
+and collect their differences into
+
+$$
+\boldsymbol{\Phi}=
+\bigl(r(j_0-j_1),\ j_1-j_2,\ j_2-j_3,\ j_3-j_4\bigr)^{\mathsf T}.
+$$
+
+The implicit update is the root of
+
+$$
+\mathbf{R}(\mathbf{x})=
+\mathbf{x}-\mathbf{x}^{n}-\Gamma\boldsymbol{\Phi}=\mathbf{0}.
+$$
+
+Newton's method starts with $\mathbf{x}_0=\mathbf{x}^{n}$. At iteration $i$,
+the analytic Jacobian
+$\mathbf{J}_i=\partial\mathbf{R}/\partial\mathbf{x}$ gives the correction
+
+$$
+\mathbf{J}_i\boldsymbol{\Delta}_i=-\mathbf{R}(\mathbf{x}_i),
+$$
+
+$$
+\mathbf{x}_{i+1}=\mathbf{x}_i+d_i\boldsymbol{\Delta}_i.
+$$
+
+The analytic Jacobian follows from
+
+$$
+\frac{d}{dz}\tanh z=1-\tanh^2z.
+$$
+
+The four adjacent ladder junctions produce a tridiagonal Jacobian. The
+resonance preview makes $j_0$ depend on $x_3^{n+1}$, adding the entry in row 0,
+column 3. A four-by-four Gaussian elimination with partial pivoting solves for
+$\boldsymbol{\Delta}_i$.
+
+The damping factor limits the largest state correction to one normalized unit:
+
+$$
+d_i=\frac{1}{\max\!\left(1,\max_j|\Delta_{i,j}|\right)}.
+$$
+
+This keeps a Newton step from crossing several saturated regions at once. The
+solver performs at most eight iterations and stops when
+
+$$
+\max_j|R_j|<10^{-11}.
+$$
+
+If the iteration limit is reached, the model keeps the last finite bounded
+iterate and increments a diagnostic counter. A non-finite state or a normalized
+magnitude above 100 resets the affected channel.
+
+### 3.4 Filter control and level mapping
+
+#### Audio input and Drive
+
+The original oscillator produces approximately 5.5 V peak-to-peak. R62 and
+R70 attenuate it by $2.2/(220+2.2)$ before the filter input pair. Dividing this
+voltage by the pair's $2V_T$ scale and mapping a 10 V peak-to-peak Rack signal
+to the same operating point gives
+
+$$
+S_{\mathrm{in}}=
+\frac{5.5\,[2.2/(220+2.2)]}
+{2(0.02585)(10)}
+=0.10533
+$$
+
+normalized units per Rack volt. With Drive $D$ in decibels,
+
+$$
+u_{\mathrm{normalized}}
+=0.10533\,v_{\mathrm{in}}10^{D/20}.
+$$
+
+The marked 0 dB position therefore reproduces the stock junction drive. The
+upper limit, 36.47 dB, is 66.6 times that level. Drive changes are smoothed with
+a 10 ms time constant.
+
+#### Cutoff and modulation
+
+Let $P$ be the sum, in octaves, of the Cutoff knob, direct `1V/OCT` input,
+attenuverted `EXP CV`, and internal filter-envelope contribution. The
+exponential cutoff request is
+
+$$
+f_e=261.625565\,2^P.
+$$
+
+Linear `FM` is high-pass filtered at 5 Hz, then converted directly to a
+frequency offset:
+
+$$
+\Delta f=200a_{\mathrm{FM}}v_{\mathrm{FM}}\ \mathrm{Hz}.
+$$
+
+Here $a_{\mathrm{FM}}$ is the bipolar FM amount and $v_{\mathrm{FM}}$ is the
+input in volts. Full-scale ±5 V modulation therefore contributes ±1 kHz.
+Pitch and linear FM are interpolated independently, converted to hertz at the
+internal rate, and added:
+
+$$
+f_{\mathrm{request}}=f_e+\Delta f.
+$$
+
+The transistor cutoff control becomes asymptotic near zero current, and the
+discrete solver requires margin below Nyquist. Define
+
+$$
+\operatorname{softplus}(x,h)=h\ln\!\left(1+e^{x/h}\right)
+$$
+
+and
+
+$$
+f_{\max}=\min(20\ \mathrm{kHz},0.45f_s).
+$$
+
+The cutoff passed to the ladder is
+
+$$
+f_c=f_{\max}-\operatorname{softplus}\!\left(
+f_{\max}-\operatorname{softplus}(f_{\mathrm{request}},1\ \mathrm{Hz}),
+10\ \mathrm{Hz}\right).
+$$
+
+This mapping follows the requested frequency through the ordinary operating
+range and bends smoothly at both limits.
+
+#### Output level and circuit compliance
+
+After output coupling and Bass correction, the normalized ladder value $y_f$
+is converted back to Rack volts:
+
+$$
+v_f=9.494y_f.
+$$
+
+This factor is the reciprocal of the input normalization to the stated
+precision. The resonance-dependent output calibration is
+
+$$
+M_{\mathrm{stock}}=1+2q,
+$$
+
+$$
+M_{\mathrm{high}}=1+3q.
+$$
+
+Here $q$ is the reconstructed panel resonance value. Let $M$ denote the value
+for the selected resonance range. The modeled filter buffer
+and BA662 output node remain linear through 8 V and approach an 11 V circuit
+limit smoothly. For either polarity, define
+
+$$
+C(v)=\operatorname{sgn}(v)
 \begin{cases}
-x, & |x|\leq V_k,\\
-\operatorname{sgn}(x)\left[V_k+(V_r-V_k)
-\tanh\!\left(\dfrac{|x|-V_k}{V_r-V_k}\right)\right],
-& |x|>V_k,
+|v|, & |v|\leq8,\\
+8+3\tanh\!\left((|v|-8)/3\right), & |v|>8.
 \end{cases}
 $$
 
-where $V_k=8$ V and $V_r=11$ V in calibrated Rack units. The physical
-compliance limits are these values divided by 9.8181818. The curve is linear
-through the knee with continuous first derivative and approaches the rail
-without producing a flat segment. These conservative limits are calibration
-values because suitable original-BA662 compliance curves are unavailable.
+This continuous curve has unit slope at the 8 V join and progressively
+compresses larger excursions. The uncorrected $v_f$ feeds the VCA, preserving
+its calibrated input level. Makeup and circuit compliance are applied when
+forming the two outputs:
 
-The resonance makeup is applied after the nonlinear VCA, followed by the same
-smooth output-stage rail. This prevents a software level correction from
-changing the OTA drive. Both nonlinear compliance stages run before the VCA's
-half-band decimator. The shared Rack output adapter remains linear through
-11.5 V after decimation and approaches 11.7 V smoothly if the decimator rings
-beyond that point.
+$$
+v_{\mathrm{LP}}=C\!\left(Mv_f\right),
+$$
 
-### C38 output coupling
+$$
+v_{\mathrm{VCA}}=C\!\left(M\,V(v_f)\right),
+$$
 
-C38 is 1 uF and drives the 50 kohm volume load, giving
+where $V(\cdot)$ is the nonlinear VCA path and $C(\cdot)$ is the modeled
+circuit-output compliance. Placing $M$ after the VCA keeps output compensation
+from increasing the VCA's distortion.
+
+The fixed circuit and modular mappings are summarized here:
+
+| Quantity | Value | Basis |
+| --- | ---: | --- |
+| Ladder capacitors | 18 nF, then 33 nF three times | Roland schematic |
+| Rack-to-ladder input scale | 0.10533 per volt | Stock saw level and input divider |
+| Stock feedback scale | 0.78 | Closed-loop calibration |
+| High feedback scale | twice stock | Devil Fish documentation |
+| Ladder-to-Rack scale | 9.494 | Reciprocal normalized-voltage conversion |
+| Resonance makeup | $1+2q$ or $1+3q$ | Output-level calibration |
+| Bass shelves | 24.66 Hz, two sections | Fit to the modified coupling response |
+| Linear FM | 200 Hz/V at full amount | Modular control range |
+| Rack-to-VCA differential scale | $\sqrt{2}$ mV/V | 5 V peak to 5 mV RMS reference point |
+| VCA base and accent currents | 20 µA each at full scale | BA662 operating-point calibration |
+| VCA output load | 220 kΩ | Roland schematic |
+| Circuit compliance | 8 V knee, 11 V asymptote | Filter-buffer and VCA headroom calibration |
+| Rack cable limit | 11.5 V knee, 11.7 V asymptote | Protected-rail output adapter |
+
+### 3.5 Articulation model
+
+#### Filter envelope
+
+Let $a=\operatorname{clamp}(v_{\mathrm{ACC}}/10,0,1)$ be the normalized
+Accent input. A Gate rising edge sets the filter-envelope state $e$ to one.
+Its decay time is the geometric interpolation
+
+$$
+\tau_e=
+\exp\left((1-a)\ln\tau_{\mathrm{normal}}
++a\ln\tau_{\mathrm{accent}}\right).
+$$
+
+between the Normal and Accent Decay settings. For each Rack sample,
+
+$$
+e[n+1]=e[n]\exp\left(-\frac{1}{f_s\tau_e}\right).
+$$
+
+The envelope value used for the current sample is taken before this decay
+update. The resulting cutoff contribution, in octaves, is
+
+$$
+P_{\mathrm{env}}=
+6a_{\mathrm{env}}(e-0.3137)
++2a_{\mathrm{accent}}e_{\mathrm{sweep}}.
+$$
+
+where $a_{\mathrm{env}}$ is the Env knob, $a_{\mathrm{accent}}$ is the Accent
+knob, and $e_{\mathrm{sweep}}$ is the output of the accent-sweep circuit. The
+0.3137 pivot represents the bias shown in Figure 4: increasing Env raises the
+start of the sweep while lowering its late tail.
+
+#### Filter accent sweep
+
+For the Normal accent mode, the direct and capacitor-path gains are
+
+$$
+G_d=\frac{100}{147},
+$$
+
+$$
+G_c=\frac{100}{247},
+$$
+
+$$
+\tau_a=(147\ \mathrm{k\Omega}\parallel100\ \mathrm{k\Omega})
+(1\ \mathrm{\mu F})=59.5\ \mathrm{ms},
+$$
+
+$$
+\tau_r=(100\ \mathrm{k\Omega})(1\ \mathrm{\mu F})
+=100\ \mathrm{ms}.
+$$
+
+Let $e_a=ae$ be the accented filter-envelope source and let $q$ be normalized
+resonance. In Normal mode, the C13 state $c_a$ moves toward $G_c e_a$ with
+$\tau_a$ while rising and $\tau_r$ while falling. Its output is
+
+$$
+e_{\mathrm{sweep}}=(1-q)G_de_a+q c_a.
+$$
+
+The state $c_a$ persists between notes, reproducing the interaction between
+closely spaced accents. Off mode returns zero and discharges the state. Fast
+mode uses a 10 ms leaky peak detector to emphasize the first accent in a run.
+Slow mode uses four times the Normal attack and release times and twice its
+capacitor target. The Fast and Slow timings are behavioural realizations of the
+published Devil Fish descriptions.
+
+#### Volume envelope and VCA accent
+
+The VCA accent RC time constant is
+
+$$
+\tau_{\mathrm{VCA\,accent}}=
+(47\ \mathrm{k\Omega})(33\ \mathrm{nF})
+=1.551\ \mathrm{ms}.
+$$
+
+The VCA accent state follows $e_a$ through the 47 kΩ / 33 nF circuit. It is
+added to the ordinary volume-envelope control current.
+
+On a Gate rising edge, the volume envelope waits 4 ms in Stock mode or 0.5 ms
+in Devil Fish mode, then rises linearly to one in 3 ms. While the Gate remains
+high it decays exponentially toward the selected sustain level. On a Gate
+falling edge, Stock mode holds the current value for 8 ms and closes linearly
+over the next 8 ms. Devil Fish mode begins an exponential release with
+
+$$
+\tau_{\mathrm{release}}=1.1581186\ \mathrm{ms},
+$$
+
+which falls by approximately 60 dB in 8 ms.
+
+For VCA Decay control $d\in[0,1]$, the decay time $\tau_v$ and sustain $s_v$
+are
+
+$$
+\tau_v=0.016\left(\frac{3.5}{0.016}\right)^{2d},\qquad s_v=0,
+\quad 0\leq d\leq0.5,
+$$
+
+$$
+\tau_v=3.5\ \mathrm{s},\qquad s_v=2d-1,
+\quad 0.5<d\leq1.
+$$
+
+Thus the first half of the knob selects a 16 ms to 3.5 s decay with zero
+sustain; the second half raises sustain while retaining the 3.5 s decay.
+
+### 3.6 BA662 VCA model
+
+The VCA receives the filter signal $v_f$ before resonance makeup. Its input
+mapping is
+
+$$
+v_d=\sqrt{2}\times10^{-3}v_f.
+$$
+
+A 5 V peak Rack signal therefore becomes a 5 mV RMS differential signal, the
+nominal point used by the circuit reference. Let $e_v\in[0,1]$ be either the
+internal volume envelope or the attenuated external VCA CV, and let
+$e_a\in[0,1]$ be the VCA accent state after the Accent amount. The control
+current is
+
+$$
+I_{\mathrm{ABC}}=
+(20\ \mathrm{\mu A})e_v
++(20\ \mathrm{\mu A})e_a.
+$$
+
+The OTA evaluates the matched-pair law from Section 2.5 with
+$V_T=25.85$ mV and $\eta=0.85$. The nominal current-transfer factor is based on
+the BA662-family reference comparison. The 220 kΩ load converts output current
+to voltage, and the factor 9.8181818 calibrates the fully open small-signal path
+to approximately unity Rack gain:
+
+$$
+v_o=9.8181818(220\ \mathrm{k\Omega})
+\eta I_{\mathrm{ABC}}
+\tanh\!\left(\frac{v_d}{2V_T}\right).
+$$
+
+The BA662 output node then passes through the circuit-compliance function
+$C(v_o)$ defined in Section 3.4. C38 and the 50 kΩ Volume load form the
+output coupling high-pass with corner
 
 $$
 f_{\mathrm{HP}}=
-\frac{1}{2\pi(50\ \mathrm{k\Omega})(1\ \mu\mathrm{F})}
+\frac{1}{2\pi(50\ \mathrm{k\Omega})(1\ \mathrm{\mu F})}
 =3.183\ \mathrm{Hz}.
 $$
 
-The implementation subtracts an exact-exponential low-pass state:
+At the internal sample rate, a matched-pole low-pass state $\ell_c$ tracks the
+coupled signal $x$:
 
 $$
-\alpha=1-\exp\!\left(-\frac{2\pi f_{\mathrm{HP}}}{f_s}\right),
+\alpha_c=-\operatorname{expm1}
+\left(-\frac{2\pi f_{\mathrm{HP}}}{f_i}\right),
 $$
 
 $$
-\ell_n=\ell_{n-1}+\alpha(x_n-\ell_{n-1}),
-\qquad
-y_n=x_n-\ell_n.
+\ell_c[n]=\ell_c[n-1]+\alpha_c(x[n]-\ell_c[n-1]),
 $$
 
-## Numerical experiments
+$$
+y[n]=x[n]-\ell_c[n].
+$$
 
-### Filter reference
+This recurrence is the discrete equivalent of the physical coupling capacitor.
+The VCA output then receives resonance makeup and the final circuit-compliance
+stage described in Section 3.4.
 
-The independent Python model represents every coupling section as a
-continuous one-pole state and integrates the complete nonlinear system with
-SciPy DOP853 at tight tolerances. Regression tests compare the model
-small-signal response from 30 Hz to 6 kHz, host rates from 44.1 to 192 kHz, DC
-rejection, resonance thresholds, extreme drive, and 2x/4x agreement.
+### 3.7 Rack cable headroom
 
-In a representative heavy-drive run, the first five odd harmonics agreed with
-the continuous-time reference within 6.3%. The automated limit is 6.5% per
-harmonic.
+The circuit-compliance curve from Section 3.4 is applied to `LP OUT` after
+resonance makeup. In the VCA path it first represents BA662 output compliance,
+then protects the final output after resonance makeup.
 
-Randomized abrupt parameter stress at 44.1, 48, 96, and 192 kHz produced finite
-outputs and zero Newton failures in both oversampling modes. The largest
-observed iteration count was eight.
+Each path is low-pass filtered by its decimator before the Rack-facing voltage
+adapter. The adapter remains linear through 11.5 V and approaches 11.7 V:
 
-A 10.3 Hz saw stress case at 47.2% Bass, 58.9% high-range resonance, and a
-2 kHz cutoff reaches 9.40 V without engaging the 12 V soft guard. In a
-strongly saturated 997 Hz test, off-harmonic FFT energy measured -36.0 dBc at
-2x and -47.7 dBc at 4x. The regression requires 4x to remain below -45 dBc and
-at least 8 dB below 2x.
+$$
+R(v)=\operatorname{sgn}(v)
+\begin{cases}
+|v|, & |v|\leq11.5,\\
+11.5+0.2\dfrac{e}{\sqrt{1+e^2}}, & |v|>11.5,
+\end{cases}
+$$
 
-### OTA transistor reference
+where $e=(|v|-11.5)/0.2$. The 11.7 V asymptote keeps cable voltages inside
+the protected Eurorack rail while preserving ordinary ±5 V audio unchanged.
+
+## 4. Combined signal path
+
+~~~text
+at the Rack sample rate:
+    detect Gate edges and normalize Accent
+    update the filter envelope, C13 accent memory,
+        volume envelope, and VCA accent state
+    add Cutoff, 1V/OCT, EXP CV, and filter-envelope pitch
+    high-pass FM and convert it to a linear-Hz offset
+    choose internal volume envelope or patched VCA CV
+    combine the VCA base control with its additive accent control
+
+interpolate audio, log2 cutoff, linear FM, resonance, and VCA base control
+to the selected 2x or 4x internal rate
+
+for each internal sample:
+    convert interpolated pitch to Hz and add interpolated linear FM
+    apply the smooth lower and upper cutoff knees
+    smooth Drive and Bass over 10 ms
+    pass driven audio through the four pre-ladder forward sections
+    form y_r = A_r * trial_state[3] + B_r from the resonance RC states
+    solve R(trial_state) = 0 with damped Newton iterations
+    store the solved ladder state
+    advance the resonance RC states with solved_state[3]
+    pass solved_state[3] through output coupling and the two Bass shelves
+    convert the resulting filter value to Rack volts as v_f
+
+    LP path:
+        multiply v_f by resonance makeup
+        apply circuit compliance
+
+    VCA path:
+        map v_f and the two VCA controls to differential voltage and current
+        evaluate the BA662 matched-pair law and output compliance
+        pass the result through the C38 coupling capacitor
+        multiply by resonance makeup
+        apply final circuit compliance
+
+decimate LP and VCA paths independently
+apply the Rack cable-voltage adapter to each result
+~~~
+
+## 5. Numerical validation
+
+### 5.1 Diode ladder
+
+The Python reference represents every coupling factor as a continuous one-pole
+state and integrates those states together with the four nonlinear ladder
+states using SciPy's DOP853 solver. It therefore supplies a continuous-time
+reference for the discrete midpoint/TPT implementation. Low-level tests compare
+the analytic response from 30 Hz to 6 kHz at host rates from 44.1 to 192 kHz.
+
+For large-signal comparison, a sine input is analyzed over an integer number of
+periods. The amplitude error for harmonic $m$ is
+
+$$
+\epsilon_m=
+\frac{|A_{m,\mathrm{DSP}}-A_{m,\mathrm{ref}}|}
+{|A_{m,\mathrm{ref}}|}.
+$$
+
+For a 220 Hz, 5 V peak input at 10-times drive, 1.5 kHz cutoff, 55% resonance,
+and 50% Bass, the first five odd harmonics agree with the continuous reference
+within 6.3%; the regression limit is 6.5%. Random abrupt parameter tests at
+44.1, 48, 96, and 192 kHz remain finite in both oversampling modes.
+
+Aliasing is estimated from a one-second, 997 Hz saturated output. FFT bins at
+the physically valid in-band odd harmonics are removed; the RMS of all
+remaining bins is divided by the fundamental. This non-harmonic residual is
+-36.0 dBc at 2x and -47.7 dBc at 4x. The 4x regression limit is -45 dBc and at
+least 8 dB below the 2x result.
+
+### 5.2 BA662 reduction
 
 The ngspice reference expands the Open Music Labs BA662 clone into individual
-transistors and uses Nexperia PMP4201Y/PMP5201Y models. It compares ideal BJTs,
-models with dynamic capacitances removed, full manufacturer models, and the
-reduced OTA law. The deck includes the 12 V and 5.333 V supplies, 220 kohm load,
-emitter-follower buffer, C38, and 50 kohm load.
+transistors and uses manufacturer models for modern matched devices. Separate
+signals are recorded at the OTA current node, output buffer, and C38 output.
+Each settled waveform is projected onto its first nine harmonics. A fractional
+delay and scalar gain are fitted before the normalized residual is measured:
 
-Residual calculations retain the first nine steady-state harmonics before
-level and delay matching. The reduced law is compared at the OTA node, while
-the buffer and C38 are measured separately.
+$$
+\epsilon=\frac{\lVert r-gc\rVert_2}{\lVert r\rVert_2},
+$$
 
-| Case | Reduced/full OTA | Full/static coupled |
-|---|---:|---:|
-| 1 kHz, 5 mV RMS, 20 uA | 0.00757% | 0.00529% |
-| 1 kHz, 5 mV RMS, 5 uA | 0.00481% | 0.00450% |
-| 1 kHz, 5 mV RMS, 40 uA | 0.01582% | 0.01010% |
-| 1 kHz, 20 mV RMS, 20 uA | 0.03913% | 0.02387% |
-| 1 kHz, 100 mV RMS, 20 uA | 0.20432% | 0.13442% |
-| 10 kHz, 5 mV RMS, 20 uA | 0.05329% | 0.05142% |
+where $r$ is the transistor reference and $c$ is the compact model. The first
+table column compares the matched-pair equation with the transistor circuit at
+the OTA node. The second compares dynamic transistor models with static
+transistor models after the output buffer and C38, showing the contribution of
+device capacitances.
 
-At the nominal point, the full model produces 0.15434% THD and the reduced law
-produces 0.15514%. The nominal buffer residual is 0.01616%; C38 contributes
-0.00139%. A C38 sensitivity case with 1 kohm source resistance, 10 ohm ESR, and
-1 Mohm leakage changes the gain-matched 20 Hz-to-1 kHz shape by less than
-0.01 dB.
+| Case | Reduced/full OTA residual | Full/static coupled residual |
+| --- | ---: | ---: |
+| 1 kHz, 5 mV RMS, 20 µA | 0.00757% | 0.00529% |
+| 1 kHz, 5 mV RMS, 5 µA | 0.00481% | 0.00450% |
+| 1 kHz, 5 mV RMS, 40 µA | 0.01582% | 0.01010% |
+| 1 kHz, 20 mV RMS, 20 µA | 0.03913% | 0.02387% |
+| 1 kHz, 100 mV RMS, 20 µA | 0.20432% | 0.13442% |
+| 10 kHz, 5 mV RMS, 20 µA | 0.05329% | 0.05142% |
 
-The reduced wrapper measured about 40.7 million samples/s in a representative
-Windows release build. The older TriggerFish OTA-inspired and shipped
-transistor VCA cores measured 2.16 and 1.42 million samples/s. Their
-level-matched residuals are approximately 40% and 55%, reflecting their
-additional nonlinear poles and saturation. A 9 kHz host-rate render of the
-reduced VCA differed from an 8x reference by approximately 0.152% RMS; the
-voice model therefore evaluates it at the selected 2x or 4x rate.
+At 1 kHz, 5 mV RMS differential input, and 20 µA control current, the
+transistor reference produces 0.15434% THD and the reduced law produces
+0.15514%. The output-buffer residual is 0.01616%, and C38 contributes
+0.00139%.
 
-## Model boundaries
+### 5.3 Articulation and resampling
 
-The filter model omits component tolerance, temperature drift, individual
-diode mismatch, power-supply coupling, and transistor parasitics. The Bass
-response is a calibrated low-order reduction. Fast and Slow accent modes are
-behavioural implementations of published descriptions. The resonance makeup,
-FM range, and Rack output gains are software calibrations.
+Tests verify filter-envelope decay interpolation, Stock and Devil Fish volume
+envelope timings, tied gates, additive VCA accent, the 47 kΩ / 33 nF accent
+timing, C13 memory, all four accent-sweep modes, external VCA normalization,
+and interpolation of audio-rate controls. The 2x and 4x overload tests also
+check level consistency and cable headroom.
 
-The OTA reference uses a published clone topology with modern matched devices.
-The VCA model omits device mismatch, Early effect, and parasitic capacitances at
-the measured operating levels.
+## 6. Model boundaries
 
-## Reproducing the results
+The ladder represents a nominal matched circuit at fixed thermal voltage. Real
+units acquire additional variation from component tolerance, junction mismatch,
+temperature, supply coupling, leakage, and semiconductor parasitic capacitance.
+The complete surrounding coupling transfer is represented; the continuous
+Bass control uses the calibrated two-shelf reduction from Section 2.3.
 
-```console
-uv run pytest
+Normal accent mode follows the published component network. Fast and Slow are
+behavioural realizations of the documented Devil Fish responses. Resonance
+makeup, modular FM depth, Rack input/output calibration, and cable headroom are
+module-level mappings listed in Section 3.4.
+
+The VCA represents a calibrated nominal BA662 matched pair and has been checked
+against a public modern-device clone. Unit-specific mismatch, Early effect,
+control feedthrough, noise, temperature drift, and output-buffer parasitics
+account for additional hardware variation.
+
+## 7. Reproducing the comparisons
+
+~~~console
+uv run pytest tests/python/test_diode_ladder.py tests/python/test_ba662.py
 uv run python tests/python/benchmark_diode_ladder.py
 uv run python tests/python/benchmark_ba662.py
 uv run python tests/python/reference_ba662_spice.py --ngspice /path/to/ngspice
-```
+~~~
 
-The SPICE harness stores downloaded manufacturer models and generated data in
-the ignored `build/ba662-reference` directory.
+The SPICE harness stores downloaded device models and generated output in the
+ignored build/ba662-reference directory.
 
-## Source map
+The principal implementation files are
+[DiodeLadderFilter.hpp](../src/models/DiodeLadderFilter.hpp),
+[Tb303Voice.hpp](../src/models/Tb303Voice.hpp),
+[OtaVca.hpp](../src/models/OtaVca.hpp),
+[AnalogOutputStage.hpp](../src/models/AnalogOutputStage.hpp), and
+[Tf303VoiceCore.cpp](../src/Tf303VoiceCore.cpp). The independent references are
+[reference_diode_ladder.py](../tests/python/reference_diode_ladder.py) and
+[reference_ba662_spice.py](../tests/python/reference_ba662_spice.py).
 
-- `src/models/DiodeLadderFilter.hpp`: coupling network, ladder equations,
-  Newton solve, bass response, and oversampling.
-- `src/models/OtaVca.hpp`: reusable matched-pair OTA law.
-- `src/models/AnalogOutputStage.hpp`: smooth output-compliance characteristic.
-- `src/models/Tb303Voice.hpp`: envelopes, accent, VCA wrapper, and C38.
-- `src/Tf303VoiceCore.cpp`: Rack controls, ports, modulation, and
-  polyphony.
-- `tests/python/reference_diode_ladder.py`: analytic and continuous-time filter
-  references.
-- `tests/python/reference_ba662_spice.py`: transistor-level OTA reference.
+## 8. References
 
-## References
-
-1. Roland Corporation, [TB-303 Service Notes](https://www.synfo.nl/servicemanuals/Roland/ROLAND_TB-303_SERVICE_NOTES.pdf).
-2. Tim Stinchcombe, [Analysis of the Moog Transistor Ladder and Derivative Filters](https://www.timstinchcombe.co.uk/synth/Moog_ladder_tf.pdf).
-3. Tim Stinchcombe, [A Comprehensive TB-303 Diode Ladder Filter Model](https://www.timstinchcombe.co.uk/index.php?pge=diode2).
-4. Robin Whittle, [Devil Fish modifications and documentation](https://www.firstpr.com.au/rwi/dfish/) and [Devil Fish user manual](https://www.firstpr.com.au/rwi/dfish/Devil-Fish-Manual.pdf).
-5. Robin Whittle, [TB-303 unique accent and envelope characteristics](https://www.firstpr.com.au/rwi/dfish/303-unique.html).
-6. Open Music Labs, [BA662 clone](http://www.openmusiclabs.com/projects/ba662-clone/index.html) and [BA662 reverse engineering](http://wiki.openmusiclabs.com/wiki/BA662).
-7. ROHM, [BA6110 voltage-controlled operational amplifier datasheet](https://experimentalistsanonymous.com/diy/Datasheets/BA6110.pdf).
-8. Nexperia, [PMP4201Y matched NPN pair](https://www.nexperia.com/product/PMP4201Y) and [PMP5201Y matched PNP pair](https://www.nexperia.com/product/PMP5201Y).
-9. Robin Schmidt, [Open303 TeeBeeFilter](https://github.com/RobinSchmidt/Open303/blob/313bf0d9ade7c1dcb6b3a74f5ea1780a29d70074/Source/DSPCode/rosic_TeeBeeFilter.h) and [Open303 envelope/VCA processing](https://github.com/RobinSchmidt/Open303/blob/313bf0d9ade7c1dcb6b3a74f5ea1780a29d70074/Source/DSPCode/rosic_Open303.h).
-10. Paul Batchelor, [Soundpipe `tbvcf`](https://github.com/PaulBatchelor/Soundpipe/blob/3efb43bdabd0ed23b17c694292b5a79f1692a3ea/modules/tbvcf.c).
-11. Vadim Zavalishin, [The Art of VA Filter Design](https://www.discodsp.net/VAFilterDesign.pdf).
-12. VCV Rack, [Voltage Standards](https://vcvrack.com/manual/VoltageStandards) and [Plugin Development Guide](https://vcvrack.com/manual/PluginGuide).
+1. Roland Corporation, [TB-303 Service Notes](https://www.synfo.nl/servicemanuals/Roland/ROLAND_TB-303_SERVICE_NOTES.pdf) — complete VCF, envelope, accent, VCA, panel wiring, component values, signal levels, and Roland's envelope-modulation explanation.
+2. Tim Stinchcombe, [A Comprehensive TB-303 Diode Ladder Filter Model](https://www.timstinchcombe.co.uk/index.php?pge=diode2) — complete coupling and feedback network, six surrounding poles and zeros, and the closed-loop transfer.
+3. Tim Stinchcombe, [Analysis of the Moog Transistor Ladder and Derivative Filters](https://www.timstinchcombe.co.uk/synth/Moog_ladder_tf.pdf) — unbuffered ladder analysis and the idealized diode-ladder polynomial.
+4. Robin Whittle, [TB-303 unique accent and envelope characteristics](https://www.firstpr.com.au/rwi/dfish/303-unique.html) — MEG, VEG, VCA accent, accent-sweep circuit, and repeated-accent memory.
+5. Robin Whittle, [Devil Fish user manual](https://www.firstpr.com.au/rwi/dfish/Devil-Fish-Manual.pdf) — overdrive, doubled resonance, filter FM, envelope ranges, and Fast/Normal/Slow accent behaviour.
+6. Open Music Labs, [BA662 clone](https://www.openmusiclabs.com/projects/ba662-clone/index.html) — transistor-level reference topology used by the offline comparison.
+7. Nexperia, [PMP4201Y matched NPN pair](https://www.nexperia.com/product/PMP4201Y) and [PMP5201Y matched PNP pair](https://www.nexperia.com/product/PMP5201Y) — device models used in the BA662 clone comparison.
+8. Robin Schmidt, [Open303 TeeBeeFilter](https://github.com/RobinSchmidt/Open303/blob/313bf0d9ade7c1dcb6b3a74f5ea1780a29d70074/Source/DSPCode/rosic_TeeBeeFilter.h) — independent software comparison for resonance and level mapping.
+9. Paul Batchelor, [Soundpipe tbvcf](https://github.com/PaulBatchelor/Soundpipe/blob/3efb43bdabd0ed23b17c694292b5a79f1692a3ea/modules/tbvcf.c) — independent software comparison for resonance-dependent output level.
+10. Vadim Zavalishin, [The Art of VA Filter Design](https://www.discodsp.net/VAFilterDesign.pdf) — topology-preserving discretization and nonlinear feedback solution.
+11. VCV Rack, [Voltage Standards](https://vcvrack.com/manual/VoltageStandards) — Rack pitch, audio, gate, and modulation conventions.

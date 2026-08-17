@@ -699,6 +699,26 @@ namespace
 		}
 		return result;
 	}
+
+	py::array_t<double> RenderTb303Q8(
+		py::array_t<double, py::array::c_style | py::array::forcecast> saw,
+		double frequency, double shape, double sampleRate)
+	{
+		const auto sawInfo = saw.request();
+		if (sawInfo.ndim != 1)
+			throw std::invalid_argument("saw must be a one-dimensional array");
+		if (!(frequency > 0.0) || !(sampleRate > 0.0))
+			throw std::invalid_argument("frequency and sample_rate must be positive");
+		py::array_t<double> result(sawInfo.shape[0]);
+		auto output = result.mutable_unchecked<1>();
+		auto sawValues = saw.unchecked<1>();
+		tfdsp::Tb303SquareShaper shaper;
+		shaper.SetSampleRate(sampleRate);
+		shaper.Reset();
+		for (py::ssize_t i = 0; i < sawInfo.shape[0]; ++i)
+			output(i) = shaper.Step(sawValues(i), frequency, shape);
+		return result;
+	}
 }
 
 PYBIND11_MODULE(_triggerfish_dsp, module)
@@ -1089,6 +1109,9 @@ PYBIND11_MODULE(_triggerfish_dsp, module)
 		tfdsp::Tb303Oscillator<tfdsp::X4Resampler_Order7>;
 	using Tb303OscillatorX4Order5 = tfdsp::Tb303Oscillator<
 		tfdsp::X4Resampler<tfdsp::X2Resampler_Order5>>;
+	module.def("tb303_q8", &RenderTb303Q8, py::arg("saw"),
+		py::arg("frequency"), py::arg("shape") = 0.0,
+		py::arg("sample_rate") = 192000.0);
 	module.def("tb303_oscillator_x1", &RenderTb303Oscillator<Tb303OscillatorX1>,
 		py::arg("pitch"), py::arg("slide"), py::arg("fm"),
 		py::arg("shape"), py::arg("wave"), py::arg("sample_rate") = 48000.0,
