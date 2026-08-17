@@ -15,6 +15,7 @@ PATCH_PATHS = {
     "vdpo": ROOT / "test-vdpo.vcv",
     "303_voice": ROOT / "test-303-voice.vcv",
     "4072_voice": ROOT / "test-4072-voice.vcv",
+    "wavefold": ROOT / "test-wavefold-oscillator.vcv",
 }
 
 # Canonical Rack 2.6 module tags. Rack accepts a few historical aliases, but
@@ -140,6 +141,25 @@ EXPECTED_DEFAULTS = {
         23: 0.0,
         24: 1.0,
     },
+    "TfWavefoldOscillator": {
+        0: 0.0,
+        1: 0.0,
+        2: 0.5,
+        3: 0.4,
+        4: 0.0,
+        5: 0.0,
+        6: 0.0,
+        7: 0.0,
+        8: 0.0,
+        9: 0.0,
+        10: 2.0,
+        11: 0.5,
+        12: 0.5,
+        13: 0.5,
+        14: 0.5,
+        15: 1.0,
+        16: 0.39841330778621553,
+    },
 }
 
 
@@ -229,6 +249,7 @@ def test_smoke_patches_collectively_contain_every_triggerfish_module():
         "Tf303VoiceCore",
         "Tf303Oscillator",
         "Tf4072VoiceCore",
+        "TfWavefoldOscillator",
     }
 
 
@@ -269,7 +290,10 @@ def test_smoke_patch_has_playable_control_and_stereo_audio_paths(name):
     audio = modules(patch, "AudioInterface")[0]
     adsrs = modules(patch, "ADSR")
 
-    assert "Scope" not in {module["model"] for module in patch["modules"]}
+    if name == "wavefold":
+        assert len(modules(patch, "Scope")) == 1
+    else:
+        assert "Scope" not in {module["model"] for module in patch["modules"]}
     assert "Plateau" not in {module["model"] for module in patch["modules"]}
     if modules(patch, "MIDIToCVInterface"):
         midi = modules(patch, "MIDIToCVInterface")[0]
@@ -407,6 +431,29 @@ def test_4072_voice_patch_connects_midi_oscillator_filter_envelopes_and_vca():
     assert has_cable(patch, midi["id"], 1, voice["id"], 6)
     assert has_cable(patch, oscillator["id"], 2, voice["id"], 0)
     assert has_cable(patch, voice["id"], 1, master["id"], 1)
+
+
+def test_wavefold_patch_connects_midi_oscillator_envelope_and_vca():
+    patch = load_patch("wavefold")
+    midi = modules(patch, "MIDIToCVInterface")[0]
+    adsr = modules(patch, "ADSR")[0]
+    oscillator = modules(patch, "TfWavefoldOscillator")[0]
+    vca = modules(patch, "TfVCA")[0]
+    scope = modules(patch, "Scope")[0]
+
+    assert has_cable(patch, midi["id"], 0, oscillator["id"], 0)
+    assert has_cable(patch, midi["id"], 1, adsr["id"], 4)
+    assert has_cable(patch, oscillator["id"], 1, vca["id"], 0)
+    assert has_cable(patch, adsr["id"], 0, vca["id"], 1)
+    assert has_cable(patch, oscillator["id"], 1, scope["id"], 0)
+    assert has_cable(patch, oscillator["id"], 0, scope["id"], 1)
+    assert has_cable(patch, oscillator["id"], 0, scope["id"], 2)
+    assert param_values(scope)[4] == pytest.approx(-math.log2(0.010))
+    assert param_values(scope)[7] == 0.0
+    assert not any(
+        cable["inputModuleId"] == oscillator["id"] and cable["inputId"] == 5
+        for cable in patch["cables"]
+    )
 
 
 def test_diode_ladder_default_cutoff_cv_range_reaches_fully_open():

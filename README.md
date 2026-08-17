@@ -18,7 +18,8 @@ Circuit-inspired sound generators, processors, and pitch utilities for VCV Rack 
     <td align="center"><a href="#303-voice-core"><img src="doc/Tf303VoiceCore.png" height="260" alt="303 Voice Core module"><br><strong>303 Voice Core</strong></a></td>
   </tr>
   <tr>
-    <td colspan="3" align="center"><a href="#4072-voice-core"><img src="doc/Tf4072VoiceCore.png" height="260" alt="4072 Voice Core module"><br><strong>4072 Voice Core</strong></a></td>
+    <td colspan="2" align="center"><a href="#4072-voice-core"><img src="doc/Tf4072VoiceCore.png" height="260" alt="4072 Voice Core module"><br><strong>4072 Voice Core</strong></a></td>
+    <td align="center"><a href="#wavefold-oscillator"><img src="doc/TfWavefoldOscillator.png" height="260" alt="Wavefold Oscillator module"><br><strong>Wavefold Oscillator</strong></a></td>
   </tr>
 </table>
 
@@ -33,6 +34,7 @@ Circuit-inspired sound generators, processors, and pitch utilities for VCV Rack 
 | 303 Oscillator | Fully polyphonic, with independent DSP state per voice; mono inputs are broadcast | Widest connected input, up to 16 |
 | 303 Voice Core | Fully polyphonic, with independent filter, envelope, accent, and VCA state; mono controls are broadcast | Channel count of `IN`, up to 16 |
 | 4072 Voice Core | Fully polyphonic, with independent filter, dual-envelope, and VCA state; mono controls are broadcast | Widest connected input, up to 16 |
+| Wavefold Oscillator | Fully polyphonic, with independent oscillator, folder, and resampling state; mono controls are broadcast | Widest connected input, up to 16 |
 
 ## Modules
 
@@ -111,6 +113,32 @@ context menu for dense polyphonic patches where CPU use matters more than the
 extra alias suppression at high pitch or under complex FM and sync.
 The [303 Oscillator technical report](docs/Tf303Oscillator-technical-report.md)
 describes the model and its antialiasing in detail.
+
+### Wavefold Oscillator
+
+Wavefold Oscillator combines a band-limited sine/triangle oscillator with three
+selectable folding characters. **Hinge** is a smooth four-stage design;
+**Lockhart** and **Serge** follow the circuit models analysed by
+[Esqueda et al.](https://doi.org/10.3390/app7121328). Lockhart is the brighter,
+more harmonically active response, while Serge has a smoother, darker contour.
+
+- **Octave** selects −3 to +3 octaves and **Tune** covers ±7 semitones.
+- **Sine–Tri** morphs the source waveform. **Fold** controls input drive through
+  the selected cascade, and **Symmetry** offsets its operating point.
+- Each modulation input has a bipolar attenuverter. FM can use exponential or
+  signed through-zero response.
+- **Alive Speed** sets a common 0.15–60 s mean-reversion time for three
+  independent drift processes. The **Wave**, **Fold**, and **Sym** sliders set
+  their individual excursions; all three depths default to zero.
+- `OSC OUT` provides the source before folding. Patching a nominal ±5 V signal
+  into `IN` replaces the internal oscillator at the folder input; `FOLD OUT`
+  provides the processed signal.
+
+The nonlinear path runs at 4x sample rate by default. The internal oscillator
+gradually reduces extreme fold depth at high notes to keep its harmonic density
+musically useful. External signals retain the requested fold depth. A 2x mode
+is available from the context menu. Each polyphonic voice has independent
+oscillator, folder, resampling, and Alive drift state.
 
 ### 303 Voice Core
 

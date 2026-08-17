@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="300" height="380" viewBox="0 0 300 380">
+  <rect width="300" height="380" fill="#cecece"/>
+  <path id="section-dividers" d="M28 27h244M28 252h244M28 321h244" stroke="#777" stroke-width="0.7"/>
+
+  <g id="octave-detents" fill="#777">
+    <circle cx="18.1" cy="78.4" r="1.05"/>
+    <circle cx="19.4" cy="55.8" r="1.05"/>
+    <circle cx="29.4" cy="42.9" r="1.05"/>
+    <circle cx="42.5" cy="39.0" r="1.05"/>
+    <circle cx="55.6" cy="42.9" r="1.05"/>
+    <circle cx="65.6" cy="55.8" r="1.05"/>
+    <circle cx="66.9" cy="78.4" r="1.05"/>
+  </g>
+
+  <g font-family="DejaVu Sans, sans-serif" text-anchor="middle" fill="#1f1f1f">
+    <text x="150.5054" y="14" font-size="10" font-weight="bold" letter-spacing="1.1" data-center-x="150">TRIGGERFISH</text>
+    <text x="149.9837" y="24" font-size="7.4" letter-spacing="1.25" data-center-x="150">WAVEFOLD OSCILLATOR</text>
+
+    <text x="42.5324" y="35" font-size="8.3" font-weight="bold" data-control="OCTAVE">OCTAVE</text>
+    <text x="89.8838" y="35" font-size="6.8" font-weight="bold" data-control="FM_MODE">FM MODE</text>
+    <text x="137.2776" y="35" font-size="8.3" font-weight="bold" data-control="TUNE">TUNE</text>
+    <g fill="#686868">
+      <text x="90.1483" y="47" font-size="6.2" font-weight="bold" data-control="FM_MODE">TZ</text>
+      <text x="89.8017" y="81" font-size="6.2" font-weight="bold" data-control="FM_MODE">EXP</text>
+    </g>
+
+    <text x="33.1241" y="106" font-size="7.7" font-weight="bold" data-control="MORPH">SINE–TRI</text>
+    <text x="89.8496" y="106" font-size="7.7" font-weight="bold" data-control="FOLD">FOLD</text>
+    <text x="146.7387" y="106" font-size="7.7" font-weight="bold" data-control="SYMMETRY">SYMMETRY</text>
+
+    <text x="18.1722" y="166" font-size="6.7" font-weight="bold" data-control="FM_AMOUNT">FM</text>
+    <text x="54.8863" y="166" font-size="6.4" font-weight="bold" data-control="MORPH_AMOUNT">MORPH CV</text>
+    <text x="124.8863" y="166" font-size="6.4" font-weight="bold" data-control="FOLD_AMOUNT">FOLD CV</text>
+    <text x="161.9981" y="166" font-size="6.1" font-weight="bold" data-control="SYMMETRY_AMOUNT">SYM CV</text>
+
+    <text x="89.5032" y="210" font-size="6.5" font-weight="bold" data-control="CHARACTER">FOLDER</text>
+    <g fill="#686868" text-anchor="start">
+      <text x="104" y="218" font-size="5.8" font-weight="bold">LOCKHART</text>
+      <text x="104" y="230" font-size="5.8" font-weight="bold">HINGE</text>
+      <text x="104" y="242" font-size="5.8" font-weight="bold">SERGE</text>
+    </g>
+
+    <text x="210" y="37" font-size="8.2" font-weight="bold" letter-spacing="0.8">ALIVE</text>
+    <text x="206.9781" y="48" font-size="6.4" font-weight="bold" data-control="ALIVE_SPEED">SPEED</text>
+    <text x="191.0892" y="119" font-size="5.8" font-weight="bold" data-control="MORPH_ALIVE">WAVE</text>
+    <text x="209.8867" y="119" font-size="5.8" font-weight="bold" data-control="FOLD_ALIVE">FOLD</text>
+    <text x="229.092" y="119" font-size="5.8" font-weight="bold" data-control="SYMMETRY_ALIVE">SYM</text>
+    <text x="210" y="240" font-size="5.2" font-weight="bold" fill="#686868">INDEPENDENT DRIFT</text>
+
+    <text x="270" y="37" font-size="8.2" font-weight="bold" letter-spacing="0.6">UNISON</text>
+    <text x="270.1483" y="48" font-size="6.2" font-weight="bold" data-control="UNISON_VOICES">VOICES</text>
+    <g fill="#686868" font-size="5.4" font-weight="bold">
+      <text x="252" y="108">1</text>
+      <text x="249" y="64">2</text>
+      <text x="291" y="64">3</text>
+      <text x="288" y="108">4</text>
+    </g>
+    <text x="268.9788" y="125" font-size="6.2" font-weight="bold" data-control="UNISON_SPREAD">SPREAD</text>
+    <text x="270" y="188" font-size="5.2" font-weight="bold" fill="#686868">TRUE UNISON</text>
+
+    <text x="15.5173" y="262" font-size="5.9" font-weight="bold" data-control="VOCT_INPUT">1V/OCT</text>
+    <text x="52.8485" y="262" font-size="6.1" font-weight="bold" data-control="FM_INPUT">FM</text>
+    <text x="89.5895" y="262" font-size="5.8" font-weight="bold" data-control="MORPH_INPUT">MORPH CV</text>
+    <text x="126.585" y="262" font-size="5.9" font-weight="bold" data-control="FOLD_INPUT">FOLD CV</text>
+    <text x="163.6858" y="262" font-size="5.7" font-weight="bold" data-control="SYMMETRY_INPUT">SYM CV</text>
+
+    <text x="35.85" y="330" font-size="6.6" font-weight="bold" data-control="AUDIO_INPUT">IN</text>
+    <text x="89.6609" y="330" font-size="6.4" font-weight="bold" data-control="OSCILLATOR_OUTPUT">OSC OUT</text>
+    <text x="143.5266" y="330" font-size="6.4" font-weight="bold" data-control="FOLDED_OUTPUT">FOLD OUT</text>
+  </g>
+
+  <g id="output-jack-blocks" fill="#545454" stroke="#2e2e2e" stroke-width="0.45">
+    <rect x="68" y="333" width="44" height="34" rx="7" fill="#858585" stroke="#666666"/>
+    <rect x="122" y="333" width="44" height="34" rx="7"/>
+  </g>
+</svg>

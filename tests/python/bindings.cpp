@@ -23,6 +23,8 @@
 #include "tfdsp/control.hpp"
 #include "tfdsp/noise.hpp"
 #include "tfdsp/sampleRate.hpp"
+#include "tfdsp/unison.hpp"
+#include "tfdsp/wavefolder.hpp"
 
 namespace py = pybind11;
 
@@ -719,6 +721,141 @@ namespace
 			output(i) = shaper.Step(sawValues(i), frequency, shape);
 		return result;
 	}
+
+	template<typename Oscillator>
+	py::array_t<double> RenderWavefoldOscillator(
+		py::array_t<double, py::array::c_style | py::array::forcecast> frequency,
+		py::array_t<double, py::array::c_style | py::array::forcecast> morph,
+		py::array_t<double, py::array::c_style | py::array::forcecast> fold,
+		py::array_t<double, py::array::c_style | py::array::forcecast> symmetry,
+		double sampleRate, bool adaa, int character)
+	{
+		const auto frequencyInfo = frequency.request();
+		const auto morphInfo = morph.request();
+		const auto foldInfo = fold.request();
+		const auto symmetryInfo = symmetry.request();
+		RequireSameSize(frequencyInfo, morphInfo, "frequency", "morph");
+		RequireSameSize(frequencyInfo, foldInfo, "frequency", "fold");
+		RequireSameSize(frequencyInfo, symmetryInfo, "frequency", "symmetry");
+		if (!(sampleRate > 0.0))
+			throw std::invalid_argument("sample_rate must be positive");
+
+		py::array_t<double> result(frequencyInfo.shape[0]);
+		auto output = result.mutable_unchecked<1>();
+		auto frequencyValues = frequency.unchecked<1>();
+		auto morphValues = morph.unchecked<1>();
+		auto foldValues = fold.unchecked<1>();
+		auto symmetryValues = symmetry.unchecked<1>();
+		Oscillator oscillator([]
+		{
+			if constexpr (Oscillator::OversamplingFactor == 1)
+				return tfdsp::CreateDummyResampler();
+			else if constexpr (Oscillator::OversamplingFactor == 2)
+				return tfdsp::CreateX2Resampler_Chebychev7();
+			else if constexpr (Oscillator::OversamplingFactor == 4)
+				return tfdsp::CreateX4Resampler_Cheby7();
+			else
+				return tfdsp::CreateX16Resampler_Cheby7();
+		});
+		oscillator.SetSampleRate(sampleRate);
+		oscillator.SetFolderAntialiasing(adaa);
+		if (character < 0 || character >=
+			static_cast<int>(tfdsp::WavefolderCharacter::Count))
+			throw std::invalid_argument("invalid wavefolder character");
+		oscillator.SetCharacter(
+			static_cast<tfdsp::WavefolderCharacter>(character));
+		for (py::ssize_t i = 0; i < frequencyInfo.shape[0]; ++i)
+			output(i) = oscillator.Step(frequencyValues(i), morphValues(i),
+				foldValues(i), symmetryValues(i));
+		return result;
+	}
+
+	template<typename Oscillator>
+	py::array_t<double> RenderWavefolderExternal(
+		py::array_t<double, py::array::c_style | py::array::forcecast> audio,
+		py::array_t<double, py::array::c_style | py::array::forcecast> fold,
+		py::array_t<double, py::array::c_style | py::array::forcecast> symmetry,
+		double sampleRate, bool adaa, int character)
+	{
+		const auto audioInfo = audio.request();
+		const auto foldInfo = fold.request();
+		const auto symmetryInfo = symmetry.request();
+		RequireSameSize(audioInfo, foldInfo, "audio", "fold");
+		RequireSameSize(audioInfo, symmetryInfo, "audio", "symmetry");
+		if (!(sampleRate > 0.0))
+			throw std::invalid_argument("sample_rate must be positive");
+		if (character < 0 || character >=
+			static_cast<int>(tfdsp::WavefolderCharacter::Count))
+			throw std::invalid_argument("invalid wavefolder character");
+
+		py::array_t<double> result(audioInfo.shape[0]);
+		auto output = result.mutable_unchecked<1>();
+		auto audioValues = audio.unchecked<1>();
+		auto foldValues = fold.unchecked<1>();
+		auto symmetryValues = symmetry.unchecked<1>();
+		Oscillator oscillator([]
+		{
+			if constexpr (Oscillator::OversamplingFactor == 2)
+				return tfdsp::CreateX2Resampler_Chebychev7();
+			else if constexpr (Oscillator::OversamplingFactor == 4)
+				return tfdsp::CreateX4Resampler_Cheby7();
+			else
+				return tfdsp::CreateX16Resampler_Cheby7();
+		});
+		oscillator.SetSampleRate(sampleRate);
+		oscillator.SetFolderAntialiasing(adaa);
+		oscillator.SetCharacter(
+			static_cast<tfdsp::WavefolderCharacter>(character));
+		for (py::ssize_t i = 0; i < audioInfo.shape[0]; ++i)
+		{
+			output(i) = oscillator.StepWithInput(261.625565, 0.0,
+				foldValues(i), symmetryValues(i), audioValues(i), true).folded;
+		}
+		return result;
+	}
+
+	py::array_t<double> EvaluateWavefolderFunction(
+		py::array_t<double, py::array::c_style | py::array::forcecast> input,
+		int character, bool primitive)
+	{
+		const auto info = input.request();
+		if (info.ndim != 1)
+			throw std::invalid_argument("input must be a one-dimensional array");
+		py::array_t<double> result(info.shape[0]);
+		if (character < 0 || character >=
+			static_cast<int>(tfdsp::WavefolderCharacter::Count))
+			throw std::invalid_argument("invalid wavefolder character");
+		const auto selected =
+			static_cast<tfdsp::WavefolderCharacter>(character);
+		auto output = result.mutable_unchecked<1>();
+		auto values = input.unchecked<1>();
+		for (py::ssize_t i = 0; i < info.shape[0]; ++i)
+			output(i) = primitive ?
+				tfdsp::Wavefolder::Primitive(values(i), selected) :
+				tfdsp::Wavefolder::Transfer(values(i), selected);
+		return result;
+	}
+
+	py::array_t<double> EvaluateWavefolderAdaa(
+		py::array_t<double, py::array::c_style | py::array::forcecast> input,
+		int character)
+	{
+		const auto info = input.request();
+		if (info.ndim != 1)
+			throw std::invalid_argument("input must be a one-dimensional array");
+		if (character < 0 || character >=
+			static_cast<int>(tfdsp::WavefolderCharacter::Count))
+			throw std::invalid_argument("invalid wavefolder character");
+		py::array_t<double> result(info.shape[0]);
+		auto output = result.mutable_unchecked<1>();
+		auto values = input.unchecked<1>();
+		tfdsp::Wavefolder folder;
+		const auto selected =
+			static_cast<tfdsp::WavefolderCharacter>(character);
+		for (py::ssize_t i = 0; i < info.shape[0]; ++i)
+			output(i) = folder.Process(values(i), selected);
+		return result;
+	}
 }
 
 PYBIND11_MODULE(_triggerfish_dsp, module)
@@ -1139,5 +1276,75 @@ PYBIND11_MODULE(_triggerfish_dsp, module)
 		py::arg("shape"), py::arg("wave"), py::arg("sample_rate") = 48000.0,
 		py::arg("slide_time") = 0.060, py::arg("linear_fm") = false,
 		py::arg("sync") = py::none());
+
+	using WavefoldOscillatorX1 =
+		tfdsp::WavefoldOscillator<tfdsp::DummyResampler>;
+	using WavefoldOscillatorX2 =
+		tfdsp::WavefoldOscillator<tfdsp::X2Resampler_Order7>;
+	using WavefoldOscillatorX4 =
+		tfdsp::WavefoldOscillator<tfdsp::X4Resampler_Order7>;
+	using WavefoldOscillatorX16 =
+		tfdsp::WavefoldOscillator<tfdsp::X16Resampler_Order7>;
+	module.def("wavefolder_transfer", [](py::array_t<double,
+		py::array::c_style | py::array::forcecast> input, int character)
+	{
+		return EvaluateWavefolderFunction(input, character, false);
+	}, py::arg("input"), py::arg("character") = 0);
+	module.def("wavefolder_primitive", [](py::array_t<double,
+		py::array::c_style | py::array::forcecast> input, int character)
+	{
+		return EvaluateWavefolderFunction(input, character, true);
+	}, py::arg("input"), py::arg("character") = 0);
+	module.def("wavefolder_adaa", &EvaluateWavefolderAdaa,
+		py::arg("input"), py::arg("character") = 0);
+	module.def("unison_spread_cents", &tfdsp::UnisonSpreadCents,
+		py::arg("control"));
+	module.def("unison_pitch_positions", [](int voices)
+	{
+		const int count = std::clamp(voices, 1, tfdsp::MaximumUnisonVoices);
+		const auto positions = tfdsp::UnisonPitchPositions(count);
+		py::array_t<double> result(count);
+		auto output = result.mutable_unchecked<1>();
+		for (int voice = 0; voice < count; ++voice)
+			output(voice) = positions[voice];
+		return result;
+	}, py::arg("voices"));
+	module.def("unison_output_gain", &tfdsp::UnisonOutputGain,
+		py::arg("voices"));
+	module.def("wavefold_oscillator_x1",
+		&RenderWavefoldOscillator<WavefoldOscillatorX1>,
+		py::arg("frequency"), py::arg("morph"), py::arg("fold"),
+		py::arg("symmetry"), py::arg("sample_rate") = 48000.0,
+		py::arg("adaa") = false, py::arg("character") = 0);
+	module.def("wavefold_oscillator_x2",
+		&RenderWavefoldOscillator<WavefoldOscillatorX2>,
+		py::arg("frequency"), py::arg("morph"), py::arg("fold"),
+		py::arg("symmetry"), py::arg("sample_rate") = 48000.0,
+		py::arg("adaa") = false, py::arg("character") = 0);
+	module.def("wavefold_oscillator_x4",
+		&RenderWavefoldOscillator<WavefoldOscillatorX4>,
+		py::arg("frequency"), py::arg("morph"), py::arg("fold"),
+		py::arg("symmetry"), py::arg("sample_rate") = 48000.0,
+		py::arg("adaa") = false, py::arg("character") = 0);
+	module.def("wavefold_oscillator_x16",
+		&RenderWavefoldOscillator<WavefoldOscillatorX16>,
+		py::arg("frequency"), py::arg("morph"), py::arg("fold"),
+		py::arg("symmetry"), py::arg("sample_rate") = 48000.0,
+		py::arg("adaa") = false, py::arg("character") = 0);
+	module.def("wavefolder_external_x2",
+		&RenderWavefolderExternal<WavefoldOscillatorX2>,
+		py::arg("audio"), py::arg("fold"), py::arg("symmetry"),
+		py::arg("sample_rate") = 48000.0, py::arg("adaa") = false,
+		py::arg("character") = 0);
+	module.def("wavefolder_external_x4",
+		&RenderWavefolderExternal<WavefoldOscillatorX4>,
+		py::arg("audio"), py::arg("fold"), py::arg("symmetry"),
+		py::arg("sample_rate") = 48000.0, py::arg("adaa") = false,
+		py::arg("character") = 0);
+	module.def("wavefolder_external_x16",
+		&RenderWavefolderExternal<WavefoldOscillatorX16>,
+		py::arg("audio"), py::arg("fold"), py::arg("symmetry"),
+		py::arg("sample_rate") = 48000.0, py::arg("adaa") = false,
+		py::arg("character") = 0);
 
 }

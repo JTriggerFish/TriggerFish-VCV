@@ -37,6 +37,7 @@ Run the usual tasks from PowerShell:
 .\dev.ps1 smoke-vdpo   # Install and open the two-VDPO patch
 .\dev.ps1 smoke-303    # Install and open the sequenced 303 voice patch
 .\dev.ps1 smoke-4072   # Install and open the MIDI-playable 4072 voice patch
+.\dev.ps1 smoke-wavefold # Install and open the Wavefold Oscillator patch
 .\dev.ps1 dist         # Build the release .vcvplugin package
 .\dev.ps1 test         # Build and run standalone C++ DSP tests
 .\dev.ps1 python-test  # Build Python bindings and run pytest

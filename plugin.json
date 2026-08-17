@@ -82,6 +82,17 @@
         "Voltage-controlled amplifier",
         "Polyphonic"
       ]
+    },
+    {
+      "slug": "TfWavefoldOscillator",
+      "name": "Wavefold Oscillator",
+      "description": "Alive sine/triangle oscillator with Hinge, Lockhart, and Serge wavefolders",
+      "manualUrl": "https://github.com/JTriggerFish/TriggerFish-VCV#wavefold-oscillator",
+      "tags": [
+        "Oscillator",
+        "Waveshaper",
+        "Polyphonic"
+      ]
     }
   ]
 }

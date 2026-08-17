@@ -131,6 +131,24 @@ public:
 	static constexpr int CorrectionSamples = 2 * ZeroCrossings;
 	static constexpr int KernelSamples = 2 * ZeroCrossings * TableOversampling;
 
+	MinBlepGenerator()
+	{
+		// Build the shared table while the owning oscillator is constructed,
+		// rather than on the audio thread when its first discontinuity occurs.
+		PrepareKernel();
+	}
+
+	/** Builds the shared, sample-rate-independent reconstruction table.
+	 *
+	 * Calling this during plugin initialization guarantees that the first
+	 * oscillator edge cannot pay the one-time table-generation cost. The
+	 * constructor also calls it so users outside the plugin remain safe.
+	 */
+	static void PrepareKernel()
+	{
+		(void) Kernel();
+	}
+
 	void Reset()
 	{
 		_buffer.fill(Sample{});

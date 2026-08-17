@@ -1,0 +1,399 @@
+{
+  "version": "2.6.6",
+  "path": "",
+  "zoom": 0.78,
+  "gridOffset": [
+    -1,
+    -0.1
+  ],
+  "modules": [
+    {
+      "id": 1,
+      "plugin": "Core",
+      "model": "Notes",
+      "version": "2.6.6",
+      "params": [],
+      "data": {
+        "text": "TriggerFish Wavefold Oscillator smoke test\n\nSelect MIDI and audio devices, then play from a keyboard. MIDI pitch drives the internal sine/triangle oscillator. Master channel 1 receives FOLD OUT directly for uncoloured evaluation. Channel 2 contains an ADSR-controlled TriggerFish VCA and starts muted; raise it and mute channel 1 for gated playing.\n\nThe module starts with the Lockhart folder selected. Compare LOCKHART, HINGE, and SERGE, then try SINE-TRI, FOLD, and SYMMETRY. SPEED sets the timescale of three independent drift processes; the WAVE, FOLD, and SYM sliders set their individual depths. The scope compares FOLD OUT with OSC OUT and triggers from OSC OUT, so the traces remain stable while the waveform changes. The oscillator uses 4x oversampling by default; a 2x lower-CPU mode is available from its context menu. For an intentionally severe alias test, patch OSC OUT back to IN, set FOLD fully clockwise, and play around C8; the external path leaves fold depth untapered. The OSC OUT jack provides the waveform before folding. Patching another nominal +/-5 V source into IN replaces the internal oscillator at the folder input."
+      },
+      "pos": [
+        0,
+        0
+      ]
+    },
+    {
+      "id": 2,
+      "plugin": "Core",
+      "model": "MIDIToCVInterface",
+      "version": "2.6.6",
+      "params": [],
+      "data": {
+        "channels": 1,
+        "pwRange": 2,
+        "midi": {
+          "driver": -1,
+          "channel": -1
+        }
+      },
+      "pos": [
+        16,
+        0
+      ]
+    },
+    {
+      "id": 3,
+      "plugin": "Fundamental",
+      "model": "ADSR",
+      "version": "2.6.4",
+      "params": [
+        {
+          "id": 0,
+          "value": 0.2
+        },
+        {
+          "id": 1,
+          "value": 0.35
+        },
+        {
+          "id": 2,
+          "value": 0.75
+        },
+        {
+          "id": 3,
+          "value": 0.45
+        },
+        {
+          "id": 4,
+          "value": 0.0
+        },
+        {
+          "id": 5,
+          "value": 0.0
+        },
+        {
+          "id": 6,
+          "value": 0.0
+        },
+        {
+          "id": 7,
+          "value": 0.0
+        },
+        {
+          "id": 8,
+          "value": 0.0
+        }
+      ],
+      "pos": [
+        28,
+        0
+      ]
+    },
+    {
+      "id": 4,
+      "plugin": "TriggerFish-Elements",
+      "model": "TfWavefoldOscillator",
+      "version": "2.3.0",
+      "params": [
+        {
+          "id": 0,
+          "value": 0.0
+        },
+        {
+          "id": 1,
+          "value": 0.0
+        },
+        {
+          "id": 2,
+          "value": 0.5
+        },
+        {
+          "id": 3,
+          "value": 0.4
+        },
+        {
+          "id": 4,
+          "value": 0.0
+        },
+        {
+          "id": 5,
+          "value": 0.0
+        },
+        {
+          "id": 6,
+          "value": 0.0
+        },
+        {
+          "id": 7,
+          "value": 0.0
+        },
+        {
+          "id": 8,
+          "value": 0.0
+        },
+        {
+          "id": 9,
+          "value": 0.0
+        },
+        {
+          "id": 10,
+          "value": 2.0
+        },
+        {
+          "id": 11,
+          "value": 0.5
+        },
+        {
+          "id": 12,
+          "value": 0.5
+        },
+        {
+          "id": 13,
+          "value": 0.5
+        },
+        {
+          "id": 14,
+          "value": 0.5
+        },
+        {
+          "id": 15,
+          "value": 1.0
+        },
+        {
+          "id": 16,
+          "value": 0.39841330778621553
+        }
+      ],
+      "pos": [
+        38,
+        0
+      ]
+    },
+    {
+      "id": 5,
+      "plugin": "TriggerFish-Elements",
+      "model": "TfVCA",
+      "version": "2.3.0",
+      "params": [
+        {
+          "id": 0,
+          "value": 0.5
+        },
+        {
+          "id": 1,
+          "value": 1.0
+        },
+        {
+          "id": 2,
+          "value": 1.0
+        },
+        {
+          "id": 3,
+          "value": 0.5
+        },
+        {
+          "id": 4,
+          "value": 50.0
+        },
+        {
+          "id": 5,
+          "value": 1.0
+        }
+      ],
+      "pos": [
+        50,
+        0
+      ]
+    },
+    {
+      "id": 6,
+      "plugin": "Fundamental",
+      "model": "VCMixer",
+      "version": "2.6.4",
+      "params": [
+        {
+          "id": 0,
+          "value": 0.5011872336
+        },
+        {
+          "id": 1,
+          "value": 0.7
+        },
+        {
+          "id": 2,
+          "value": 0.0
+        },
+        {
+          "id": 3,
+          "value": 0.0
+        },
+        {
+          "id": 4,
+          "value": 0.0
+        }
+      ],
+      "data": {
+        "chExp": false,
+        "mixExp": false
+      },
+      "pos": [
+        59,
+        0
+      ]
+    },
+    {
+      "id": 7,
+      "plugin": "Core",
+      "model": "AudioInterface",
+      "version": "2.6.6",
+      "params": [],
+      "data": {
+        "audio": {
+          "driver": -1,
+          "sampleRate": 48000,
+          "blockSize": 256,
+          "inputOffset": 0,
+          "outputOffset": 0
+        },
+        "dcFilter": true
+      },
+      "pos": [
+        68,
+        0
+      ]
+    },
+    {
+      "id": 8,
+      "plugin": "Fundamental",
+      "model": "Scope",
+      "version": "2.6.4",
+      "params": [
+        {
+          "id": 0,
+          "value": 0.0
+        },
+        {
+          "id": 1,
+          "value": 0.0
+        },
+        {
+          "id": 2,
+          "value": 0.0
+        },
+        {
+          "id": 3,
+          "value": 0.0
+        },
+        {
+          "id": 4,
+          "value": 6.643856189774724
+        },
+        {
+          "id": 5,
+          "value": 0.0
+        },
+        {
+          "id": 6,
+          "value": 0.0
+        },
+        {
+          "id": 7,
+          "value": 0.0
+        }
+      ],
+      "pos": [
+        76,
+        0
+      ]
+    }
+  ],
+  "cables": [
+    {
+      "id": 1000,
+      "outputModuleId": 2,
+      "outputId": 0,
+      "inputModuleId": 4,
+      "inputId": 0,
+      "color": "#f3374b"
+    },
+    {
+      "id": 1001,
+      "outputModuleId": 2,
+      "outputId": 1,
+      "inputModuleId": 3,
+      "inputId": 4,
+      "color": "#ffcc00"
+    },
+    {
+      "id": 1002,
+      "outputModuleId": 4,
+      "outputId": 1,
+      "inputModuleId": 5,
+      "inputId": 0,
+      "color": "#0c8e15"
+    },
+    {
+      "id": 1003,
+      "outputModuleId": 3,
+      "outputId": 0,
+      "inputModuleId": 5,
+      "inputId": 1,
+      "color": "#0986ad"
+    },
+    {
+      "id": 1004,
+      "outputModuleId": 4,
+      "outputId": 1,
+      "inputModuleId": 6,
+      "inputId": 1,
+      "color": "#c91847"
+    },
+    {
+      "id": 1005,
+      "outputModuleId": 5,
+      "outputId": 0,
+      "inputModuleId": 6,
+      "inputId": 2,
+      "color": "#7a3ec8"
+    },
+    {
+      "id": 1006,
+      "outputModuleId": 6,
+      "outputId": 0,
+      "inputModuleId": 7,
+      "inputId": 0,
+      "color": "#f3374b"
+    },
+    {
+      "id": 1007,
+      "outputModuleId": 6,
+      "outputId": 0,
+      "inputModuleId": 7,
+      "inputId": 1,
+      "color": "#ffcc00"
+    },
+    {
+      "id": 1008,
+      "outputModuleId": 4,
+      "outputId": 1,
+      "inputModuleId": 8,
+      "inputId": 0,
+      "color": "#0c8e15"
+    },
+    {
+      "id": 1009,
+      "outputModuleId": 4,
+      "outputId": 0,
+      "inputModuleId": 8,
+      "inputId": 1,
+      "color": "#0986ad"
+    },
+    {
+      "id": 1010,
+      "outputModuleId": 4,
+      "outputId": 0,
+      "inputModuleId": 8,
+      "inputId": 2,
+      "color": "#c91847"
+    }
+  ]
+}

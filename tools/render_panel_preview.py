@@ -42,6 +42,7 @@ MODULE_NAMES = (
     "Tf303Oscillator",
     "Tf303VoiceCore",
     "Tf4072VoiceCore",
+    "TfWavefoldOscillator",
 )
 
 
@@ -113,6 +114,9 @@ SLIDER_VALUES = {
     "AMP_DECAY": 0.40,
     "AMP_SUSTAIN": 0.82,
     "AMP_RELEASE": 0.34,
+    "MORPH_ALIVE": 0.38,
+    "FOLD_ALIVE": 0.62,
+    "SYMMETRY_ALIVE": 0.48,
 }
 
 SLIDER_LIGHT_BRIGHTNESS = {
@@ -144,6 +148,9 @@ MODULE_GRAPHICS = {
     "Tf303VoiceCore": PANEL_GRAPHICS,
     "Tf303Oscillator": ((ROOT / "res" / "logo.svg", 16.0, 232.0, 148.0, 80.8, 0.12),),
     "Tf4072VoiceCore": (),
+    "TfWavefoldOscillator": (
+        (ROOT / "res" / "logo.svg", 16.0, 251.0, 148.0, 80.8, 0.09),
+    ),
 }
 
 
@@ -233,7 +240,14 @@ MODULE_KNOB_ANGLES = {
     "Tf303Oscillator": {
         "FM_AMOUNT": 0.0,
         "SLIDE_TIME": 43.0,
-    }
+    },
+    "TfWavefoldOscillator": {
+        "MORPH": 0.0,
+        "FOLD": -29.0,
+        "SYMMETRY": -145.0,
+        "UNISON_VOICES": -145.0,
+        "UNISON_SPREAD": 0.0,
+    },
 }
 
 

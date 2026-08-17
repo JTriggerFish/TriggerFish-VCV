@@ -1,5 +1,6 @@
 #pragma once
 #include <Eigen/Dense>
+#include <array>
 #include <memory>
 #include <functional>
 #include "util.hpp"
@@ -215,10 +216,98 @@ namespace tfdsp
 
 	using X4Resampler_Order7 = X4Resampler<X2Resampler_Order7>;
 
+	/** Cascade an X2 polyphase resampler to any fixed power-of-two factor.
+	 *
+	 * This is primarily a high-quality reference/listening path. Each stage
+	 * processes its intermediate stream in chronological order and owns
+	 * independent interpolation and decimation state.
+	 */
+	template<typename X2Type, int Stages>
+	class CascadedX2Resampler : public Resampler<CascadedX2Resampler<
+		X2Type, Stages>, (1 << Stages)>
+	{
+	public:
+		static_assert(Stages >= 1, "At least one X2 stage is required");
+		static constexpr int Factor = 1 << Stages;
+		EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
+		explicit CascadedX2Resampler(
+			std::function<std::unique_ptr<X2Type>()> createStage)
+		{
+			for (auto& stage : _stages)
+				stage = createStage();
+		}
+
+	private:
+		friend class Resampler<CascadedX2Resampler<X2Type, Stages>, Factor>;
+		std::array<std::unique_ptr<X2Type>, Stages> _stages;
+
+		void _Reset()
+		{
+			for (auto& stage : _stages)
+				stage->Reset();
+		}
+
+		void _PrimeUpsample(double input)
+		{
+			for (auto& stage : _stages)
+				stage->PrimeUpsample(input);
+		}
+
+		Eigen::Array<double, Factor, 1> _Upsample(double input)
+		{
+			std::array<double, Factor> current{};
+			std::array<double, Factor> next{};
+			current[0] = input;
+			int count = 1;
+			for (int stageIndex = 0; stageIndex < Stages; ++stageIndex)
+			{
+				for (int index = 0; index < count; ++index)
+				{
+					const auto pair = _stages[stageIndex]->Upsample(current[index]);
+					next[2 * index] = pair(0);
+					next[2 * index + 1] = pair(1);
+				}
+				count *= 2;
+				current = next;
+			}
+			Eigen::Array<double, Factor, 1> output;
+			for (int index = 0; index < Factor; ++index)
+				output(index) = current[index];
+			return output;
+		}
+
+		double _Downsample(const Eigen::Array<double, Factor, 1>& input)
+		{
+			std::array<double, Factor> current{};
+			std::array<double, Factor> next{};
+			for (int index = 0; index < Factor; ++index)
+				current[index] = input(index);
+			int count = Factor;
+			for (int stageIndex = Stages - 1; stageIndex >= 0; --stageIndex)
+			{
+				const int nextCount = count / 2;
+				for (int index = 0; index < nextCount; ++index)
+				{
+					Eigen::Array<double, 2, 1> pair;
+					pair << current[2 * index], current[2 * index + 1];
+					next[index] = _stages[stageIndex]->Downsample(pair);
+				}
+				count = nextCount;
+				current = next;
+			}
+			return current[0];
+		}
+	};
+
+	using X16Resampler_Order7 = CascadedX2Resampler<
+		X2Resampler_Order7, 4>;
+
 	std::unique_ptr<X2Resampler_Order5> CreateX2Resampler_Butterworth5();
 	std::unique_ptr<X2Resampler_Order7> CreateX2Resampler_Chebychev7();
 	std::unique_ptr<X2Resampler_Order9> CreateX2Resampler_Chebychev9();
 	std::unique_ptr<DummyResampler> CreateDummyResampler();
 	std::unique_ptr<X4Resampler_Order7> CreateX4Resampler_Cheby7();
+	std::unique_ptr<X16Resampler_Order7> CreateX16Resampler_Cheby7();
 
 }

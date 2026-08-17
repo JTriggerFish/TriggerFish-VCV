@@ -38,4 +38,10 @@ std::unique_ptr<X4Resampler_Order7> CreateX4Resampler_Cheby7()
 	return std::make_unique<X4Resampler_Order7>(CreateX2Resampler_Chebychev7);
 }
 
+std::unique_ptr<X16Resampler_Order7> CreateX16Resampler_Cheby7()
+{
+	return std::make_unique<X16Resampler_Order7>(
+		CreateX2Resampler_Chebychev7);
+}
+
 }

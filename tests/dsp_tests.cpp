@@ -4,6 +4,7 @@
 #include <iostream>
 #include <limits>
 #include <random>
+#include <vector>
 
 #include "models/OTA1PoleIntegrator.hpp"
 #include "models/Arp4019Vca.hpp"
@@ -22,6 +23,8 @@
 #include "tfdsp/nonlinear.hpp"
 #include "tfdsp/oscillator.hpp"
 #include "tfdsp/sampleRate.hpp"
+#include "tfdsp/unison.hpp"
+#include "tfdsp/wavefolder.hpp"
 
 namespace
 {
@@ -50,6 +53,21 @@ namespace
 			return generator();
 		}
 	};
+
+	double HarmonicMagnitude(const std::vector<double>& signal,
+		double normalizedFrequency)
+	{
+		constexpr double TwoPi = 6.283185307179586476925286766559;
+		double real = 0.0;
+		double imaginary = 0.0;
+		for (std::size_t index = 0; index < signal.size(); ++index)
+		{
+			const double angle = TwoPi * normalizedFrequency * index;
+			real += signal[index] * std::cos(angle);
+			imaginary -= signal[index] * std::sin(angle);
+		}
+		return std::hypot(real, imaginary) / signal.size();
+	}
 }
 
 int main()
@@ -89,7 +107,12 @@ int main()
 		"fractional trigger releases at its low threshold");
 
 	using TestMinBlep = tfdsp::MinBlepGenerator<8, 32, double>;
+	TestMinBlep::PrepareKernel();
 	const auto& minBlepKernel = TestMinBlep::Kernel();
+	const auto* preparedKernel = &minBlepKernel;
+	TestMinBlep::PrepareKernel();
+	Check(&TestMinBlep::Kernel() == preparedKernel,
+		"minBLEP kernel preparation is shared and idempotent");
 	Check(std::all_of(minBlepKernel.begin(), minBlepKernel.end(),
 		[](double value) { return std::isfinite(value); }),
 		"minBLEP kernel contains only finite values");
@@ -140,6 +163,286 @@ int main()
 	Check(reverseSyncFinite,
 		"generic hard sync remains finite while running backwards");
 
+	tfdsp::BandlimitedPulseOscillator<> genericPulse;
+	genericPulse.Step(0.2, 0.5);
+	genericPulse.Step(0.1, 0.5, 0.25);
+	Check(std::abs(genericPulse.Phase() - 0.075) < 1.0e-12,
+		"generic pulse hard sync resets phase at the fractional crossing");
+	genericPulse.Reset();
+	constexpr int pulseSampleRate = 48000;
+	constexpr double pulseFrequency = 100.0;
+	constexpr double pulseDuty = 0.25;
+	for (int i = 0; i < 256; ++i)
+		genericPulse.Step(pulseFrequency / pulseSampleRate, pulseDuty);
+	double pulseMean = 0.0;
+	for (int i = 0; i < pulseSampleRate; ++i)
+		pulseMean += genericPulse.Step(pulseFrequency / pulseSampleRate,
+			pulseDuty);
+	pulseMean /= pulseSampleRate;
+	Check(std::abs(pulseMean - (2.0 * pulseDuty - 1.0)) < 2.0e-4,
+		"generic pulse preserves continuous-time duty-cycle mean");
+
+	genericPulse.Reset();
+	bool reversePulseFinite = true;
+	for (int i = 0; i < 10000; ++i)
+	{
+		const double duty = 0.5 + 0.45 * std::sin(
+			2.0 * 3.14159265358979323846 * i / 997.0);
+		const double value = genericPulse.Step(-0.017, duty,
+			i % 113 == 0 ? 0.371 : -1.0);
+		reversePulseFinite = reversePulseFinite && std::isfinite(value) &&
+			genericPulse.Phase() >= 0.0 && genericPulse.Phase() < 1.0;
+	}
+	Check(reversePulseFinite,
+		"generic pulse supports reverse PWM and fractional hard sync");
+
+	genericSaw.Reset();
+	genericPulse.Reset();
+	bool pulseSawPhaseLocked = true;
+	for (int i = 0; i < 20000; ++i)
+	{
+		const double increment = 0.03 * std::sin(
+			2.0 * 3.14159265358979323846 * i / 701.0);
+		const double sync = i % 137 == 0 ? 0.417 : -1.0;
+		genericSaw.Step(increment, sync);
+		genericPulse.Step(increment, 0.2 + 0.6 * (i % 503) / 502.0, sync);
+		pulseSawPhaseLocked = pulseSawPhaseLocked &&
+			std::abs(genericPulse.Phase() - genericSaw.Phase()) < 1.0e-12;
+	}
+	Check(pulseSawPhaseLocked,
+		"generic saw and pulse stay phase-locked through FM and hard sync");
+
+	genericPulse.Reset();
+	genericPulse.Step(0.25, 0.5);
+	for (int i = 0; i < 32; ++i)
+		genericPulse.Step(0.0, 0.1);
+	const double lowAfterMovingThreshold = genericPulse.Step(0.0, 0.1);
+	for (int i = 0; i < 32; ++i)
+		genericPulse.Step(0.0, 0.9);
+	const double highAfterMovingThreshold = genericPulse.Step(0.0, 0.9);
+	Check(lowAfterMovingThreshold < -0.999 && highAfterMovingThreshold > 0.999,
+		"generic pulse detects comparator edges caused by PWM alone");
+
+	// Compare periodic harmonic magnitudes with the continuous-time bipolar
+	// pulse series. A naive sampled comparator quantizes pulse width and folds
+	// its ultrasonic harmonics; the fractional minBLEP oscillator should track
+	// the analytic in-band spectrum substantially more closely.
+	constexpr double spectralFrequency = 1500.0;
+	constexpr double spectralDuty = 0.3;
+	constexpr int spectralSamples = pulseSampleRate;
+	constexpr int spectralWarmup = 256;
+	genericPulse.Reset();
+	double naivePhase = 0.0;
+	for (int i = 0; i < spectralWarmup; ++i)
+	{
+		genericPulse.Step(spectralFrequency / pulseSampleRate, spectralDuty);
+		naivePhase += spectralFrequency / pulseSampleRate;
+		naivePhase -= std::floor(naivePhase);
+	}
+	std::vector<double> bandlimitedPulse(spectralSamples);
+	std::vector<double> naivePulse(spectralSamples);
+	for (int i = 0; i < spectralSamples; ++i)
+	{
+		bandlimitedPulse[i] = genericPulse.Step(
+			spectralFrequency / pulseSampleRate, spectralDuty);
+		naivePhase += spectralFrequency / pulseSampleRate;
+		naivePhase -= std::floor(naivePhase);
+		naivePulse[i] = naivePhase < spectralDuty ? 1.0 : -1.0;
+	}
+	double bandlimitedSpectrumError = 0.0;
+	double naiveSpectrumError = 0.0;
+	for (int harmonic = 1; harmonic < 16; ++harmonic)
+	{
+		const double expected = 2.0 * std::abs(std::sin(
+			3.14159265358979323846 * harmonic * spectralDuty)) /
+			(3.14159265358979323846 * harmonic);
+		const double normalizedFrequency = harmonic * spectralFrequency /
+			pulseSampleRate;
+		bandlimitedSpectrumError += std::abs(HarmonicMagnitude(
+			bandlimitedPulse, normalizedFrequency) - expected);
+		naiveSpectrumError += std::abs(HarmonicMagnitude(
+			naivePulse, normalizedFrequency) - expected);
+	}
+	Check(bandlimitedSpectrumError < 0.5 * naiveSpectrumError,
+		"generic pulse improves in-band spectrum over a sampled comparator");
+
+	genericPulse.Reset();
+	Check(genericPulse.Step(std::numeric_limits<double>::quiet_NaN(), 0.5) ==
+		0.0 && genericPulse.Phase() == 0.0,
+		"generic pulse resets safely after non-finite phase input");
+	Check(genericPulse.Step(0.01, std::numeric_limits<double>::infinity()) ==
+		0.0 && genericPulse.Phase() == 0.0,
+		"generic pulse resets safely after non-finite duty input");
+	genericPulse.Step(0.01, -1.0);
+	Check(genericPulse.DutyCycle() ==
+		tfdsp::BandlimitedPulseOscillator<>::MinimumDutyCycle,
+		"generic pulse safely clamps duty cycle away from degenerate endpoints");
+
+	tfdsp::BandlimitedTriangleOscillator genericTriangle;
+	constexpr double triangleIncrement = 1500.0 / 48000.0;
+	for (int i = 0; i < 256; ++i)
+		genericTriangle.Step(triangleIncrement);
+	std::vector<double> bandlimitedTriangle(48000);
+	std::vector<double> naiveTriangle(48000);
+	double naiveTrianglePhase = genericTriangle.OutputPhase();
+	for (int i = 0; i < 48000; ++i)
+	{
+		bandlimitedTriangle[i] = genericTriangle.Step(triangleIncrement);
+		naiveTriangle[i] =
+			tfdsp::BandlimitedTriangleOscillator::RawTriangle(naiveTrianglePhase);
+		naiveTrianglePhase += triangleIncrement;
+		naiveTrianglePhase -= std::floor(naiveTrianglePhase);
+	}
+	double bandlimitedTriangleError = 0.0;
+	double naiveTriangleError = 0.0;
+	for (int harmonic = 1; harmonic < 16; harmonic += 2)
+	{
+		const double expected = 4.0 /
+			(3.14159265358979323846 * 3.14159265358979323846 *
+				harmonic * harmonic);
+		const double normalizedFrequency = harmonic * 1500.0 / 48000.0;
+		bandlimitedTriangleError += std::abs(HarmonicMagnitude(
+			bandlimitedTriangle, normalizedFrequency) - expected);
+		naiveTriangleError += std::abs(HarmonicMagnitude(
+			naiveTriangle, normalizedFrequency) - expected);
+	}
+	Check(bandlimitedTriangleError < naiveTriangleError,
+		"polyBLAMP triangle improves the analytic in-band spectrum");
+	genericTriangle.Reset();
+	bool reverseTriangleFinite = true;
+	for (int i = 0; i < 10000; ++i)
+	{
+		const double value = genericTriangle.Step(-0.017);
+		reverseTriangleFinite = reverseTriangleFinite && std::isfinite(value) &&
+			genericTriangle.Phase() >= 0.0 && genericTriangle.Phase() < 1.0;
+	}
+	Check(reverseTriangleFinite,
+		"polyBLAMP triangle supports reverse phase motion");
+
+	tfdsp::Wavefolder::PrepareTable();
+	for (int exponent = -30; exponent <= 300; exponent += 3)
+	{
+		const double input = std::exp(exponent * std::log(10.0) / 10.0);
+		const double w = tfdsp::wavefolder_detail::PrincipalLambertW(input);
+		Check(std::abs(w * std::exp(w) / input - 1.0) < 2.0e-13,
+			"Lambert W table initializer satisfies its defining equation");
+	}
+	Check(std::abs(tfdsp::wavefolder_detail::PrincipalLambertW(
+		2.71828182845904523536) - 1.0) < 1.0e-14,
+		"Lambert W initializer returns W(e) = 1");
+	for (int characterIndex = 0; characterIndex <
+		static_cast<int>(tfdsp::WavefolderCharacter::Count); ++characterIndex)
+	{
+		const auto character =
+			static_cast<tfdsp::WavefolderCharacter>(characterIndex);
+		double maximumOddSymmetryError = 0.0;
+		double maximumPrimitiveDerivativeError = 0.0;
+		for (int index = 1; index <= 1000; ++index)
+		{
+			const double input = 12.0 * index / 1000.0;
+			maximumOddSymmetryError = std::max(maximumOddSymmetryError,
+				std::abs(tfdsp::Wavefolder::Transfer(input, character) +
+					tfdsp::Wavefolder::Transfer(-input, character)));
+			const double h = 1.0e-5;
+			const double derivative =
+				(tfdsp::Wavefolder::Primitive(input + h, character) -
+					tfdsp::Wavefolder::Primitive(input - h, character)) /
+				(2.0 * h);
+			maximumPrimitiveDerivativeError = std::max(
+				maximumPrimitiveDerivativeError,
+				std::abs(derivative -
+					tfdsp::Wavefolder::Transfer(input, character)));
+		}
+		Check(maximumOddSymmetryError < 2.0e-12,
+			"each wavefolder character remains odd symmetric");
+		Check(maximumPrimitiveDerivativeError < 1.0e-7,
+			"each wavefolder primitive differentiates to its transfer");
+		tfdsp::Wavefolder testFolder;
+		double maximumConstantError = 0.0;
+		for (int i = 0; i < 1000; ++i)
+			maximumConstantError = std::max(maximumConstantError,
+				std::abs(testFolder.Process(0.37, character) -
+					tfdsp::Wavefolder::Transfer(0.37, character)));
+		Check(maximumConstantError < 1.0e-12,
+			"wavefolder ADAA preserves a constant input for every character");
+		const double h = 1.0e-5;
+		const double centralDerivative =
+			(tfdsp::Wavefolder::Transfer(h, character) -
+				tfdsp::Wavefolder::Transfer(-h, character)) / (2.0 * h);
+		Check(std::abs(centralDerivative - 1.0) < 2.0e-5,
+			"wavefolder characters share unity small-signal gain");
+	}
+	Check(std::abs(2.0 * tfdsp::Wavefolder::Transfer(0.5) - 1.0) < 0.01,
+		"zero-fold drive and makeup retain an almost-unity endpoint");
+	Check(std::abs(tfdsp::Wavefolder::Transfer(1.0,
+		tfdsp::WavefolderCharacter::Lockhart) - 0.88499658096) < 2.0e-6,
+		"Lockhart topology retains its normalized first-fold level");
+	Check(std::abs(tfdsp::Wavefolder::Transfer(1.0,
+		tfdsp::WavefolderCharacter::Serge) - 0.52736535702) < 2.0e-6,
+		"Serge topology retains its normalized first-fold level");
+
+	tfdsp::WavefoldOscillator<tfdsp::X2Resampler_Order7> foldedOscillator(
+		tfdsp::CreateX2Resampler_Chebychev7);
+	foldedOscillator.SetSampleRate(48000.0);
+	bool foldedOscillatorFinite = true;
+	for (int i = 0; i < 48000; ++i)
+	{
+		const double value = foldedOscillator.Step(261.625565,
+			0.5 + 0.5 * std::sin(2.0 * 3.14159265358979323846 * i / 997.0),
+			0.5 + 0.5 * std::sin(2.0 * 3.14159265358979323846 * i / 733.0),
+			0.5 * std::sin(2.0 * 3.14159265358979323846 * i / 601.0));
+		foldedOscillatorFinite = foldedOscillatorFinite && std::isfinite(value);
+	}
+	Check(foldedOscillatorFinite,
+		"oversampled wavefold oscillator remains finite under modulation");
+	tfdsp::WavefoldOscillator<tfdsp::X2Resampler_Order7> normalledOscillator(
+		tfdsp::CreateX2Resampler_Chebychev7);
+	tfdsp::WavefoldOscillator<tfdsp::X2Resampler_Order7> detailedOscillator(
+		tfdsp::CreateX2Resampler_Chebychev7);
+	normalledOscillator.SetSampleRate(48000.0);
+	detailedOscillator.SetSampleRate(48000.0);
+	double normalledDifference = 0.0;
+	bool externalPathFinite = true;
+	for (int i = 0; i < 10000; ++i)
+	{
+		const double normalled = normalledOscillator.Step(
+			440.0, 0.4, 0.7, -0.2);
+		const auto detailed = detailedOscillator.StepWithInput(
+			440.0, 0.4, 0.7, -0.2, 0.0, false);
+		normalledDifference = std::max(normalledDifference,
+			std::abs(normalled - detailed.folded));
+		externalPathFinite = externalPathFinite &&
+			std::isfinite(detailed.oscillator) &&
+			std::isfinite(detailed.folded);
+	}
+	Check(normalledDifference < 1.0e-12,
+		"normalled folder input preserves the original oscillator path");
+	Check(externalPathFinite,
+		"wavefold oscillator exposes finite oscillator and folder outputs");
+	for (int i = 0; i < 10000; ++i)
+	{
+		const double external = std::sin(
+			2.0 * 3.14159265358979323846 * 997.0 * i / 48000.0);
+		const auto rendered = detailedOscillator.StepWithInput(
+			440.0, 0.4, 1.0, 0.5, external, true);
+		externalPathFinite = externalPathFinite &&
+			std::isfinite(rendered.oscillator) && std::isfinite(rendered.folded);
+	}
+	Check(externalPathFinite,
+		"reconstructed external folder input remains finite");
+	using X4Wavefolder =
+		tfdsp::WavefoldOscillator<tfdsp::X4Resampler_Order7>;
+	Check(std::abs(X4Wavefolder::FoldScaleForFrequency(100.0) - 1.0) <
+		1.0e-12, "low notes retain the requested fold depth");
+	Check(std::abs(X4Wavefolder::FoldScaleForFrequency(1000.0) - 0.625) <
+		1.0e-12, "fold taper uses a fixed 6 kHz harmonic budget");
+	Check(std::abs(X4Wavefolder::FoldScaleForFrequency(2000.0) - 0.25) <
+		1.0e-12, "fold taper follows musical frequency");
+	Check(std::abs(X4Wavefolder::FoldScaleForFrequency(4000.0) - 0.0625) <
+		1.0e-12, "high notes retain only a shallow fold");
+	Check(X4Wavefolder::FoldScaleForFrequency(6000.0) == 0.0,
+		"fold taper reaches zero at its harmonic budget");
+
 	tfdsp::InterpolatedOrnsteinUhlenbeck ou;
 	ou.Configure(48000.0, 60.0, 2.0, 100.0);
 	CountingGenerator rng;
@@ -148,6 +451,96 @@ int main()
 		drift = ou.Step(rng);
 	Check(std::isfinite(drift), "OU drift remains finite");
 	Check(rng.calls < 1000, "OU noise generation runs at control rate");
+	const double boundedPositive = tfdsp::ApplyBoundedDrift(0.5, 1.0, 1.0);
+	Check(std::abs(boundedPositive -
+		(0.5 + 0.5 * std::tanh(1.0))) < 1.0e-12,
+		"bounded drift scales toward the available headroom");
+	Check(tfdsp::ApplyBoundedDrift(0.37, 100.0, 0.0) == 0.37,
+		"zero drift depth preserves the control exactly");
+	Check(tfdsp::ApplyBoundedDrift(-0.2, -100.0, 1.0, -1.0, 1.0) >= -1.0 &&
+		tfdsp::ApplyBoundedDrift(-0.2, 100.0, 1.0, -1.0, 1.0) <= 1.0,
+		"bounded drift approaches parameter limits without crossing them");
+
+	tfdsp::InterpolatedOrnsteinUhlenbeck stationaryOu;
+	stationaryOu.ConfigureStationary(100.0, 0.5, 2.0, 100.0);
+	CountingGenerator stationaryRng;
+	double sum = 0.0;
+	double sumSquares = 0.0;
+	constexpr int stationarySamples = 200000;
+	constexpr int stationaryWarmup = 10000;
+	for (int i = 0; i < stationarySamples + stationaryWarmup; ++i)
+	{
+		const double value = stationaryOu.Step(stationaryRng);
+		if (i >= stationaryWarmup)
+		{
+			sum += value;
+			sumSquares += value * value;
+		}
+	}
+	const double stationaryMean = sum / stationarySamples;
+	const double stationaryVariance = sumSquares / stationarySamples -
+		stationaryMean * stationaryMean;
+	Check(std::abs(stationaryMean) < 0.12,
+		"stationary OU process remains centred");
+	Check(std::abs(stationaryVariance - 4.0) < 0.35,
+		"stationary OU configuration preserves requested variance");
+
+	tfdsp::SmoothOrnsteinUhlenbeck smoothOu;
+	smoothOu.ConfigureStationary(1000.0, 0.5, 1.0, 100.0);
+	CountingGenerator smoothRng;
+	double smoothSum = 0.0;
+	double smoothSumSquares = 0.0;
+	double smoothDifferenceSquares = 0.0;
+	double previousSmooth = 0.0;
+	constexpr int smoothSamples = 500000;
+	constexpr int smoothWarmup = 20000;
+	for (int i = 0; i < smoothSamples + smoothWarmup; ++i)
+	{
+		const double value = smoothOu.Step(smoothRng);
+		if (i >= smoothWarmup)
+		{
+			smoothSum += value;
+			smoothSumSquares += value * value;
+			const double difference = value - previousSmooth;
+			smoothDifferenceSquares += difference * difference;
+		}
+		previousSmooth = value;
+	}
+	const double smoothMean = smoothSum / smoothSamples;
+	const double smoothVariance = smoothSumSquares / smoothSamples -
+		smoothMean * smoothMean;
+	const double smoothDifferenceRms = std::sqrt(
+		smoothDifferenceSquares / smoothSamples);
+	if (std::abs(smoothMean) >= 0.25 ||
+		std::abs(smoothVariance - 1.0) >= 0.12 || smoothDifferenceRms >= 0.004)
+		std::cerr << "smooth OU stats: mean=" << smoothMean <<
+			", variance=" << smoothVariance <<
+			", difference RMS=" << smoothDifferenceRms << '\n';
+	Check(std::abs(smoothMean) < 0.25,
+		"smooth OU process remains centred");
+	Check(std::abs(smoothVariance - 1.0) < 0.12,
+		"smooth OU process preserves requested stationary variance");
+	Check(smoothDifferenceRms < 0.004,
+		"smooth OU process suppresses rapid parameter movement");
+	Check(tfdsp::UnisonSpreadCents(0.0) == 0.0 &&
+		std::abs(tfdsp::UnisonSpreadCents(0.5) - 7.1875) < 1.0e-12 &&
+		tfdsp::UnisonSpreadCents(1.0) == 50.0,
+		"unison spread provides fine low-range control and full excursion");
+	Check(std::abs(tfdsp::UnisonSpreadCents(
+		tfdsp::UnisonSpreadControlForCents(4.0)) - 4.0) < 1.0e-8,
+		"unison spread display mapping is invertible");
+	for (int voices = 1; voices <= tfdsp::MaximumUnisonVoices; ++voices)
+	{
+		const auto positions = tfdsp::UnisonPitchPositions(voices);
+		double mean = 0.0;
+		for (int voice = 0; voice < voices; ++voice)
+			mean += positions[voice];
+		Check(std::abs(mean) < 1.0e-12,
+			"unison pitch layouts preserve their tuning centre");
+		Check(std::abs(tfdsp::UnisonOutputGain(voices) -
+			1.0 / std::sqrt(static_cast<double>(voices))) < 1.0e-12,
+			"unison output uses energy normalization");
+	}
 	double maxExp2RelativeError = 0.0;
 	for (int i = 0; i <= 20000; ++i)
 	{

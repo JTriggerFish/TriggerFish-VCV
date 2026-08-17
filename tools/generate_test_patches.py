@@ -83,6 +83,25 @@ DEFAULT_PARAMS = {
         0.0,
         1.0,
     ],
+    "TfWavefoldOscillator": [
+        0.0,
+        0.0,
+        0.5,
+        0.4,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        2.0,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        1.0,
+        0.39841330778621553,
+    ],
     "VCO": [1.0, 1.0, 0.0, 0.0, 0.0, 0.5, 0.0, 0.0],
 }
 
@@ -151,6 +170,17 @@ def audio(module_id: int, pos: tuple[int, int]) -> dict:
             },
             "dcFilter": True,
         },
+    )
+
+
+def scope(module_id: int, pos: tuple[int, int]) -> dict:
+    """Fundamental Scope configured for a triggered 10 ms display."""
+    return module(
+        module_id,
+        "Fundamental",
+        "Scope",
+        pos,
+        values=[0.0, 0.0, 0.0, 0.0, -math.log2(0.010), 0.0, 0.0, 0.0],
     )
 
 
@@ -480,8 +510,65 @@ def generate_4072_voice_patch() -> None:
     patch.write("test-4072-voice.vcv")
 
 
+def generate_wavefold_patch() -> None:
+    patch = Patch(zoom=0.78, grid_offset=(-1, -0.1))
+    patch.add(
+        notes(
+            1,
+            "TriggerFish Wavefold Oscillator smoke test\n\n"
+            "Select MIDI and audio devices, then play from a keyboard. MIDI "
+            "pitch drives the internal sine/triangle oscillator. Master "
+            "channel 1 receives FOLD OUT directly for uncoloured evaluation. "
+            "Channel 2 contains an ADSR-controlled TriggerFish VCA and starts "
+            "muted; raise it and mute channel 1 for gated playing.\n\n"
+            "The module starts with the Lockhart folder selected. Compare "
+            "LOCKHART, HINGE, and SERGE, then try SINE-TRI, FOLD, and SYMMETRY. "
+            "SPEED sets the timescale of three independent drift processes; "
+            "the WAVE, FOLD, and SYM sliders set their individual depths. "
+            "The scope compares FOLD OUT with OSC OUT and triggers from OSC "
+            "OUT, so the traces remain stable while the waveform changes. "
+            "The oscillator uses 4x oversampling by default; a 2x lower-CPU "
+            "mode is available from its context menu. "
+            "For an intentionally severe alias test, patch OSC OUT back to "
+            "IN, set FOLD fully clockwise, and play around C8; the external "
+            "path leaves fold depth untapered. "
+            "The OSC OUT jack provides the waveform before folding. Patching "
+            "another nominal +/-5 V source into IN replaces the internal "
+            "oscillator at the folder input.",
+        )
+    )
+    patch.add(midi(2, (16, 0)))
+    patch.add(module(3, "Fundamental", "ADSR", (28, 0)))
+    patch.add(
+        module(
+            4,
+            "TriggerFish-Elements",
+            "TfWavefoldOscillator",
+            (38, 0),
+        )
+    )
+    patch.add(module(5, "TriggerFish-Elements", "TfVCA", (50, 0)))
+    patch.add(mixer(6, (59, 0), (0.5011872336, 0.7, 0.0, 0.0, 0.0)))
+    patch.add(audio(7, (68, 0)))
+    patch.add(scope(8, (76, 0)))
+
+    patch.cable(2, 0, 4, 0)  # MIDI pitch -> oscillator 1V/oct
+    patch.cable(2, 1, 3, 4)  # MIDI gate -> ADSR gate
+    patch.cable(4, 1, 5, 0)  # folded audio -> VCA
+    patch.cable(3, 0, 5, 1)  # ADSR -> VCA linear CV
+    patch.cable(4, 1, 6, 1)  # direct folded reference -> master channel 1
+    patch.cable(5, 0, 6, 2)  # enveloped voice -> muted master channel 2
+    patch.cable(6, 0, 7, 0)
+    patch.cable(6, 0, 7, 1)
+    patch.cable(4, 1, 8, 0)  # folded output -> scope channel 1
+    patch.cable(4, 0, 8, 1)  # oscillator output -> scope channel 2
+    patch.cable(4, 0, 8, 2)  # oscillator output -> scope trigger
+    patch.write("test-wavefold-oscillator.vcv")
+
+
 if __name__ == "__main__":
     generate_slop4_patch()
     generate_vdpo_patch()
     generate_303_voice_patch()
     generate_4072_voice_patch()
+    generate_wavefold_patch()
