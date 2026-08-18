@@ -118,7 +118,7 @@ DEFAULT_PARAMS = {
         0.1,
         0.05,
         0.05,
-        0.05,
+        1.0,
         0.0,
         0.0,
         0.0,
@@ -604,7 +604,7 @@ def generate_unison_patch() -> None:
             "compare CENTRE with STACK; SUB is also available separately. "
             "The SLOP controls add shared hum, common drift, independent drift, "
             "and fixed per-oscillator tracking differences. The scope shows "
-            "the mono stack and sub oscillator with stable triggering.",
+            "the stereo stack with stable triggering.",
         )
     )
     patch.add(midi(2, (16, 0)))
@@ -627,9 +627,9 @@ def generate_unison_patch() -> None:
     patch.cable(6, 0, 8, 1)
     patch.cable(7, 0, 9, 0)
     patch.cable(8, 0, 9, 1)
-    patch.cable(4, 0, 10, 0)  # mono -> scope channel 1
-    patch.cable(4, 3, 10, 1)  # sub -> scope channel 2
-    patch.cable(4, 0, 10, 2)  # mono -> scope trigger
+    patch.cable(4, 1, 10, 0)  # left -> scope channel 1
+    patch.cable(4, 2, 10, 1)  # right -> scope channel 2
+    patch.cable(4, 1, 10, 2)  # left -> scope trigger
     patch.write("test-unison-oscillator.vcv")
 
 

@@ -14,7 +14,7 @@
       "version": "2.6.6",
       "params": [],
       "data": {
-        "text": "TriggerFish Unison Oscillator smoke test\n\nSelect MIDI and audio devices, then play from a keyboard. MIDI pitch drives a seven-voice stereo saw stack; the ADSR controls independent left and right TriggerFish VCAs. Two -6 dB masters feed Audio-8 outputs 1 and 2.\n\nTry VOICES, SPREAD, and WIDTH first. Switch WAVE to PULSE; PWM at centre leaves PULSE WIDTH fixed, while moving it applies the internal LFO at the selected RATE. A PW CV cable replaces that LFO. Raise SUB LEVEL and compare CENTRE with STACK; SUB is also available separately. The SLOP controls add shared hum, common drift, independent drift, and fixed per-oscillator tracking differences. The scope shows the mono stack and sub oscillator with stable triggering."
+        "text": "TriggerFish Unison Oscillator smoke test\n\nSelect MIDI and audio devices, then play from a keyboard. MIDI pitch drives a seven-voice stereo saw stack; the ADSR controls independent left and right TriggerFish VCAs. Two -6 dB masters feed Audio-8 outputs 1 and 2.\n\nTry VOICES, SPREAD, and WIDTH first. Switch WAVE to PULSE; PWM at centre leaves PULSE WIDTH fixed, while moving it applies the internal LFO at the selected RATE. A PW CV cable replaces that LFO. Raise SUB LEVEL and compare CENTRE with STACK; SUB is also available separately. The SLOP controls add shared hum, common drift, independent drift, and fixed per-oscillator tracking differences. The scope shows the stereo stack with stable triggering."
       },
       "pos": [
         0,
@@ -103,8 +103,8 @@
           "value": 0.0
         },
         {
-          "id": 2,
-          "value": 7.0
+        "id": 2,
+        "value": 3.0
         },
         {
           "id": 3,
@@ -148,19 +148,19 @@
         },
         {
           "id": 13,
-          "value": 0.05
+        "value": 0.1
         },
         {
           "id": 14,
-          "value": 0.05
+        "value": 0.15
         },
         {
           "id": 15,
-          "value": 0.05
+          "value": 1.0
         },
         {
           "id": 16,
-          "value": 0.0
+        "value": 1.0
         },
         {
           "id": 17,
@@ -470,7 +470,7 @@
     {
       "id": 1010,
       "outputModuleId": 4,
-      "outputId": 0,
+      "outputId": 1,
       "inputModuleId": 10,
       "inputId": 0,
       "color": "#c91847"
@@ -478,7 +478,7 @@
     {
       "id": 1011,
       "outputModuleId": 4,
-      "outputId": 3,
+      "outputId": 2,
       "inputModuleId": 10,
       "inputId": 1,
       "color": "#7a3ec8"
@@ -486,7 +486,7 @@
     {
       "id": 1012,
       "outputModuleId": 4,
-      "outputId": 0,
+      "outputId": 1,
       "inputModuleId": 10,
       "inputId": 2,
       "color": "#f3374b"

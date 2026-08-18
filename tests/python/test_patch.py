@@ -164,7 +164,7 @@ EXPECTED_DEFAULTS = {
     "TfUnisonOscillator": {
         0: 0.0,
         1: 0.0,
-        2: 7.0,
+        2: 3.0,
         3: 0.0,
         4: 0.5,
         5: 0.0,
@@ -175,10 +175,10 @@ EXPECTED_DEFAULTS = {
         10: 0.0,
         11: 0.5,
         12: 0.1,
-        13: 0.05,
-        14: 0.05,
-        15: 0.05,
-        16: 0.0,
+        13: 0.1,
+        14: 0.15,
+        15: 1.0,
+        16: 1.0,
         17: 0.0,
         18: 0.0,
     },
@@ -498,9 +498,9 @@ def test_unison_patch_connects_polyphonic_stereo_voice_and_scope():
         for cable in patch["cables"]
         if cable["inputModuleId"] == audio["id"]
     } == {0, 1}
-    assert has_cable(patch, oscillator["id"], 0, scope["id"], 0)
-    assert has_cable(patch, oscillator["id"], 3, scope["id"], 1)
-    assert has_cable(patch, oscillator["id"], 0, scope["id"], 2)
+    assert has_cable(patch, oscillator["id"], 1, scope["id"], 0)
+    assert has_cable(patch, oscillator["id"], 2, scope["id"], 1)
+    assert has_cable(patch, oscillator["id"], 1, scope["id"], 2)
 
 
 def test_diode_ladder_default_cutoff_cv_range_reaches_fully_open():

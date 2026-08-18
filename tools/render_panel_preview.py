@@ -152,9 +152,7 @@ MODULE_GRAPHICS = {
     "TfWavefoldOscillator": (
         (ROOT / "res" / "logo.svg", 16.0, 251.0, 148.0, 80.8, 0.09),
     ),
-    "TfUnisonOscillator": (
-        (ROOT / "res" / "logo.svg", 146.0, 249.0, 148.0, 80.8, 0.07),
-    ),
+    "TfUnisonOscillator": (),
 }
 
 
@@ -263,7 +261,7 @@ MODULE_KNOB_ANGLES = {
         "HUM": -116.0,
         "COMMON_DRIFT": -128.0,
         "INDIVIDUAL_DRIFT": -128.0,
-        "TRACKING_ERROR": -128.0,
+        "TRACKING": 145.0,
         "SPREAD_CV_AMOUNT": 0.0,
         "WIDTH_CV_AMOUNT": 0.0,
     },

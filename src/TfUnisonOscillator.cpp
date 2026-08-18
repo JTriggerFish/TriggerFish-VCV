@@ -104,7 +104,7 @@ struct TfUnisonOscillator : Module
 		HUM,
 		COMMON_DRIFT,
 		INDIVIDUAL_DRIFT,
-		TRACKING_ERROR,
+		TRACKING,
 		INDIVIDUAL_DRIFT_MODE,
 		SPREAD_CV_AMOUNT,
 		WIDTH_CV_AMOUNT,
@@ -125,7 +125,6 @@ struct TfUnisonOscillator : Module
 		MONO_OUTPUT,
 		LEFT_OUTPUT,
 		RIGHT_OUTPUT,
-		SUB_OUTPUT,
 		NUM_OUTPUTS
 	};
 
@@ -169,7 +168,7 @@ struct TfUnisonOscillator : Module
 		getParamQuantity(OCTAVE)->snapEnabled = true;
 		configParam(TUNE, -7.0f / 12.0f, 7.0f / 12.0f, 0.0f,
 			"Tune", " semitones", 0.0f, 12.0f);
-		configParam(VOICES, 1.0f, 16.0f, 7.0f, "Unison voices");
+		configParam(VOICES, 1.0f, 16.0f, 3.0f, "Unison voices");
 		getParamQuantity(VOICES)->snapEnabled = true;
 		configSwitch(WAVEFORM, 0.0f, 1.0f, 0.0f, "Waveform",
 			{"Saw", "Pulse"});
@@ -192,13 +191,13 @@ struct TfUnisonOscillator : Module
 			"Drift time", " s");
 		configParam(HUM, 0.0f, 1.0f, 0.1f,
 			"Common 60 Hz hum", " cents peak", 0.0f, MaximumHumCents);
-		configParam(COMMON_DRIFT, 0.0f, 1.0f, 0.05f,
+		configParam(COMMON_DRIFT, 0.0f, 1.0f, 0.1f,
 			"Common drift", "%", 0.0f, 100.0f);
-		configParam(INDIVIDUAL_DRIFT, 0.0f, 1.0f, 0.05f,
+		configParam(INDIVIDUAL_DRIFT, 0.0f, 1.0f, 0.15f,
 			"Individual drift", "%", 0.0f, 100.0f);
-		configParam(TRACKING_ERROR, 0.0f, 1.0f, 0.05f,
-			"Tracking error", "%", 0.0f, 100.0f);
-		configSwitch(INDIVIDUAL_DRIFT_MODE, 0.0f, 1.0f, 0.0f,
+		configParam(TRACKING, 0.0f, 1.0f, 1.0f,
+			"Tracking", "%", 0.0f, 100.0f);
+		configSwitch(INDIVIDUAL_DRIFT_MODE, 0.0f, 1.0f, 1.0f,
 			"Individual drift units", {"Hertz", "Cents"});
 		configParam(SPREAD_CV_AMOUNT, -1.0f, 1.0f, 0.0f,
 			"Spread CV amount", "%", 0.0f, 100.0f);
@@ -212,7 +211,6 @@ struct TfUnisonOscillator : Module
 		configOutput(MONO_OUTPUT, "Mono unison mix");
 		configOutput(LEFT_OUTPUT, "Left unison mix");
 		configOutput(RIGHT_OUTPUT, "Right unison mix");
-		configOutput(SUB_OUTPUT, "Mono sub oscillator");
 
 		SetLayout(layoutVoiceCount, true);
 		SetSampleRate(APP->engine->getSampleRate());
@@ -326,7 +324,7 @@ struct TfUnisonOscillator : Module
 			inputs[PULSE_WIDTH_INPUT].getChannels(),
 			inputs[SPREAD_INPUT].getChannels(),
 			inputs[WIDTH_INPUT].getChannels(), 1}), 1, PORT_MAX_CHANNELS);
-		for (auto output : {MONO_OUTPUT, LEFT_OUTPUT, RIGHT_OUTPUT, SUB_OUTPUT})
+		for (auto output : {MONO_OUTPUT, LEFT_OUTPUT, RIGHT_OUTPUT})
 			outputs[output].setChannels(channels);
 
 		const bool needMono = outputs[MONO_OUTPUT].isConnected();
@@ -334,8 +332,7 @@ struct TfUnisonOscillator : Module
 		const bool needRight = outputs[RIGHT_OUTPUT].isConnected();
 		const bool needMain = needMono || needLeft || needRight;
 		const double subLevel = params[SUB_LEVEL].getValue();
-		const bool needSub = outputs[SUB_OUTPUT].isConnected() ||
-			(needMain && subLevel > 1.0e-7);
+		const bool needSub = needMain && subLevel > 1.0e-7;
 		const bool renderCenterSub = needSub && subModeMix == 0.0;
 		const bool renderStackSub = needSub && subModeMix == 1.0;
 
@@ -346,7 +343,7 @@ struct TfUnisonOscillator : Module
 			humOscillator.Step();
 		const double commonPitchCents = commonDriftCents + humCents;
 		const double internalPwmVoltage = 5.0 * pwmOscillator.Step();
-		const double trackingDepth = params[TRACKING_ERROR].getValue();
+		const double trackingErrorDepth = 1.0 - params[TRACKING].getValue();
 		const double individualDepth = params[INDIVIDUAL_DRIFT].getValue();
 		const bool centsDrift = params[INDIVIDUAL_DRIFT_MODE].getValue() > 0.5f;
 		const double pulseWidthBase = params[PULSE_WIDTH].getValue();
@@ -414,7 +411,7 @@ struct TfUnisonOscillator : Module
 				const double drift = individualDriftProcesses[channel][voice].Step(
 					randomGenerator);
 				const double trackingCents = MaximumTrackingErrorCentsPerOctave *
-					trackingDepth * trackingPositions[voice] * basePitch;
+					trackingErrorDepth * trackingPositions[voice] * basePitch;
 				double voicePitch = centerPitch + (spreadCents *
 					pitchPositions[voice] + trackingCents) / 1200.0;
 				if (centsDrift)
@@ -473,7 +470,6 @@ struct TfUnisonOscillator : Module
 			writeOutput(MONO_OUTPUT, 5.0 * (monoMain + subLevel * monoSub));
 			writeOutput(LEFT_OUTPUT, 5.0 * (leftMain + subLevel * leftSub));
 			writeOutput(RIGHT_OUTPUT, 5.0 * (rightMain + subLevel * rightSub));
-			writeOutput(SUB_OUTPUT, 5.0 * monoSub);
 		}
 	}
 
@@ -498,13 +494,6 @@ struct TfUnisonOscillatorWidget : ModuleWidget
 		setPanel(APP->window->loadSvg(asset::plugin(
 			pluginInstance, "res/TfUnisonOscillator.svg")));
 
-		auto* logoGraphic = new TfSvgWatermark;
-		logoGraphic->setScaledSvg(APP->window->loadSvg(asset::plugin(
-			pluginInstance, "res/logo.svg")), Vec(148, 80.8));
-		logoGraphic->box.pos = Vec(146, 249);
-		logoGraphic->opacity = 0.07f;
-		addChild(logoGraphic);
-
 		addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, 0)));
 		addChild(createWidget<ScrewSilver>(Vec(
 			box.size.x - 2 * RACK_GRID_WIDTH, 0)));
@@ -514,64 +503,62 @@ struct TfUnisonOscillatorWidget : ModuleWidget
 			box.size.x - 2 * RACK_GRID_WIDTH,
 			RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
 
-		addParam(createParam<TfRotarySwitchKnob>(Vec(25, 43), module,
+		addParam(createParam<TfSnapKnob>(Vec(13.83, 50), module,
 			TfUnisonOscillator::OCTAVE));
-		addParam(createParam<TfLargeAudioKnob>(Vec(142, 39), module,
+		addParam(createParam<CKSS>(Vec(52, 53.85), module,
+			TfUnisonOscillator::WAVEFORM));
+		addParam(createParam<TfTrimpot>(Vec(81.07, 55.24), module,
 			TfUnisonOscillator::TUNE));
-		addParam(createParam<TfRotarySwitchKnob>(Vec(265, 43), module,
+		addParam(createParam<CKSS>(Vec(114, 53.85), module,
+			TfUnisonOscillator::SUB_MODE));
+		addParam(createParam<TfSnapKnob>(Vec(137.83, 50), module,
 			TfUnisonOscillator::VOICES));
 
-		addParam(createParam<CKSS>(Vec(20, 126), module,
-			TfUnisonOscillator::WAVEFORM));
-		addParam(createParam<TfAudioKob>(Vec(55, 116), module,
+		addParam(createParam<TfCvKnob>(Vec(16, 110), module,
 			TfUnisonOscillator::PULSE_WIDTH));
-		addParam(createParam<TfCvKnob>(Vec(101, 121), module,
+		addParam(createParam<TfCvKnob>(Vec(76, 110), module,
 			TfUnisonOscillator::PULSE_WIDTH_CV_AMOUNT));
-		addParam(createParam<TfCvKnob>(Vec(133, 121), module,
+		addParam(createParam<TfCvKnob>(Vec(136, 110), module,
 			TfUnisonOscillator::PWM_RATE));
-		addParam(createParam<TfAudioKob>(Vec(164, 116), module,
+		addParam(createParam<TfCvKnob>(Vec(16, 154), module,
 			TfUnisonOscillator::SPREAD));
-		addParam(createParam<TfAudioKob>(Vec(207, 116), module,
+		addParam(createParam<TfCvKnob>(Vec(76, 154), module,
 			TfUnisonOscillator::WIDTH));
-		addParam(createParam<TfAudioKob>(Vec(250, 116), module,
+		addParam(createParam<TfCvKnob>(Vec(136, 154), module,
 			TfUnisonOscillator::SUB_LEVEL));
-		addParam(createParam<CKSS>(Vec(301, 126), module,
-			TfUnisonOscillator::SUB_MODE));
 
-		addParam(createParam<TfAudioKob>(Vec(20, 203), module,
+		addParam(createParam<TfTrimpot>(Vec(21.07, 203), module,
 			TfUnisonOscillator::DRIFT_SPEED));
-		addParam(createParam<TfAudioKob>(Vec(78, 203), module,
+		addParam(createParam<TfTrimpot>(Vec(81.07, 203), module,
 			TfUnisonOscillator::HUM));
-		addParam(createParam<TfAudioKob>(Vec(136, 203), module,
+		addParam(createParam<TfTrimpot>(Vec(141.07, 203), module,
 			TfUnisonOscillator::COMMON_DRIFT));
-		addParam(createParam<TfAudioKob>(Vec(194, 203), module,
+		addParam(createParam<TfTrimpot>(Vec(21.07, 234), module,
 			TfUnisonOscillator::INDIVIDUAL_DRIFT));
-		addParam(createParam<TfAudioKob>(Vec(272, 203), module,
-			TfUnisonOscillator::TRACKING_ERROR));
-		addParam(createParam<CKSS>(Vec(249, 212), module,
+		addParam(createParam<CKSS>(Vec(83, 232.6), module,
 			TfUnisonOscillator::INDIVIDUAL_DRIFT_MODE));
+		addParam(createParam<TfTrimpot>(Vec(141.07, 234), module,
+			TfUnisonOscillator::TRACKING));
 
-		addParam(createParam<TfCvKnob>(Vec(226, 272), module,
+		addParam(createParam<TfTrimpot>(Vec(21.07, 267), module,
 			TfUnisonOscillator::SPREAD_CV_AMOUNT));
-		addParam(createParam<TfCvKnob>(Vec(270, 272), module,
+		addParam(createParam<TfTrimpot>(Vec(141.07, 267), module,
 			TfUnisonOscillator::WIDTH_CV_AMOUNT));
 
-		addInput(createInput<PJ301MPort>(Vec(20, 277), module,
+		addInput(createInput<PJ301MPort>(Vec(18.15, 297), module,
 			TfUnisonOscillator::VOCT_INPUT));
-		addInput(createInput<PJ301MPort>(Vec(68, 277), module,
+		addInput(createInput<PJ301MPort>(Vec(58.15, 297), module,
 			TfUnisonOscillator::PULSE_WIDTH_INPUT));
-		addInput(createInput<PJ301MPort>(Vec(116, 277), module,
+		addInput(createInput<PJ301MPort>(Vec(98.15, 297), module,
 			TfUnisonOscillator::SPREAD_INPUT));
-		addInput(createInput<PJ301MPort>(Vec(164, 277), module,
+		addInput(createInput<PJ301MPort>(Vec(138.15, 297), module,
 			TfUnisonOscillator::WIDTH_INPUT));
-		addOutput(createOutput<PJ301MPort>(Vec(132, 337), module,
+		addOutput(createOutput<PJ301MPort>(Vec(24, 333), module,
 			TfUnisonOscillator::MONO_OUTPUT));
-		addOutput(createOutput<PJ301MPort>(Vec(184, 337), module,
+		addOutput(createOutput<PJ301MPort>(Vec(78, 333), module,
 			TfUnisonOscillator::LEFT_OUTPUT));
-		addOutput(createOutput<PJ301MPort>(Vec(236, 337), module,
+		addOutput(createOutput<PJ301MPort>(Vec(132, 333), module,
 			TfUnisonOscillator::RIGHT_OUTPUT));
-		addOutput(createOutput<PJ301MPort>(Vec(288, 337), module,
-			TfUnisonOscillator::SUB_OUTPUT));
 	}
 };
 
