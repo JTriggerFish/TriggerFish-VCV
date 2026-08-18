@@ -149,9 +149,7 @@ MODULE_GRAPHICS = {
     "Tf303VoiceCore": PANEL_GRAPHICS,
     "Tf303Oscillator": ((ROOT / "res" / "logo.svg", 16.0, 232.0, 148.0, 80.8, 0.12),),
     "Tf4072VoiceCore": (),
-    "TfWavefoldOscillator": (
-        (ROOT / "res" / "logo.svg", 16.0, 251.0, 148.0, 80.8, 0.09),
-    ),
+    "TfWavefoldOscillator": (),
     "TfUnisonOscillator": (),
 }
 

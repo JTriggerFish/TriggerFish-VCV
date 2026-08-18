@@ -135,7 +135,7 @@ struct TfWavefoldOscillator : Module
 			0.0f, 100.0f);
 		configParam(FM_AMOUNT, -1.0f, 1.0f, 0.0f, "FM amount", "%",
 			0.0f, 100.0f);
-		configParam(MORPH_AMOUNT, -1.0f, 1.0f, 0.0f, "Morph CV amount", "%",
+		configParam(MORPH_AMOUNT, -1.0f, 1.0f, 0.0f, "Wave CV amount", "%",
 			0.0f, 100.0f);
 		configParam(FOLD_AMOUNT, -1.0f, 1.0f, 0.0f, "Fold CV amount", "%",
 			0.0f, 100.0f);
@@ -146,7 +146,7 @@ struct TfWavefoldOscillator : Module
 		configSwitch(CHARACTER, 0.0f, 2.0f, 2.0f, "Folder character",
 			{"Serge", "Hinge", "Lockhart"});
 		configParam<AliveSpeedQuantity>(ALIVE_SPEED, 0.0f, 1.0f, 0.5f,
-			"Alive speed", " s");
+			"Alive drift time", " s");
 		configParam(MORPH_ALIVE, 0.0f, 1.0f, 0.5f,
 			"Wave liveliness", "%", 0.0f, 100.0f);
 		configParam(FOLD_ALIVE, 0.0f, 1.0f, 0.5f,
@@ -163,13 +163,15 @@ struct TfWavefoldOscillator : Module
 		configInput(VOCT_INPUT, "Pitch (1V/octave)");
 		configInput(FM_INPUT,
 			"Frequency modulation (exponential or through-zero linear)");
-		configInput(MORPH_INPUT, "Sine / triangle morph CV");
+		configInput(MORPH_INPUT, "Wave CV (sine / triangle morph)");
 		configInput(FOLD_INPUT, "Fold CV");
 		configInput(SYMMETRY_INPUT, "Symmetry CV");
 		configInput(AUDIO_INPUT,
-			"External folder input (normalled from the internal oscillator)");
-		configOutput(OSCILLATOR_OUTPUT, "Unfolded oscillator");
-		configOutput(FOLDED_OUTPUT, "Folded audio");
+			"External audio to folder (replaces internal oscillator at folder input)");
+		configOutput(OSCILLATOR_OUTPUT,
+			"Internal oscillator before folding");
+		configOutput(FOLDED_OUTPUT,
+			"Folder output (internal oscillator or external audio input)");
 
 		for (int channel = 0; channel < PORT_MAX_CHANNELS; ++channel)
 		{
@@ -397,13 +399,6 @@ struct TfWavefoldOscillatorWidget : ModuleWidget
 		setPanel(APP->window->loadSvg(asset::plugin(
 			pluginInstance, "res/TfWavefoldOscillator.svg")));
 
-		auto* logoGraphic = new TfSvgWatermark;
-		logoGraphic->setScaledSvg(APP->window->loadSvg(asset::plugin(
-			pluginInstance, "res/logo.svg")), Vec(148, 80.8));
-		logoGraphic->box.pos = Vec(16, 251);
-		logoGraphic->opacity = 0.09f;
-		addChild(logoGraphic);
-
 		addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, 0)));
 		addChild(createWidget<ScrewSilver>(Vec(
 			box.size.x - 2 * RACK_GRID_WIDTH, 0)));
@@ -413,58 +408,60 @@ struct TfWavefoldOscillatorWidget : ModuleWidget
 			box.size.x - 2 * RACK_GRID_WIDTH,
 			RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
 
-		addParam(createParam<TfRotarySwitchKnob>(Vec(20, 45), module,
+		addParam(createParam<TfSnapKnob>(Vec(9.83, 48), module,
 			TfWavefoldOscillator::OCTAVE));
-		addParam(createParam<TfLargeAudioKnob>(Vec(110, 41), module,
+		addParam(createParam<TfTrimpot>(Vec(99.07, 53.244), module,
 			TfWavefoldOscillator::TUNE));
-		addParam(createParam<CKSS>(Vec(83, 50), module,
+		addParam(createParam<CKSS>(Vec(59, 51.853), module,
 			TfWavefoldOscillator::FM_MODE));
+		addParam(createParam<TfSnapKnob>(Vec(135.83, 48), module,
+			TfWavefoldOscillator::UNISON_VOICES));
 
-		addParam(createParam<TfAudioKob>(Vec(15, 113), module,
+		addParam(createParam<TfAudioKob>(Vec(12, 104), module,
 			TfWavefoldOscillator::MORPH));
-		addParam(createParam<TfAudioKob>(Vec(72, 113), module,
+		addParam(createParam<TfAudioKob>(Vec(72, 104), module,
 			TfWavefoldOscillator::FOLD));
-		addParam(createParam<TfAudioKob>(Vec(129, 113), module,
+		addParam(createParam<TfAudioKob>(Vec(132, 104), module,
 			TfWavefoldOscillator::SYMMETRY));
 
-		addParam(createParam<TfCvKnob>(Vec(4, 173), module,
+		addParam(createParam<TfCvKnob>(Vec(7, 257), module,
 			TfWavefoldOscillator::FM_AMOUNT));
-		addParam(createParam<TfCvKnob>(Vec(41, 173), module,
+		addParam(createParam<TfCvKnob>(Vec(53, 257), module,
 			TfWavefoldOscillator::MORPH_AMOUNT));
-		addParam(createParam<TfCvKnob>(Vec(111, 173), module,
+		addParam(createParam<TfCvKnob>(Vec(99, 257), module,
 			TfWavefoldOscillator::FOLD_AMOUNT));
-		addParam(createParam<TfCvKnob>(Vec(148, 173), module,
+		addParam(createParam<TfCvKnob>(Vec(145, 257), module,
 			TfWavefoldOscillator::SYMMETRY_AMOUNT));
-		addParam(createParam<CKSSThree>(Vec(83, 213), module,
+
+		addParam(createParam<CKSSThree>(Vec(37.5, 205), module,
 			TfWavefoldOscillator::CHARACTER));
-		addParam(createParam<TfAudioKob>(Vec(189, 52), module,
-			TfWavefoldOscillator::ALIVE_SPEED));
-		addParam(createParam<TfSlider>(Vec(181, 126), module,
-			TfWavefoldOscillator::MORPH_ALIVE));
-		addParam(createParam<TfSlider>(Vec(200, 126), module,
-			TfWavefoldOscillator::FOLD_ALIVE));
-		addParam(createParam<TfSlider>(Vec(219, 126), module,
-			TfWavefoldOscillator::SYMMETRY_ALIVE));
-		addParam(createParam<TfRotarySwitchKnob>(Vec(247.5, 52), module,
-			TfWavefoldOscillator::UNISON_VOICES));
-		addParam(createParam<TfAudioKob>(Vec(251, 132), module,
+		addParam(createParam<TfCvKnob>(Vec(121, 205), module,
 			TfWavefoldOscillator::UNISON_SPREAD));
 
-		addInput(createInput<PJ301MPort>(Vec(4, 267), module,
+		addParam(createParam<TfTrimpot>(Vec(15.07, 171), module,
+			TfWavefoldOscillator::ALIVE_SPEED));
+		addParam(createParam<TfTrimpot>(Vec(59.07, 171), module,
+			TfWavefoldOscillator::MORPH_ALIVE));
+		addParam(createParam<TfTrimpot>(Vec(103.07, 171), module,
+			TfWavefoldOscillator::FOLD_ALIVE));
+		addParam(createParam<TfTrimpot>(Vec(147.07, 171), module,
+			TfWavefoldOscillator::SYMMETRY_ALIVE));
+
+		addInput(createInput<PJ301MPort>(Vec(6, 299), module,
 			TfWavefoldOscillator::VOCT_INPUT));
-		addInput(createInput<PJ301MPort>(Vec(41, 267), module,
+		addInput(createInput<PJ301MPort>(Vec(42, 299), module,
 			TfWavefoldOscillator::FM_INPUT));
-		addInput(createInput<PJ301MPort>(Vec(78, 267), module,
+		addInput(createInput<PJ301MPort>(Vec(78, 299), module,
 			TfWavefoldOscillator::MORPH_INPUT));
-		addInput(createInput<PJ301MPort>(Vec(115, 267), module,
+		addInput(createInput<PJ301MPort>(Vec(114, 299), module,
 			TfWavefoldOscillator::FOLD_INPUT));
-		addInput(createInput<PJ301MPort>(Vec(152, 267), module,
+		addInput(createInput<PJ301MPort>(Vec(150, 299), module,
 			TfWavefoldOscillator::SYMMETRY_INPUT));
-		addInput(createInput<PJ301MPort>(Vec(24, 337), module,
+		addInput(createInput<PJ301MPort>(Vec(24, 334), module,
 			TfWavefoldOscillator::AUDIO_INPUT));
-		addOutput(createOutput<PJ301MPort>(Vec(78, 337), module,
+		addOutput(createOutput<PJ301MPort>(Vec(78, 334), module,
 			TfWavefoldOscillator::OSCILLATOR_OUTPUT));
-		addOutput(createOutput<PJ301MPort>(Vec(132, 337), module,
+		addOutput(createOutput<PJ301MPort>(Vec(132, 334), module,
 			TfWavefoldOscillator::FOLDED_OUTPUT));
 	}
 

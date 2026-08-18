@@ -38,6 +38,7 @@ Run the usual tasks from PowerShell:
 .\dev.ps1 smoke-303    # Install and open the sequenced 303 voice patch
 .\dev.ps1 smoke-4072   # Install and open the MIDI-playable 4072 voice patch
 .\dev.ps1 smoke-wavefold # Install and open the Wavefold Oscillator patch
+.\dev.ps1 smoke-unison # Install and open the Unison Oscillator patch
 .\dev.ps1 dist         # Build the release .vcvplugin package
 .\dev.ps1 test         # Build and run standalone C++ DSP tests
 .\dev.ps1 python-test  # Build Python bindings and run pytest
@@ -148,9 +149,16 @@ Install Impromptu Modular from the Rack Library before opening it.
 oscillator to 4072 Voice Core, with MIDI pitch tracking both oscillator and
 filter and MIDI gate driving the two internal envelopes.
 
-The Slop4 and VDPO patches use Rack Core, Fundamental, and TriggerFish modules;
-the 303 patch also uses Impromptu Modular. Their final stereo masters are set
-to -6 dB. `dev.ps1 smoke` remains an alias for `dev.ps1 smoke-vdpo`.
+[test-wavefold-oscillator.vcv](test-wavefold-oscillator.vcv) is a MIDI-playable
+Wavefold Oscillator patch exposing the oscillator and folded outputs together.
+
+[test-unison-oscillator.vcv](test-unison-oscillator.vcv) is a MIDI-playable
+Unison Oscillator patch exposing its mono and stereo mixes.
+
+The Slop4, VDPO, 4072, Wavefold, and Unison patches use Rack Core, Fundamental,
+and TriggerFish modules; the 303 patch also uses Impromptu Modular. Their final
+stereo masters are set to -6 dB. `dev.ps1 smoke` remains an alias for
+`dev.ps1 smoke-vdpo`.
 
 The checked-in patches do not name a MIDI controller, audio interface, or
 driver. Select the appropriate MIDI and audio devices after opening one. Keep

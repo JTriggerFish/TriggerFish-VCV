@@ -55,6 +55,74 @@ def test_303_oscillator_runtime_panel_outlines_all_editable_text():
     assert b"\r\n" not in (ROOT / "res" / "Tf303Oscillator.svg").read_bytes()
 
 
+def test_wavefold_oscillator_panel_uses_compact_12hp_alive_layout():
+    source = ET.parse(ROOT / "res-src" / "TfWavefoldOscillator.svg").getroot()
+    runtime = ET.parse(ROOT / "res" / "TfWavefoldOscillator.svg").getroot()
+
+    assert source.attrib["width"] == "180"
+    assert runtime.attrib["width"] == "180"
+    assert source.findall(f".//{SVG}text")
+    assert not runtime.findall(f".//{SVG}text")
+
+    dividers = source.find(f".//{SVG}path[@id='section-dividers']")
+    assert dividers is not None
+    assert dividers.attrib["d"] == "M18 27h144"
+
+    widget_source = (ROOT / "src" / "TfWavefoldOscillator.cpp").read_text(
+        encoding="utf-8"
+    )
+    controls = list(control_pattern("TfWavefoldOscillator").finditer(widget_source))
+    by_id = {control.group("id"): control for control in controls}
+    alive_params = ("ALIVE_SPEED", "MORPH_ALIVE", "FOLD_ALIVE", "SYMMETRY_ALIVE")
+    assert [by_id[name].group("type") for name in alive_params] == ["TfTrimpot"] * 4
+    assert [
+        control_coordinates(by_id[name], widget_source) for name in alive_params
+    ] == [
+        (15.07, 171.0),
+        (59.07, 171.0),
+        (103.07, 171.0),
+        (147.07, 171.0),
+    ]
+    assert [
+        control_coordinates(by_id[name], widget_source)
+        for name in ("FM_AMOUNT", "MORPH_AMOUNT", "FOLD_AMOUNT", "SYMMETRY_AMOUNT")
+    ] == [
+        (7.0, 257.0),
+        (53.0, 257.0),
+        (99.0, 257.0),
+        (145.0, 257.0),
+    ]
+    assert all(control.group("type") != "TfSlider" for control in controls)
+    assert by_id["OCTAVE"].group("type") == "TfSnapKnob"
+    assert by_id["UNISON_VOICES"].group("type") == "TfSnapKnob"
+    assert [
+        control_coordinates(by_id[name], widget_source)
+        for name in ("OCTAVE", "FM_MODE", "TUNE", "UNISON_VOICES")
+    ] == [
+        (9.83, 48.0),
+        (59.0, 51.853),
+        (99.07, 53.244),
+        (135.83, 48.0),
+    ]
+    assert control_coordinates(by_id["CHARACTER"], widget_source) == (37.5, 205.0)
+    assert control_coordinates(by_id["UNISON_SPREAD"], widget_source) == (
+        121.0,
+        205.0,
+    )
+    assert '"Alive drift time", " s"' in widget_source
+    assert '"Wave CV amount", "%"' in widget_source
+    assert '"Wave CV (sine / triangle morph)"' in widget_source
+    assert (
+        '"External audio to folder (replaces internal oscillator at folder input)"'
+        in widget_source
+    )
+    assert '"Internal oscillator before folding"' in widget_source
+    assert (
+        '"Folder output (internal oscillator or external audio input)"' in widget_source
+    )
+    assert "TfSvgWatermark" not in widget_source
+
+
 def test_4072_voice_core_panel_matches_the_wide_dual_envelope_layout():
     source = ET.parse(ROOT / "res-src" / "Tf4072VoiceCore.svg").getroot()
     runtime = ET.parse(ROOT / "res" / "Tf4072VoiceCore.svg").getroot()
