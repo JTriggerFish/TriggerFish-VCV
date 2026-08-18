@@ -43,6 +43,7 @@ MODULE_NAMES = (
     "Tf303VoiceCore",
     "Tf4072VoiceCore",
     "TfWavefoldOscillator",
+    "TfUnisonOscillator",
 )
 
 
@@ -151,6 +152,9 @@ MODULE_GRAPHICS = {
     "TfWavefoldOscillator": (
         (ROOT / "res" / "logo.svg", 16.0, 251.0, 148.0, 80.8, 0.09),
     ),
+    "TfUnisonOscillator": (
+        (ROOT / "res" / "logo.svg", 146.0, 249.0, 148.0, 80.8, 0.07),
+    ),
 }
 
 
@@ -247,6 +251,21 @@ MODULE_KNOB_ANGLES = {
         "SYMMETRY": -145.0,
         "UNISON_VOICES": -145.0,
         "UNISON_SPREAD": 0.0,
+    },
+    "TfUnisonOscillator": {
+        "PULSE_WIDTH": 0.0,
+        "PULSE_WIDTH_CV_AMOUNT": 0.0,
+        "PWM_RATE": -23.0,
+        "SPREAD": -54.0,
+        "WIDTH": 44.0,
+        "SUB_LEVEL": -145.0,
+        "DRIFT_SPEED": 0.0,
+        "HUM": -116.0,
+        "COMMON_DRIFT": -128.0,
+        "INDIVIDUAL_DRIFT": -128.0,
+        "TRACKING_ERROR": -128.0,
+        "SPREAD_CV_AMOUNT": 0.0,
+        "WIDTH_CV_AMOUNT": 0.0,
     },
 }
 

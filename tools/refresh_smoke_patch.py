@@ -3,12 +3,51 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import tempfile
 from pathlib import Path
 
 
-def prepare_local_patch(portable_path: Path, local_path: Path) -> bool:
+def _device_settings(template_path: Path) -> dict[str, dict]:
+    """Read only Rack MIDI/audio selections from an uncompressed local patch."""
+    try:
+        document = json.loads(template_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return {}
+    settings = {}
+    for module in document.get("modules", []):
+        model = module.get("model")
+        data = module.get("data", {})
+        if model == "MIDIToCVInterface" and isinstance(data.get("midi"), dict):
+            settings[model] = {"midi": data["midi"]}
+        elif model == "AudioInterface" and isinstance(data.get("audio"), dict):
+            settings[model] = {"audio": data["audio"]}
+    return settings
+
+
+def _portable_with_device_settings(
+    portable_data: bytes, template_path: Path | None
+) -> bytes:
+    if template_path is None or not template_path.is_file():
+        return portable_data
+    settings = _device_settings(template_path)
+    if not settings:
+        return portable_data
+    try:
+        document = json.loads(portable_data.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return portable_data
+    for module in document.get("modules", []):
+        inherited = settings.get(module.get("model"))
+        if inherited:
+            module.setdefault("data", {}).update(inherited)
+    return (json.dumps(document, indent=2) + "\n").encode("utf-8")
+
+
+def prepare_local_patch(
+    portable_path: Path, local_path: Path, device_template: Path | None = None
+) -> bool:
     """Create *local_path* from *portable_path* when it does not exist.
 
     Rack may save ``.vcv`` files as Zstandard-compressed tar archives. Existing
@@ -22,7 +61,9 @@ def prepare_local_patch(portable_path: Path, local_path: Path) -> bool:
     if local_path.exists():
         return True
 
-    portable_data = portable_path.read_bytes()
+    portable_data = _portable_with_device_settings(
+        portable_path.read_bytes(), device_template
+    )
     local_path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(
         dir=local_path.parent, prefix=f".{local_path.name}.", suffix=".tmp"
@@ -43,8 +84,15 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("portable_patch", type=Path)
     parser.add_argument("local_patch", type=Path)
+    parser.add_argument(
+        "--device-template",
+        type=Path,
+        help="Private local patch whose MIDI/audio selections should be inherited",
+    )
     args = parser.parse_args()
-    reused = prepare_local_patch(args.portable_patch, args.local_patch)
+    reused = prepare_local_patch(
+        args.portable_patch, args.local_patch, args.device_template
+    )
     action = "Using existing" if reused else "Created"
     print(f"{action} private local patch {args.local_patch.name}.")
 

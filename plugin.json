@@ -93,6 +93,16 @@
         "Waveshaper",
         "Polyphonic"
       ]
+    },
+    {
+      "slug": "TfUnisonOscillator",
+      "name": "Unison Oscillator",
+      "description": "Polyphonic 1-16 voice saw/pulse unison oscillator with stereo spread, sub oscillator, and built-in Slop",
+      "manualUrl": "https://github.com/JTriggerFish/TriggerFish-VCV#unison-oscillator",
+      "tags": [
+        "Oscillator",
+        "Polyphonic"
+      ]
     }
   ]
 }

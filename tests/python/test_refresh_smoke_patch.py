@@ -1,3 +1,4 @@
+import json
 import sys
 from pathlib import Path
 
@@ -25,3 +26,60 @@ def test_prepare_preserves_existing_compressed_local_patch(tmp_path):
 
     assert prepare_local_patch(portable_path, local_path) is True
     assert local_path.read_bytes() == compressed_local_data
+
+
+def test_new_local_patch_can_inherit_private_device_selections(tmp_path):
+    portable = tmp_path / "portable.vcv"
+    local = tmp_path / "local.vcv"
+    template = tmp_path / "template.local.vcv"
+    portable.write_text(
+        json.dumps(
+            {
+                "modules": [
+                    {
+                        "model": "MIDIToCVInterface",
+                        "data": {"midi": {"driver": -1, "channel": -1}},
+                    },
+                    {
+                        "model": "AudioInterface",
+                        "data": {"audio": {"driver": -1, "blockSize": 256}},
+                    },
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    template.write_text(
+        json.dumps(
+            {
+                "modules": [
+                    {
+                        "model": "MIDIToCVInterface",
+                        "data": {
+                            "midi": {
+                                "driver": 4,
+                                "deviceName": "Private keyboard",
+                                "channel": -1,
+                            }
+                        },
+                    },
+                    {
+                        "model": "AudioInterface",
+                        "data": {
+                            "audio": {
+                                "driver": 7,
+                                "deviceName": "Private interface",
+                                "blockSize": 64,
+                            }
+                        },
+                    },
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert prepare_local_patch(portable, local, template) is False
+    created = json.loads(local.read_text(encoding="utf-8"))
+    assert created["modules"][0]["data"]["midi"]["deviceName"] == ("Private keyboard")
+    assert created["modules"][1]["data"]["audio"]["deviceName"] == ("Private interface")

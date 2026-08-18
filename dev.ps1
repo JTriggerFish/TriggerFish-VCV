@@ -14,6 +14,7 @@ param(
         "smoke-303",
         "smoke-4072",
         "smoke-wavefold",
+        "smoke-unison",
         "test",
         "python-test",
         "shell",
@@ -94,14 +95,24 @@ function Invoke-PluginMake([string]$Target) {
     Invoke-Mingw "cd '$repoMsys' && RACK_DIR='$sdkMsys' make -j$Jobs $Target"
 }
 
-function Start-SmokePatch([string]$Filename) {
+function Start-SmokePatch(
+    [string]$Filename,
+    [string]$DeviceTemplateFilename = ""
+) {
     $portablePatch = Join-Path $repoRoot $Filename
     Assert-Path $portablePatch "Rack smoke-test patch"
     $localFilename = [System.IO.Path]::GetFileNameWithoutExtension($Filename) + ".local.vcv"
     $smokePatch = Join-Path $repoRoot $localFilename
     $prepareScript = Join-Path $repoRoot "tools\refresh_smoke_patch.py"
     Assert-Path $prepareScript "Smoke-patch preparation helper"
-    & uv run --no-project --python 3.13 python $prepareScript $portablePatch $smokePatch
+    $prepareArguments = @($prepareScript, $portablePatch, $smokePatch)
+    if (-not [string]::IsNullOrWhiteSpace($DeviceTemplateFilename)) {
+        $deviceTemplate = Join-Path $repoRoot $DeviceTemplateFilename
+        if (Test-Path -LiteralPath $deviceTemplate) {
+            $prepareArguments += @("--device-template", $deviceTemplate)
+        }
+    }
+    & uv run --no-project --python 3.13 python @prepareArguments
     if ($LASTEXITCODE -ne 0) {
         throw "Smoke-patch preparation failed with exit code $LASTEXITCODE."
     }
@@ -135,7 +146,7 @@ switch ($Command) {
         try {
             foreach ($moduleName in @(
                 "Tf303VoiceCore", "Tf303Oscillator", "Tf4072VoiceCore",
-                "TfWavefoldOscillator"
+                "TfWavefoldOscillator", "TfUnisonOscillator"
             )) {
                 & uv run python tools/align_panel_labels.py `
                     --rack-runtime $rackRuntime --module $moduleName
@@ -175,6 +186,10 @@ switch ($Command) {
     "smoke-303" { Start-SmokePatch "test-303-voice.vcv" }
     "smoke-4072" { Start-SmokePatch "test-4072-voice.vcv" }
     "smoke-wavefold" { Start-SmokePatch "test-wavefold-oscillator.vcv" }
+    "smoke-unison" {
+        Start-SmokePatch "test-unison-oscillator.vcv" `
+            "test-wavefold-oscillator.local.vcv"
+    }
     "test" {
         Invoke-Mingw "cd '$repoMsys' && cmake -S . -B build/dsp-tests -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DTRIGGERFISH_BUILD_PYTHON=OFF && cmake --build build/dsp-tests -j$Jobs && ctest --test-dir build/dsp-tests --output-on-failure"
     }

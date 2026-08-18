@@ -24,6 +24,7 @@
 #include "tfdsp/noise.hpp"
 #include "tfdsp/sampleRate.hpp"
 #include "tfdsp/unison.hpp"
+#include "tfdsp/unison_oscillator.hpp"
 #include "tfdsp/wavefolder.hpp"
 
 namespace py = pybind11;
@@ -770,6 +771,67 @@ namespace
 		return result;
 	}
 
+	py::array_t<double> RenderStackedOscillator(
+		py::array_t<double, py::array::c_style | py::array::forcecast> frequency,
+		py::array_t<double, py::array::c_style | py::array::forcecast> pulseWidth,
+		int voices, double spreadCents, double pulseMix, double width,
+		double sampleRate)
+	{
+		const auto frequencyInfo = frequency.request();
+		const auto pulseWidthInfo = pulseWidth.request();
+		RequireSameSize(frequencyInfo, pulseWidthInfo, "frequency", "pulse_width");
+		if (!(sampleRate > 0.0))
+			throw std::invalid_argument("sample_rate must be positive");
+		const int count = std::clamp(voices, 1,
+			tfdsp::MaximumStackedOscillatorVoices);
+		const auto pitchPositions =
+			tfdsp::StackedOscillatorPitchPositions(count);
+		const auto panPositions = tfdsp::StackedOscillatorPanPositions(count);
+		std::array<tfdsp::StackedOscillatorVoice,
+			tfdsp::MaximumStackedOscillatorVoices> oscillators{};
+		constexpr double GoldenConjugate = 0.6180339887498948482;
+		for (int voice = 0; voice < count; ++voice)
+			oscillators[voice].Reset(std::fmod(voice * GoldenConjugate, 1.0));
+		const double normalization = 1.0 / std::sqrt(static_cast<double>(count));
+		std::array<double, tfdsp::MaximumStackedOscillatorVoices> leftGains{};
+		std::array<double, tfdsp::MaximumStackedOscillatorVoices> rightGains{};
+		for (int voice = 0; voice < count; ++voice)
+		{
+			const double pan = std::clamp(width * panPositions[voice], -1.0, 1.0);
+			leftGains[voice] = std::sqrt(1.0 - pan);
+			rightGains[voice] = std::sqrt(1.0 + pan);
+		}
+
+		py::array_t<double> result({frequencyInfo.shape[0], py::ssize_t{4}});
+		auto output = result.mutable_unchecked<2>();
+		auto frequencies = frequency.unchecked<1>();
+		auto pulseWidths = pulseWidth.unchecked<1>();
+		for (py::ssize_t sample = 0; sample < frequencyInfo.shape[0]; ++sample)
+		{
+			double mono = 0.0;
+			double left = 0.0;
+			double right = 0.0;
+			double sub = 0.0;
+			for (int voice = 0; voice < count; ++voice)
+			{
+				const double voiceFrequency = std::clamp(frequencies(sample) *
+					std::exp2(spreadCents * pitchPositions[voice] / 1200.0),
+					0.0, 0.45 * sampleRate);
+				const auto rendered = oscillators[voice].Step(
+					voiceFrequency / sampleRate, pulseWidths(sample), pulseMix);
+				mono += rendered.main;
+				left += leftGains[voice] * rendered.main;
+				right += rightGains[voice] * rendered.main;
+				sub += rendered.sub;
+			}
+			output(sample, 0) = normalization * mono;
+			output(sample, 1) = normalization * left;
+			output(sample, 2) = normalization * right;
+			output(sample, 3) = normalization * sub;
+		}
+		return result;
+	}
+
 	template<typename Oscillator>
 	py::array_t<double> RenderWavefolderExternal(
 		py::array_t<double, py::array::c_style | py::array::forcecast> audio,
@@ -1311,6 +1373,32 @@ PYBIND11_MODULE(_triggerfish_dsp, module)
 	}, py::arg("voices"));
 	module.def("unison_output_gain", &tfdsp::UnisonOutputGain,
 		py::arg("voices"));
+	module.def("stacked_oscillator", &RenderStackedOscillator,
+		py::arg("frequency"), py::arg("pulse_width"), py::arg("voices") = 7,
+		py::arg("spread_cents") = 4.0, py::arg("pulse_mix") = 0.0,
+		py::arg("width") = 0.65, py::arg("sample_rate") = 48000.0);
+	module.def("stacked_oscillator_pitch_positions", [](int voices)
+	{
+		const int count = std::clamp(voices, 1,
+			tfdsp::MaximumStackedOscillatorVoices);
+		const auto positions = tfdsp::StackedOscillatorPitchPositions(count);
+		py::array_t<double> result(count);
+		auto output = result.mutable_unchecked<1>();
+		for (int voice = 0; voice < count; ++voice)
+			output(voice) = positions[voice];
+		return result;
+	}, py::arg("voices"));
+	module.def("stacked_oscillator_pan_positions", [](int voices)
+	{
+		const int count = std::clamp(voices, 1,
+			tfdsp::MaximumStackedOscillatorVoices);
+		const auto positions = tfdsp::StackedOscillatorPanPositions(count);
+		py::array_t<double> result(count);
+		auto output = result.mutable_unchecked<1>();
+		for (int voice = 0; voice < count; ++voice)
+			output(voice) = positions[voice];
+		return result;
+	}, py::arg("voices"));
 	module.def("wavefold_oscillator_x1",
 		&RenderWavefoldOscillator<WavefoldOscillatorX1>,
 		py::arg("frequency"), py::arg("morph"), py::arg("fold"),

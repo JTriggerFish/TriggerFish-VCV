@@ -57,9 +57,9 @@ template<int MinBlepZeroCrossings = 8, int MinBlepTableOversampling = 32>
 class BandlimitedSawOscillator
 {
 public:
-	void Reset()
+	void Reset(double phase = 0.0)
 	{
-		_phase = 0.0;
+		_phase = WrapPhase(std::isfinite(phase) ? phase : 0.0);
 		_discontinuityBlep.Reset();
 	}
 
@@ -174,9 +174,9 @@ public:
 	static constexpr double MinimumDutyCycle = 1.0e-6;
 	static constexpr double MaximumDutyCycle = 1.0 - MinimumDutyCycle;
 
-	void Reset()
+	void Reset(double phase = 0.0)
 	{
-		_phase = 0.0;
+		_phase = WrapPhase(std::isfinite(phase) ? phase : 0.0);
 		_dutyCycle = 0.5;
 		_dutyInitialized = false;
 		_discontinuityBlep.Reset();
@@ -326,6 +326,63 @@ private:
 
 		AdvanceContinuous(phaseIncrement * (1.0 - syncPosition), syncDuty,
 			nextDuty, syncPosition, 1.0);
+	}
+};
+
+/** Lightweight fixed-width pulse oscillator.
+ *
+	 * Its wrap and comparator edges use polyBLEP correction. This is preferable
+	 * to the event-buffered PWM oscillator when duty is fixed and sync is absent.
+ */
+class BandlimitedFixedPulseOscillator
+{
+public:
+	void Reset(double phase = 0.0)
+	{
+		_phase = WrapPhase(std::isfinite(phase) ? phase : 0.0);
+	}
+
+	double Step(double phaseIncrement, double dutyCycle = 0.5)
+	{
+		if (!std::isfinite(phaseIncrement) || !std::isfinite(dutyCycle))
+		{
+			Reset();
+			return 0.0;
+		}
+		const double increment = std::clamp(phaseIncrement, 0.0, 0.45);
+		const double duty = std::clamp(dutyCycle, 0.05, 0.95);
+		_phase = WrapPhase(_phase + increment);
+		const double comparatorPhase = WrapPhase(_phase - duty);
+		const double output = (_phase < duty ? 1.0 : -1.0) +
+			PolyBlep(_phase, increment) - PolyBlep(comparatorPhase, increment);
+		return std::isfinite(output) ? output : 0.0;
+	}
+
+	double Phase() const { return _phase; }
+
+private:
+	double _phase{};
+
+	static double WrapPhase(double phase)
+	{
+		return phase - std::floor(phase);
+	}
+
+	static double PolyBlep(double phase, double increment)
+	{
+		if (!(increment > 0.0) || increment >= 1.0)
+			return 0.0;
+		if (phase < increment)
+		{
+			const double x = phase / increment;
+			return x + x - x * x - 1.0;
+		}
+		if (phase > 1.0 - increment)
+		{
+			const double x = (phase - 1.0) / increment;
+			return x * x + x + x + 1.0;
+		}
+		return 0.0;
 	}
 };
 

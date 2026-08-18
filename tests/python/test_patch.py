@@ -16,6 +16,7 @@ PATCH_PATHS = {
     "303_voice": ROOT / "test-303-voice.vcv",
     "4072_voice": ROOT / "test-4072-voice.vcv",
     "wavefold": ROOT / "test-wavefold-oscillator.vcv",
+    "unison": ROOT / "test-unison-oscillator.vcv",
 }
 
 # Canonical Rack 2.6 module tags. Rack accepts a few historical aliases, but
@@ -160,6 +161,27 @@ EXPECTED_DEFAULTS = {
         15: 1.0,
         16: 0.39841330778621553,
     },
+    "TfUnisonOscillator": {
+        0: 0.0,
+        1: 0.0,
+        2: 7.0,
+        3: 0.0,
+        4: 0.5,
+        5: 0.0,
+        6: 0.42,
+        7: 0.39841330778621553,
+        8: 0.65,
+        9: 0.0,
+        10: 0.0,
+        11: 0.5,
+        12: 0.1,
+        13: 0.05,
+        14: 0.05,
+        15: 0.05,
+        16: 0.0,
+        17: 0.0,
+        18: 0.0,
+    },
 }
 
 
@@ -250,6 +272,7 @@ def test_smoke_patches_collectively_contain_every_triggerfish_module():
         "Tf303Oscillator",
         "Tf4072VoiceCore",
         "TfWavefoldOscillator",
+        "TfUnisonOscillator",
     }
 
 
@@ -290,7 +313,7 @@ def test_smoke_patch_has_playable_control_and_stereo_audio_paths(name):
     audio = modules(patch, "AudioInterface")[0]
     adsrs = modules(patch, "ADSR")
 
-    if name == "wavefold":
+    if name in {"wavefold", "unison"}:
         assert len(modules(patch, "Scope")) == 1
     else:
         assert "Scope" not in {module["model"] for module in patch["modules"]}
@@ -456,6 +479,30 @@ def test_wavefold_patch_connects_midi_oscillator_envelope_and_vca():
     )
 
 
+def test_unison_patch_connects_polyphonic_stereo_voice_and_scope():
+    patch = load_patch("unison")
+    midi = modules(patch, "MIDIToCVInterface")[0]
+    adsr = modules(patch, "ADSR")[0]
+    oscillator = modules(patch, "TfUnisonOscillator")[0]
+    vcas = modules(patch, "TfVCA")
+    scope = modules(patch, "Scope")[0]
+    audio = modules(patch, "AudioInterface")[0]
+
+    assert has_cable(patch, midi["id"], 0, oscillator["id"], 0)
+    assert has_cable(patch, midi["id"], 1, adsr["id"], 4)
+    for output, vca in zip((1, 2), vcas, strict=True):
+        assert has_cable(patch, oscillator["id"], output, vca["id"], 0)
+        assert has_cable(patch, adsr["id"], 0, vca["id"], 1)
+    assert {
+        cable["inputId"]
+        for cable in patch["cables"]
+        if cable["inputModuleId"] == audio["id"]
+    } == {0, 1}
+    assert has_cable(patch, oscillator["id"], 0, scope["id"], 0)
+    assert has_cable(patch, oscillator["id"], 3, scope["id"], 1)
+    assert has_cable(patch, oscillator["id"], 0, scope["id"], 2)
+
+
 def test_diode_ladder_default_cutoff_cv_range_reaches_fully_open():
     diode = modules(load_patch("303_voice"), "Tf303VoiceCore")[0]
     cutoff_pitch = diode["params"][0]["value"]
@@ -488,15 +535,16 @@ def test_303_voice_foundry_pattern_has_accents_rests_legato_and_slide_gates():
 def test_smoke_patch_has_quiet_master(name):
     patch = load_patch(name)
     audio = modules(patch, "AudioInterface")[0]
-    master = next(
+    masters = [
         mixer
         for mixer in modules(patch, "VCMixer")
         if math.isclose(20 * math.log10(param_values(mixer)[0]), -6.0, abs_tol=1e-6)
-    )
+    ]
 
-    assert {
+    routed_inputs = {
         cable["inputId"]
         for cable in patch["cables"]
-        if cable["outputModuleId"] == master["id"]
+        if cable["outputModuleId"] in {master["id"] for master in masters}
         and cable["inputModuleId"] == audio["id"]
-    } == {0, 1}
+    }
+    assert routed_inputs == {0, 1}

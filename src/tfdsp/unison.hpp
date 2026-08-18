@@ -7,6 +7,7 @@
 namespace tfdsp
 {
 	constexpr int MaximumUnisonVoices = 4;
+	constexpr int MaximumStackedOscillatorVoices = 16;
 	constexpr double MaximumUnisonSpreadCents = 50.0;
 
 	/** Nonlinear musical spread with fine control near unison and a one-semitone
@@ -58,5 +59,92 @@ namespace tfdsp
 	{
 		return 1.0 / std::sqrt(static_cast<double>(
 			std::clamp(voices, 1, MaximumUnisonVoices)));
+	}
+
+	/** Symmetric detune positions for a larger oscillator stack.
+	 *
+	 * The power curve keeps several oscillators near the tuning centre while the
+	 * outer pair reaches the full Spread setting. Every layout has exactly zero
+	 * mean, including even voice counts.
+	 */
+	inline std::array<double, MaximumStackedOscillatorVoices>
+	StackedOscillatorPitchPositions(int voices)
+	{
+		std::array<double, MaximumStackedOscillatorVoices> positions{};
+		const int count = std::clamp(voices, 1,
+			MaximumStackedOscillatorVoices);
+		if (count == 1)
+			return positions;
+		for (int voice = 0; voice < count; ++voice)
+		{
+			const double linear = -1.0 + 2.0 * voice / (count - 1.0);
+			positions[voice] = std::copysign(
+				std::pow(std::abs(linear), 1.6), linear);
+		}
+		return positions;
+	}
+
+	/** Quasi-random stereo positions independent of the pitch ordering. */
+	inline std::array<double, MaximumStackedOscillatorVoices>
+	StackedOscillatorPanPositions(int voices)
+	{
+		std::array<double, MaximumStackedOscillatorVoices> positions{};
+		const int count = std::clamp(voices, 1,
+			MaximumStackedOscillatorVoices);
+		if (count == 1)
+			return positions;
+
+		constexpr double GoldenConjugate = 0.6180339887498948482;
+		double mean = 0.0;
+		for (int voice = 0; voice < count; ++voice)
+		{
+			const double wrapped = std::fmod(
+				(voice + 0.5) * GoldenConjugate, 1.0);
+			positions[voice] = 2.0 * wrapped - 1.0;
+			mean += positions[voice];
+		}
+		mean /= count;
+		double maximum = 0.0;
+		for (int voice = 0; voice < count; ++voice)
+		{
+			positions[voice] -= mean;
+			maximum = std::max(maximum, std::abs(positions[voice]));
+		}
+		if (maximum > 0.0)
+			for (int voice = 0; voice < count; ++voice)
+				positions[voice] /= maximum;
+		return positions;
+	}
+
+	/** Fixed zero-mean oscillator calibration errors used by Tracking. */
+	inline std::array<double, MaximumStackedOscillatorVoices>
+	StackedOscillatorTrackingPositions(int voices)
+	{
+		std::array<double, MaximumStackedOscillatorVoices> positions{};
+		const int count = std::clamp(voices, 1,
+			MaximumStackedOscillatorVoices);
+		if (count == 1)
+			return positions;
+
+		constexpr double IrrationalStep = 0.4142135623730950488;
+		double mean = 0.0;
+		for (int voice = 0; voice < count; ++voice)
+		{
+			const double wrapped = std::fmod(
+				(voice + 0.25) * IrrationalStep, 1.0);
+			positions[voice] = 2.0 * wrapped - 1.0;
+			mean += positions[voice];
+		}
+		mean /= count;
+		double maximum = 0.0;
+		for (int voice = 0; voice < count; ++voice)
+		{
+			positions[voice] -= mean;
+			maximum = std::max(maximum, std::abs(positions[voice]));
+		}
+		if (maximum > 0.0)
+			for (int voice = 0; voice < count; ++voice)
+				positions[voice] /= maximum;
+		return positions;
 	}
 }

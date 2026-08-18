@@ -102,6 +102,27 @@ DEFAULT_PARAMS = {
         1.0,
         0.39841330778621553,
     ],
+    "TfUnisonOscillator": [
+        0.0,
+        0.0,
+        7.0,
+        0.0,
+        0.5,
+        0.0,
+        0.42,
+        0.39841330778621553,
+        0.65,
+        0.0,
+        0.0,
+        0.5,
+        0.1,
+        0.05,
+        0.05,
+        0.05,
+        0.0,
+        0.0,
+        0.0,
+    ],
     "VCO": [1.0, 1.0, 0.0, 0.0, 0.0, 0.5, 0.0, 0.0],
 }
 
@@ -566,9 +587,56 @@ def generate_wavefold_patch() -> None:
     patch.write("test-wavefold-oscillator.vcv")
 
 
+def generate_unison_patch() -> None:
+    patch = Patch(zoom=0.76, grid_offset=(-1, -0.1))
+    patch.add(
+        notes(
+            1,
+            "TriggerFish Unison Oscillator smoke test\n\n"
+            "Select MIDI and audio devices, then play from a keyboard. MIDI "
+            "pitch drives a seven-voice stereo saw stack; the ADSR controls "
+            "independent left and right TriggerFish VCAs. Two -6 dB masters "
+            "feed Audio-8 outputs 1 and 2.\n\n"
+            "Try VOICES, SPREAD, and WIDTH first. Switch WAVE to PULSE; PWM at "
+            "centre leaves PULSE WIDTH fixed, while moving it applies the "
+            "internal LFO at the selected RATE. A PW CV cable replaces that LFO. "
+            "Raise SUB LEVEL and "
+            "compare CENTRE with STACK; SUB is also available separately. "
+            "The SLOP controls add shared hum, common drift, independent drift, "
+            "and fixed per-oscillator tracking differences. The scope shows "
+            "the mono stack and sub oscillator with stable triggering.",
+        )
+    )
+    patch.add(midi(2, (16, 0)))
+    patch.add(module(3, "Fundamental", "ADSR", (28, 0)))
+    patch.add(module(4, "TriggerFish-Elements", "TfUnisonOscillator", (38, 0)))
+    patch.add(module(5, "TriggerFish-Elements", "TfVCA", (60, 0)))
+    patch.add(module(6, "TriggerFish-Elements", "TfVCA", (69, 0)))
+    patch.add(mixer(7, (78, 0), (0.5011872336, 0.7, 0.0, 0.0, 0.0)))
+    patch.add(mixer(8, (87, 0), (0.5011872336, 0.7, 0.0, 0.0, 0.0)))
+    patch.add(audio(9, (96, 0)))
+    patch.add(scope(10, (104, 0)))
+
+    patch.cable(2, 0, 4, 0)  # MIDI pitch -> oscillator 1V/oct
+    patch.cable(2, 1, 3, 4)  # MIDI gate -> ADSR gate
+    patch.cable(4, 1, 5, 0)  # left -> left VCA
+    patch.cable(4, 2, 6, 0)  # right -> right VCA
+    patch.cable(3, 0, 5, 1)
+    patch.cable(3, 0, 6, 1)
+    patch.cable(5, 0, 7, 1)
+    patch.cable(6, 0, 8, 1)
+    patch.cable(7, 0, 9, 0)
+    patch.cable(8, 0, 9, 1)
+    patch.cable(4, 0, 10, 0)  # mono -> scope channel 1
+    patch.cable(4, 3, 10, 1)  # sub -> scope channel 2
+    patch.cable(4, 0, 10, 2)  # mono -> scope trigger
+    patch.write("test-unison-oscillator.vcv")
+
+
 if __name__ == "__main__":
     generate_slop4_patch()
     generate_vdpo_patch()
     generate_303_voice_patch()
     generate_4072_voice_patch()
     generate_wavefold_patch()
+    generate_unison_patch()

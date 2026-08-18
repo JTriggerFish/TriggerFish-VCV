@@ -24,6 +24,7 @@
 #include "tfdsp/oscillator.hpp"
 #include "tfdsp/sampleRate.hpp"
 #include "tfdsp/unison.hpp"
+#include "tfdsp/unison_oscillator.hpp"
 #include "tfdsp/wavefolder.hpp"
 
 namespace
@@ -265,6 +266,42 @@ int main()
 	}
 	Check(bandlimitedSpectrumError < 0.5 * naiveSpectrumError,
 		"generic pulse improves in-band spectrum over a sampled comparator");
+
+	tfdsp::BandlimitedFixedPulseOscillator fixedPulse;
+	fixedPulse.Reset();
+	naivePhase = 0.0;
+	for (int i = 0; i < spectralWarmup; ++i)
+	{
+		fixedPulse.Step(spectralFrequency / pulseSampleRate, spectralDuty);
+		naivePhase += spectralFrequency / pulseSampleRate;
+		naivePhase -= std::floor(naivePhase);
+	}
+	double fixedPulseSpectrumError = 0.0;
+	bandlimitedPulse.assign(spectralSamples, 0.0);
+	naivePulse.assign(spectralSamples, 0.0);
+	for (int i = 0; i < spectralSamples; ++i)
+	{
+		bandlimitedPulse[i] = fixedPulse.Step(
+			spectralFrequency / pulseSampleRate, spectralDuty);
+		naivePhase += spectralFrequency / pulseSampleRate;
+		naivePhase -= std::floor(naivePhase);
+		naivePulse[i] = naivePhase < spectralDuty ? 1.0 : -1.0;
+	}
+	naiveSpectrumError = 0.0;
+	for (int harmonic = 1; harmonic < 16; ++harmonic)
+	{
+		const double expected = 2.0 * std::abs(std::sin(
+			3.14159265358979323846 * harmonic * spectralDuty)) /
+			(3.14159265358979323846 * harmonic);
+		const double normalizedFrequency = harmonic * spectralFrequency /
+			pulseSampleRate;
+		fixedPulseSpectrumError += std::abs(HarmonicMagnitude(
+			bandlimitedPulse, normalizedFrequency) - expected);
+		naiveSpectrumError += std::abs(HarmonicMagnitude(
+			naivePulse, normalizedFrequency) - expected);
+	}
+	Check(fixedPulseSpectrumError < 0.65 * naiveSpectrumError,
+		"fixed polyBLEP pulse improves in-band spectrum over a sampled comparator");
 
 	genericPulse.Reset();
 	Check(genericPulse.Step(std::numeric_limits<double>::quiet_NaN(), 0.5) ==
@@ -541,6 +578,56 @@ int main()
 			1.0 / std::sqrt(static_cast<double>(voices))) < 1.0e-12,
 			"unison output uses energy normalization");
 	}
+	for (int count = 1; count <= tfdsp::MaximumStackedOscillatorVoices; ++count)
+	{
+		const auto pitch = tfdsp::StackedOscillatorPitchPositions(count);
+		const auto pan = tfdsp::StackedOscillatorPanPositions(count);
+		const auto tracking = tfdsp::StackedOscillatorTrackingPositions(count);
+		double pitchMean = 0.0;
+		double panMean = 0.0;
+		double trackingMean = 0.0;
+		for (int voice = 0; voice < count; ++voice)
+		{
+			pitchMean += pitch[voice];
+			panMean += pan[voice];
+			trackingMean += tracking[voice];
+			Check(std::abs(pitch[voice]) <= 1.0 + 1.0e-12 &&
+				std::abs(pan[voice]) <= 1.0 + 1.0e-12 &&
+				std::abs(tracking[voice]) <= 1.0 + 1.0e-12,
+				"large-stack layouts stay normalized");
+		}
+		Check(std::abs(pitchMean) < 1.0e-12 &&
+			std::abs(panMean) < 1.0e-12 &&
+			std::abs(trackingMean) < 1.0e-12,
+			"large-stack layouts preserve pitch, pan, and tracking centres");
+	}
+
+	tfdsp::StackedOscillatorVoice stackedVoice;
+	constexpr double stackedFrequency = 440.0;
+	constexpr double stackedIncrement = stackedFrequency / 48000.0;
+	bool stackedFinite = true;
+	for (int sample = 0; sample < 48000; ++sample)
+	{
+		const double pwm = 0.5 + 0.4 * std::sin(
+			2.0 * 3.14159265358979323846 * sample / 16000.0);
+		const auto rendered = stackedVoice.Step(stackedIncrement, pwm, 0.7);
+		stackedFinite = stackedFinite && std::isfinite(rendered.main) &&
+			std::isfinite(rendered.sub);
+	}
+	Check(stackedFinite,
+		"stacked oscillator remains finite under deep pulse-width modulation");
+	stackedVoice.Reset();
+	double previousSub = 0.0;
+	int positiveSubCrossings = 0;
+	for (int sample = 0; sample < 48000; ++sample)
+	{
+		const double sub = stackedVoice.StepSub(stackedIncrement);
+		if (previousSub <= 0.0 && sub > 0.0)
+			++positiveSubCrossings;
+		previousSub = sub;
+	}
+	Check(std::abs(positiveSubCrossings - 220) <= 1,
+		"stacked oscillator sub runs exactly one octave below its parent");
 	double maxExp2RelativeError = 0.0;
 	for (int i = 0; i <= 20000; ++i)
 	{

@@ -31,6 +31,8 @@ if(EXISTS "${RACK_SDK_DIR}/include/rack.hpp")
 		src/Tf303VoiceCore.cpp
 		src/Tf303Oscillator.cpp
 		src/Tf4072VoiceCore.cpp
+		src/TfWavefoldOscillator.cpp
+		src/TfUnisonOscillator.cpp
 	)
 	target_include_directories(triggerfish_rack_index PRIVATE
 		${CMAKE_CURRENT_SOURCE_DIR}/src

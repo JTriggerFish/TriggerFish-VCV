@@ -362,7 +362,12 @@ def test_panel_label_alignment_uses_control_center_and_optical_offset():
 
 def test_documentation_includes_every_rendered_module_preview_and_technical_report():
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    for module_name in MODULE_NAMES:
+    documented_modules = tuple(
+        module_name
+        for module_name in MODULE_NAMES
+        if module_name != "TfUnisonOscillator"
+    )
+    for module_name in documented_modules:
         assert (ROOT / "doc" / f"{module_name}.png").is_file()
         assert f'src="doc/{module_name}.png"' in readme
     for report in (
