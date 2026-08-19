@@ -249,27 +249,27 @@ extends well into self-oscillation.
 
 ### 2.3 Bass extension
 
-The Devil Fish Bass modification increases C20 and C21 by a factor of ten,
-lowering two AC-coupling corners after the ladder. These capacitors affect the
-signal delivered to the output and VCA; the resonance return retains its stock
-transfer.
+The Devil Fish Bass modification increases C20 and C21 from 10 nF to 100 nF.
+The capacitors are the two arms of the differential coupling network between
+the filter and VCA. Together they produce one effective high-pass pole in the
+complete circuit transfer. The resonance return is taken before this network.
 
 The continuously variable reduction is
 
 $$
 H_b(s,b)=
-\left(\frac{s+\omega_b}{s+\omega_b10^{-b}}\right)^2,
+\frac{s+\omega_b}{s+\omega_b10^{-b}},
 $$
 
 $$
-\omega_b=2\pi(24.66),
+\omega_b=578.1\ \mathrm{rad/s}=2\pi(92.0\ \mathrm{Hz}),
 $$
 
-where $0\leq b\leq1$. At $b=0$ each ratio is unity. At $b=1$ both poles move
-down one decade, adding about 4 dB at 32 Hz while retaining DC blocking. The
-24.66 Hz corner and the two-shelf reduction are calibrated from the complete
-coupling response. A 10 ms parameter smoother prevents zipper noise when the
-Bass knob moves.
+where $0\leq b\leq1$. At $b=0$ the ratio is unity. At $b=1$ the 92 Hz pole
+moves to 9.2 Hz, matching the decade increase in both capacitor values. Other
+high-pass factors in the complete circuit remain present, so DC is still
+blocked. A 10 ms parameter smoother prevents zipper noise when the Bass knob
+moves.
 
 ### 2.4 Filter and volume envelopes
 
@@ -651,7 +651,7 @@ The fixed circuit and modular mappings are summarized here:
 | High feedback scale | twice stock | Devil Fish documentation |
 | Ladder-to-Rack scale | 9.494 | Reciprocal normalized-voltage conversion |
 | Resonance makeup | $1+2q$ or $1+3q$ | Output-level calibration |
-| Bass shelves | 24.66 Hz, two sections | Fit to the modified coupling response |
+| Bass coupling pole | 92.0 Hz to 9.2 Hz | C20/C21 differential network |
 | Linear FM | 200 Hz/V at full amount | Modular control range |
 | Rack-to-VCA differential scale | $\sqrt{2}$ mV/V | 5 V peak to 5 mV RMS reference point |
 | VCA base and accent currents | 20 µA each at full scale | BA662 operating-point calibration |
@@ -878,7 +878,7 @@ for each internal sample:
     solve R(trial_state) = 0 with damped Newton iterations
     store the solved ladder state
     advance the resonance RC states with solved_state[3]
-    pass solved_state[3] through output coupling and the two Bass shelves
+    pass solved_state[3] through output coupling and the Bass coupling correction
     convert the resulting filter value to Rack volts as v_f
 
     LP path:
@@ -972,7 +972,8 @@ The ladder represents a nominal matched circuit at fixed thermal voltage. Real
 units acquire additional variation from component tolerance, junction mismatch,
 temperature, supply coupling, leakage, and semiconductor parasitic capacitance.
 The complete surrounding coupling transfer is represented; the continuous
-Bass control uses the calibrated two-shelf reduction from Section 2.3.
+Bass control moves the C20/C21 differential coupling pole as described in
+Section 2.3.
 
 Normal accent mode follows the published component network. Fast and Slow are
 behavioural realizations of the documented Devil Fish responses. Resonance

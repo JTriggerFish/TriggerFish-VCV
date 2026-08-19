@@ -105,7 +105,7 @@ DEFAULT_PARAMS = {
     "TfUnisonOscillator": [
         0.0,
         0.0,
-        7.0,
+        3.0,
         0.0,
         0.5,
         0.0,
@@ -116,13 +116,14 @@ DEFAULT_PARAMS = {
         0.0,
         0.5,
         0.1,
-        0.05,
-        0.05,
+        0.1,
+        0.15,
+        1.0,
         1.0,
         0.0,
         0.0,
-        0.0,
     ],
+    "LFO": [0.0, 0.0, math.log2(0.07), 0.0, 0.0, 0.5, 0.0],
     "VCO": [1.0, 1.0, 0.0, 0.0, 0.0, 0.5, 0.0, 0.0],
 }
 
@@ -229,18 +230,48 @@ def foundry_step(*, gate: bool = False, velocity: int = 0, gate_type: int = 0) -
 
 
 def foundry_track(
-    track: int, pitches: list[float], attributes: list[int]
+    track: int,
+    pitch_sequences: list[list[float]],
+    attribute_sequences: list[list[int]],
+    phrase_repetitions: list[int],
 ) -> dict[str, int | list[int] | list[float]]:
-    """Build one 16-step Foundry track, padded to its 32-step storage size."""
-    if len(pitches) != 16 or len(attributes) != 16:
-        raise ValueError("Foundry smoke-test tracks must contain 16 steps")
+    """Build a Foundry song from 16- or 32-step sequences."""
+    if not pitch_sequences or len(pitch_sequences) != len(attribute_sequences):
+        raise ValueError("Foundry pitch and attribute sequences must correspond")
+    if len(phrase_repetitions) != len(pitch_sequences):
+        raise ValueError("Each Foundry song phrase needs a repetition count")
+    sequence_lengths = [len(sequence) for sequence in pitch_sequences]
+    if any(length not in (16, 32) for length in sequence_lengths):
+        raise ValueError("Foundry sequences must contain 16 or 32 steps")
+    if any(
+        len(attributes) != length
+        for attributes, length in zip(attribute_sequences, sequence_lengths)
+    ):
+        raise ValueError("Foundry attributes must match their sequence length")
+
+    saved_count = len(pitch_sequences)
+    saved_cv: list[float] = []
+    saved_attributes: list[int] = []
+    for pitches, attributes in zip(pitch_sequences, attribute_sequences):
+        padding = 32 - len(pitches)
+        saved_cv.extend(pitches + [0.0] * padding)
+        saved_attributes.extend(attributes + [foundry_step() for _ in range(padding)])
+
+    phrases = [
+        sequence + ((repetitions - 1) << 8)
+        for sequence, repetitions in enumerate(phrase_repetitions)
+    ]
     prefix = f"id{track}_"
     return {
         f"{prefix}pulsesPerStep": 1,
-        f"{prefix}sequences": [16] + [32] * 63,
-        f"{prefix}seqSaved": [1] + [0] * 63,
-        f"{prefix}cv": pitches + [0.0] * 16,
-        f"{prefix}attributes": attributes + [foundry_step() for _ in range(16)],
+        f"{prefix}runModeSong": 0,
+        f"{prefix}songBeginIndex": 0,
+        f"{prefix}songEndIndex": len(phrases) - 1,
+        f"{prefix}phrases": phrases + [0] * (99 - len(phrases)),
+        f"{prefix}sequences": sequence_lengths + [32] * (64 - saved_count),
+        f"{prefix}seqSaved": [1] * saved_count + [0] * (64 - saved_count),
+        f"{prefix}cv": saved_cv,
+        f"{prefix}attributes": saved_attributes,
         f"{prefix}seqIndexEdit": 0,
     }
 
@@ -257,7 +288,15 @@ class Patch:
     def add(self, item: dict) -> None:
         self.modules.append(item)
 
-    def cable(self, source: int, output: int, target: int, input_: int) -> None:
+    def cable(
+        self,
+        source: int,
+        output: int,
+        target: int,
+        input_: int,
+        *,
+        color: str | None = None,
+    ) -> None:
         cable_id = 1000 + len(self.cables)
         self.cables.append(
             {
@@ -266,7 +305,7 @@ class Patch:
                 "outputId": output,
                 "inputModuleId": target,
                 "inputId": input_,
-                "color": COLORS[len(self.cables) % len(COLORS)],
+                "color": color or COLORS[len(self.cables) % len(COLORS)],
             }
         )
 
@@ -401,97 +440,190 @@ def generate_vdpo_patch() -> None:
 
 
 def generate_303_voice_patch() -> None:
-    patch = Patch(zoom=0.68, grid_offset=(-1, -0.1))
-    pitches = [
-        -20 / 12,
-        -20 / 12,
-        -20 / 12,
-        -20 / 12,
-        -20 / 12,
-        -8 / 12,
-        -20 / 12,
-        -20 / 12,
-        -20 / 12,
-        -20 / 12,
-        -20 / 12,
-        -12 / 12,
-        -24 / 12,
-        -20 / 12,
-        -20 / 12,
-        -20 / 12,
+    patch = Patch(
+        zoom=1.3599998950958252,
+        grid_offset=(-12.460025787353516, -0.22162829339504242),
+    )
+    # The Gibber Acid playground pattern by fasttriggerfish and thecharlie.
+    # Theory.degree changes both offset and mode: i is minor/Aeolian, -iv is
+    # minor/Aeolian down a seventh, and -V is major/Ionian down a fifth.
+    gibber_degrees = [0, 0, 0, 0, 4, 6, 0, None, 0, None, 7, -7, None, 0, -7, 0]
+    root_d_sharp_2 = -21
+    sections = [
+        ({0: 0, 4: 7, 6: 10, 7: 12, -7: -12}, 0),
+        ({0: 0, 4: 7, 6: 10, 7: 12, -7: -12}, -7),
+        ({0: 0, 4: 7, 6: 11, 7: 12, -7: -12}, -5),
     ]
-    slide_steps = {5, 12}
-    legato_steps = slide_steps | {step - 1 for step in slide_steps}
-    rest_steps = {1, 3, 6, 8, 10, 13, 15}
-    accent_steps = {2, 9, 14}
+    pitch_sequences = [
+        [
+            (root_d_sharp_2 + degree_offset + mode.get(degree, 0)) / 12
+            for degree in gibber_degrees
+        ]
+        for mode, degree_offset in sections
+    ]
+    # Gibber advances [1, 1, 100, 100] ms once per quarter note. The 303
+    # oscillator's 2 ms floor makes the first half effectively instantaneous;
+    # track B enables its 100 ms glide throughout the second half of each bar.
+    slide_steps = set(range(8, 16))
+    rest_steps = {step for step, degree in enumerate(gibber_degrees) if degree is None}
+    accent_steps = {0, 4, 6, 10, 14}
     note_attributes = [
         foundry_step(
             gate=step not in rest_steps,
             velocity=200 if step in accent_steps else 0,
-            gate_type=5 if step in legato_steps else 0,
         )
-        for step in range(16)
+        for step in range(len(gibber_degrees))
     ]
     # Foundry track B is a full-step gate lane for our oscillator's Slide input.
     slide_attributes = [
-        foundry_step(gate=step in slide_steps, gate_type=5) for step in range(16)
+        foundry_step(gate=step in slide_steps, gate_type=5)
+        for step in range(len(gibber_degrees))
     ]
     foundry_data: dict = {
         "velocityMode": 0,
         "running": True,
         "stepIndexEdit": 0,
+        "phraseIndexEdit": 0,
         "trackIndexEdit": 0,
     }
-    foundry_data.update(foundry_track(0, pitches, note_attributes))
-    foundry_data.update(foundry_track(1, [0.0] * 16, slide_attributes))
+    phrase_repetitions = [8, 4, 4]
+    foundry_data.update(
+        foundry_track(
+            0,
+            pitch_sequences,
+            [note_attributes] * len(pitch_sequences),
+            phrase_repetitions,
+        )
+    )
+
+    # Auditioned settings saved with the musical smoke patch.
+    voice_params = DEFAULT_PARAMS["Tf303VoiceCore"].copy()
+    voice_params[0] = 0.128505349159241
+    voice_params[1] = 0.408434182405472
+    voice_params[2] = 1.0
+    voice_params[4] = 0.479517936706543
+    voice_params[5] = 0.406198114156723
+    voice_params[6] = 0.2313252389431
+    voice_params[7] = 0.60891592502594
+    voice_params[8] = 1.0
+    voice_params[9] = -1.18070936203003
+    voice_params[11] = 0.589156568050385
+    voice_params[12] = 0.497590363025665
+    oscillator_params = DEFAULT_PARAMS["Tf303Oscillator"].copy()
+    oscillator_params[2] = math.log10(0.100)
+    oscillator_params[4] = 0.296385675668716
+    foundry_data.update(
+        foundry_track(
+            1,
+            [[0.0] * 16 for _ in pitch_sequences],
+            [slide_attributes] * len(pitch_sequences),
+            phrase_repetitions,
+        )
+    )
 
     patch.add(
         notes(
             1,
             "TriggerFish 303 voice smoke test\n\n"
             "SETUP\nSelect an output device in Audio-8 and start with monitor "
-            "volume low. Impromptu Clocked and Foundry run the programmed "
-            "16-step pattern automatically.\n\n"
-            "Foundry A sends pitch, gate, and per-step accent. Track B marks "
-            "the legato notes for Tf303Oscillator's Slide input. The oscillator's "
-            "post-slide CV tracks 303 Voice Core cutoff, and VCA OUT feeds "
-            "the -6 dB stereo master. Isolated repeated E notes alternate normal "
-            "and accented articulation; two legato pairs slide by one octave.\n\n"
-            "All TriggerFish parameters start at their declared defaults. Try "
+            "volume low. Impromptu Clocked and Foundry run the full 16-bar "
+            "Gibber Acid playground line by fasttriggerfish and thecharlie at "
+            "120 BPM: i for 8 bars, -iv for 4, then -V for 4.\n\n"
+            "Foundry track A contains the notes, rests, and accents. Track B "
+            "reproduces the repeating 1, 1, 100, 100 ms glide cycle; the first "
+            "two quarters are effectively instantaneous. Independent slow "
+            "bipolar sines modulate cutoff and resonance. A separate 14 Hz "
+            "sine is connected "
+            "to linear filter FM with its attenuverter at zero. VCA OUT feeds "
+            "the -6 dB stereo master.\n\n"
+            "The cutoff, resonance, CV depths, and slide time are set for this "
+            "line; other TriggerFish parameters use their declared defaults. Try "
             "WAVE and SHAPE on the oscillator, then CUTOFF, RES, ENV, ACCENT, "
             "DRIVE, and BASS on the filter.",
-        )
+            pos=(-9, 0),
+        ),
     )
     patch.add(
         module(
             2,
             "ImpromptuModular",
             "Clocked",
-            (16, 0),
-            values=[125.0, 5.0, 0.0, 0.0] + [0.0] * 4 + [0.5] * 4 + [0.0] * 8,
+            (7, 0),
+            values=[120.0, 5.0, 0.0, 0.0] + [0.0] * 4 + [0.5] * 4 + [0.0] * 8,
             data={"running": True, "ppqn": 4},
+        )
+    )
+    foundry = module(
+        3,
+        "ImpromptuModular",
+        "Foundry",
+        (27, 0),
+        data=foundry_data,
+    )
+    foundry["params"] = [{"id": 78, "value": 0.0}]  # Song mode
+    patch.add(foundry)
+    patch.add(
+        mixer(
+            6,
+            (65, 0),
+            (0.5011872336, 0.838592648506165, 0.0, 0.0, 0.0),
+        )
+    )
+    patch.add(audio(7, (74, 0)))
+    patch.add(
+        module(
+            4,
+            "TriggerFish-Elements",
+            "Tf303Oscillator",
+            (5, 1),
+            values=oscillator_params,
         )
     )
     patch.add(
         module(
-            3,
-            "ImpromptuModular",
-            "Foundry",
-            (28, 0),
-            data=foundry_data,
+            5,
+            "TriggerFish-Elements",
+            "Tf303VoiceCore",
+            (30, 1),
+            values=voice_params,
         )
     )
-    patch.add(mixer(6, (65, 0), (0.5011872336, 0.7, 0.0, 0.0, 0.0)))
-    patch.add(audio(7, (74, 0)))
-    patch.add(module(4, "TriggerFish-Elements", "Tf303Oscillator", (28, 1)))
-    patch.add(module(5, "TriggerFish-Elements", "Tf303VoiceCore", (40, 1)))
+    patch.add(
+        module(
+            8,
+            "Fundamental",
+            "LFO",
+            (46, 1),
+            values=[0.0, 0.0, -4.00999546051025, 0.0, 0.0, 0.5, 0.0],
+        )
+    )
+    patch.add(
+        module(
+            9,
+            "Fundamental",
+            "LFO",
+            (55, 1),
+            values=[0.0, 0.0, -4.1243371963501, 0.0, 0.0, 0.5, 0.0],
+        )
+    )
+    patch.add(
+        module(
+            10,
+            "Fundamental",
+            "LFO",
+            (64, 1),
+            values=[0.0, 0.0, 3.80241107940674, 0.0, 0.0, 0.5, 0.0],
+        )
+    )
 
     patch.cable(2, 1, 3, 6)  # Clocked x4 -> Foundry track A clock
     patch.cable(2, 4, 3, 5)  # reset
     patch.cable(3, 0, 4, 0)  # track A pitch -> oscillator V/OCT
     patch.cable(3, 9, 4, 1)  # track B gate -> oscillator Slide
-    patch.cable(4, 0, 5, 1)  # post-slide pitch -> filter V/OCT
     patch.cable(4, 1, 5, 0)  # oscillator audio -> filter input
+    patch.cable(8, 0, 5, 2, color="#f3374b")  # slow sine -> exponential cutoff
+    patch.cable(9, 0, 5, 4, color="#ffb437")  # slow sine -> resonance
+    patch.cable(10, 0, 5, 3)  # 14 Hz sine -> linear filter FM audition
     patch.cable(3, 8, 5, 5)  # track A gate -> filter Gate
     patch.cable(3, 4, 5, 6)  # track A CV2 -> filter Accent
     patch.cable(5, 1, 6, 1)

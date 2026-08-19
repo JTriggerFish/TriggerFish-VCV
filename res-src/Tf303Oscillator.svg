@@ -3,16 +3,6 @@
   <rect width="180" height="380" fill="#cecece"/>
   <path id="section-dividers" d="M28 27h124M28 222h124M28 324h124" stroke="#777" stroke-width="0.7"/>
 
-  <g id="octave-detents" fill="#777">
-    <circle cx="18.1" cy="82.4" r="1.05"/>
-    <circle cx="19.4" cy="59.8" r="1.05"/>
-    <circle cx="29.4" cy="46.9" r="1.05"/>
-    <circle cx="42.5" cy="43.0" r="1.05"/>
-    <circle cx="55.6" cy="46.9" r="1.05"/>
-    <circle cx="65.6" cy="59.8" r="1.05"/>
-    <circle cx="66.9" cy="82.4" r="1.05"/>
-  </g>
-
   <g font-family="DejaVu Sans, sans-serif" text-anchor="middle" fill="#1f1f1f">
     <text x="90.5054" y="14" font-size="10" font-weight="bold" letter-spacing="1.1" data-center-x="90">TRIGGERFISH</text>
     <text x="89.8153" y="24" font-size="7.8" letter-spacing="1.5" data-center-x="90">303 OSCILLATOR</text>
@@ -23,6 +13,8 @@
     <g fill="#686868">
       <text x="90.1531" y="50" font-size="6.4" font-weight="bold" data-control="FM_MODE">TZ</text>
       <text x="89.7953" y="85" font-size="6.4" font-weight="bold" data-control="FM_MODE">EXP</text>
+      <text x="18" y="96" font-size="5.5" font-weight="bold">−3</text>
+      <text x="67" y="96" font-size="5.5" font-weight="bold">+3</text>
     </g>
 
     <text x="32.9922" y="112" font-size="8" font-weight="bold" data-control="SLIDE_TIME">SL.TIME</text>

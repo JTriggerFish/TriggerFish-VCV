@@ -22,8 +22,11 @@ development-directory/
 
 MSYS2 uses its standard installation directory by default. These locations can
 be overridden with `MSYS2_ROOT`, `RACK_SDK_DIR`, `RACK_RUNTIME_DIR`, and
-`RACK_SOURCE_DIR`. Keep the repository and SDK paths free of spaces because the
-Rack Makefile toolchain does not support spaces in absolute paths.
+`RACK_SOURCE_DIR`. The `run` and `smoke-*` commands prefer an installed Rack
+Pro executable, fall back to `Rack2/Rack.exe`, and can be directed to a
+specific edition with `RACK_EXECUTABLE`. Keep the repository and SDK paths free
+of spaces because the Rack Makefile toolchain does not support spaces in
+absolute paths.
 
 Run the usual tasks from PowerShell:
 
@@ -141,9 +144,11 @@ sine, saw, and square.
 
 [test-303-voice.vcv](test-303-voice.vcv) combines 303 Oscillator
 (`Tf303Oscillator`) and 303 Voice Core (`Tf303VoiceCore`) with Impromptu
-Modular's Clocked and Foundry. The programmed 16-step pattern routes pitch,
-gate, per-step accent, and a separate slide lane through the complete voice.
-Install Impromptu Modular from the Rack Library before opening it.
+Modular's Clocked and Foundry. Its 16-bar song repeats the Gibber Acid motif
+over i, -iv, and -V for 8, 4, and 4 bars. Separate Fundamental LFOs provide
+slow cutoff and resonance cycles; a 14 Hz LFO is connected to
+linear filter FM with its attenuverter at zero. Install Impromptu Modular from
+the Rack Library before opening it.
 
 [test-4072-voice.vcv](test-4072-voice.vcv) connects a Fundamental saw
 oscillator to 4072 Voice Core, with MIDI pitch tracking both oscillator and

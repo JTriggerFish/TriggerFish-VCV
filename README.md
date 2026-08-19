@@ -4,7 +4,7 @@ Circuit-modelled sound generators and processors, plus pitch utilities for VCV R
 
 [![CI](https://github.com/JTriggerFish/TriggerFish-VCV/actions/workflows/ci.yml/badge.svg)](https://github.com/JTriggerFish/TriggerFish-VCV/actions/workflows/ci.yml)
 
-[Release notes for 2.3.0](docs/releases/2.3.0.md)
+[Release notes for 2.3.1](docs/releases/2.3.1.md)
 
 <table>
   <tr>
@@ -191,6 +191,10 @@ envelopes, accent path, and BA662-style OTA VCA. `LP OUT` exposes the filter dir
   stock setting; Fast and Slow extend the timing in the spirit of Devil Fish.
 - Patching `VCA CV` replaces the internal volume envelope. Its attenuator controls
   the external 0–10 V signal, while accent remains additive.
+
+> **Level warning:** Bass is an extended boost control. With high resonance,
+> large Bass settings can exceed Rack's nominal audio range and clip downstream
+> modules. Reduce Bass, Drive, or mixer gain if this occurs.
 
 The `IN` cable sets the filter's polyphonic voice count. Each audio channel has
 independent filter, envelope, accent, and VCA state; mono control inputs are

@@ -84,6 +84,52 @@ namespace
 		return result;
 	}
 
+	template<typename Filter>
+	py::array_t<double> RenderDiodeLadderDiagnostics(
+		py::array_t<double, py::array::c_style | py::array::forcecast> audio,
+		py::array_t<double, py::array::c_style | py::array::forcecast> cutoff,
+		py::array_t<double, py::array::c_style | py::array::forcecast> linearFm,
+		py::array_t<double, py::array::c_style | py::array::forcecast> resonance,
+		bool highResonance, double driveGain, double bass, double sampleRate)
+	{
+		const auto audioInfo = audio.request();
+		const auto cutoffInfo = cutoff.request();
+		const auto linearFmInfo = linearFm.request();
+		const auto resonanceInfo = resonance.request();
+		RequireSameSize(audioInfo, cutoffInfo, "audio", "cutoff");
+		RequireSameSize(audioInfo, linearFmInfo, "audio", "linear_fm");
+		RequireSameSize(audioInfo, resonanceInfo, "audio", "resonance");
+		if (!(sampleRate > 0.0))
+			throw std::invalid_argument("sample_rate must be positive");
+
+		py::array_t<double> result({audioInfo.shape[0], py::ssize_t{3}});
+		auto output = result.mutable_unchecked<2>();
+		auto audioValues = audio.unchecked<1>();
+		auto cutoffValues = cutoff.unchecked<1>();
+		auto linearFmValues = linearFm.unchecked<1>();
+		auto resonanceValues = resonance.unchecked<1>();
+		Filter model([]
+		{
+			if constexpr (Filter::OversamplingFactor == 1)
+				return tfdsp::CreateDummyResampler();
+			else if constexpr (Filter::OversamplingFactor == 2)
+				return tfdsp::CreateX2Resampler_Chebychev7();
+			else
+				return tfdsp::CreateX4Resampler_Cheby7();
+		});
+		model.SetSampleRate(sampleRate);
+		for (py::ssize_t i = 0; i < audioInfo.shape[0]; ++i)
+		{
+			output(i, 0) = model.StepLogCutoffModulated(audioValues(i),
+				std::log2(std::max(cutoffValues(i),
+					std::numeric_limits<double>::min())), linearFmValues(i),
+				resonanceValues(i), highResonance, driveGain, bass);
+			output(i, 1) = static_cast<double>(model.LastIterations());
+			output(i, 2) = static_cast<double>(model.SolverFailures());
+		}
+		return result;
+	}
+
 	enum class DetuneMethod
 	{
 		LegacyDouble,
@@ -1142,6 +1188,11 @@ PYBIND11_MODULE(_triggerfish_dsp, module)
 		py::arg("sample_rate") = 48000.0);
 	module.def("diode_ladder_controls_x4",
 		&RenderDiodeLadderControls<DiodeLadderX4>, py::arg("audio"),
+		py::arg("cutoff"), py::arg("linear_fm"), py::arg("resonance"),
+		py::arg("high_resonance") = false, py::arg("drive_gain") = 1.0,
+		py::arg("bass") = 0.0, py::arg("sample_rate") = 48000.0);
+	module.def("diode_ladder_diagnostics_x4",
+		&RenderDiodeLadderDiagnostics<DiodeLadderX4>, py::arg("audio"),
 		py::arg("cutoff"), py::arg("linear_fm"), py::arg("resonance"),
 		py::arg("high_resonance") = false, py::arg("drive_gain") = 1.0,
 		py::arg("bass") = 0.0, py::arg("sample_rate") = 48000.0);

@@ -48,7 +48,31 @@ $rackRuntime = Get-ConfiguredPath "RACK_RUNTIME_DIR" (Join-Path $devRoot "Rack2"
 $rackSource = Get-ConfiguredPath "RACK_SOURCE_DIR" (Join-Path $devRoot "Rack-src")
 $msysShell = Join-Path $msysRoot "msys2_shell.cmd"
 $msysBash = Join-Path $msysRoot "usr\bin\bash.exe"
-$rackExe = Join-Path $rackRuntime "Rack.exe"
+function Resolve-RackExecutable {
+    $configured = [Environment]::GetEnvironmentVariable("RACK_EXECUTABLE")
+    if (-not [string]::IsNullOrWhiteSpace($configured)) {
+        return $configured
+    }
+
+    $candidates = @()
+    if (-not [string]::IsNullOrWhiteSpace($env:ProgramFiles)) {
+        $candidates += Join-Path $env:ProgramFiles "VCV\Rack2Pro\Rack.exe"
+    }
+    if (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
+        $candidates += Join-Path $env:LOCALAPPDATA "Programs\VCV\Rack2Pro\Rack.exe"
+    }
+    $candidates += Join-Path $rackRuntime "Rack.exe"
+
+    foreach ($candidate in $candidates) {
+        if (Test-Path -LiteralPath $candidate) {
+            return $candidate
+        }
+    }
+    return $candidates[-1]
+}
+
+$rackExe = Resolve-RackExecutable
+$rackWorkingDirectory = Split-Path -Parent $rackExe
 
 function Assert-Path([string]$Path, [string]$Description) {
     if (-not (Test-Path -LiteralPath $Path)) {
@@ -119,13 +143,14 @@ function Start-SmokePatch(
     Write-Host "Building and installing TriggerFish..."
     Invoke-PluginMake "install"
     Write-Host "Launching Rack with $localFilename..."
-    Start-Process -FilePath $rackExe -ArgumentList @($smokePatch) -WorkingDirectory $rackRuntime
+    Start-Process -FilePath $rackExe -ArgumentList @($smokePatch) -WorkingDirectory $rackWorkingDirectory
 }
 
 switch ($Command) {
     "doctor" {
         Assert-Path (Join-Path $rackSdk "plugin.mk") "Rack SDK"
-        Assert-Path $rackExe "Rack runtime"
+        Assert-Path $rackExe "Rack executable"
+        Write-Host "Rack executable: $rackExe"
         Invoke-Mingw "printf 'MSYSTEM=%s\n' `$MSYSTEM && g++ --version | head -1 && clangd --version | head -1 && gdb --version | head -1 && make --version | head -1 && cmake --version | head -1 && jq --version && python --version"
         & $rackExe --version
         & uv python find 3.13
@@ -178,7 +203,7 @@ switch ($Command) {
         Write-Host "Building and installing TriggerFish..."
         Invoke-PluginMake "install"
         Write-Host "Launching Rack..."
-        Start-Process -FilePath $rackExe -WorkingDirectory $rackRuntime
+        Start-Process -FilePath $rackExe -WorkingDirectory $rackWorkingDirectory
     }
     "smoke" { Start-SmokePatch "test-vdpo.vcv" }
     "smoke-slop4" { Start-SmokePatch "test-slop4.vcv" }

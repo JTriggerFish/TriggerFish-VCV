@@ -400,7 +400,10 @@ private:
 	static constexpr double HighResonanceMultiplier = 2.0;
 	static constexpr double StockResonanceMakeup = 2.0;
 	static constexpr double HighResonanceMakeup = 3.0;
-	static constexpr double BassPole = 2.0 * PI * 24.66;
+	// C20 and C21 are the two arms of one differential coupling network into
+	// the VCA. The complete small-signal reduction gives one 578.1 rad/s pole;
+	// increasing both capacitors by a decade moves that pole down a decade.
+	static constexpr double BassPole = 578.1;
 	static constexpr double CutoffPinchKneeHz = 1.0;
 	static constexpr double CutoffCeilingKneeHz = 10.0;
 
@@ -412,7 +415,7 @@ private:
 	AnalogRatioCascade<4> _forward;
 	AnalogRatioCascade<6> _feedback;
 	AnalogRatioSection _outputCoupling;
-	std::array<AnalogRatioSection, 2> _bassCorrection{};
+	std::array<AnalogRatioSection, 1> _bassCorrection{};
 	std::array<double, 4> _state{};
 	double _hostSampleRate{};
 	double _sampleRate{};
@@ -464,10 +467,10 @@ private:
 
 	void ConfigureBassCorrection()
 	{
-		// C20/C21 are increased by a factor of ten in the bass modification.
-		// Two (s + stockPole)/(s + variedPole) shelves correct the complete
-		// stock network, giving approximately the documented change at 32 Hz
-		// from -5 dB to -1 dB while retaining DC blocking.
+		// C20/C21 are increased together by a factor of ten in the bass
+		// modification. They are the two arms of one differential coupling
+		// network, represented by a single (s + stockPole)/(s + variedPole)
+		// correction to the stock transfer already modeled by _forward.
 		const double variedPole = BassPole * std::pow(0.1, _smoothedBass);
 		for (auto& section : _bassCorrection)
 			section.Configure(variedPole, BassPole, _sampleRate);

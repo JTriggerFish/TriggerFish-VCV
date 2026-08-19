@@ -15,7 +15,7 @@ STOCK_INPUT_SCALE = 0.10532968190436065
 RACK_OUTPUT_SCALE = 9.494
 STOCK_RESONANCE_SCALE = 0.78
 HIGH_RESONANCE_MULTIPLIER = 2.0
-BASS_POLE_RADIANS = 2.0 * np.pi * 24.66
+BASS_POLE_RADIANS = 578.1
 OUTPUT_KNEE_VOLTS = 8.0
 OUTPUT_RAIL_VOLTS = 11.0
 
@@ -65,7 +65,7 @@ def transfer(frequency, cutoff, resonance=0.0, high_resonance=False, bass=0.0):
 
     bass = np.clip(bass, 0.0, 1.0)
     varied_pole = BASS_POLE_RADIANS * 10.0 ** (-bass)
-    response *= ((s + BASS_POLE_RADIANS) / (s + varied_pole)) ** 2
+    response *= (s + BASS_POLE_RADIANS) / (s + varied_pole)
     return response
 
 
@@ -132,10 +132,7 @@ def render_nonlinear_reference(
     if high_resonance:
         feedback_amount *= HIGH_RESONANCE_MULTIPLIER
     varied_bass_pole = BASS_POLE_RADIANS * 10.0 ** (-np.clip(bass, 0.0, 1.0))
-    bass_sections = (
-        (varied_bass_pole, BASS_POLE_RADIANS),
-        (varied_bass_pole, BASS_POLE_RADIANS),
-    )
+    bass_sections = ((varied_bass_pole, BASS_POLE_RADIANS),)
     ladder_rate = CAPACITOR_SCALE * 2.0 * np.pi * cutoff
 
     def derivatives(time, state):

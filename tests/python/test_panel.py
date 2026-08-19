@@ -368,8 +368,7 @@ def test_303_oscillator_panel_matches_widget_layout():
 
     source = ET.parse(ROOT / "res-src" / "Tf303Oscillator.svg").getroot()
     detents = source.find(f".//{SVG}g[@id='octave-detents']")
-    assert detents is not None
-    assert len(detents.findall(f"{SVG}circle")) == 7
+    assert detents is None
     dividers = source.find(f".//{SVG}path[@id='section-dividers']")
     assert dividers is not None
     assert dividers.attrib["d"] == "M28 27h124M28 222h124M28 324h124"
@@ -381,6 +380,8 @@ def test_303_oscillator_panel_matches_widget_layout():
     }
     assert labels_by_text["TZ"].attrib["y"] == "50"
     assert labels_by_text["EXP"].attrib["y"] == "85"
+    assert labels_by_text["−3"].attrib["x"] == "18"
+    assert labels_by_text["+3"].attrib["x"] == "67"
     aligned_labels = [
         label
         for label in source.findall(f".//{SVG}text")

@@ -284,10 +284,23 @@ def test_smoke_patches_use_triggerfish_parameter_defaults(name):
         if module["plugin"] == "TriggerFish-Elements"
     ]
     for triggerfish_module in triggerfish_modules:
-        assert (
-            param_values(triggerfish_module)
-            == EXPECTED_DEFAULTS[triggerfish_module["model"]]
-        )
+        actual = param_values(triggerfish_module)
+        expected = EXPECTED_DEFAULTS[triggerfish_module["model"]]
+        musical_overrides = set()
+        if name == "303_voice":
+            if triggerfish_module["model"] == "Tf303VoiceCore":
+                musical_overrides = {0, 1, 2, 4, 5, 6, 7, 8, 9, 11, 12}
+            elif triggerfish_module["model"] == "Tf303Oscillator":
+                musical_overrides = {2, 4}
+        assert {
+            param_id: value
+            for param_id, value in actual.items()
+            if param_id not in musical_overrides
+        } == {
+            param_id: value
+            for param_id, value in expected.items()
+            if param_id not in musical_overrides
+        }
 
 
 @pytest.mark.parametrize("name", PATCH_PATHS)
@@ -428,6 +441,7 @@ def test_303_voice_patch_connects_sequencer_oscillator_filter_and_vca():
     patch = load_patch("303_voice")
     clock = modules(patch, "Clocked")[0]
     foundry = modules(patch, "Foundry")[0]
+    cutoff_lfo, resonance_lfo, fm_lfo = modules(patch, "LFO")
     oscillator = modules(patch, "Tf303Oscillator")[0]
     diode = modules(patch, "Tf303VoiceCore")[0]
     master = modules(patch, "VCMixer")[0]
@@ -435,11 +449,56 @@ def test_303_voice_patch_connects_sequencer_oscillator_filter_and_vca():
     assert has_cable(patch, clock["id"], 1, foundry["id"], 6)
     assert has_cable(patch, foundry["id"], 0, oscillator["id"], 0)
     assert has_cable(patch, foundry["id"], 9, oscillator["id"], 1)
-    assert has_cable(patch, oscillator["id"], 0, diode["id"], 1)
+    assert param_values(oscillator)[2] == pytest.approx(math.log10(0.100))
+    assert param_values(oscillator)[4] == pytest.approx(0.296385675668716)
+    assert not has_cable(patch, oscillator["id"], 0, diode["id"], 1)
     assert has_cable(patch, oscillator["id"], 1, diode["id"], 0)
+    assert has_cable(patch, cutoff_lfo["id"], 0, diode["id"], 2)
+    assert has_cable(patch, resonance_lfo["id"], 0, diode["id"], 4)
+    assert has_cable(patch, fm_lfo["id"], 0, diode["id"], 3)
+    preserved_voice_settings = {
+        0: 0.128505349159241,
+        1: 0.408434182405472,
+        2: 1.0,
+        4: 0.479517936706543,
+        5: 0.406198114156723,
+        6: 0.2313252389431,
+        7: 0.60891592502594,
+        8: 1.0,
+        9: -1.18070936203003,
+        11: 0.589156568050385,
+        12: 0.497590363025665,
+    }
+    for param_id, value in preserved_voice_settings.items():
+        assert param_values(diode)[param_id] == pytest.approx(value)
+    assert param_values(cutoff_lfo)[0] == 0.0
+    assert param_values(cutoff_lfo)[2] == pytest.approx(-4.00999546051025)
+    assert param_values(resonance_lfo)[2] == pytest.approx(-4.1243371963501)
+    assert param_values(fm_lfo)[2] == pytest.approx(3.80241107940674)
     assert has_cable(patch, foundry["id"], 8, diode["id"], 5)
     assert has_cable(patch, foundry["id"], 4, diode["id"], 6)
     assert has_cable(patch, diode["id"], 1, master["id"], 1)
+    assert param_values(master)[1] == pytest.approx(0.838592648506165)
+
+
+def test_303_voice_patch_preserves_saved_layout_and_view():
+    patch = load_patch("303_voice")
+    assert patch["zoom"] == pytest.approx(1.3599998950958252)
+    assert patch["gridOffset"] == pytest.approx(
+        [-12.460025787353516, -0.22162829339504242]
+    )
+    assert {module["id"]: module["pos"] for module in patch["modules"]} == {
+        1: [-9, 0],
+        2: [7, 0],
+        3: [27, 0],
+        4: [5, 1],
+        5: [30, 1],
+        6: [65, 0],
+        7: [74, 0],
+        8: [46, 1],
+        9: [55, 1],
+        10: [64, 1],
+    }
 
 
 def test_4072_voice_patch_connects_midi_oscillator_filter_envelopes_and_vca():
@@ -504,9 +563,8 @@ def test_unison_patch_connects_polyphonic_stereo_voice_and_scope():
 
 
 def test_diode_ladder_default_cutoff_cv_range_reaches_fully_open():
-    diode = modules(load_patch("303_voice"), "Tf303VoiceCore")[0]
-    cutoff_pitch = diode["params"][0]["value"]
-    cv_amount = diode["params"][5]["value"]
+    cutoff_pitch = EXPECTED_DEFAULTS["Tf303VoiceCore"][0]
+    cv_amount = EXPECTED_DEFAULTS["Tf303VoiceCore"][5]
     cutoff_hz = 261.625565 * 2.0**cutoff_pitch
     envelope_peak_cutoff_hz = cutoff_hz * 2.0 ** (10.0 * cv_amount)
 
@@ -514,21 +572,74 @@ def test_diode_ladder_default_cutoff_cv_range_reaches_fully_open():
     assert envelope_peak_cutoff_hz == pytest.approx(20_000.0, rel=1.0e-6)
 
 
-def test_303_voice_foundry_pattern_has_accents_rests_legato_and_slide_gates():
+def test_303_voice_foundry_song_reproduces_gibber_pattern_and_transpositions():
     foundry = modules(load_patch("303_voice"), "Foundry")[0]
     data = foundry["data"]
-    note_attributes = data["id0_attributes"][:16]
-    slide_attributes = data["id1_attributes"][:16]
+    assert param_values(foundry)[78] == 0.0
+    assert data["id0_songBeginIndex"] == data["id1_songBeginIndex"] == 0
+    assert data["id0_songEndIndex"] == data["id1_songEndIndex"] == 2
+    assert data["id0_phrases"][:3] == data["id1_phrases"][:3] == [1792, 769, 770]
+    assert data["id0_sequences"][:3] == data["id1_sequences"][:3] == [16, 16, 16]
+    assert data["id0_seqSaved"][:3] == data["id1_seqSaved"][:3] == [1, 1, 1]
 
-    assert data["id0_sequences"][0] == data["id1_sequences"][0] == 16
-    assert sum(bool(value & (1 << 24)) for value in note_attributes) == 9
-    assert {
-        index for index, value in enumerate(note_attributes) if (value >> 28) == 5
-    } == {4, 5, 11, 12}
-    assert sum((value & 0xFF) == 200 for value in note_attributes) == 3
-    assert {
-        index for index, value in enumerate(slide_attributes) if value & (1 << 24)
-    } == {5, 12}
+    expected_semitones = [
+        [-21, -21, -21, -21, -14, -11, -21, -21, -21, -21, -9, -33, -21, -21, -33, -21],
+        [
+            -28,
+            -28,
+            -28,
+            -28,
+            -21,
+            -18,
+            -28,
+            -28,
+            -28,
+            -28,
+            -16,
+            -40,
+            -28,
+            -28,
+            -40,
+            -28,
+        ],
+        [
+            -26,
+            -26,
+            -26,
+            -26,
+            -19,
+            -15,
+            -26,
+            -26,
+            -26,
+            -26,
+            -14,
+            -38,
+            -26,
+            -26,
+            -38,
+            -26,
+        ],
+    ]
+    actual_semitones = [
+        [round(volts * 12) for volts in data["id0_cv"][start : start + 16]]
+        for start in (0, 32, 64)
+    ]
+    assert actual_semitones == expected_semitones
+
+    for start in (0, 32, 64):
+        note_attributes = data["id0_attributes"][start : start + 16]
+        slide_attributes = data["id1_attributes"][start : start + 16]
+        assert sum(bool(value & (1 << 24)) for value in note_attributes) == 13
+        assert all((value >> 28) == 0 for value in note_attributes)
+        assert {
+            index
+            for index, value in enumerate(note_attributes)
+            if (value & 0xFF) == 200
+        } == {0, 4, 6, 10, 14}
+        assert {
+            index for index, value in enumerate(slide_attributes) if value & (1 << 24)
+        } == set(range(8, 16))
 
 
 @pytest.mark.parametrize("name", PATCH_PATHS)

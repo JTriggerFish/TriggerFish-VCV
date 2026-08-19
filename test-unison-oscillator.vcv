@@ -92,7 +92,7 @@
       "id": 4,
       "plugin": "TriggerFish-Elements",
       "model": "TfUnisonOscillator",
-      "version": "2.3.0",
+      "version": "2.3.1",
       "params": [
         {
           "id": 0,
@@ -103,8 +103,8 @@
           "value": 0.0
         },
         {
-        "id": 2,
-        "value": 3.0
+          "id": 2,
+          "value": 3.0
         },
         {
           "id": 3,
@@ -148,11 +148,11 @@
         },
         {
           "id": 13,
-        "value": 0.1
+          "value": 0.1
         },
         {
           "id": 14,
-        "value": 0.15
+          "value": 0.15
         },
         {
           "id": 15,
@@ -160,7 +160,7 @@
         },
         {
           "id": 16,
-        "value": 1.0
+          "value": 1.0
         },
         {
           "id": 17,
@@ -180,7 +180,7 @@
       "id": 5,
       "plugin": "TriggerFish-Elements",
       "model": "TfVCA",
-      "version": "2.3.0",
+      "version": "2.3.1",
       "params": [
         {
           "id": 0,
@@ -216,7 +216,7 @@
       "id": 6,
       "plugin": "TriggerFish-Elements",
       "model": "TfVCA",
-      "version": "2.3.0",
+      "version": "2.3.1",
       "params": [
         {
           "id": 0,
