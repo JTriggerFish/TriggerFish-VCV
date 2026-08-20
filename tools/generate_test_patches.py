@@ -123,6 +123,20 @@ DEFAULT_PARAMS = {
         0.0,
         0.0,
     ],
+    "TfScenePack4": [
+        3.5,
+        3.5,
+        4.5,
+        4.5,
+        3.5,
+        4.5,
+        5.5,
+        3.5,
+        4.5,
+        6.5,
+        3.5,
+        4.5,
+    ],
     "LFO": [0.0, 0.0, math.log2(0.07), 0.0, 0.0, 0.5, 0.0],
     "VCO": [1.0, 1.0, 0.0, 0.0, 0.0, 0.5, 0.0, 0.0],
 }
@@ -765,6 +779,47 @@ def generate_unison_patch() -> None:
     patch.write("test-unison-oscillator.vcv")
 
 
+def generate_scene_pack4_patch() -> None:
+    patch = Patch(zoom=0.76, grid_offset=(-1, -0.1))
+    patch.add(
+        notes(
+            1,
+            "TriggerFish Scene Pack 4 smoke test\n\n"
+            "Four Fundamental oscillators feed the four local mono inputs. "
+            "Scene Pack compacts them into aligned AUDIO/X/Y/Z polyphonic "
+            "outputs. AUDIO feeds both -6 dB masters; the first packed source "
+            "is therefore audible on outputs 1 and 2.\n\n"
+            "Move each source's X, Y, and Z controls and inspect the packed "
+            "AUDIO and X cables on the scope. Chain a second Scene Pack into "
+            "the four BUS inputs to exercise the eight-source path. Start "
+            "with monitor volume low.",
+        )
+    )
+    pitches = (-2.0, -1.5, -1.0, -0.5)
+    for lane, pitch in enumerate(pitches):
+        values = DEFAULT_PARAMS["VCO"].copy()
+        values[2] = pitch
+        patch.add(
+            module(2 + lane, "Fundamental", "VCO", (16 + 11 * lane, 0), values=values)
+        )
+    patch.add(module(6, "TriggerFish-Elements", "TfScenePack4", (60, 0)))
+    patch.add(scope(7, (75, 0)))
+    patch.add(mixer(8, (87, 0), (0.5011872336, 0.7, 0.0, 0.0, 0.0)))
+    patch.add(mixer(9, (96, 0), (0.5011872336, 0.7, 0.0, 0.0, 0.0)))
+    patch.add(audio(10, (105, 0)))
+
+    for lane in range(4):
+        patch.cable(2 + lane, 0, 6, 4 + lane)
+    patch.cable(6, 0, 8, 1)
+    patch.cable(6, 0, 9, 1)
+    patch.cable(8, 0, 10, 0)
+    patch.cable(9, 0, 10, 1)
+    patch.cable(6, 0, 7, 0)
+    patch.cable(6, 1, 7, 1)
+    patch.cable(2, 0, 7, 2)
+    patch.write("test-scene-pack4.vcv")
+
+
 if __name__ == "__main__":
     generate_slop4_patch()
     generate_vdpo_patch()
@@ -772,3 +827,4 @@ if __name__ == "__main__":
     generate_4072_voice_patch()
     generate_wavefold_patch()
     generate_unison_patch()
+    generate_scene_pack4_patch()

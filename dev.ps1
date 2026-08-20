@@ -15,7 +15,9 @@ param(
         "smoke-4072",
         "smoke-wavefold",
         "smoke-unison",
+        "smoke-scene-pack4",
         "test",
+        "benchmark-er",
         "python-test",
         "shell",
         "rack-dep",
@@ -185,6 +187,12 @@ switch ($Command) {
                     throw "$moduleName panel generation failed with exit code $LASTEXITCODE."
                 }
             }
+            & uv run python tools/svg_text_to_paths.py `
+                "res-src/TfScenePack4.svg" "res/TfScenePack4.svg" `
+                --font $panelFont
+            if ($LASTEXITCODE -ne 0) {
+                throw "TfScenePack4 panel generation failed with exit code $LASTEXITCODE."
+            }
             & uv run python tools/render_panel_preview.py `
                 --rack-runtime $rackRuntime --all `
                 --documentation-directory (Join-Path $repoRoot "doc")
@@ -215,8 +223,12 @@ switch ($Command) {
         Start-SmokePatch "test-unison-oscillator.vcv" `
             "test-wavefold-oscillator.local.vcv"
     }
+    "smoke-scene-pack4" { Start-SmokePatch "test-scene-pack4.vcv" }
     "test" {
         Invoke-Mingw "cd '$repoMsys' && cmake -S . -B build/dsp-tests -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DTRIGGERFISH_BUILD_PYTHON=OFF && cmake --build build/dsp-tests -j$Jobs && ctest --test-dir build/dsp-tests --output-on-failure"
+    }
+    "benchmark-er" {
+        Invoke-Mingw "cd '$repoMsys' && cmake -S . -B build/dsp-tests -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DTRIGGERFISH_BUILD_PYTHON=OFF && cmake --build build/dsp-tests --target triggerfish_early_reflections_benchmark -j$Jobs && ./build/dsp-tests/triggerfish_early_reflections_benchmark.exe"
     }
     "python-test" {
         Push-Location $repoRoot

@@ -477,6 +477,27 @@ def test_legacy_panel_coordinate_expressions_are_resolved():
             assert positions[control_id] == position
 
 
+def test_scene_pack_panel_preview_covers_every_control_and_runtime_text_is_outlined():
+    widget_source = (ROOT / "src" / "TfScenePack4.cpp").read_text(encoding="utf-8")
+    controls = list(control_pattern("TfScenePack4").finditer(widget_source))
+    by_id = {control.group("id"): control for control in controls}
+
+    assert len(controls) == 24
+    assert len(by_id) == 24
+    assert control_coordinates(by_id["SOURCE_1_INPUT"], widget_source) == (18.0, 49.0)
+    assert control_coordinates(by_id["Z_4"], widget_source) == (161.0, 162.0)
+    assert control_coordinates(by_id["BUS_AUDIO_INPUT"], widget_source) == (
+        18.0,
+        223.0,
+    )
+    assert control_coordinates(by_id["Z_OUTPUT"], widget_source) == (159.0, 306.0)
+
+    source_panel = ET.parse(ROOT / "res-src" / "TfScenePack4.svg").getroot()
+    runtime_panel = ET.parse(ROOT / "res" / "TfScenePack4.svg").getroot()
+    assert source_panel.findall(f".//{SVG}text")
+    assert not runtime_panel.findall(f".//{SVG}text")
+
+
 def test_vca_preview_includes_activity_light(tmp_path):
     component_directory = tmp_path / "Rack2" / "res" / "ComponentLibrary"
     component_directory.mkdir(parents=True)

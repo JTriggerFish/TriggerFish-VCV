@@ -103,6 +103,16 @@
         "Oscillator",
         "Polyphonic"
       ]
+    },
+    {
+      "slug": "TfScenePack4",
+      "name": "Scene Pack 4",
+      "description": "Packs four positioned mono sources into aligned polyphonic audio and XYZ scene cables",
+      "manualUrl": "https://github.com/JTriggerFish/TriggerFish-VCV#scene-pack-4",
+      "tags": [
+        "Utility",
+        "Polyphonic"
+      ]
     }
   ]
 }

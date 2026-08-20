@@ -22,6 +22,9 @@ Circuit-modelled sound generators and processors, plus pitch utilities for VCV R
     <td align="center"><a href="#wavefold-oscillator"><img src="doc/TfWavefoldOscillator.png" height="260" alt="Wavefold Oscillator module"><br><strong>Wavefold Oscillator</strong></a></td>
     <td align="center"><a href="#unison-oscillator"><img src="doc/TfUnisonOscillator.png" height="260" alt="Unison Oscillator module"><br><strong>Unison Oscillator</strong></a></td>
   </tr>
+  <tr>
+    <td align="center"><a href="#scene-pack-4"><img src="doc/TfScenePack4.png" height="260" alt="Scene Pack 4 module"><br><strong>Scene Pack 4</strong></a></td>
+  </tr>
 </table>
 
 ## Polyphony
@@ -37,6 +40,7 @@ Circuit-modelled sound generators and processors, plus pitch utilities for VCV R
 | 4072 Voice Core | Fully polyphonic, with independent filter, dual-envelope, and VCA state; mono controls are broadcast | Widest connected input, up to 16 |
 | Wavefold Oscillator | Fully polyphonic, with independent oscillator, folder, and resampling state; mono controls are broadcast | Widest connected input, up to 16 |
 | Unison Oscillator | Fully polyphonic, with an independent oscillator stack and drift state per channel; mono controls are broadcast | Widest connected input, up to 16 |
+| Scene Pack 4 | Compacts four connected mono sources and appends an optional incoming scene bus | Matching AUDIO/X/Y/Z outputs, up to 8 channels |
 
 ## Modules
 
@@ -268,6 +272,19 @@ The complete filter/VCA path runs at 4x sample rate by default. A 2x mode is
 available from the context menu for larger polyphonic patches.
 Circuit analysis, equations, calibration, and numerical validation are in the
 [4072 Voice Core technical report](docs/Tf4072VoiceCore-technical-report.md).
+
+### Scene Pack 4
+
+Scene Pack 4 prepares positioned sources for the forthcoming TfReverb. Patch up
+to four mono sources and set an X, Y, and Z position for each. The four outputs
+carry aligned polyphonic AUDIO/X/Y/Z channels; 0–10 V on a position cable maps
+across the corresponding room axis.
+
+The optional scene-bus inputs append already-packed channels before the local
+sources. Chaining two modules supports the reverb's maximum of eight independent
+sources. Connected local inputs are compacted into consecutive channels, and a
+polyphonic signal patched into one local input is summed into that lane's single
+positioned source.
 
 ## Contributing
 

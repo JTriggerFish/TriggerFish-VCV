@@ -1,0 +1,488 @@
+{
+  "version": "2.6.6",
+  "path": "",
+  "zoom": 0.76,
+  "gridOffset": [
+    -1,
+    -0.1
+  ],
+  "modules": [
+    {
+      "id": 1,
+      "plugin": "Core",
+      "model": "Notes",
+      "version": "2.6.6",
+      "params": [],
+      "data": {
+        "text": "TriggerFish Scene Pack 4 smoke test\n\nFour Fundamental oscillators feed the four local mono inputs. Scene Pack compacts them into aligned AUDIO/X/Y/Z polyphonic outputs. AUDIO feeds both -6 dB masters; the first packed source is therefore audible on outputs 1 and 2.\n\nMove each source's X, Y, and Z controls and inspect the packed AUDIO and X cables on the scope. Chain a second Scene Pack into the four BUS inputs to exercise the eight-source path. Start with monitor volume low."
+      },
+      "pos": [
+        0,
+        0
+      ]
+    },
+    {
+      "id": 2,
+      "plugin": "Fundamental",
+      "model": "VCO",
+      "version": "2.6.4",
+      "params": [
+        {
+          "id": 0,
+          "value": 1.0
+        },
+        {
+          "id": 1,
+          "value": 1.0
+        },
+        {
+          "id": 2,
+          "value": -2.0
+        },
+        {
+          "id": 3,
+          "value": 0.0
+        },
+        {
+          "id": 4,
+          "value": 0.0
+        },
+        {
+          "id": 5,
+          "value": 0.5
+        },
+        {
+          "id": 6,
+          "value": 0.0
+        },
+        {
+          "id": 7,
+          "value": 0.0
+        }
+      ],
+      "pos": [
+        16,
+        0
+      ]
+    },
+    {
+      "id": 3,
+      "plugin": "Fundamental",
+      "model": "VCO",
+      "version": "2.6.4",
+      "params": [
+        {
+          "id": 0,
+          "value": 1.0
+        },
+        {
+          "id": 1,
+          "value": 1.0
+        },
+        {
+          "id": 2,
+          "value": -1.5
+        },
+        {
+          "id": 3,
+          "value": 0.0
+        },
+        {
+          "id": 4,
+          "value": 0.0
+        },
+        {
+          "id": 5,
+          "value": 0.5
+        },
+        {
+          "id": 6,
+          "value": 0.0
+        },
+        {
+          "id": 7,
+          "value": 0.0
+        }
+      ],
+      "pos": [
+        27,
+        0
+      ]
+    },
+    {
+      "id": 4,
+      "plugin": "Fundamental",
+      "model": "VCO",
+      "version": "2.6.4",
+      "params": [
+        {
+          "id": 0,
+          "value": 1.0
+        },
+        {
+          "id": 1,
+          "value": 1.0
+        },
+        {
+          "id": 2,
+          "value": -1.0
+        },
+        {
+          "id": 3,
+          "value": 0.0
+        },
+        {
+          "id": 4,
+          "value": 0.0
+        },
+        {
+          "id": 5,
+          "value": 0.5
+        },
+        {
+          "id": 6,
+          "value": 0.0
+        },
+        {
+          "id": 7,
+          "value": 0.0
+        }
+      ],
+      "pos": [
+        38,
+        0
+      ]
+    },
+    {
+      "id": 5,
+      "plugin": "Fundamental",
+      "model": "VCO",
+      "version": "2.6.4",
+      "params": [
+        {
+          "id": 0,
+          "value": 1.0
+        },
+        {
+          "id": 1,
+          "value": 1.0
+        },
+        {
+          "id": 2,
+          "value": -0.5
+        },
+        {
+          "id": 3,
+          "value": 0.0
+        },
+        {
+          "id": 4,
+          "value": 0.0
+        },
+        {
+          "id": 5,
+          "value": 0.5
+        },
+        {
+          "id": 6,
+          "value": 0.0
+        },
+        {
+          "id": 7,
+          "value": 0.0
+        }
+      ],
+      "pos": [
+        49,
+        0
+      ]
+    },
+    {
+      "id": 6,
+      "plugin": "TriggerFish-Elements",
+      "model": "TfScenePack4",
+      "version": "2.3.1",
+      "params": [
+        {
+          "id": 0,
+          "value": 3.5
+        },
+        {
+          "id": 1,
+          "value": 3.5
+        },
+        {
+          "id": 2,
+          "value": 4.5
+        },
+        {
+          "id": 3,
+          "value": 4.5
+        },
+        {
+          "id": 4,
+          "value": 3.5
+        },
+        {
+          "id": 5,
+          "value": 4.5
+        },
+        {
+          "id": 6,
+          "value": 5.5
+        },
+        {
+          "id": 7,
+          "value": 3.5
+        },
+        {
+          "id": 8,
+          "value": 4.5
+        },
+        {
+          "id": 9,
+          "value": 6.5
+        },
+        {
+          "id": 10,
+          "value": 3.5
+        },
+        {
+          "id": 11,
+          "value": 4.5
+        }
+      ],
+      "pos": [
+        60,
+        0
+      ]
+    },
+    {
+      "id": 7,
+      "plugin": "Fundamental",
+      "model": "Scope",
+      "version": "2.6.4",
+      "params": [
+        {
+          "id": 0,
+          "value": 0.0
+        },
+        {
+          "id": 1,
+          "value": 0.0
+        },
+        {
+          "id": 2,
+          "value": 0.0
+        },
+        {
+          "id": 3,
+          "value": 0.0
+        },
+        {
+          "id": 4,
+          "value": 6.643856189774724
+        },
+        {
+          "id": 5,
+          "value": 0.0
+        },
+        {
+          "id": 6,
+          "value": 0.0
+        },
+        {
+          "id": 7,
+          "value": 0.0
+        }
+      ],
+      "pos": [
+        75,
+        0
+      ]
+    },
+    {
+      "id": 8,
+      "plugin": "Fundamental",
+      "model": "VCMixer",
+      "version": "2.6.4",
+      "params": [
+        {
+          "id": 0,
+          "value": 0.5011872336
+        },
+        {
+          "id": 1,
+          "value": 0.7
+        },
+        {
+          "id": 2,
+          "value": 0.0
+        },
+        {
+          "id": 3,
+          "value": 0.0
+        },
+        {
+          "id": 4,
+          "value": 0.0
+        }
+      ],
+      "data": {
+        "chExp": false,
+        "mixExp": false
+      },
+      "pos": [
+        87,
+        0
+      ]
+    },
+    {
+      "id": 9,
+      "plugin": "Fundamental",
+      "model": "VCMixer",
+      "version": "2.6.4",
+      "params": [
+        {
+          "id": 0,
+          "value": 0.5011872336
+        },
+        {
+          "id": 1,
+          "value": 0.7
+        },
+        {
+          "id": 2,
+          "value": 0.0
+        },
+        {
+          "id": 3,
+          "value": 0.0
+        },
+        {
+          "id": 4,
+          "value": 0.0
+        }
+      ],
+      "data": {
+        "chExp": false,
+        "mixExp": false
+      },
+      "pos": [
+        96,
+        0
+      ]
+    },
+    {
+      "id": 10,
+      "plugin": "Core",
+      "model": "AudioInterface",
+      "version": "2.6.6",
+      "params": [],
+      "data": {
+        "audio": {
+          "driver": -1,
+          "sampleRate": 48000,
+          "blockSize": 256,
+          "inputOffset": 0,
+          "outputOffset": 0
+        },
+        "dcFilter": true
+      },
+      "pos": [
+        105,
+        0
+      ]
+    }
+  ],
+  "cables": [
+    {
+      "id": 1000,
+      "outputModuleId": 2,
+      "outputId": 0,
+      "inputModuleId": 6,
+      "inputId": 4,
+      "color": "#f3374b"
+    },
+    {
+      "id": 1001,
+      "outputModuleId": 3,
+      "outputId": 0,
+      "inputModuleId": 6,
+      "inputId": 5,
+      "color": "#ffcc00"
+    },
+    {
+      "id": 1002,
+      "outputModuleId": 4,
+      "outputId": 0,
+      "inputModuleId": 6,
+      "inputId": 6,
+      "color": "#0c8e15"
+    },
+    {
+      "id": 1003,
+      "outputModuleId": 5,
+      "outputId": 0,
+      "inputModuleId": 6,
+      "inputId": 7,
+      "color": "#0986ad"
+    },
+    {
+      "id": 1004,
+      "outputModuleId": 6,
+      "outputId": 0,
+      "inputModuleId": 8,
+      "inputId": 1,
+      "color": "#c91847"
+    },
+    {
+      "id": 1005,
+      "outputModuleId": 6,
+      "outputId": 0,
+      "inputModuleId": 9,
+      "inputId": 1,
+      "color": "#7a3ec8"
+    },
+    {
+      "id": 1006,
+      "outputModuleId": 8,
+      "outputId": 0,
+      "inputModuleId": 10,
+      "inputId": 0,
+      "color": "#f3374b"
+    },
+    {
+      "id": 1007,
+      "outputModuleId": 9,
+      "outputId": 0,
+      "inputModuleId": 10,
+      "inputId": 1,
+      "color": "#ffcc00"
+    },
+    {
+      "id": 1008,
+      "outputModuleId": 6,
+      "outputId": 0,
+      "inputModuleId": 7,
+      "inputId": 0,
+      "color": "#0c8e15"
+    },
+    {
+      "id": 1009,
+      "outputModuleId": 6,
+      "outputId": 1,
+      "inputModuleId": 7,
+      "inputId": 1,
+      "color": "#0986ad"
+    },
+    {
+      "id": 1010,
+      "outputModuleId": 2,
+      "outputId": 0,
+      "inputModuleId": 7,
+      "inputId": 2,
+      "color": "#c91847"
+    }
+  ]
+}

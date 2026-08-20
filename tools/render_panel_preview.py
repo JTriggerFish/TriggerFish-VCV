@@ -44,6 +44,7 @@ MODULE_NAMES = (
     "Tf4072VoiceCore",
     "TfWavefoldOscillator",
     "TfUnisonOscillator",
+    "TfScenePack4",
 )
 
 
@@ -151,6 +152,7 @@ MODULE_GRAPHICS = {
     "Tf4072VoiceCore": (),
     "TfWavefoldOscillator": (),
     "TfUnisonOscillator": (),
+    "TfScenePack4": (),
 }
 
 

@@ -9,12 +9,18 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_library(triggerfish_dsp STATIC
 	src/tfdsp/sampleRate.cpp
+	src/tfdsp/early_reflections.hpp
+	src/tfdsp/early_reflections_worker.cpp
+	src/tfdsp/early_reflections_worker.hpp
+	src/tfdsp/scene_pack.hpp
 )
 set_target_properties(triggerfish_dsp PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_include_directories(triggerfish_dsp PUBLIC
 	${CMAKE_CURRENT_SOURCE_DIR}/src
 	${CMAKE_CURRENT_SOURCE_DIR}/vendor/eigen
 )
+find_package(Threads REQUIRED)
+target_link_libraries(triggerfish_dsp PUBLIC Threads::Threads)
 
 # Give clangd accurate commands for the Rack-facing sources without making the
 # standalone test build depend on the SDK. The target is indexing-only and is
@@ -33,6 +39,7 @@ if(EXISTS "${RACK_SDK_DIR}/include/rack.hpp")
 		src/Tf4072VoiceCore.cpp
 		src/TfWavefoldOscillator.cpp
 		src/TfUnisonOscillator.cpp
+		src/TfScenePack4.cpp
 	)
 	target_include_directories(triggerfish_rack_index PRIVATE
 		${CMAKE_CURRENT_SOURCE_DIR}/src
@@ -54,6 +61,18 @@ if(BUILD_TESTING)
 	add_executable(triggerfish_dsp_tests tests/dsp_tests.cpp)
 	target_link_libraries(triggerfish_dsp_tests PRIVATE triggerfish_dsp)
 	add_test(NAME triggerfish_dsp_tests COMMAND triggerfish_dsp_tests)
+
+	add_executable(triggerfish_early_reflections_tests
+		tests/early_reflections_tests.cpp)
+	target_link_libraries(triggerfish_early_reflections_tests PRIVATE
+		triggerfish_dsp)
+	add_test(NAME triggerfish_early_reflections_tests
+		COMMAND triggerfish_early_reflections_tests)
+
+	add_executable(triggerfish_early_reflections_benchmark EXCLUDE_FROM_ALL
+		tests/early_reflections_benchmark.cpp)
+	target_link_libraries(triggerfish_early_reflections_benchmark PRIVATE
+		triggerfish_dsp)
 endif()
 
 option(TRIGGERFISH_BUILD_PYTHON "Build the optional Python DSP bindings" OFF)

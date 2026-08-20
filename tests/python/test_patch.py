@@ -17,6 +17,7 @@ PATCH_PATHS = {
     "4072_voice": ROOT / "test-4072-voice.vcv",
     "wavefold": ROOT / "test-wavefold-oscillator.vcv",
     "unison": ROOT / "test-unison-oscillator.vcv",
+    "scene_pack": ROOT / "test-scene-pack4.vcv",
 }
 
 # Canonical Rack 2.6 module tags. Rack accepts a few historical aliases, but
@@ -182,6 +183,20 @@ EXPECTED_DEFAULTS = {
         17: 0.0,
         18: 0.0,
     },
+    "TfScenePack4": {
+        0: 3.5,
+        1: 3.5,
+        2: 4.5,
+        3: 4.5,
+        4: 3.5,
+        5: 4.5,
+        6: 5.5,
+        7: 3.5,
+        8: 4.5,
+        9: 6.5,
+        10: 3.5,
+        11: 4.5,
+    },
 }
 
 
@@ -273,6 +288,7 @@ def test_smoke_patches_collectively_contain_every_triggerfish_module():
         "Tf4072VoiceCore",
         "TfWavefoldOscillator",
         "TfUnisonOscillator",
+        "TfScenePack4",
     }
 
 
@@ -326,12 +342,14 @@ def test_smoke_patch_has_playable_control_and_stereo_audio_paths(name):
     audio = modules(patch, "AudioInterface")[0]
     adsrs = modules(patch, "ADSR")
 
-    if name in {"wavefold", "unison"}:
+    if name in {"wavefold", "unison", "scene_pack"}:
         assert len(modules(patch, "Scope")) == 1
     else:
         assert "Scope" not in {module["model"] for module in patch["modules"]}
     assert "Plateau" not in {module["model"] for module in patch["modules"]}
-    if modules(patch, "MIDIToCVInterface"):
+    if name == "scene_pack":
+        assert len(modules(patch, "VCO")) == 4
+    elif modules(patch, "MIDIToCVInterface"):
         midi = modules(patch, "MIDIToCVInterface")[0]
         assert all(has_cable(patch, midi["id"], 1, adsr["id"], 4) for adsr in adsrs)
     else:
@@ -560,6 +578,25 @@ def test_unison_patch_connects_polyphonic_stereo_voice_and_scope():
     assert has_cable(patch, oscillator["id"], 1, scope["id"], 0)
     assert has_cable(patch, oscillator["id"], 2, scope["id"], 1)
     assert has_cable(patch, oscillator["id"], 1, scope["id"], 2)
+
+
+def test_scene_pack_patch_connects_four_sources_and_packed_outputs():
+    patch = load_patch("scene_pack")
+    oscillators = modules(patch, "VCO")
+    scene_pack = modules(patch, "TfScenePack4")[0]
+    scope = modules(patch, "Scope")[0]
+    masters = modules(patch, "VCMixer")
+    audio = modules(patch, "AudioInterface")[0]
+
+    assert len(oscillators) == 4
+    for lane, oscillator in enumerate(oscillators):
+        assert has_cable(patch, oscillator["id"], 0, scene_pack["id"], 4 + lane)
+    assert has_cable(patch, scene_pack["id"], 0, masters[0]["id"], 1)
+    assert has_cable(patch, scene_pack["id"], 0, masters[1]["id"], 1)
+    assert has_cable(patch, masters[0]["id"], 0, audio["id"], 0)
+    assert has_cable(patch, masters[1]["id"], 0, audio["id"], 1)
+    assert has_cable(patch, scene_pack["id"], 0, scope["id"], 0)
+    assert has_cable(patch, scene_pack["id"], 1, scope["id"], 1)
 
 
 def test_diode_ladder_default_cutoff_cv_range_reaches_fully_open():

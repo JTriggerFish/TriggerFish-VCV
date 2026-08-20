@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="210" height="380" viewBox="0 0 210 380">
+  <rect width="210" height="380" fill="#cecece"/>
+  <path id="section-dividers" d="M18 27h174M18 205h174M18 286h174"
+        fill="none" stroke="#777" stroke-width="0.7"/>
+
+  <g id="output-jack-blocks" fill="#545454" stroke="#2e2e2e" stroke-width="0.45">
+    <rect x="10" y="302" width="40" height="39" rx="7"/>
+    <rect x="57" y="302" width="40" height="39" rx="7"/>
+    <rect x="104" y="302" width="40" height="39" rx="7"/>
+    <rect x="151" y="302" width="40" height="39" rx="7"/>
+  </g>
+
+  <g font-family="DejaVu Sans, sans-serif" text-anchor="middle" fill="#1f1f1f">
+    <text x="105.5054" y="14" font-size="10" font-weight="bold"
+          letter-spacing="1.1" data-center-x="105">TRIGGERFISH</text>
+    <text x="105" y="24" font-size="7.4" letter-spacing="1.25"
+          data-center-x="105">SCENE PACK 4</text>
+
+    <g font-size="6.0" font-weight="bold">
+      <text x="30" y="45" data-control="SOURCE_1_INPUT">SOURCE 1</text>
+      <text x="77" y="45" data-control="SOURCE_2_INPUT">SOURCE 2</text>
+      <text x="124" y="45" data-control="SOURCE_3_INPUT">SOURCE 3</text>
+      <text x="171" y="45" data-control="SOURCE_4_INPUT">SOURCE 4</text>
+    </g>
+
+    <g font-size="5.4" font-weight="bold">
+      <text x="30" y="91" data-control="X_1">X</text>
+      <text x="77" y="91" data-control="X_2">X</text>
+      <text x="124" y="91" data-control="X_3">X</text>
+      <text x="171" y="91" data-control="X_4">X</text>
+      <text x="30" y="125" data-control="Y_1">Y</text>
+      <text x="77" y="125" data-control="Y_2">Y</text>
+      <text x="124" y="125" data-control="Y_3">Y</text>
+      <text x="171" y="125" data-control="Y_4">Y</text>
+      <text x="30" y="159" data-control="Z_1">Z</text>
+      <text x="77" y="159" data-control="Z_2">Z</text>
+      <text x="124" y="159" data-control="Z_3">Z</text>
+      <text x="171" y="159" data-control="Z_4">Z</text>
+    </g>
+
+    <text x="105" y="195" font-size="4.6" font-weight="bold"
+          letter-spacing="0.7" fill="#686868">0–10 V ROOM POSITION</text>
+
+    <text x="105" y="217" font-size="6.0" font-weight="bold"
+          letter-spacing="0.8">OPTIONAL SCENE BUS IN</text>
+    <g font-size="5.1" font-weight="bold">
+      <text x="30" y="259" data-control="BUS_AUDIO_INPUT">AUDIO</text>
+      <text x="77" y="259" data-control="BUS_X_INPUT">X</text>
+      <text x="124" y="259" data-control="BUS_Y_INPUT">Y</text>
+      <text x="171" y="259" data-control="BUS_Z_INPUT">Z</text>
+    </g>
+
+    <text x="105" y="298" font-size="6.0" font-weight="bold"
+          letter-spacing="0.9">POLYPHONIC SCENE OUT</text>
+    <g font-size="5.1" font-weight="bold">
+      <text x="30" y="352" data-control="AUDIO_OUTPUT">AUDIO</text>
+      <text x="77" y="352" data-control="X_OUTPUT">X</text>
+      <text x="124" y="352" data-control="Y_OUTPUT">Y</text>
+      <text x="171" y="352" data-control="Z_OUTPUT">Z</text>
+    </g>
+  </g>
+</svg>
