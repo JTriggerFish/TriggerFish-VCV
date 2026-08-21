@@ -83,3 +83,52 @@ def test_new_local_patch_can_inherit_private_device_selections(tmp_path):
     created = json.loads(local.read_text(encoding="utf-8"))
     assert created["modules"][0]["data"]["midi"]["deviceName"] == ("Private keyboard")
     assert created["modules"][1]["data"]["audio"]["deviceName"] == ("Private interface")
+
+
+def test_refresh_replaces_topology_but_preserves_local_device_selection(tmp_path):
+    portable = tmp_path / "portable.vcv"
+    local = tmp_path / "local.vcv"
+    portable.write_text(
+        json.dumps(
+            {
+                "modules": [
+                    {"model": "TfProgSequencer", "data": {"source": "new"}},
+                    {
+                        "model": "AudioInterface",
+                        "data": {"audio": {"driver": -1, "blockSize": 256}},
+                    },
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    local.write_text(
+        json.dumps(
+            {
+                "modules": [
+                    {"model": "Foundry", "data": {"old": True}},
+                    {
+                        "model": "AudioInterface",
+                        "data": {
+                            "audio": {
+                                "driver": 7,
+                                "deviceName": "Private interface",
+                                "blockSize": 64,
+                            }
+                        },
+                    },
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert prepare_local_patch(portable, local, refresh=True) is False
+    refreshed = json.loads(local.read_text(encoding="utf-8"))
+    assert [module["model"] for module in refreshed["modules"]] == [
+        "TfProgSequencer",
+        "AudioInterface",
+    ]
+    assert refreshed["modules"][1]["data"]["audio"]["deviceName"] == (
+        "Private interface"
+    )

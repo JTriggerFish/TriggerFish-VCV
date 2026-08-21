@@ -6,6 +6,7 @@
 .DS_Store
 .venv/
 .pytest_cache/
+.cache/
 __pycache__/
 *.egg-info/
 .idea/

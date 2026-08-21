@@ -12,6 +12,8 @@ param(
         "smoke-slop4",
         "smoke-vdpo",
         "smoke-303",
+        "smoke-prog-303",
+        "smoke-reverb",
         "smoke-4072",
         "smoke-wavefold",
         "smoke-unison",
@@ -131,7 +133,12 @@ function Start-SmokePatch(
     $smokePatch = Join-Path $repoRoot $localFilename
     $prepareScript = Join-Path $repoRoot "tools\refresh_smoke_patch.py"
     Assert-Path $prepareScript "Smoke-patch preparation helper"
-    $prepareArguments = @($prepareScript, $portablePatch, $smokePatch)
+    $prepareArguments = @(
+        $prepareScript,
+        $portablePatch,
+        $smokePatch,
+        "--refresh"
+    )
     if (-not [string]::IsNullOrWhiteSpace($DeviceTemplateFilename)) {
         $deviceTemplate = Join-Path $repoRoot $DeviceTemplateFilename
         if (Test-Path -LiteralPath $deviceTemplate) {
@@ -193,6 +200,20 @@ switch ($Command) {
             if ($LASTEXITCODE -ne 0) {
                 throw "TfScenePack4 panel generation failed with exit code $LASTEXITCODE."
             }
+            & uv run python tools/svg_text_to_paths.py `
+                "res-src/TfReverb.svg" "res/TfReverb.svg" `
+                --font $panelFont
+            if ($LASTEXITCODE -ne 0) {
+                throw "TfReverb panel generation failed with exit code $LASTEXITCODE."
+            }
+            foreach ($suffix in @("", "-30", "-38")) {
+                & uv run python tools/svg_text_to_paths.py `
+                    "res-src/TfProgSequencer$suffix.svg" "res/TfProgSequencer$suffix.svg" `
+                    --font $panelFont
+                if ($LASTEXITCODE -ne 0) {
+                    throw "TfProgSequencer$suffix panel generation failed with exit code $LASTEXITCODE."
+                }
+            }
             & uv run python tools/render_panel_preview.py `
                 --rack-runtime $rackRuntime --all `
                 --documentation-directory (Join-Path $repoRoot "doc")
@@ -217,6 +238,8 @@ switch ($Command) {
     "smoke-slop4" { Start-SmokePatch "test-slop4.vcv" }
     "smoke-vdpo" { Start-SmokePatch "test-vdpo.vcv" }
     "smoke-303" { Start-SmokePatch "test-303-voice.vcv" }
+    "smoke-prog-303" { Start-SmokePatch "test-prog-sequencer-303.vcv" }
+    "smoke-reverb" { Start-SmokePatch "test-room-reverb.vcv" }
     "smoke-4072" { Start-SmokePatch "test-4072-voice.vcv" }
     "smoke-wavefold" { Start-SmokePatch "test-wavefold-oscillator.vcv" }
     "smoke-unison" {
@@ -231,8 +254,17 @@ switch ($Command) {
         Invoke-Mingw "cd '$repoMsys' && cmake -S . -B build/dsp-tests -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DTRIGGERFISH_BUILD_PYTHON=OFF && cmake --build build/dsp-tests --target triggerfish_early_reflections_benchmark -j$Jobs && ./build/dsp-tests/triggerfish_early_reflections_benchmark.exe"
     }
     "python-test" {
+        $previousPath = $env:Path
+        $previousGenerator = [Environment]::GetEnvironmentVariable("CMAKE_GENERATOR", "Process")
+        $previousCCompiler = [Environment]::GetEnvironmentVariable("CMAKE_C_COMPILER", "Process")
+        $previousCxxCompiler = [Environment]::GetEnvironmentVariable("CMAKE_CXX_COMPILER", "Process")
+        $mingwBin = Join-Path $msysRoot "mingw64\bin"
         Push-Location $repoRoot
         try {
+            $env:Path = "$mingwBin;$previousPath"
+            $env:CMAKE_GENERATOR = "Ninja"
+            $env:CMAKE_C_COMPILER = Join-Path $mingwBin "gcc.exe"
+            $env:CMAKE_CXX_COMPILER = Join-Path $mingwBin "g++.exe"
             & uv sync --group dev --python 3.13 --reinstall-package triggerfish-vcv-dsp
             if ($LASTEXITCODE -ne 0) { throw "uv sync failed with exit code $LASTEXITCODE." }
             & uv run pytest
@@ -240,6 +272,10 @@ switch ($Command) {
         }
         finally {
             Pop-Location
+            $env:Path = $previousPath
+            [Environment]::SetEnvironmentVariable("CMAKE_GENERATOR", $previousGenerator, "Process")
+            [Environment]::SetEnvironmentVariable("CMAKE_C_COMPILER", $previousCCompiler, "Process")
+            [Environment]::SetEnvironmentVariable("CMAKE_CXX_COMPILER", $previousCxxCompiler, "Process")
         }
     }
     "shell" {

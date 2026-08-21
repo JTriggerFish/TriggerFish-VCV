@@ -46,21 +46,28 @@ def _portable_with_device_settings(
 
 
 def prepare_local_patch(
-    portable_path: Path, local_path: Path, device_template: Path | None = None
+    portable_path: Path,
+    local_path: Path,
+    device_template: Path | None = None,
+    *,
+    refresh: bool = False,
 ) -> bool:
-    """Create *local_path* from *portable_path* when it does not exist.
+    """Create or explicitly refresh *local_path* from *portable_path*.
 
     Rack may save ``.vcv`` files as Zstandard-compressed tar archives. Existing
-    local patches are therefore treated as opaque, user-owned files and left
-    byte-for-byte unchanged. This also preserves local topology, parameter
-    edits, and MIDI/audio device selections.
+    local patches are treated as opaque and left byte-for-byte unchanged unless
+    ``refresh`` is requested. During a refresh, readable MIDI/audio device
+    selections are copied from the old local patch before its topology and
+    parameters are replaced with the current portable smoke fixture.
 
     Returns ``True`` when an existing local patch was reused.
     """
 
-    if local_path.exists():
+    if local_path.exists() and not refresh:
         return True
 
+    if refresh and device_template is None and local_path.is_file():
+        device_template = local_path
     portable_data = _portable_with_device_settings(
         portable_path.read_bytes(), device_template
     )
@@ -89,11 +96,20 @@ def main() -> None:
         type=Path,
         help="Private local patch whose MIDI/audio selections should be inherited",
     )
-    args = parser.parse_args()
-    reused = prepare_local_patch(
-        args.portable_patch, args.local_patch, args.device_template
+    parser.add_argument(
+        "--refresh",
+        action="store_true",
+        help="Replace an existing local patch with the current portable fixture",
     )
-    action = "Using existing" if reused else "Created"
+    args = parser.parse_args()
+    existed = args.local_patch.exists()
+    reused = prepare_local_patch(
+        args.portable_patch,
+        args.local_patch,
+        args.device_template,
+        refresh=args.refresh,
+    )
+    action = "Using existing" if reused else "Refreshed" if existed else "Created"
     print(f"{action} private local patch {args.local_patch.name}.")
 
 

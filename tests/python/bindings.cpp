@@ -21,7 +21,9 @@
 #include "models/VdpOscillator.hpp"
 #include "models/VdpSplitOscillator.hpp"
 #include "tfdsp/control.hpp"
+#include "tfdsp/late_reverb.hpp"
 #include "tfdsp/noise.hpp"
+#include "tfdsp/room_reverb.hpp"
 #include "tfdsp/sampleRate.hpp"
 #include "tfdsp/unison.hpp"
 #include "tfdsp/unison_oscillator.hpp"
@@ -38,6 +40,52 @@ namespace
 			throw std::invalid_argument("DSP inputs must be one-dimensional arrays");
 		if (left.shape[0] != right.shape[0])
 			throw std::invalid_argument(std::string(leftName) + " and " + rightName + " must have the same length");
+	}
+
+	py::array_t<float> RenderLateReverbWallImpulse(
+		py::ssize_t sampleCount, double sampleRate, double space, double aspect,
+		double decay, double damping, double diffusion)
+	{
+		if (sampleCount <= 0)
+			throw std::invalid_argument("sample_count must be positive");
+		if (!(sampleRate > 0.0))
+			throw std::invalid_argument("sample_rate must be positive");
+
+		py::array_t<float> result({sampleCount,
+			static_cast<py::ssize_t>(tfdsp::LateReverb::WallCount),
+			static_cast<py::ssize_t>(tfdsp::LateReverb::WallCount)});
+		auto output = result.mutable_unchecked<3>();
+		tfdsp::RoomReverbControls roomControls;
+		roomControls.space = static_cast<float>(space);
+		roomControls.aspect = static_cast<float>(aspect);
+		const auto room = tfdsp::RoomReverb::MakeRoom(roomControls);
+
+		for (std::size_t inputWall = 0;
+			 inputWall < tfdsp::LateReverb::WallCount; ++inputWall)
+		{
+			tfdsp::LateReverb reverb;
+			reverb.SetSampleRate(sampleRate);
+			tfdsp::LateReverbControls controls;
+			controls.decay = static_cast<float>(decay);
+			controls.damping = static_cast<float>(damping);
+			controls.diffusion = static_cast<float>(diffusion);
+			controls.modulation = 0.f;
+			controls.shimmer = 0.f;
+			for (std::size_t axis = 0; axis < 3; ++axis)
+				controls.roomDimensionsMetres[axis] =
+					static_cast<float>(room.dimensionsMetres[axis]);
+			for (py::ssize_t sample = 0; sample < sampleCount; ++sample)
+			{
+				tfdsp::LateReverb::WallFrame input{};
+				if (sample == 0)
+					input[inputWall] = 1.f;
+				const auto frame = reverb.ProcessWallFrame(input, controls);
+				for (std::size_t outputWall = 0;
+					 outputWall < tfdsp::LateReverb::WallCount; ++outputWall)
+					output(sample, outputWall, inputWall) = frame[outputWall];
+			}
+		}
+		return result;
 	}
 
 	template<typename Filter>
@@ -969,6 +1017,11 @@ namespace
 PYBIND11_MODULE(_triggerfish_dsp, module)
 {
 	module.doc() = "TriggerFish DSP development bindings";
+	module.def("late_reverb_wall_impulse", &RenderLateReverbWallImpulse,
+		py::arg("sample_count"), py::arg("sample_rate") = 4000.0,
+		py::arg("space") = 0.5, py::arg("aspect") = 0.5,
+		py::arg("decay") = 0.0, py::arg("damping") = 0.45,
+		py::arg("diffusion") = 0.75);
 
 	module.def("diode_ladder_map_cutoff", [](double requestedHz,
 		double maximumHz)

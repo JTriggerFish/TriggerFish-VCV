@@ -65,7 +65,7 @@ jobs:
         run: ctest --test-dir build/tests --output-on-failure
 
   python-tests:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

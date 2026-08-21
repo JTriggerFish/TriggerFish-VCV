@@ -39,6 +39,8 @@ Run the usual tasks from PowerShell:
 .\dev.ps1 smoke-slop4  # Install and open the Slop4/four-VCO patch
 .\dev.ps1 smoke-vdpo   # Install and open the two-VDPO patch
 .\dev.ps1 smoke-303    # Install and open the sequenced 303 voice patch
+.\dev.ps1 smoke-prog-303 # Replace Foundry with Prog Sequencer in the 303 patch
+.\dev.ps1 smoke-reverb # Install and open the 303-through-room-reverb patch
 .\dev.ps1 smoke-4072   # Install and open the MIDI-playable 4072 voice patch
 .\dev.ps1 smoke-wavefold # Install and open the Wavefold Oscillator patch
 .\dev.ps1 smoke-unison # Install and open the Unison Oscillator patch
@@ -152,6 +154,11 @@ slow cutoff and resonance cycles; a 14 Hz LFO is connected to
 linear filter FM with its attenuverter at zero. Install Impromptu Modular from
 the Rack Library before opening it.
 
+[test-prog-sequencer-303.vcv](test-prog-sequencer-303.vcv) keeps the tuned
+Clocked, oscillator, voice, modulation, Room Reverb, and stereo output path but
+replaces Foundry with Prog Sequencer. Its visible 16-line program is both a
+playable test and a compact-syntax regression fixture.
+
 [test-4072-voice.vcv](test-4072-voice.vcv) connects a Fundamental saw
 oscillator to 4072 Voice Core, with MIDI pitch tracking both oscillator and
 filter and MIDI gate driving the two internal envelopes.
@@ -209,11 +216,20 @@ used by the README. Set `PANEL_PREVIEW_BROWSER` if Edge, Chrome, or Chromium is
 not found automatically. On Windows, `dev.ps1 panel-preview` regenerates both
 editable runtime panels and all documentation previews in one command.
 
-The smoke commands use ignored `*.local.vcv` copies, allowing Rack to save MIDI
-and audio device selections, parameter changes, and extra test modules without
-putting machine-specific state in Git. Once created, a local patch is left
-byte-for-byte unchanged because Rack may store it as a compressed archive.
-Delete the corresponding local copy to recreate it from the checked-in patch.
+The smoke commands use ignored `*.local.vcv` launch copies so machine-specific
+state never enters Git. Every command atomically reconstructs its local copy
+from the selected checked-in fixture, ensuring it cannot deliberately launch
+stale topology or program text. Only audio and MIDI device selections are
+carried forward, and only when the old local patch is readable JSON; parameter
+changes and extra local modules are intentionally discarded.
+
+## Vendored sequencer parser
+
+TfProgSequencer uses cpp-peglib from `vendor/cpp-peglib`. The exact upstream
+release, commit, file hashes, and update procedure are recorded in
+`vendor/cpp-peglib/README.triggerfish.md`. No system parser package is needed.
+After an update, run `./dev.ps1 test` and `./dev.ps1 dist`; the distribution
+must contain `vendor/cpp-peglib/LICENSE`.
 
 ## Python and pre-commit
 

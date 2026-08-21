@@ -137,6 +137,29 @@ DEFAULT_PARAMS = {
         3.5,
         4.5,
     ],
+    "TfReverb": [
+        0.5,
+        0.5,
+        0.28,
+        0.0,
+        0.5,
+        0.35,
+        0.5,
+        0.682,
+        0.55,
+        0.18,
+        0.75,
+        0.4,
+        0.6130368568946039,
+        0.0,
+        0.0,
+        0.0,
+        0.9039693650225663,
+        0.35,
+        0.0,
+        0.0,
+    ],
+    "TfProgSequencer": [],
     "LFO": [0.0, 0.0, math.log2(0.07), 0.0, 0.0, 0.5, 0.0],
     "VCO": [1.0, 1.0, 0.0, 0.0, 0.0, 0.5, 0.0, 0.0],
 }
@@ -646,6 +669,130 @@ def generate_303_voice_patch() -> None:
     patch.write("test-303-voice.vcv")
 
 
+def generate_prog_sequencer_303_patch() -> None:
+    """Replace the reverb-equipped smoke-303's Foundry with Prog Sequencer."""
+    source_patch = json.loads(
+        (ROOT / "test-room-reverb.vcv").read_text(encoding="utf-8")
+    )
+    patch = Patch(zoom=0.82, grid_offset=(-8.0, -0.15))
+    patch.modules = [module for module in source_patch["modules"] if module["id"] != 3]
+    for item in patch.modules:
+        if item["id"] == 1:
+            item["data"]["text"] = (
+                "TriggerFish Prog Sequencer 303 smoke test\n\n"
+                "This is the tuned, reverb-equipped smoke-303 signal path with "
+                "Foundry replaced by TfProgSequencer. The complete 16-bar "
+                "Gibber Acid line is the short program visible in the "
+                "sequencer: i for 8 bars, -iv for 4, then -V for 4.\n\n"
+                "The test deliberately uses repetition, rests, slides, sparse "
+                "accents, an octave mark, derived patterns, mode replacement, "
+                "and concatenation as a syntax litmus test. Select an output "
+                "device in Audio-8 and start with monitor volume low."
+            )
+
+    program = """acid = sequence {
+  cycle 16
+  tonic D#@2
+  scale minor
+  notes 1!4 5 7 1!2 8 1, 1 1, 1
+  articulation x!7 ~ > ~ >!2 ~ >!3
+  velocity .5
+  accent + .!3 + . + . + .!2 + .
+  gate .5
+  glide .8
+}
+
+iv = acid |> modulate_degree 4 |> octave -1
+v  = acid |> modulate_degree 5 |> octave -1 |> scale major
+song = acid * 8 + iv * 4 + v * 4
+play song
+"""
+    patch.add(
+        module(
+            3,
+            "TriggerFish-Elements",
+            "TfProgSequencer",
+            (23, 0),
+            data={"source": program, "languageVersion": 4},
+        )
+    )
+
+    patch.cables = [
+        cable
+        for cable in source_patch["cables"]
+        if cable["outputModuleId"] != 3 and cable["inputModuleId"] != 3
+    ]
+    for index, cable in enumerate(patch.cables):
+        cable["id"] = 1000 + index
+    patch.cable(2, 1, 3, 0)  # Clocked x4 -> Prog Sequencer clock
+    patch.cable(2, 4, 3, 1)  # Clocked reset -> Prog Sequencer reset
+    patch.cable(3, 0, 4, 0)  # pitch, including programmed slides -> oscillator
+    patch.cable(3, 1, 5, 5)  # gate -> 303 articulation
+    patch.cable(3, 4, 5, 6)  # dedicated sparse accent -> 303 accent
+    patch.write("test-prog-sequencer-303.vcv")
+
+
+def generate_room_reverb_patch() -> None:
+    """Insert Room Reverb into the full smoke-303 patch."""
+    source = json.loads((ROOT / "test-303-voice.vcv").read_text(encoding="utf-8"))
+    patch = Patch(zoom=0.82, grid_offset=(-8.0, -0.15))
+    # Room Reverb already has equal-power Mix and an output Level control, so
+    # replace smoke-303's output VCMixer instead of adding stereo master VCAs.
+    # Also remove the three free-running filter/FM LFOs: this patch is a
+    # reverb regression, so motion heard after transport stops must come from
+    # the room engine rather than from an indefinitely sustained source.
+    removed_module_ids = {6, 8, 9, 10}
+    patch.modules = [
+        module for module in source["modules"] if module["id"] not in removed_module_ids
+    ]
+    patch.cables = [
+        cable
+        for cable in source["cables"]
+        if cable["outputModuleId"] not in removed_module_ids
+        and cable["inputModuleId"] not in removed_module_ids
+    ]
+
+    note = next(module for module in patch.modules if module["model"] == "Notes")
+    note["data"]["text"] = (
+        "TriggerFish Room Reverb smoke test\n\n"
+        "SETUP\nSelect an output device in Audio-8 and start with monitor "
+        "volume low. The programmed 303 line feeds Room Reverb as a mono "
+        "source; its independent LEFT and RIGHT outputs feed Audio-8 inputs "
+        "1 and 2 directly. Use the reverb's LEVEL as the output trim.\n\n"
+        "This reverb test deliberately removes the smoke-303 filter/FM LFOs "
+        "so tail movement can be assessed without external modulation.\n\n"
+        "Start by turning MIX up and use the EARLY and TAIL trims to isolate "
+        "the geometric reflections and two-stage velvet late field. Drag the amber "
+        "source and blue listener dots on the room plan, then try SIZE, "
+        "ASPECT, PRE DELAY, DECAY, DAMPING, DIFFUSE, MOD, SHIMMER, "
+        "WIDTH, LOW CUT, "
+        "and HIGH CUT. The AUDIO/X/Y/Z inputs also "
+        "accept the aligned polyphonic scene cables from Scene Pack 4."
+    )
+    note["pos"] = [-9, 0]
+
+    audio_module = next(module for module in patch.modules if module["id"] == 7)
+    audio_module["pos"] = [85, 0]
+    reverb_values = [*DEFAULT_PARAMS["TfReverb"]]
+    reverb_values[18] = -6.0
+    patch.add(
+        module(
+            11,
+            "TriggerFish-Elements",
+            "TfReverb",
+            (65, 0),
+            values=reverb_values,
+        )
+    )
+    # Reassign cable IDs after filtering so the checked-in patch is canonical.
+    for cable_id, cable in enumerate(patch.cables, start=1000):
+        cable["id"] = cable_id
+    patch.cable(5, 1, 11, 0)  # 303 mono VCA output -> reverb
+    patch.cable(11, 0, 7, 0)  # stereo left -> Audio-8 input 1
+    patch.cable(11, 1, 7, 1)  # stereo right -> Audio-8 input 2
+    patch.write("test-room-reverb.vcv")
+
+
 def generate_4072_voice_patch() -> None:
     patch = Patch(zoom=0.75, grid_offset=(-1, -0.1))
     patch.add(
@@ -824,6 +971,8 @@ if __name__ == "__main__":
     generate_slop4_patch()
     generate_vdpo_patch()
     generate_303_voice_patch()
+    generate_room_reverb_patch()
+    generate_prog_sequencer_303_patch()
     generate_4072_voice_patch()
     generate_wavefold_patch()
     generate_unison_patch()

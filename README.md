@@ -24,6 +24,7 @@ Circuit-modelled sound generators and processors, plus pitch utilities for VCV R
   </tr>
   <tr>
     <td align="center"><a href="#scene-pack-4"><img src="doc/TfScenePack4.png" height="260" alt="Scene Pack 4 module"><br><strong>Scene Pack 4</strong></a></td>
+    <td align="center"><a href="#room-reverb"><img src="doc/TfReverb.png" height="260" alt="Room Reverb module"><br><strong>Room Reverb</strong></a></td>
   </tr>
 </table>
 
@@ -41,6 +42,8 @@ Circuit-modelled sound generators and processors, plus pitch utilities for VCV R
 | Wavefold Oscillator | Fully polyphonic, with independent oscillator, folder, and resampling state; mono controls are broadcast | Widest connected input, up to 16 |
 | Unison Oscillator | Fully polyphonic, with an independent oscillator stack and drift state per channel; mono controls are broadcast | Widest connected input, up to 16 |
 | Scene Pack 4 | Compacts four connected mono sources and appends an optional incoming scene bus | Matching AUDIO/X/Y/Z outputs, up to 8 channels |
+| Room Reverb | Mono by default; accepts up to eight aligned positioned sources | Independent stereo left/right outputs |
+| Prog Sequencer | Polyphonic chord-capable program with independently cycling control lanes | Up to 16 aligned pitch/gate/trigger/velocity/accent channels |
 
 ## Modules
 
@@ -275,7 +278,7 @@ Circuit analysis, equations, calibration, and numerical validation are in the
 
 ### Scene Pack 4
 
-Scene Pack 4 prepares positioned sources for the forthcoming TfReverb. Patch up
+Scene Pack 4 prepares positioned sources for TfReverb. Patch up
 to four mono sources and set an X, Y, and Z position for each. The four outputs
 carry aligned polyphonic AUDIO/X/Y/Z channels; 0–10 V on a position cable maps
 across the corresponding room axis.
@@ -285,6 +288,198 @@ sources. Chaining two modules supports the reverb's maximum of eight independent
 sources. Connected local inputs are compacted into consecutive channels, and a
 polyphonic signal patched into one local input is summed into that lane's single
 positioned source.
+
+The single production architecture and its invariants are described in the
+[TfReverb current design](docs/TfReverb-current-design.md). Its late-field
+coefficients are deterministic heuristics; no fitted artifact or alternate late
+topology is embedded in the module.
+
+### Room Reverb
+
+Room Reverb combines a rectangular three-dimensional image-source model with a
+16-line, two-stage paraunitary velvet feedback network. SIZE derives all three
+room dimensions. The main delays and both velvet delay banks scale together
+from the resulting mean free time, while DECAY remains an independent RT60.
+The geometric response provides directional, frequency-dependent early reflections;
+the calibrated late field develops underneath it and decays to independent stereo
+outputs. FIR construction and room movement run on a rate-limited background worker,
+while the audio thread uses allocation-free prepared convolution banks.
+
+SIZE defines the room's floor scale and derives a plausible ceiling height;
+ASPECT reshapes the floor at constant area. The top-view placement pad moves the
+amber default source and blue listener in two dimensions. Its asymmetric listener
+default avoids the coincident reflection paths produced by the exact room centre;
+it remains draggable because no one receiver position is optimal for every source
+and room shape. Aligned AUDIO/X/Y/Z polyphonic cables from Scene Pack 4 override
+source coordinates for up to eight sources, whose live positions appear as smaller
+amber dots. PRE DELAY is shared by the complete wet response. The engine measures
+each source's four-band ER handoff and automatically chooses its late send. It
+also uses physical source-listener distance to favor defined early reflections
+nearby and the diffuse tail farther away; EARLY and TAIL are dB trims around
+that baseline. LOW CUT and HIGH CUT filter the wet output, and DECAY,
+DAMPING, DIFFUSE, MOD, SHIMMER, STEREO WIDTH, MIX, and LEVEL control the
+remaining response. Source and listener positions also drive six crossfaded wall
+connections outside the feedback loop. MOD applies slow, sample-rate-invariant
+random delay motion; its subtle default leaves the static tail intact while the upper range reaches an
+audible, lush movement. SHIMMER sends four orthogonal late-field buses through
+an eight-grain octave shifter and a separate two-stage velvet diffuser. A
+strictly bounded auxiliary feedback path creates successive octave bloom while
+leaving the passive main room loop, early reflections, and dry signal untouched.
+The wet filters default to 20 Hz and 15 kHz. STEREO WIDTH is an output-image control—0%
+collapses the complete wet field to mono, 100% preserves its native stereo image,
+and values up to 150% exaggerate the side component—whereas ASPECT changes the
+actual room width/depth geometry and therefore its reflection times.
+
+### Prog Sequencer
+
+Prog Sequencer is an externally clocked live-coding sequencer with
+up to 16 polyphonic V/OCT, Gate, Trigger, Velocity, and Accent channels per
+output cable. Edit the program
+directly on the module. Ctrl+`.` compiles the complete document; Ctrl+Enter
+evaluates the top-level statement containing the selection or current line.
+Other edited statements remain inactive until separately evaluated. A successful edit
+swaps in on the next Clock edge while preserving the arrangement phase and the
+lane cursors of sequences whose names still exist. Successfully executed code
+flashes in the editor. `stop` is a valid transport command and an executed
+`play` or `stop` line overrides other transport lines. Diagnostics wrap in the
+status strip, and the last valid program keeps playing after an error.
+
+Double-click selects a word and triple-click selects a complete row. Rack
+requires every module to be exactly one 3U row high, but the module context
+menu offers 22, 30, and 38 HP widths. New modules default to 30 HP, and the
+chosen width is saved with the patch. The editor uses a thin outer margin and a
+compact right-side I/O strip at every width.
+
+```text
+riff = sequence {
+  cycle 8
+  tonic D@4
+  scale dorian
+  notes 1 2 3 4 5 6 7 8
+        |> rotate 2
+        |> every 4 rev
+  articulation x x _ > [x x] x*3 ~ x
+  velocity .72 .63
+  accent + . .
+  duration 1 1/2 1/2 1 2
+  gate .8
+  slide . . . >
+}
+
+fill = sequence {
+  cycle 4
+  notes 5 6 7 8
+  articulation x x x*3 x
+}
+
+song = riff * 2 + fill
+play song
+```
+
+Every lane loops independently, so the three-position accent pattern moves
+against the eight notes. `x` starts a note, `_` alone ties it without a new
+onset, `~` rests, and `>` slides into the next pitch. `[x x]` subdivides one
+clock beat, `x*3` ratchets within a beat, `x!3` repeats across three beats, and
+`x(3,8,1)` creates a rotated Euclidean rhythm. Sparse control lanes use `.` for
+their default. A velocity such as `.5` means 5 V; `+` and `++` produce .88 and
+1.0 on the Accent lane and raise Velocity to at least that value.
+
+Scale degrees refer to the selected scale, so degree `3` in `scale minor` is
+already the minor third; `b3` lowers that result by one more semitone. Degree
+numbers continue according to scale cardinality: `8` is the next tonic in a
+seven-note scale, `6` in a pentatonic scale, and `9` in an octatonic scale.
+`@` gives a pitch or chord an unambiguous absolute register. `D@4` is the
+individual note D4, while `D7` is a dominant-seventh chord and `D7@3` roots
+that chord in octave 3. A trailing apostrophe raises a pitch or chord by one
+relative octave and a comma lowers it: `1'`, `1''`, `1,`, and `Cm7'`. The
+marks compose, while signed forms such as `C@-1` still name absolute octaves.
+An optional `octave` lane loops independently like every other control lane,
+so `octave 3 3 4` can displace against an eight-note melody. Named sections
+concatenate with `+` and repeat with `*`. `1!4` repeats a note in its lane, and
+`.!3` repeats a sparse default.
+`gate .5` holds Gate for half the event; only `_` is a semantic tie.
+`glide .8` slews a `>` target for .8 incoming-clock beats, capped by that
+target event's span. Existing sequences can be varied without copying lanes:
+
+`//` begins a line comment and can quickly shorten a lane while retaining the
+unused material: `notes 1 2 3 // 4 5 6 7 8` compiles as the three-note pattern
+`1 2 3`. Whole comment lines and trailing comments on commands are also valid.
+Comment text is shown in a dimmer shade of the display's existing colour
+scheme. `#` remains available for sharp degrees such as `#4`.
+
+```text
+iv = acid |> modulate_degree 4 |> octave -1
+v  = acid |> modulate_degree 5 |> octave -1 |> scale major
+song = acid * 8 + iv * 4 + v * 4
+```
+
+`modulate_degree 4` moves the tonal centre by the selected scale's fourth and
+`modulate_degree 5` by its fifth, preserving the riff's chromatic shape;
+negative degree numbers move downward. `shift_degree 4` instead remaps every
+scale degree four indices upward (tonic to fifth), staying in the current key;
+this diatonic operation may change the semitone shape of the riff. In harmonic
+minor, for example, that in-key shift produces the major V without a separate
+`scale major`. `transpose_semitone` remains the separate operation for exact
+chromatic movement.
+Supported scale names include `harmonic_minor`, `major_pentatonic`,
+`minor_pentatonic`, `octatonic_whole_half`, and `octatonic_half_whole`.
+
+Parentheses are simultaneous scale-degree voicings, while conventional jazz
+symbols are accepted directly:
+
+```text
+notes (1 b3 5) Cm7 D7 Bbm7b5@3 / D@2 Cmaj9 C7#9
+```
+
+The jazz parser supports major, minor, diminished, augmented, suspended,
+power, sixth, seventh, ninth, eleventh, and thirteenth chords, plus `add` and
+`b`/`#` alterations. Close-position voices are emitted as Rack polyphonic
+channels on Pitch, Gate, Trigger, Velocity, and Accent. A slash bass is channel
+1 and is placed below the chord unless its octave is explicit. Rack's native
+16-channel cable capacity is the chord-size limit.
+Inside an explicit voicing, bare named pitches are unambiguous, so
+`(C E G)@4` shares octave 4 across the three tones while
+`(C@3 E@4 G@4)` remains available for a spread voicing.
+
+Whole-sequence timing transformations are explicitly quantified:
+
+```text
+groove = riff
+  |> fast 2
+  |> swing .58 1/8
+  |> late 1/32
+  |> early random 6ms
+```
+
+`slow 3/2` is also valid. Swing `.5` is straight; larger values give the first
+member of each equal subdivision pair more of the pair. With no second argument
+the event subdivision supplies the grid; an explicit `1/8`, `1/16`, or other
+positive incoming-clock fraction selects it directly. `early` and `late`
+accept beat fractions or `ms`, and `random AMOUNT` chooses a deterministic
+amount from zero to the stated maximum. Subdivision density can already vary
+with articulation groups such as `[x x] [x x x]`, an independent
+`ratchet 1 2 3` lane, and independently sequenced `duration` values.
+
+The checked-in [Prog Sequencer 303 smoke patch](test-prog-sequencer-303.vcv)
+uses this expression to reproduce the existing 16-bar smoke-303 line. Launch
+it with `./dev.ps1 smoke-prog-303` on Windows.
+
+During playback, translucent amber cursors follow the active sequence name and
+every independently advancing lane while retaining the Notes display's retro
+amber-on-black look. Each cursor flashes brighter on every event and fades to
+its resting level through a short exponential head and a longer glow tail.
+Recent positions decay independently, producing a travelling trail, while a
+repeated token still visibly pulses at its rhythm. The trail is a fixed-size,
+allocation-free UI buffer with a gentle 320 ms phosphor-like tail.
+Short moves illuminate the intervening whitespace as part of that same fading
+trail; long jumps and line wraps remain separate to avoid broad flashes. A
+vendored, version-pinned cpp-peglib PEG front end parses the language into
+typed syntax records, which
+the semantic compiler lowers to a prepared pattern graph. Parsing
+and program destruction stay off the audio thread. See the
+[current implementation design](docs/TfProgSequencer-current-design.md),
+[syntax study](docs/TfProgSequencer-syntax-options.md) and
+[v1 architecture](docs/TfProgSequencer-v1-proposal.md) for the design context.
 
 ## Contributing
 

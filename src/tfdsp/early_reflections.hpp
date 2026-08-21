@@ -107,7 +107,6 @@ struct EarlyReflectionSource {
 struct EarlyReflectionMixingPrediction {
   double roomVolumeCubicMetres{};
   double roomSurfaceSquareMetres{};
-  double diffusionMultiplier{};
   double averageSeconds{};
   double conservativeSeconds{};
   double generationHorizonSeconds{};
@@ -122,6 +121,12 @@ struct EarlyReflectionSourceHandoff {
   double finalEndSeconds{};
   double normalizedEchoDensity{};
   double excessKurtosis{};
+  // Untapered energy descriptors at the ER/late handoff. They let the room
+  // engine set a geometry-dependent late send without fitting an external IR.
+  std::array<double, EarlyReflectionBandCount> bandHandoffPower{};
+  std::array<double, EarlyReflectionBandCount> bandEarlyEnergy{};
+  double broadbandHandoffPower{};
+  double broadbandEarlyEnergy{};
   std::size_t imagePathCount{};
   std::size_t analysisPathCount{};
   bool detectedFromResponse{};
@@ -218,6 +223,17 @@ struct EarlyReflectionImpulseResponse {
           handoff.finalEndSeconds >
               mixingPrediction.generationHorizonSeconds + 1.0e-12)
         throw std::invalid_argument("ER FIR source handoff is invalid");
+      if (!std::isfinite(handoff.broadbandHandoffPower) ||
+          handoff.broadbandHandoffPower < 0.0 ||
+          !std::isfinite(handoff.broadbandEarlyEnergy) ||
+          handoff.broadbandEarlyEnergy < 0.0)
+        throw std::invalid_argument("ER FIR handoff energy is invalid");
+      for (std::size_t band = 0; band < EarlyReflectionBandCount; ++band)
+        if (!std::isfinite(handoff.bandHandoffPower[band]) ||
+            handoff.bandHandoffPower[band] < 0.0 ||
+            !std::isfinite(handoff.bandEarlyEnergy[band]) ||
+            handoff.bandEarlyEnergy[band] < 0.0)
+          throw std::invalid_argument("ER FIR band energy is invalid");
       if (handoff.analysisPathCount < handoff.imagePathCount)
         throw std::invalid_argument(
             "ER source audible path count exceeds its analysis path count");
@@ -294,7 +310,7 @@ inline EarlyReflectionRoom MakeEarlyReflectionRoom(
     room.dimensionsMetres[axis] =
         std::exp(std::log(minimum[axis]) +
                  amount * (std::log(maximum[axis]) - std::log(minimum[axis])));
-  const EarlyReflectionVector listenerFraction{0.50, 0.68, 0.45};
+  const EarlyReflectionVector listenerFraction{0.5, 0.682, 0.45};
   for (std::size_t axis = 0; axis < 3; ++axis)
     room.listenerPositionMetres[axis] =
         listenerFraction[axis] * room.dimensionsMetres[axis];
@@ -386,12 +402,9 @@ EarlyReflectionDirectDistance(const EarlyReflectionRoom &room,
 
 inline EarlyReflectionMixingPrediction
 PredictEarlyReflectionMixing(const EarlyReflectionConfig &config,
-                             const EarlyReflectionRoom &room,
-                             const double diffusion = 0.5) {
+                             const EarlyReflectionRoom &room) {
   config.Validate();
   room.Validate();
-  if (!std::isfinite(diffusion) || diffusion < 0.0 || diffusion > 1.0)
-    throw std::invalid_argument("Diffusion must be in [0, 1]");
 
   const double length = room.dimensionsMetres[0];
   const double width = room.dimensionsMetres[1];
@@ -399,14 +412,12 @@ PredictEarlyReflectionMixing(const EarlyReflectionConfig &config,
   const double volume = length * width * height;
   const double surface =
       2.0 * (length * width + length * height + width * height);
-  const double multiplier = 1.30 + diffusion * (0.75 - 1.30);
-  const double average = 0.001 * (20.0 * volume / surface + 12.0) * multiplier;
-  const double conservative = 0.001 * (0.0117 * volume + 50.1) * multiplier;
+  const double average = 0.001 * (20.0 * volume / surface + 12.0);
+  const double conservative = 0.001 * (0.0117 * volume + 50.1);
 
   EarlyReflectionMixingPrediction prediction;
   prediction.roomVolumeCubicMetres = volume;
   prediction.roomSurfaceSquareMetres = surface;
-  prediction.diffusionMultiplier = multiplier;
   prediction.averageSeconds = std::clamp(average, config.minimumHandoffSeconds,
                                          config.responseTimeSeconds);
   prediction.conservativeSeconds =
@@ -508,12 +519,12 @@ public:
 inline std::vector<EarlyReflectionPath> EnumerateEarlyReflectionPaths(
     const EarlyReflectionConfig &config, const EarlyReflectionRoom &room,
     const std::vector<EarlyReflectionSource> &sources,
-    const EarlyReflectionMaterials &materials, const double diffusion = 0.5) {
+    const EarlyReflectionMaterials &materials) {
   config.Validate();
   room.Validate();
   materials.Validate();
   early_reflection_detail::ValidateSources(room, sources);
-  const auto mixing = PredictEarlyReflectionMixing(config, room, diffusion);
+  const auto mixing = PredictEarlyReflectionMixing(config, room);
   std::vector<double> directDistances;
   directDistances.reserve(sources.size());
   double maximumDistance = 0.0;
@@ -766,15 +777,14 @@ inline EarlyReflectionImpulseResponse BuildEarlyReflectionImpulseResponse(
     const std::vector<EarlyReflectionSource> &sources,
     const EarlyReflectionMaterials &materials,
     const std::size_t convolutionLatencySamples = 0,
-    const double diffusion = 0.5,
     const std::vector<EarlyReflectionPath> *cachedGeometry = nullptr) {
-  const auto mixing = PredictEarlyReflectionMixing(config, room, diffusion);
+  const auto mixing = PredictEarlyReflectionMixing(config, room);
   materials.Validate();
   early_reflection_detail::ValidateSources(room, sources);
   auto paths = cachedGeometry != nullptr
                    ? *cachedGeometry
                    : EnumerateEarlyReflectionPaths(config, room, sources,
-                                                   materials, diffusion);
+                                                   materials);
   if (paths.empty())
     throw std::logic_error("ER geometry produced no reflected paths");
   for (auto &path : paths) {
@@ -890,6 +900,65 @@ inline EarlyReflectionImpulseResponse BuildEarlyReflectionImpulseResponse(
             bandTrains[kernel * EarlyReflectionBandCount + band][sample]);
   }
   RefineEarlyReflectionHandoffs(config, response);
+
+  // Measure the untapered response at the detected handoff. This is done on
+  // the worker thread, where the extra filter passes are harmless, and keeps
+  // the audio thread free of scene-analysis work. The same complementary
+  // filters used to build the audible kernels provide full-band coverage.
+  const std::size_t handoffWindowSamples = std::max<std::size_t>(
+      16, static_cast<std::size_t>(
+              std::llround(config.analysisWindowSeconds * config.sampleRate)));
+  for (std::size_t source = 0; source < sources.size(); ++source) {
+    auto &handoff = response.sourceHandoffs[source];
+    const double directStored =
+        handoff.directPropagationSeconds * config.sampleRate -
+        static_cast<double>(appliedCompensation);
+    const auto handoffCentre = static_cast<std::size_t>(std::clamp(
+        std::llround(directStored +
+                     handoff.finalStartSeconds * config.sampleRate),
+        0LL, static_cast<long long>(responseSize - 1)));
+    const std::size_t windowFirst =
+        handoffCentre > handoffWindowSamples / 2
+            ? handoffCentre - handoffWindowSamples / 2
+            : 0;
+    const std::size_t windowLast =
+        std::min(responseSize, windowFirst + handoffWindowSamples);
+    const std::size_t earlyFirst = static_cast<std::size_t>(
+        std::clamp(std::llround(std::max(0.0, directStored)), 0LL,
+                   static_cast<long long>(responseSize - 1)));
+
+    for (std::size_t output = 0; output < EarlyReflectionOutputCount;
+         ++output) {
+      const std::size_t kernel = response.KernelIndex(output, source);
+      for (std::size_t sample = earlyFirst; sample < handoffCentre; ++sample) {
+        const double value = response.kernels[kernel][sample];
+        handoff.broadbandEarlyEnergy += value * value;
+      }
+      for (std::size_t sample = windowFirst; sample < windowLast; ++sample) {
+        const double value = response.kernels[kernel][sample];
+        handoff.broadbandHandoffPower += value * value;
+      }
+
+      for (std::size_t band = 0; band < EarlyReflectionBandCount; ++band) {
+        early_reflection_detail::ComplementaryBandFilter filter;
+        filter.Prepare(config, band);
+        for (std::size_t sample = 0; sample < responseSize; ++sample) {
+          const double value = filter.Process(
+              bandTrains[kernel * EarlyReflectionBandCount + band][sample]);
+          if (sample >= earlyFirst && sample < handoffCentre)
+            handoff.bandEarlyEnergy[band] += value * value;
+          if (sample >= windowFirst && sample < windowLast)
+            handoff.bandHandoffPower[band] += value * value;
+        }
+      }
+    }
+    const double divisor = static_cast<double>(
+        EarlyReflectionOutputCount * std::max<std::size_t>(
+                                         1, windowLast - windowFirst));
+    handoff.broadbandHandoffPower /= divisor;
+    for (auto &power : handoff.bandHandoffPower)
+      power /= divisor;
+  }
 
   response.imagePathCount = 0;
   for (const auto &path : paths) {

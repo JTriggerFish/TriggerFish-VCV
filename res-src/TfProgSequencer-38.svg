@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="570" height="380" viewBox="0 0 570 380">
+  <rect width="570" height="380" fill="#cecece"/>
+  <rect x="3" y="19" width="510" height="358" rx="3" fill="#25292b" stroke="#5c6264"/>
+  <path d="M516 19v358" fill="none" stroke="#777" stroke-width="0.7"/>
+  <g font-family="DejaVu Sans, sans-serif" text-anchor="middle" fill="#1f1f1f">
+    <text x="211" y="14" font-size="10" font-weight="bold" letter-spacing="1.1">TRIGGERFISH</text>
+    <text x="305" y="14" font-size="7.4" letter-spacing="1.25">PROG SEQUENCER</text>
+    <g font-size="5.7" font-weight="bold">
+      <text x="543" y="48">INPUTS</text>
+      <text x="543" y="54">CLOCK</text>
+      <text x="543" y="102">RESET</text>
+      <text x="543" y="150">RUN</text>
+      <text x="543" y="198">OUTPUTS</text>
+      <text x="543" y="202">V/OCT</text>
+      <text x="543" y="236">GATE</text>
+      <text x="543" y="270">TRIG</text>
+      <text x="543" y="304">VEL</text>
+      <text x="543" y="338">ACC</text>
+    </g>
+  </g>
+</svg>

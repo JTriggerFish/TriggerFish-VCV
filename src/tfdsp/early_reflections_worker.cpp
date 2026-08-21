@@ -44,16 +44,20 @@ std::size_t EarlyReflectionWorker::Submit(
       nextSequence_.fetch_add(1, std::memory_order_relaxed);
   auto &slot = requestSlots_[slotIndex];
   slot.request = request;
-  slot.sequence = sequence;
+  slot.sequence.store(sequence, std::memory_order_relaxed);
   slot.state.store(RequestState::Ready, std::memory_order_release);
-  const int replaced = latestRequestSlot_.exchange(
-      static_cast<int>(slotIndex), std::memory_order_acq_rel);
-  if (replaced >= 0) {
+
+  // Retain only the newest waiting snapshot. A slot already claimed by the
+  // worker is Reading, so this CAS cannot invalidate a request being copied.
+  // Scanning four fixed slots is deterministic and avoids a separate hint
+  // whose publication could race the Ready state.
+  for (std::size_t index = 0; index < RequestSlotCount; ++index) {
+    if (index == slotIndex)
+      continue;
     RequestState expected = RequestState::Ready;
-    requestSlots_[static_cast<std::size_t>(replaced)]
-        .state.compare_exchange_strong(expected, RequestState::Free,
-                                       std::memory_order_acq_rel,
-                                       std::memory_order_acquire);
+    requestSlots_[index].state.compare_exchange_strong(
+        expected, RequestState::Free, std::memory_order_acq_rel,
+        std::memory_order_acquire);
   }
   wakeCondition_.notify_one();
   return sequence;
@@ -88,7 +92,6 @@ EarlyReflectionWorker::WaitForLatestResult(
 void EarlyReflectionWorker::Stop() noexcept {
   if (stopping_.exchange(true, std::memory_order_acq_rel))
     return;
-  latestRequestSlot_.store(InvalidRequestSlot, std::memory_order_release);
   wakeCondition_.notify_all();
   resultCondition_.notify_all();
   if (thread_.joinable())
@@ -98,8 +101,7 @@ void EarlyReflectionWorker::Stop() noexcept {
 bool EarlyReflectionWorker::SameGeometry(
     const EarlyReflectionBuildRequest &left,
     const EarlyReflectionBuildRequest &right) noexcept {
-  if (left.diffusion != right.diffusion ||
-      left.config.speedOfSound != right.config.speedOfSound ||
+  if (left.config.speedOfSound != right.config.speedOfSound ||
       left.config.responseTimeSeconds != right.config.responseTimeSeconds ||
       left.config.minimumHandoffSeconds != right.config.minimumHandoffSeconds ||
       left.config.handoffOverlapSeconds != right.config.handoffOverlapSeconds ||
@@ -117,19 +119,55 @@ bool EarlyReflectionWorker::SameGeometry(
 
 bool EarlyReflectionWorker::TryTakeLatestRequest(
     std::pair<std::size_t, EarlyReflectionBuildRequest> &request) noexcept {
-  const int candidate =
-      latestRequestSlot_.exchange(InvalidRequestSlot, std::memory_order_acq_rel);
-  if (candidate < 0)
-    return false;
-  auto &slot = requestSlots_[static_cast<std::size_t>(candidate)];
-  RequestState expected = RequestState::Ready;
-  if (!slot.state.compare_exchange_strong(expected, RequestState::Reading,
-                                          std::memory_order_acq_rel,
-                                          std::memory_order_acquire))
-    return false;
-  request = {slot.sequence, slot.request};
-  slot.state.store(RequestState::Free, std::memory_order_release);
-  return true;
+  // Recover the newest Ready slot by sequence. The mailbox is a fixed four-slot
+  // SPSC structure, so this bounded scan is cheap and cannot become stale.
+  for (std::size_t attempt = 0; attempt < RequestSlotCount; ++attempt) {
+    std::size_t candidate = RequestSlotCount;
+    std::size_t newestSequence = 0;
+    for (std::size_t index = 0; index < RequestSlotCount; ++index) {
+      if (requestSlots_[index].state.load(std::memory_order_acquire) !=
+          RequestState::Ready)
+        continue;
+      const auto sequence =
+          requestSlots_[index].sequence.load(std::memory_order_relaxed);
+      if (candidate == RequestSlotCount || sequence > newestSequence) {
+        candidate = index;
+        newestSequence = sequence;
+      }
+    }
+    if (candidate == RequestSlotCount)
+      return false;
+
+    auto &slot = requestSlots_[candidate];
+    RequestState expected = RequestState::Ready;
+    if (!slot.state.compare_exchange_strong(expected, RequestState::Reading,
+                                            std::memory_order_acq_rel,
+                                            std::memory_order_acquire))
+      continue;
+    request = {slot.sequence.load(std::memory_order_relaxed), slot.request};
+    slot.state.store(RequestState::Free, std::memory_order_release);
+
+    // Reclaim any older snapshots that were orphaned by a stale hint. A newer
+    // concurrent submission is retained for the next worker iteration.
+    for (std::size_t index = 0; index < RequestSlotCount; ++index) {
+      if (requestSlots_[index].sequence.load(std::memory_order_relaxed) >=
+          request.first)
+        continue;
+      expected = RequestState::Ready;
+      requestSlots_[index].state.compare_exchange_strong(
+          expected, RequestState::Free, std::memory_order_acq_rel,
+          std::memory_order_acquire);
+    }
+    return true;
+  }
+  return false;
+}
+
+bool EarlyReflectionWorker::HasReadyRequest() const noexcept {
+  for (const auto &slot : requestSlots_)
+    if (slot.state.load(std::memory_order_acquire) == RequestState::Ready)
+      return true;
+  return false;
 }
 
 void EarlyReflectionWorker::Run() noexcept {
@@ -139,9 +177,14 @@ void EarlyReflectionWorker::Run() noexcept {
     std::pair<std::size_t, EarlyReflectionBuildRequest> work;
     while (!TryTakeLatestRequest(work)) {
       std::unique_lock<std::mutex> lock(wakeMutex_);
-      wakeCondition_.wait(lock, [&] {
+      // Submit() is deliberately lock-free for the audio thread, so it cannot
+      // take wakeMutex_ while changing the Ready predicate. A notification can
+      // therefore land between the predicate check and the condition-variable
+      // wait. Bound the sleep to prevent that legal lost-wakeup window from
+      // stranding the newest scene indefinitely.
+      wakeCondition_.wait_for(lock, std::chrono::milliseconds(5), [&] {
         return stopping_.load(std::memory_order_acquire) ||
-               latestRequestSlot_.load(std::memory_order_acquire) >= 0;
+               HasReadyRequest();
       });
       if (stopping_.load(std::memory_order_acquire))
         return;
@@ -178,18 +221,17 @@ void EarlyReflectionWorker::Run() noexcept {
           SameGeometry(*cachedGeometryRequest_, work.second);
       if (!result.geometryReused) {
         cachedGeometry_ = EnumerateEarlyReflectionPaths(
-            work.second.config, work.second.room, sources, work.second.materials,
-            work.second.diffusion);
+            work.second.config, work.second.room, sources, work.second.materials);
         cachedGeometryRequest_ = work.second;
       }
       result.response = BuildEarlyReflectionImpulseResponse(
           work.second.config, work.second.room, sources,
           work.second.materials, work.second.convolutionLatencySamples,
-          work.second.diffusion, &cachedGeometry_);
+          &cachedGeometry_);
       result.buildSeconds =
           std::chrono::duration<double>(Clock::now() - started).count();
 
-      if (latestRequestSlot_.load(std::memory_order_acquire) >= 0)
+      if (HasReadyRequest())
         continue;
 
       if (publisher_) {

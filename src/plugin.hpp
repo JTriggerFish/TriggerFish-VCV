@@ -18,3 +18,5 @@ extern Model *modelTf4072VoiceCore;
 extern Model *modelTfWavefoldOscillator;
 extern Model *modelTfUnisonOscillator;
 extern Model *modelTfScenePack4;
+extern Model *modelTfReverb;
+extern Model *modelTfProgSequencer;

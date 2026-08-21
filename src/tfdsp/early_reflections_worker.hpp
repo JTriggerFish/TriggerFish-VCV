@@ -22,7 +22,6 @@ struct EarlyReflectionBuildRequest {
   std::size_t sourceCount{};
   EarlyReflectionMaterials materials{};
   std::size_t convolutionLatencySamples{};
-  double diffusion{0.5};
   double transitionSeconds{0.100};
 
   void SetSources(const std::vector<EarlyReflectionSource> &newSources) {
@@ -75,17 +74,17 @@ public:
 
 private:
   static constexpr std::size_t RequestSlotCount = 4;
-  static constexpr int InvalidRequestSlot = -1;
   enum class RequestState : std::uint8_t { Free, Writing, Ready, Reading };
   struct RequestSlot {
     EarlyReflectionBuildRequest request{};
-    std::size_t sequence{};
+    std::atomic<std::size_t> sequence{};
     std::atomic<RequestState> state{RequestState::Free};
   };
 
   void Run() noexcept;
   bool TryTakeLatestRequest(
       std::pair<std::size_t, EarlyReflectionBuildRequest> &request) noexcept;
+  bool HasReadyRequest() const noexcept;
   static bool SameGeometry(const EarlyReflectionBuildRequest &left,
                            const EarlyReflectionBuildRequest &right) noexcept;
 
@@ -93,7 +92,6 @@ private:
   std::chrono::steady_clock::duration minimumBuildInterval_{};
   Publisher publisher_{};
   std::array<RequestSlot, RequestSlotCount> requestSlots_{};
-  std::atomic<int> latestRequestSlot_{InvalidRequestSlot};
   std::atomic<std::size_t> nextSequence_{1};
   std::atomic<bool> stopping_{};
   std::mutex wakeMutex_{};

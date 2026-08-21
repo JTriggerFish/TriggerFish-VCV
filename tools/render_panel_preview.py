@@ -45,6 +45,7 @@ MODULE_NAMES = (
     "TfWavefoldOscillator",
     "TfUnisonOscillator",
     "TfScenePack4",
+    "TfReverb",
 )
 
 
@@ -153,6 +154,7 @@ MODULE_GRAPHICS = {
     "TfWavefoldOscillator": (),
     "TfUnisonOscillator": (),
     "TfScenePack4": (),
+    "TfReverb": (),
 }
 
 

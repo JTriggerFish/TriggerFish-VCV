@@ -222,7 +222,7 @@ void TestImageSourceGeometryAndMaterials() {
 void TestAdaptiveMixingPredictionAndRelativeTime() {
   auto config = TestConfig(0.15);
   const auto room = tfdsp::MakeEarlyReflectionRoom(0.45);
-  const auto neutral = tfdsp::PredictEarlyReflectionMixing(config, room, 0.5);
+  const auto neutral = tfdsp::PredictEarlyReflectionMixing(config, room);
   const double length = room.dimensionsMetres[0];
   const double width = room.dimensionsMetres[1];
   const double height = room.dimensionsMetres[2];
@@ -234,14 +234,8 @@ void TestAdaptiveMixingPredictionAndRelativeTime() {
   CheckNear(neutral.roomSurfaceSquareMetres, expectedSurface, 1.0e-12,
             "mixing prediction uses the analytic room surface area");
   CheckNear(neutral.averageSeconds,
-            0.001 * (20.0 * expectedVolume / expectedSurface + 12.0) *
-                neutral.diffusionMultiplier,
+            0.001 * (20.0 * expectedVolume / expectedSurface + 12.0),
             1.0e-12, "T50 follows the V/S perceptual predictor");
-  const auto low = tfdsp::PredictEarlyReflectionMixing(config, room, 0.0);
-  const auto high = tfdsp::PredictEarlyReflectionMixing(config, room, 1.0);
-  Check(low.averageSeconds > neutral.averageSeconds &&
-            neutral.averageSeconds > high.averageSeconds,
-        "higher Diffusion produces an earlier mixing prediction");
   Check(neutral.generationHorizonSeconds >= neutral.conservativeSeconds,
         "generation includes the analysis safety region");
 
@@ -249,7 +243,7 @@ void TestAdaptiveMixingPredictionAndRelativeTime() {
       tfdsp::MakeEarlyReflectionSource(room, {0.5, 0.60, 0.45}),
       tfdsp::MakeEarlyReflectionSource(room, {0.2, 0.10, 0.70})};
   const auto paths = tfdsp::EnumerateEarlyReflectionPaths(
-      config, room, sources, UniformMaterials(), 0.5);
+      config, room, sources, UniformMaterials());
   std::array<bool, 2> sawPath{};
   for (const auto &path : paths) {
     const double direct =
@@ -437,7 +431,7 @@ void TestUnequalMaterialBandsProduceSpectralTilt() {
     return;
   const std::vector<tfdsp::EarlyReflectionPath> onePath{*sideWall};
   const auto response = tfdsp::BuildEarlyReflectionImpulseResponse(
-      config, room, sources, materials, 128, 0.5, &onePath);
+      config, room, sources, materials, 128, &onePath);
   const auto &left = response.kernels[response.KernelIndex(0, 0)];
   const auto &right = response.kernels[response.KernelIndex(1, 0)];
   const double low = std::hypot(MagnitudeAt(left, 100.0, config.sampleRate),
@@ -775,7 +769,7 @@ void TestRateLimitedCoalescingWorkerAndPreparedBankHandoff() {
   trackAllocations = true;
   std::size_t nonblockingSequence = 0;
   for (std::size_t update = 0; update < 32; ++update) {
-    request.diffusion = static_cast<double>(update % 2);
+    request.room.dimensionsMetres[0] = 6.0 + 0.01 * update;
     nonblockingSequence = coalescingWorker.Submit(request);
   }
   trackAllocations = false;
@@ -783,14 +777,19 @@ void TestRateLimitedCoalescingWorkerAndPreparedBankHandoff() {
             trackedAllocations.load(std::memory_order_relaxed) == 0,
         "audio-thread request publication is nonallocating and retains capacity");
   const auto submittedAt = std::chrono::steady_clock::now();
-  request.diffusion = 0.0;
-  coalescingWorker.Submit(request);
-  request.diffusion = 0.5;
-  coalescingWorker.Submit(request);
-  request.diffusion = 1.0;
+  request.room.dimensionsMetres[0] = 6.0;
+  const auto zeroSequence = coalescingWorker.Submit(request);
+  request.room.dimensionsMetres[0] = 7.0;
+  const auto halfSequence = coalescingWorker.Submit(request);
+  request.room.dimensionsMetres[0] = 8.0;
   const auto latestSequence = coalescingWorker.Submit(request);
+  Check(zeroSequence != 0 && halfSequence != 0 && latestSequence != 0,
+        "final coalesced scene submissions retain mailbox capacity");
   std::optional<tfdsp::EarlyReflectionBuildResult> latest;
-  const auto deadline = submittedAt + std::chrono::seconds(2);
+  // Heavily instrumented Windows CI can briefly deschedule this deliberately
+  // rate-limited worker. The semantic assertion is the 140 ms lower bound;
+  // allow generous upper headroom without weakening it.
+  const auto deadline = submittedAt + std::chrono::seconds(5);
   while (std::chrono::steady_clock::now() < deadline) {
     auto candidate =
         coalescingWorker.WaitForLatestResult(std::chrono::milliseconds(250));
@@ -805,8 +804,9 @@ void TestRateLimitedCoalescingWorkerAndPreparedBankHandoff() {
   Check(latest.has_value() && latest->Succeeded(),
         "coalescing worker ultimately builds the latest submitted scene");
   Check(latest &&
-            std::abs(latest->response.mixingPrediction.diffusionMultiplier -
-                     0.75) < 1.0e-12,
+            std::abs(latest->response.mixingPrediction.roomVolumeCubicMetres -
+                     8.0 * request.room.dimensionsMetres[1] *
+                         request.room.dimensionsMetres[2]) < 1.0e-12,
         "superseded scene requests do not replace the latest result");
   Check(elapsed >= 0.14,
         "worker start rate respects its configured five-update-per-second cap");
@@ -814,7 +814,7 @@ void TestRateLimitedCoalescingWorkerAndPreparedBankHandoff() {
   request.materials = tfdsp::MakeEarlyReflectionMaterials(1.0);
   const auto dampingSequence = coalescingWorker.Submit(request);
   auto dampingResult =
-      coalescingWorker.WaitForLatestResult(std::chrono::milliseconds(1000));
+      coalescingWorker.WaitForLatestResult(std::chrono::milliseconds(2000));
   Check(dampingResult && dampingResult->Succeeded() &&
             dampingResult->sequence == dampingSequence &&
             dampingResult->geometryReused,
@@ -823,7 +823,7 @@ void TestRateLimitedCoalescingWorkerAndPreparedBankHandoff() {
   request.materials.reflectionAmplitudes[0][0] = 1.01;
   const auto invalidMaterialSequence = coalescingWorker.Submit(request);
   auto invalidMaterialResult =
-      coalescingWorker.WaitForLatestResult(std::chrono::milliseconds(1000));
+      coalescingWorker.WaitForLatestResult(std::chrono::milliseconds(2000));
   Check(invalidMaterialResult && !invalidMaterialResult->Succeeded() &&
             invalidMaterialResult->sequence == invalidMaterialSequence &&
             invalidMaterialResult->geometryReused,

@@ -43,6 +43,98 @@ def test_303_voice_core_runtime_panel_outlines_all_editable_text():
     assert b"\r\n" not in (ROOT / "res" / "Tf303VoiceCore.svg").read_bytes()
 
 
+def test_prog_sequencer_has_three_valid_3u_widths_with_outlined_runtime_text():
+    module_source = (ROOT / "src" / "TfProgSequencer.cpp").read_text(encoding="utf-8")
+    parser_source = (ROOT / "src" / "tfseq_parser.cpp").read_text(encoding="utf-8")
+    compiler_source = (ROOT / "src" / "tfseq_compiler.cpp").read_text(encoding="utf-8")
+    runtime_source = (ROOT / "src" / "tfseq_runtime.cpp").read_text(encoding="utf-8")
+    assert "ScrewSilver" not in module_source
+    assert "MergeSelectionDocuments" in module_source
+    assert "SplitPatternChildren" not in parser_source
+    assert "ReadPatternNode" not in parser_source
+    assert "SplitChordTones" not in compiler_source
+    assert "PatternElement <-" in parser_source
+    assert "VoicingTone" in parser_source
+    assert "SlashSuffix" in parser_source
+    assert "stateTransferOrder" in runtime_source
+    assert "activationCheckpointBeat" in module_source
+    assert "activationNextStepBeat" in module_source
+    assert "executionPulse.fetch_add(1, std::memory_order_release)" in module_source
+    assert "cursorPulses[lane].fetch_add(1, std::memory_order_release)" in module_source
+    assert "SchedulingLookaheadBeats" in module_source
+    assert "guard++ < 64" not in module_source
+    assert "delete pendingProgram.exchange(nullptr" in module_source
+    for suffix, width in (("", "330"), ("-30", "450"), ("-38", "570")):
+        source = ET.parse(ROOT / "res-src" / f"TfProgSequencer{suffix}.svg").getroot()
+        runtime = ET.parse(ROOT / "res" / f"TfProgSequencer{suffix}.svg").getroot()
+        assert source.attrib["width"] == width
+        assert runtime.attrib["width"] == width
+        assert source.attrib["height"] == "380"
+        assert runtime.attrib["height"] == "380"
+        assert source.findall(f".//{SVG}text")
+        assert not runtime.findall(f".//{SVG}text")
+        labels = {node.text: node for node in source.findall(f".//{SVG}text")}
+        assert labels["TRIGGERFISH"].attrib["y"] == labels["PROG SEQUENCER"].attrib["y"]
+
+
+def test_room_reverb_tooltips_use_physical_units():
+    source = (ROOT / "src" / "TfReverb.cpp").read_text(encoding="utf-8")
+    defaults = (ROOT / "src" / "tfdsp" / "reverb_defaults.hpp").read_text(
+        encoding="utf-8"
+    )
+
+    assert "configParam<DecayQuantity>" in source
+    assert '"Late decay", " s"' in source
+    assert "configParam<LowCutQuantity>" in source
+    assert re.search(r'"Wet low cut",\s*" Hz"', source)
+    assert "configParam<HighCutQuantity>" in source
+    assert re.search(r'"Wet high cut",\s*" Hz"', source)
+    assert "struct HeightQuantity" not in source
+    assert "TfReverb::LEGACY_HEIGHT" not in source
+    assert '"Legacy room height (unused)"' in source
+    assert "configParam<AspectQuantity>" in source
+    assert "reverb_defaults::HighCut" in source
+    assert "inline constexpr float HighCut = 0.9039693650f" in defaults
+
+
+def test_room_reverb_uses_a_two_dimensional_room_plan():
+    source = (ROOT / "src" / "TfReverb.cpp").read_text(encoding="utf-8")
+    defaults = (ROOT / "src" / "tfdsp" / "reverb_defaults.hpp").read_text(
+        encoding="utf-8"
+    )
+    panel = ET.parse(ROOT / "res-src" / "TfReverb.svg").getroot()
+
+    assert "struct TfRoomPlanWidget" in source
+    assert "createWidget<TfRoomPlanWidget>" in source
+    assert "move reverb source" in source
+    assert "move reverb listener" in source
+    assert "getPolyVoltage(source)" in source
+    draw = source.split("void draw(const DrawArgs &args) override", 1)[1].split(
+        "void onButton", 1
+    )[0]
+    assert "module->inputs" not in draw
+    assert "roomPlanSourcePosition" in draw
+    assert "reverb_defaults::Listener[0]" in source
+    assert "reverb_defaults::Listener[1]" in source
+    assert "Listener{{0.5f, 0.682f, 0.45f}}" in defaults
+    control_labels = {
+        label.attrib["data-control"]
+        for label in panel.findall(f".//{SVG}text")
+        if "data-control" in label.attrib
+    }
+    assert "SOURCE_X" not in control_labels
+    assert "SOURCE_Y" not in control_labels
+    assert "LISTENER_X" not in control_labels
+    assert "LISTENER_Y" not in control_labels
+    width_label = panel.find(f".//{SVG}text[@data-control='WIDTH']")
+    assert width_label is not None and width_label.text == "STEREO WIDTH"
+    shimmer_label = panel.find(f".//{SVG}text[@data-control='SHIMMER']")
+    assert shimmer_label is not None and shimmer_label.text == "SHIMMER"
+    assert panel.find(f".//{SVG}text[@data-control='HEIGHT']") is None
+    assert '"Stereo width", "%"' in source
+    assert '"Octave shimmer", "%"' in source
+
+
 def test_303_oscillator_runtime_panel_outlines_all_editable_text():
     source = ET.parse(ROOT / "res-src" / "Tf303Oscillator.svg").getroot()
     runtime = ET.parse(ROOT / "res" / "Tf303Oscillator.svg").getroot()

@@ -1,5 +1,5 @@
 [build-system]
-requires = ["scikit-build-core>=0.11", "pybind11>=3.0", "cmake>=3.25", "ninja>=1.12"]
+requires = ["scikit-build-core>=1.0", "pybind11>=3.0", "cmake>=3.25", "ninja>=1.12"]
 build-backend = "scikit_build_core.build"
 
 [project]
@@ -18,6 +18,7 @@ dev = [
     "pytest>=8.0",
     "scipy>=1.14",
 ]
+reverb = ["scipy>=1.14", "torch>=2.7"]
 
 [project.optional-dependencies]
 analysis = ["matplotlib>=3.9", "scipy>=1.14"]
@@ -25,7 +26,15 @@ analysis = ["matplotlib>=3.9", "scipy>=1.14"]
 [tool.scikit-build]
 cmake.args = ["-DTRIGGERFISH_BUILD_PYTHON=ON", "-DBUILD_TESTING=OFF"]
 build-dir = "build/python/{wheel_tag}"
-wheel.packages = []
+wheel.packages = ["python/triggerfish_reverb"]
+
+# Windows development uses the same MinGW ABI as the Rack SDK.  Pin both the
+# generator and compiler discovery here so a plain `uv run` cannot silently
+# create an incompatible Visual Studio build tree before dev.ps1 is involved.
+[[tool.scikit-build.overrides]]
+if.platform-system = "^win32"
+cmake.toolchain-file = "cmake/triggerfish-mingw.cmake"
+env.CMAKE_GENERATOR = { default = "Ninja", force = true }
 
 [tool.pytest.ini_options]
 testpaths = ["tests/python"]
