@@ -142,7 +142,7 @@
       "id": 4,
       "plugin": "TriggerFish-Elements",
       "model": "Tf303Oscillator",
-      "version": "2.3.1",
+      "version": "2.4.0",
       "params": [
         {
           "id": 0,
@@ -194,7 +194,7 @@
       "id": 5,
       "plugin": "TriggerFish-Elements",
       "model": "Tf303VoiceCore",
-      "version": "2.3.1",
+      "version": "2.4.0",
       "params": [
         {
           "id": 0,
@@ -386,7 +386,7 @@
       "id": 11,
       "plugin": "TriggerFish-Elements",
       "model": "TfReverb",
-      "version": "2.3.1",
+      "version": "2.4.0",
       "params": [
         {
           "id": 0,
@@ -478,7 +478,7 @@
       "id": 3,
       "plugin": "TriggerFish-Elements",
       "model": "TfProgSequencer",
-      "version": "2.3.1",
+      "version": "2.4.0",
       "params": [],
       "data": {
         "source": "acid = sequence {\n  cycle 16\n  tonic D#@2\n  scale minor\n  notes 1!4 5 7 1!2 8 1, 1 1, 1\n  articulation x!7 ~ > ~ >!2 ~ >!3\n  velocity .5\n  accent + .!3 + . + . + .!2 + .\n  gate .5\n  glide .8\n}\n\niv = acid |> modulate_degree 4 |> octave -1\nv  = acid |> modulate_degree 5 |> octave -1 |> scale major\nsong = acid * 8 + iv * 4 + v * 4\nplay song\n",

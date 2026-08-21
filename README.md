@@ -4,7 +4,7 @@ Circuit-modelled sound generators and processors, plus pitch utilities for VCV R
 
 [![CI](https://github.com/JTriggerFish/TriggerFish-VCV/actions/workflows/ci.yml/badge.svg)](https://github.com/JTriggerFish/TriggerFish-VCV/actions/workflows/ci.yml)
 
-[Release notes for 2.3.1](docs/releases/2.3.1.md)
+[Release notes for 2.4.0](docs/releases/2.4.0.md)
 
 <table>
   <tr>
@@ -484,6 +484,14 @@ and program destruction stay off the audio thread. See the
 ## Contributing
 
 Issues, pull requests, and suggestions are welcome.
+
+## License
+
+TriggerFish Elements 2.4.0 and later are licensed under the
+[GNU General Public License v3.0 or later](LICENSE.txt). Releases through
+2.3.1 remain available under the BSD 3-Clause terms under which they were
+published. See [NOTICE.md](NOTICE.md) for the license transition and retained
+notices; vendored dependencies retain their own licenses.
 
 ## Development
 

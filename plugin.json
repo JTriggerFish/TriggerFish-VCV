@@ -1,8 +1,8 @@
 {
   "slug": "TriggerFish-Elements",
   "name": "TriggerFish-Elements",
-  "version": "2.3.1",
-  "license": "BSD-3-Clause",
+  "version": "2.4.0",
+  "license": "GPL-3.0-or-later",
   "brand": "TriggerFish",
   "author": "JTriggerFish",
   "authorEmail": "FastTriggerFish@gmail.com",
@@ -11,7 +11,7 @@
   "manualUrl": "https://github.com/JTriggerFish/TriggerFish-VCV",
   "sourceUrl": "https://github.com/JTriggerFish/TriggerFish-VCV",
   "donateUrl": "https://paypal.me/jtriggerfish",
-  "changelogUrl": "https://github.com/JTriggerFish/TriggerFish-VCV/blob/master/docs/releases/2.3.1.md",
+  "changelogUrl": "https://github.com/JTriggerFish/TriggerFish-VCV/blob/master/docs/releases/2.4.0.md",
   "modules": [
     {
       "slug": "TfSlop",
