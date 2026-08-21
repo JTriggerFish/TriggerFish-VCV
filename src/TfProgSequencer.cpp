@@ -1647,7 +1647,7 @@ struct TfSequenceStatus : Widget {
             status = "INTERNAL ERROR - prepared event workspace exhausted";
           status =
               std::string(name) + " " +
-              string::f("%.2f",
+              rack::string::f("%.2f",
                         module->visibleBeat.load(std::memory_order_relaxed)) +
               "  " + status;
         }
@@ -1759,7 +1759,7 @@ struct TfProgSequencerWidget : ModuleWidget {
     menu->addChild(createMenuLabel("Editor width"));
     for (const int width : {22, 30, 38}) {
       menu->addChild(createCheckMenuItem(
-          string::f("%d HP", width), "",
+          rack::string::f("%d HP", width), "",
           [=]() {
             return prog->panelWidthHp.load(std::memory_order_relaxed) == width;
           },
@@ -1787,7 +1787,8 @@ struct TfProgSequencerWidget : ModuleWidget {
     menu->addChild(createMenuLabel("Arrangement cursor pulse"));
     for (const int clocks : {1, 2, 4, 8}) {
       menu->addChild(createCheckMenuItem(
-          clocks == 1 ? "Every clock" : string::f("Every %d clocks", clocks),
+          clocks == 1 ? "Every clock"
+                      : rack::string::f("Every %d clocks", clocks),
           "",
           [=]() {
             return prog->arrangementCursorClocksPerPulse.load(

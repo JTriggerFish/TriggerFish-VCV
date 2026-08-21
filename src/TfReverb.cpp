@@ -489,7 +489,7 @@ struct TfRoomPlanWidget : widget::OpaqueWidget {
     void step() override {
       if (plan && plan->module) {
         auto &params = plan->module->params;
-        text = string::f(
+        text = rack::string::f(
             "Room plan\nSource: %.1f%%, %.1f%%\nListener: %.1f%%, %.1f%%\n"
             "Distance automatically balances early reflections against the "
             "tail; off-centre placement changes reflection timing and stereo "
