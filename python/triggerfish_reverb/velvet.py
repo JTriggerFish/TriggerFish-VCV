@@ -154,7 +154,9 @@ class DifferentiableVelvetReverb(nn.Module):
         self.register_buffer("signs", torch.tensor(SIGNS, dtype=torch.float32))
         self.register_buffer("hadamard", _walsh_matrix())
         self.register_buffer("wall_projection", _wall_projection())
-        self.register_buffer("main_ratio_search_radius", torch.tensor(0.025))
+        # Fine-tune around the proven prime-delay heuristic without allowing
+        # adjacent main paths to collapse into a slow beating pair.
+        self.register_buffer("main_ratio_search_radius", torch.tensor(0.005))
         self.raw_main_ratios = nn.Parameter(torch.zeros(LINE_COUNT))
 
     @property

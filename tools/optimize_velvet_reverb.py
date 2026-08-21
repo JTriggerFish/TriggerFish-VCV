@@ -126,6 +126,73 @@ def complete_objective(
 
 
 @torch.no_grad()
+def randomize_discrete_candidate(
+    model: DifferentiableVelvetReverb,
+    generator: torch.Generator,
+    initial_main: torch.Tensor,
+    initial_velvet: torch.Tensor,
+) -> None:
+    device = model.raw_main_ratios.device
+    for transform in range(VELVET_STAGE_COUNT + 1):
+        model.permutations[transform] = torch.randperm(
+            LINE_COUNT, generator=generator, device=device
+        )
+        bits = torch.randint(
+            0,
+            2,
+            (LINE_COUNT,),
+            generator=generator,
+            device=device,
+            dtype=torch.int64,
+        )
+        model.signs[transform] = 1.0 - 2.0 * bits.to(model.signs.dtype)
+
+    jitter = 0.025 * (
+        2.0
+        * torch.rand(
+            LINE_COUNT,
+            generator=generator,
+            device=device,
+            dtype=initial_main.dtype,
+        )
+        - 1.0
+    )
+    candidate_main = torch.sort(initial_main + jitter).values
+    model.base_main_ratios.copy_(candidate_main / candidate_main.mean())
+
+    base_samples = torch.round(initial_velvet * model.sample_rate / 1_000.0)
+    velvet_jitter = torch.randint(
+        -6,
+        7,
+        base_samples.shape,
+        generator=generator,
+        device=device,
+    )
+    candidate_samples = torch.sort(
+        (base_samples + velvet_jitter).clamp_min(1.0), dim=1
+    ).values
+    model.base_velvet_ms.copy_(candidate_samples * 1_000.0 / model.sample_rate)
+
+
+@torch.no_grad()
+def apply_selected_discrete_seed(
+    model: DifferentiableVelvetReverb, base_seed: int, selected_seed: int
+) -> None:
+    """Replay deterministic candidate generation without rescoring the screen."""
+    candidate_index = selected_seed - base_seed
+    if candidate_index < 0:
+        raise ValueError("selected discrete seed precedes the screen seed")
+    generator = torch.Generator(device=model.raw_main_ratios.device).manual_seed(
+        base_seed
+    )
+    initial_main = model.base_main_ratios.clone()
+    initial_velvet = model.base_velvet_ms.clone()
+    for _ in range(candidate_index):
+        randomize_discrete_candidate(model, generator, initial_main, initial_velvet)
+    model.raw_main_ratios.zero_()
+
+
+@torch.no_grad()
 def screen_discrete_coefficients(
     model: DifferentiableVelvetReverb,
     candidates: int,
@@ -157,45 +224,7 @@ def screen_discrete_coefficients(
     for candidate in range(candidates):
         candidate_seed = seed + candidate
         if candidate > 0:
-            for transform in range(VELVET_STAGE_COUNT + 1):
-                model.permutations[transform] = torch.randperm(
-                    LINE_COUNT, generator=generator, device=device
-                )
-                bits = torch.randint(
-                    0,
-                    2,
-                    (LINE_COUNT,),
-                    generator=generator,
-                    device=device,
-                    dtype=torch.int64,
-                )
-                model.signs[transform] = 1.0 - 2.0 * bits.to(model.signs.dtype)
-
-            jitter = 0.025 * (
-                2.0
-                * torch.rand(
-                    LINE_COUNT,
-                    generator=generator,
-                    device=device,
-                    dtype=initial_main.dtype,
-                )
-                - 1.0
-            )
-            candidate_main = torch.sort(initial_main + jitter).values
-            model.base_main_ratios.copy_(candidate_main / candidate_main.mean())
-
-            base_samples = torch.round(initial_velvet * model.sample_rate / 1_000.0)
-            velvet_jitter = torch.randint(
-                -6,
-                7,
-                base_samples.shape,
-                generator=generator,
-                device=device,
-            )
-            candidate_samples = torch.sort(
-                (base_samples + velvet_jitter).clamp_min(1.0), dim=1
-            ).values
-            model.base_velvet_ms.copy_(candidate_samples * 1_000.0 / model.sample_rate)
+            randomize_discrete_candidate(model, generator, initial_main, initial_velvet)
 
         per_control, _ = evaluate_resonance_batches(
             model, frequencies, controls, control_batch
@@ -231,6 +260,7 @@ def main() -> None:
     parser.add_argument("--control-batch", type=int, default=5)
     parser.add_argument("--candidates", type=int, default=128)
     parser.add_argument("--seed", type=int, default=73021)
+    parser.add_argument("--selected-discrete-seed", type=int)
     parser.add_argument(
         "--device", default="cuda" if torch.cuda.is_available() else "cpu"
     )
@@ -253,13 +283,19 @@ def main() -> None:
     device = torch.device(args.device)
     dtype = torch.float64 if args.dtype == "float64" else torch.float32
     model = DifferentiableVelvetReverb().to(device=device, dtype=dtype)
-    selected_seed, screened_loss = screen_discrete_coefficients(
-        model, args.candidates, args.seed, args.control_batch
-    )
-    print(
-        f"selected discrete seed={selected_seed} screen_loss={screened_loss:.6g}",
-        flush=True,
-    )
+    if args.selected_discrete_seed is None:
+        selected_seed, screened_loss = screen_discrete_coefficients(
+            model, args.candidates, args.seed, args.control_batch
+        )
+        print(
+            f"selected discrete seed={selected_seed} "
+            f"screen_loss={screened_loss:.6g}",
+            flush=True,
+        )
+    else:
+        selected_seed = args.selected_discrete_seed
+        apply_selected_discrete_seed(model, args.seed, selected_seed)
+        print(f"replayed discrete seed={selected_seed}", flush=True)
 
     frequencies = torch.arange(
         20.0,
@@ -314,6 +350,7 @@ def main() -> None:
     best_loss = float("inf")
     best_step = -1
     best_parameters: torch.Tensor | None = None
+    trust_radius = args.lr
 
     for step in range(args.steps):
         total_value, worst_band, regularization = calculate_gradient()
@@ -325,13 +362,14 @@ def main() -> None:
         assert gradient is not None and torch.isfinite(gradient).all()
         direction = gradient / gradient.norm().clamp_min(1.0e-20)
         original = model.raw_main_ratios.detach().clone()
-        scheduled_radius = args.lr * (
+        scheduled_ceiling = args.lr * (
             0.1 + 0.9 * 0.5 * (1.0 + math.cos(math.pi * step / args.steps))
         )
+        trial_radius = min(trust_radius, scheduled_ceiling)
         accepted_distance = 0.0
         candidate_value = total_value
         for trial in range(8):
-            distance = scheduled_radius * (0.5**trial)
+            distance = trial_radius * (0.5**trial)
             with torch.no_grad():
                 model.raw_main_ratios.copy_(original - distance * direction)
             candidate_value, _ = evaluate_value()
@@ -342,6 +380,12 @@ def main() -> None:
             with torch.no_grad():
                 model.raw_main_ratios.copy_(original)
             candidate_value = total_value
+            trust_radius = max(1.0e-6, trial_radius * (0.5**8))
+        else:
+            # Keep the next proposal near the scale that just passed the exact
+            # full-grid acceptance test, while allowing the radius to recover
+            # if subsequent gradient directions support a larger move.
+            trust_radius = min(args.lr, 1.5 * accepted_distance)
 
         history.append(
             {
@@ -349,6 +393,7 @@ def main() -> None:
                 "total": total_value,
                 "accepted_total": candidate_value,
                 "accepted_distance": accepted_distance,
+                "trial_radius": trial_radius,
                 "worst_band": worst_band,
                 "regularization": regularization,
             }
@@ -365,11 +410,18 @@ def main() -> None:
                 f"worst={worst_band:.6g} vram_gib={memory:.2f}",
                 flush=True,
             )
+        if accepted_distance == 0.0 and trust_radius <= 1.0e-6:
+            print(
+                f"converged after {step + 1} steps: no full-grid improvement "
+                "at the minimum trust radius",
+                flush=True,
+            )
+            break
 
     final_value, _ = evaluate_value()
     if final_value < best_loss:
         best_loss = final_value
-        best_step = args.steps
+        best_step = len(history)
         best_parameters = model.raw_main_ratios.detach().cpu().clone()
     assert best_parameters is not None
     with torch.no_grad():
@@ -390,9 +442,10 @@ def main() -> None:
         "frequency_range_hz": [20.0, 20_000.0],
         "control_grid_size": len(controls),
         "optimizer": {
-            "name": "normalized steepest descent with backtracking",
+            "name": "normalized steepest descent with adaptive backtracking",
             "initial_trust_radius": args.lr,
-            "steps": args.steps,
+            "requested_steps": args.steps,
+            "completed_steps": len(history),
         },
         "best_step": best_step,
         "best_loss": best_loss,

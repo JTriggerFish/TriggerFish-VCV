@@ -25,36 +25,57 @@ struct Pipeline {
 
 enum class PatternKind {
   Atom,
+  NamedPitch,
+  ScaleDegree,
+  JazzChord,
+  RomanChord,
+  Event,
+  Rest,
+  Tie,
   Subdivision,
   CycleChoice,
   RandomChoice,
-  Euclidean,
   Voicing,
-  Slash,
-  Repeat
+  Slash
 };
 
-// Domain-neutral pattern syntax. Musical meaning is assigned by the semantic
-// compiler, while grouping/choice/repetition is parsed exactly once here.
+// Typed pattern structure. The PEG owns event, grouping, choice, chord,
+// suffix, and attribute boundaries; semantic lowering converts validated leaf
+// values without running another delimiter or expression parser.
 struct PatternNode {
   PatternKind kind = PatternKind::Atom;
   Token atom;
   Token suffix;
   Token repeatCount;
+  Token slidePrefix;
+  Token dynamicPrefix;
+  Token durationSuffix;
+  Token ratchetCount;
+  Token probability;
+  bool defaultProbability = false;
+  struct Attribute {
+    Token name;
+    Token value;
+  };
+  std::vector<Attribute> attributes;
   std::vector<Token> arguments;
   std::vector<PatternNode> children;
   SourceSpan span;
 };
 
 struct Pattern {
+  enum class Alignment { Free, Left, Right };
   std::vector<PatternNode> steps;
   SourceSpan span;
+  Alignment alignment = Alignment::Free;
 };
 
 struct Lane {
+  enum class Kind { Notes, Scalar, Cv, Setting };
   Token name;
   Pattern pattern;
   std::vector<Pipeline> pipelines;
+  Kind kind = Kind::Scalar;
 };
 
 struct SequenceDefinition {
@@ -120,6 +141,13 @@ struct ParseResult {
 };
 
 ParseResult Parse(const std::string &source);
+
+// Parses the smallest complete line-bounded top-level statement set that
+// overlaps the selection. This uses the same PEG as Parse() and allows live
+// evaluation to ignore unrelated malformed draft text.
+ParseResult ParseStatementsContaining(const std::string &source,
+                                       int selectionBegin,
+                                       int selectionEnd);
 
 struct SelectionDocumentResult {
   Document document;

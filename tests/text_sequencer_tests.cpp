@@ -1,5 +1,7 @@
 #include "tfseq.hpp"
 #include "tfseq_parser.hpp"
+#include "tfui_animation.hpp"
+#include "tfui_colormap.hpp"
 
 #include <cmath>
 #include <cstdlib>
@@ -24,13 +26,90 @@ bool close(float left, float right, float tolerance = 1e-5f) {
   return std::fabs(left - right) <= tolerance;
 }
 
+void heatmapMapsScalarIntensity() {
+  const auto dark = tfui::sampleHeatmap(tfui::ProgramEditorHeatmap, -1.f);
+  const auto bright = tfui::sampleHeatmap(tfui::ProgramEditorHeatmap, 2.f);
+  check(close(dark.red, tfui::MagmaHeatmap.front().red) &&
+            close(dark.green, tfui::MagmaHeatmap.front().green) &&
+            close(dark.blue, tfui::MagmaHeatmap.front().blue),
+        "heatmap clamps intensity below zero to its dark endpoint");
+  check(close(bright.red, tfui::MagmaHeatmap.back().red) &&
+            close(bright.green, tfui::MagmaHeatmap.back().green) &&
+            close(bright.blue, tfui::MagmaHeatmap.back().blue),
+        "heatmap clamps intensity above one to its bright endpoint");
+
+  float previousLuminance = -1.f;
+  for (int step = 0; step <= 100; ++step) {
+    const auto color = tfui::sampleHeatmap(tfui::ProgramEditorHeatmap,
+                                           static_cast<float>(step) / 100.f);
+    const float luminance =
+        0.2126f * color.red + 0.7152f * color.green + 0.0722f * color.blue;
+    check(luminance + 1e-6f >= previousLuminance,
+          "increasing editor intensity never lowers heatmap luminance");
+    previousLuminance = luminance;
+  }
+}
+
+void cursorAnimationIsFrameIndependentAndTempoBounded() {
+  check(tfui::arrangementCursorGroup(0.0, 4) == 0 &&
+            tfui::arrangementCursorGroup(3.999, 4) == 0 &&
+            tfui::arrangementCursorGroup(4.0, 4) == 1,
+        "arrangement feedback groups four incoming clocks by default");
+  check(close(static_cast<float>(tfui::cursorTravelDuration(1.0)), 0.12f),
+        "slow pulses use the absolute cursor-travel ceiling");
+  check(close(static_cast<float>(tfui::cursorTravelDuration(0.1)), 0.075f),
+        "cursor travel uses 75 percent of a fast pulse interval");
+  check(close(static_cast<float>(tfui::cursorTravelDuration(0.001)), 0.035f),
+        "cursor travel remains visible for multiple display frames");
+  check(close(static_cast<float>(tfui::cursorMotionTailDuration(0.1)), 0.11f),
+        "motion persistence scales with its lane's pulse interval");
+  check(close(static_cast<float>(tfui::cursorMotionTailDuration(1.0)), 0.30f),
+        "motion persistence has an absolute ceiling");
+  check(close(static_cast<float>(tfui::cursorBloomExpansionDuration(0.1)),
+              0.085f),
+        "stationary bloom expansion follows the pulse interval");
+  check(close(static_cast<float>(tfui::cursorBloomExpansionDuration(0.001)),
+              0.070f),
+        "stationary blooms remain visible for multiple display frames");
+  check(
+      close(static_cast<float>(tfui::cursorBloomTailDuration(0.1)), 0.15f) &&
+          close(static_cast<float>(tfui::cursorBloomTailDuration(1.0)), 0.42f),
+      "stationary bloom persistence is tempo-scaled and bounded");
+  check(close(tfui::cursorBloomExpansion(0.0, 0.1), 0.f) &&
+            close(tfui::cursorBloomExpansion(0.05, 0.1), 0.5f) &&
+            close(tfui::cursorBloomExpansion(0.1, 0.1), 1.f),
+        "stationary bloom radius expands smoothly from its source");
+  check(
+      close(tfui::cursorTravelPosition(tfui::CursorTravelCurve::Linear, 0.25f),
+            0.25f),
+      "linear travel has constant spatial progress");
+  check(close(tfui::cursorTravelPosition(tfui::CursorTravelCurve::Smoothstep,
+                                         0.25f),
+              0.15625f),
+        "smoothstep travel eases spatial progress only");
+
+  const double duration = tfui::cursorTravelDuration(0.2);
+  const double tailDuration = tfui::cursorMotionTailDuration(0.2);
+  check(close(tfui::cursorMotionIntensity(0.0, duration, tailDuration), 0.65f),
+        "the travelling beam is visible immediately at its source");
+  check(tfui::cursorMotionIntensity(duration * 0.5, duration, tailDuration) >
+            0.99f,
+        "the travelling beam reaches a bright midpoint");
+  check(close(tfui::cursorMotionIntensity(duration, duration, tailDuration),
+              0.65f),
+        "motion joins its exponential persistence continuously at arrival");
+  check(tfui::cursorMotionIntensity(duration + tailDuration, duration,
+                                    tailDuration) < 0.25f,
+        "motion persistence is derived directly from timestamp age");
+}
+
 void pegFrontendBuildsTypedSyntax() {
   const std::string source = R"(acid = sequence {
-  notes 1 <2 b3> [4|5] 1'!2 |> rotate 1 |> every 4 rev
-  articulation x [x x] x(3,8,1)
+  notes 1 <2 b3> [4|5] 1'!2 6(3,8,1) |> rotate 1 |> every 4 rev
 }
 |> sometimes .25 rev
 song = acid * 8 + acid
+  |> fast 2
 play song
 )";
   const auto parsed = tfseq::syntax::Parse(source);
@@ -41,30 +120,31 @@ play song
         "PEG front end emits three typed statements");
   const auto *sequence = std::get_if<tfseq::syntax::SequenceDefinition>(
       &parsed.document.statements[0]);
-  check(sequence && sequence->lanes.size() == 2,
-        "PEG front end retains sequence lanes");
+  check(sequence && sequence->lanes.size() == 1,
+        "PEG front end retains the note-first sequence lane");
   if (sequence) {
     const auto &pattern = sequence->lanes[0].pattern;
     check(
-        pattern.steps.size() == 4 &&
+        pattern.steps.size() == 5 &&
             pattern.steps[1].kind == tfseq::syntax::PatternKind::CycleChoice &&
             pattern.steps[2].kind == tfseq::syntax::PatternKind::RandomChoice &&
-            pattern.steps[3].kind == tfseq::syntax::PatternKind::Repeat,
+            pattern.steps[3].kind == tfseq::syntax::PatternKind::Event &&
+            pattern.steps[3].repeatCount.text == "2",
         "PEG front end produces typed choice and repetition nodes");
     check(sequence->lanes[0].pipelines.size() == 2,
           "PEG pattern grammar separates inline pipelines");
-    check(sequence->lanes[1].pattern.steps[2].kind ==
-                  tfseq::syntax::PatternKind::Euclidean &&
-              sequence->lanes[1].pattern.steps[2].arguments.size() == 3,
-          "Euclidean structure is typed before articulation semantics");
+    check(pattern.steps[4].kind == tfseq::syntax::PatternKind::Event &&
+              pattern.steps[4].arguments.size() == 3,
+          "Euclidean suffixes are typed on complete note events");
     check(sequence->pipelines.size() == 1,
           "PEG document grammar retains sequence pipelines");
   }
   const auto *assignment =
       std::get_if<tfseq::syntax::Assignment>(&parsed.document.statements[1]);
   check(assignment && assignment->expression.terms.size() == 2 &&
-            assignment->expression.terms[0].repeats == 8,
-        "PEG assignment grammar parses concatenation and repetition");
+            assignment->expression.terms[0].repeats == 8 &&
+            assignment->expression.pipelines.size() == 1,
+        "PEG assignment grammar parses repetition and pipeline continuation");
   if (sequence) {
     check(sequence->name.span.line == 1 && sequence->name.span.column == 1,
           "PEG AST locations are retained for editor cursors");
@@ -96,12 +176,14 @@ void pegFrontendRejectsMalformedStructure() {
       "play riff // transport\r\n");
   check(static_cast<bool>(comments),
         "PEG document grammar accepts comments and CRLF input");
+  check(!tfseq::syntax::Parse(
+            "a = sequence {\n  notes 1\n}\nsong = a * 0\nplay song\n"),
+        "arrangement repetition is positive in the PEG itself");
 }
 
 void typedPatternTreeOwnsReusableStructure() {
   const auto nested = tfseq::syntax::Parse(R"(a = sequence {
   notes <1 [2|3]>!2
-  articulation [x x!2]!2
 }
 play a
 )");
@@ -112,16 +194,14 @@ play a
       &nested.document.statements.front());
   check(sequence &&
             sequence->lanes[0].pattern.steps[0].kind ==
-                tfseq::syntax::PatternKind::Repeat &&
-            sequence->lanes[0].pattern.steps[0].children[0].kind ==
                 tfseq::syntax::PatternKind::CycleChoice &&
-            sequence->lanes[0].pattern.steps[0].children[0].children[1].kind ==
+            sequence->lanes[0].pattern.steps[0].repeatCount.text == "2" &&
+            sequence->lanes[0].pattern.steps[0].children[1].kind ==
                 tfseq::syntax::PatternKind::RandomChoice,
         "nested grouping has one domain-neutral syntax tree");
 
   const auto articulation = tfseq::Compile(R"(a = sequence {
-  notes 1
-  articulation [x x!2]!2
+  notes [1 1!2]!2
 }
 play a
 )");
@@ -146,7 +226,6 @@ void lineCommentsCanTruncatePatterns() {
   const auto compiled = tfseq::Compile(R"(riff = sequence {
   // Keep alternatives close by while auditioning a shorter version.
   notes 1 2 // 8 7 5 4
-  articulation x // x ~ x
 }
 
 play riff // comments are also valid on commands
@@ -242,6 +321,43 @@ play a
                                       : tfseq::Compile("");
   check(stoppedContext && stopped && stopped.program->semantic().stopped,
         "a selected transport statement replaces the active transport only");
+
+  const std::string brokenElsewhere = R"(a = sequence {
+  notes 9 10
+}
+|> octave 1
+b = sequence {
+  notes [7 8
+}
+play a
+)";
+  const auto selectedBegin =
+      static_cast<int>(brokenElsewhere.find("notes 9 10"));
+  check(!tfseq::syntax::Parse(brokenElsewhere),
+        "the complete unrelated draft is intentionally invalid");
+  const auto selectedDocument = tfseq::syntax::ParseStatementsContaining(
+      brokenElsewhere, selectedBegin, selectedBegin);
+  check(selectedDocument && selectedDocument.document.statements.size() == 1,
+        "the shared PEG isolates a valid containing statement");
+  if (selectedDocument) {
+    const auto *selectedSequence =
+        std::get_if<tfseq::syntax::SequenceDefinition>(
+            &selectedDocument.document.statements.front());
+    check(selectedSequence && selectedSequence->pipelines.size() == 1,
+          "statement isolation retains following sequence continuations");
+    const auto isolated = tfseq::syntax::MergeSelectionDocuments(
+        evaluatedDocument.document, evaluated, selectedDocument.document,
+        brokenElsewhere, selectedBegin, selectedBegin);
+    const auto isolatedProgram =
+        isolated ? tfseq::Compile(isolated.document) : tfseq::Compile("");
+    check(isolated && isolatedProgram,
+          "a valid selected edit compiles despite unrelated malformed text");
+    if (isolatedProgram) {
+      const auto &selected = isolatedProgram.program->semantic().sequences[0];
+      check(selected.notes[0].values[0].voices[0].degree == 9,
+            "only the selected definition is replaced by isolated evaluation");
+    }
+  }
 }
 
 void explicitSingleRepeatRemainsAnArrangement() {
@@ -276,9 +392,8 @@ void compileAndCycleIndependentLanes() {
   tonic C@4
   scale minor
   notes 1 2 b3 4 5 6 b7 8 |> rotate 1
-  articulation x x x x x x x x
   velocity .61
-  accent + . .
+  accent .88 . .
   duration 1
 }
 play riff
@@ -311,8 +426,7 @@ play riff
 
 void parseFirstClassArticulation() {
   const std::string source = R"(voice = sequence {
-  notes 1 2 3 4 5 6 7 8
-  articulation x _ ~ > [x x] x*3 x!2 x(3,8,1)
+  notes 1 _ >2 ~ 3 [4 5] 6*3 7!2 8(3,8,1)
   duration 1
 }
 play voice
@@ -322,18 +436,18 @@ play voice
   if (!compiled)
     return;
   const auto &art = compiled.program->semantic().sequences[0].articulation;
-  check(art.size() == 16,
-        "articulation expands replication and Euclidean steps");
+  check(art.size() == 17,
+        "note events expand replication and Euclidean cells");
   check(art[0].atoms[0].kind == tfseq::ArticulationKind::Attack,
-        "x is an attack");
+        "a plain note is an attack");
   check(art[1].atoms[0].kind == tfseq::ArticulationKind::Tie,
         "underscore is a tie");
-  check(art[2].atoms[0].kind == tfseq::ArticulationKind::Rest,
-        "tilde is a rest");
-  check(art[3].atoms[0].kind == tfseq::ArticulationKind::Slide,
+  check(art[2].atoms[0].kind == tfseq::ArticulationKind::Slide,
         "greater-than is a slide");
-  check(art[4].atoms.size() == 2, "brackets subdivide one slot");
-  check(art[5].atoms[0].ratchets == 3, "asterisk ratchets one slot");
+  check(art[3].atoms[0].kind == tfseq::ArticulationKind::Rest,
+        "tilde is a rest");
+  check(art[5].atoms.size() == 2, "brackets subdivide one slot");
+  check(art[6].atoms[0].ratchets == 3, "asterisk ratchets one slot");
 
   tfseq::Runtime runtime;
   runtime.setProgram(compiled.program.get());
@@ -341,22 +455,77 @@ play voice
         "attack reaches runtime");
   check(runtime.next(1).events[0].kind == tfseq::EventKind::Tie,
         "tie reaches runtime without consuming a note");
-  check(runtime.next(2).events[0].kind == tfseq::EventKind::Rest,
-        "rest reaches runtime without consuming a note");
-  check(runtime.next(3).events[0].kind == tfseq::EventKind::Slide,
+  check(runtime.next(2).events[0].kind == tfseq::EventKind::Slide,
         "slide reaches runtime");
-  const auto subdivision = runtime.next(4);
+  check(runtime.next(3).events[0].kind == tfseq::EventKind::Rest,
+        "rest reaches runtime without consuming a note");
+  runtime.next(4);
+  const auto subdivision = runtime.next(5);
   check(subdivision.count == 2 &&
-            close(static_cast<float>(subdivision.events[1].beat), 4.5f),
+            close(static_cast<float>(subdivision.events[1].beat), 5.5f),
         "bracketed attacks are evenly subdivided");
-  const auto ratchet = runtime.next(5);
+  const auto ratchet = runtime.next(6);
   check(ratchet.count == 3, "ratchet emits three attacks in one slot");
+
+  const auto nestedTie = tfseq::Compile(R"(a = sequence {
+  notes [1 _] [2 >3]
+  gate .25
+}
+play a
+)");
+  check(static_cast<bool>(nestedTie), nestedTie.diagnostic.message);
+  if (nestedTie) {
+    tfseq::Runtime tieRuntime;
+    tieRuntime.setProgram(nestedTie.program.get());
+    const auto tied = tieRuntime.next(0.0);
+    check(tied.count == 2 && tied.events[0].legatoToNext &&
+              tied.events[1].kind == tfseq::EventKind::Tie,
+          "a source holds Gate into a tie inside one subdivision");
+    const auto slid = tieRuntime.next(1.0);
+    check(slid.count == 2 && slid.events[0].legatoToNext &&
+              slid.events[1].kind == tfseq::EventKind::Slide,
+          "a source holds Gate into a slide inside one subdivision");
+  }
+
+  const auto ghostMilliseconds = tfseq::Compile(R"(a = sequence {
+  notes x1{gate=12ms}
+}
+play a
+)");
+  check(static_cast<bool>(ghostMilliseconds),
+        ghostMilliseconds.diagnostic.message);
+  if (ghostMilliseconds) {
+    tfseq::Runtime ghostRuntime;
+    ghostRuntime.setProgram(ghostMilliseconds.program.get());
+    const auto ghost = ghostRuntime.next(0.0);
+    check(ghost.count == 1 &&
+              close(ghost.events[0].gateMilliseconds, 12.f) &&
+              close(ghost.events[0].gateFraction, .1f) &&
+              close(ghost.events[0].gateCapMilliseconds, 20.f),
+          "ghost caps preserve millisecond gate units and a short fallback");
+  }
+
+  const auto slideMilliseconds = tfseq::Compile(R"(a = sequence {
+  notes 1 >2{slide=80ms}
+}
+play a
+)");
+  check(static_cast<bool>(slideMilliseconds),
+        slideMilliseconds.diagnostic.message);
+  if (slideMilliseconds) {
+    tfseq::Runtime slideRuntime;
+    slideRuntime.setProgram(slideMilliseconds.program.get());
+    slideRuntime.next(0.0);
+    const auto slide = slideRuntime.next(1.0);
+    check(slide.count == 1 &&
+              close(slide.events[0].slideMilliseconds, 80.f),
+          "exact millisecond slide values override the numerical lane");
+  }
 }
 
 void articulationModifiersComposeInEitherOrder() {
   const auto compiled = tfseq::Compile(R"(a = sequence {
-  notes 1
-  articulation x*3?1 x?1*2
+  notes 1*3?1 1*2?1
 }
 play a
 )");
@@ -370,7 +539,96 @@ play a
         "ratchet and probability suffixes compose in either order");
   const auto second = runtime.next(1.0);
   check(second.count == 2,
-        "articulation suffix parsing is not order-sensitive");
+        "canonical ratchet/probability suffixes compose");
+  check(!tfseq::Compile(R"(a = sequence {
+  notes 1?1*2
+}
+play a
+)"),
+        "noncanonical suffix order is rejected rather than reordered");
+
+  const auto missed = tfseq::Compile(R"(a = sequence {
+  notes 1?0 2
+  velocity .1 .9
+}
+play a
+)");
+  check(static_cast<bool>(missed), missed.diagnostic.message);
+  if (missed) {
+    tfseq::Runtime missedRuntime;
+    missedRuntime.setProgram(missed.program.get());
+    const auto silent = missedRuntime.next(0.0);
+    const bool firstWasRest =
+        silent.count == 1 && silent.events[0].kind == tfseq::EventKind::Rest;
+    const auto sounded = missedRuntime.next(1.0);
+    check(firstWasRest &&
+              sounded.count == 1 && close(sounded.events[0].velocity, .9f),
+          "a probability miss still advances pitched numerical lanes");
+  }
+
+  const auto orphanedSlide = tfseq::Compile(R"(a = sequence {
+  notes 1?0 >2
+}
+play a
+)");
+  check(static_cast<bool>(orphanedSlide), orphanedSlide.diagnostic.message);
+  if (orphanedSlide) {
+    tfseq::Runtime slideRuntime;
+    slideRuntime.setProgram(orphanedSlide.program.get());
+    slideRuntime.next(0.0);
+    const auto target = slideRuntime.next(1.0);
+    check(target.count == 1 &&
+              target.events[0].kind == tfseq::EventKind::Attack,
+          "a slide after a probability miss degrades to an attack");
+  }
+}
+
+void nestedGroupReplicationAndProbabilityKeepPreparedIdentity() {
+  const auto compiled = tfseq::Compile(R"(a = sequence {
+  notes [[1 2]!3 3]
+}
+play a
+)");
+  check(static_cast<bool>(compiled), compiled.diagnostic.message);
+  if (compiled) {
+    const auto &step =
+        compiled.program->semantic().sequences[0].articulation.front();
+    check(step.atoms.size() == 7,
+          "nested group replication emits consecutive copies");
+    check(step.atoms.size() < 6 ||
+              (close(static_cast<float>(step.atoms[0].offsetFraction), 0.f) &&
+               close(static_cast<float>(step.atoms[2].offsetFraction),
+                     .25f) &&
+               close(static_cast<float>(step.atoms[4].offsetFraction),
+                     .5f)),
+          "nested replicas retain their own event positions");
+  }
+
+  const auto probabilities = tfseq::Compile(R"(a = sequence {
+  notes [[[1 2]?.5 3]?.5!2]
+}
+play a
+)");
+  check(static_cast<bool>(probabilities), probabilities.diagnostic.message);
+  if (!probabilities)
+    return;
+  const auto &atoms =
+      probabilities.program->semantic().sequences[0].articulation.front().atoms;
+  check(atoms.size() == 6, "nested probability example expands six events");
+  if (atoms.size() != 6)
+    return;
+  const auto outerFirst = atoms[2].enclosingProbabilityGates.front().group;
+  const auto outerSecond = atoms[5].enclosingProbabilityGates.front().group;
+  check(atoms[0].enclosingProbabilityGates.size() == 2 &&
+            atoms[1].enclosingProbabilityGates.size() == 2 &&
+            atoms[2].enclosingProbabilityGates.size() == 1 &&
+            atoms[0].enclosingProbabilityGates.back().group == outerFirst &&
+            atoms[1].enclosingProbabilityGates.back().group == outerFirst,
+        "one outer group probability is shared by every member of its copy");
+  check(outerFirst != outerSecond &&
+            atoms[0].enclosingProbabilityGates.front().group !=
+                atoms[3].enclosingProbabilityGates.front().group,
+        "replicated nested groups receive independent prepared decisions");
 }
 
 void transformByCycleAndArrange() {
@@ -587,8 +845,7 @@ play choices
   const auto inversion = tfseq::Compile(R"(inversion = sequence {
   tonic C
   octave 4
-  notes C/E
-  articulation x _
+  notes Cmaj/E _
   gate .5
 }
 play inversion
@@ -655,7 +912,6 @@ void distinguishInKeyShiftsFromModulation() {
   scale major
   notes 7
 }
-
 in_key = base |> shift_degree 4
 modulated = base |> modulate_degree 5
 song = in_key + modulated
@@ -671,6 +927,58 @@ play song
         "shift_degree remaps the note inside the current key");
   check(close(runtime.next(1).events[0].pitchVolts, 18.f / 12.f),
         "modulate_degree preserves the riff shape at a new tonal centre");
+}
+
+void romanChordsRetainDegreeAndQualitySemantics() {
+  const auto compiled = tfseq::Compile(R"(harmony = sequence {
+  tonic C@4
+  scale major
+  notes I i iim7 bVII
+}
+play harmony
+)");
+  check(static_cast<bool>(compiled), compiled.diagnostic.message);
+  if (!compiled)
+    return;
+  tfseq::Runtime runtime;
+  runtime.setProgram(compiled.program.get());
+  const auto major = runtime.next(0.0);
+  check(major.count == 3 && close(major.events[0].pitchVolts, 0.f) &&
+            close(major.events[1].pitchVolts, 4.f / 12.f),
+        "uppercase Roman degrees imply a major triad");
+  const auto minor = runtime.next(1.0);
+  check(minor.count == 3 && close(minor.events[1].pitchVolts, 3.f / 12.f),
+        "lowercase Roman degrees imply a minor triad");
+  const auto supertonic = runtime.next(2.0);
+  check(supertonic.count == 4 &&
+            close(supertonic.events[0].pitchVolts, 2.f / 12.f) &&
+            close(supertonic.events[3].pitchVolts, 1.f),
+        "Roman chord extensions preserve the scale-relative root");
+  const auto flatSeven = runtime.next(3.0);
+  check(flatSeven.count == 3 &&
+            close(flatSeven.events[0].pitchVolts, 10.f / 12.f),
+        "accidentals apply to a Roman chord root");
+  check(!tfseq::Compile(R"(a = sequence {
+  notes Im7
+}
+play a
+ )"),
+        "contradictory Roman case and quality are rejected");
+  check(!tfseq::Compile(R"(a = sequence {
+  scale major_pentatonic
+  notes VI
+}
+play a
+ )"),
+        "Roman degree cannot exceed the active scale cardinality");
+  check(!tfseq::Compile(R"(a = sequence {
+  scale major
+  notes VII
+}
+reduced = a |> scale major_pentatonic
+play reduced
+ )"),
+        "derived scale changes revalidate Roman cardinality");
 }
 
 void scaleAndModulationPipelinesComposeLeftToRight() {
@@ -720,8 +1028,7 @@ void settingLanePipelinesAreNeverIgnored() {
 }
 play a
 )");
-  check(!cycle && cycle.diagnostic.message.find("does not accept") !=
-                      std::string::npos,
+  check(!cycle,
         "a pipeline attached to cycle is rejected instead of discarded");
   const auto scale = tfseq::Compile(R"(a = sequence {
   scale minor |> rev
@@ -729,8 +1036,7 @@ play a
 }
 play a
 )");
-  check(!scale &&
-            scale.diagnostic.message.find("closing brace") != std::string::npos,
+  check(!scale,
         "setting diagnostics explain where sequence transforms belong");
 }
 
@@ -779,14 +1085,13 @@ stop
 }
 
 void conciseAcidSyntax() {
-  auto compiled = tfseq::Compile(R"(acid = sequence {
+  const std::string source = R"(acid = sequence {
   cycle 16
   tonic D#@2
   scale minor
-  notes 1!4 5 7 1!2 8 1, 1 1, 1
-  articulation x!7 ~ > ~ >!2 ~ >!3
+  notes 1!4 5 7 1 ~ 1 ~ 8 >1, ~ 1 >1, >1
   velocity .5
-  accent + .!3 + . + . + .!2 + .
+  accent .88 .!3 .88 . .88 . .88 .!2 .88 .
   gate .5
   glide .8
 }
@@ -794,7 +1099,8 @@ iv = acid |> modulate_degree 4 |> octave -1
 v = acid |> modulate_degree 5 |> octave -1 |> scale major
 song = acid * 8 + iv * 4 + v * 4
 play song
-)");
+)";
+  auto compiled = tfseq::Compile(source);
   check(static_cast<bool>(compiled), compiled.diagnostic.message);
   if (!compiled)
     return;
@@ -820,13 +1126,15 @@ play song
   check(runtime.next(7).events[0].kind == tfseq::EventKind::Rest,
         "compact replicated articulation retains the first rest");
   const auto slide = runtime.next(8);
-  check(slide.events[0].kind == tfseq::EventKind::Slide &&
+  check(slide.events[0].kind == tfseq::EventKind::Attack &&
             close(slide.events[0].slideBeats, .8f),
-        "greater-than uses the sequence glide time");
+        "the first event after a rest retriggers while retaining glide setup");
 
   runtime.reset();
-  int acidCursor = -1;
-  int ivCursor = -1;
+  const auto songLine = source.find("song =");
+  const int songAcid = static_cast<int>(source.find("acid", songLine));
+  const int songIv = static_cast<int>(source.find("iv", songLine));
+  const int songV = static_cast<int>(source.find("v", songIv + 2));
   const int minor[] = {-21, -21, -21, -21, -14, -11, -21, 0,
                        -21, 0,   -9,  -33, 0,   -21, -33, -21};
   const int major[] = {-26, -26, -26, -26, -19, -15, -26, 0,
@@ -845,10 +1153,11 @@ play song
         events.events[0]
             .cursors[static_cast<std::size_t>(tfseq::CursorLane::Sequence)]
             .begin;
-    if (beat == 0)
-      acidCursor = sequenceCursor;
-    else if (beat == 128)
-      ivCursor = sequenceCursor;
+    const int expectedCursor = beat < 128   ? songAcid
+                               : beat < 192 ? songIv
+                                            : songV;
+    check(sequenceCursor == expectedCursor,
+          "the beat cursor stays on the active term of the song row");
     if (rest) {
       check(events.events[0].kind == tfseq::EventKind::Rest,
             "acid rests survive all derived sections");
@@ -860,8 +1169,6 @@ play song
             "acid smoke pattern preserves its half-step gate");
     }
   }
-  check(acidCursor >= 0 && ivCursor >= 0 && acidCursor != ivCursor,
-        "the play cursor follows each named arrangement section");
 }
 
 void hotSwapPreservesNamedSequencePhase() {
@@ -895,11 +1202,11 @@ play riff
 void preparedWorkspaceHasNoSmallEventCeiling() {
   std::string subdivisions = "[";
   for (int index = 0; index < 40; ++index)
-    subdivisions += index == 0 ? "x" : " x";
+    subdivisions += index == 0 ? "1" : " 1";
   subdivisions += "]";
   const auto compiled =
-      tfseq::Compile("dense = sequence {\n  notes 1 2 3 4\n  articulation " +
-                     subdivisions + "\n}\nplay dense\n");
+      tfseq::Compile("dense = sequence {\n  notes " + subdivisions +
+                     "\n}\nplay dense\n");
   check(static_cast<bool>(compiled), compiled.diagnostic.message);
   if (!compiled)
     return;
@@ -910,6 +1217,21 @@ void preparedWorkspaceHasNoSmallEventCeiling() {
   const auto events = runtime.next(0.0);
   check(events.count == 40 && !events.overflowed,
         "a legal step above the former 32-event ceiling is not truncated");
+
+  const auto combinedDensity = tfseq::Compile(R"(dense = sequence {
+  notes 1{len=1/10}
+  duration 1/10
+}
+|> slow 1/2
+|> early 1
+play dense
+)");
+  check(static_cast<bool>(combinedDensity),
+        "combined density: " + combinedDensity.diagnostic.message);
+  if (combinedDensity) {
+    check(combinedDensity.program->scheduleCapacity >= 400,
+          "prepared capacity uses combined lane, event, and time factors");
+  }
 }
 
 void playbackStateHasNoFixedSequenceCeiling() {
@@ -956,8 +1278,7 @@ void playbackStateHasNoFixedSequenceCeiling() {
 
 void longDurationLegatoDoesNotDependOnSchedulerLookahead() {
   const auto compiled = tfseq::Compile(R"(legato = sequence {
-  notes 1 3
-  articulation x _ >
+  notes 1 _ >3
   duration 2
   gate .5
 }
@@ -1051,8 +1372,7 @@ play coherent
 
 void quantifiedTimingTransforms() {
   const auto compiled = tfseq::Compile(R"(timed = sequence {
-  notes 1 2
-  articulation [x x]
+  notes [1 2]
   duration 1
 }
 |> fast 2
@@ -1103,6 +1423,7 @@ void timingPreparationCoversEarlyLookaheadAndMilliseconds() {
   const auto timed = tfseq::Compile(R"(a = sequence {
   notes 1
   duration 3/2
+  offset -1/2 -4ms
 }
 |> early 1
 |> early 8ms
@@ -1113,13 +1434,13 @@ play a
         "timing preparation: " + timed.diagnostic.message);
   if (!timed)
     return;
-  check(close(static_cast<float>(timed.program->maximumEarlyBeats), 1.f) &&
+  check(close(static_cast<float>(timed.program->maximumEarlyBeats), 1.5f) &&
             close(static_cast<float>(timed.program->maximumEarlyMilliseconds),
-                  8.f),
-        "the compiler retains worst-case early timing bounds");
+                  12.f),
+        "whole and lane timing bounds combine for prepared scheduling");
   const auto lookahead =
       tfseq::SchedulingLookaheadBeats(*timed.program, true, 24000.0, 48000.0);
-  check(close(static_cast<float>(lookahead), 2.016f),
+  check(close(static_cast<float>(lookahead), 2.524f),
         "scheduler lookahead includes beat and millisecond early offsets");
 
   const auto plain = tfseq::Compile(R"(a = sequence {
@@ -1135,7 +1456,7 @@ play a
 
 void pegFrontendOwnsVoicingAndSlashStructure() {
   const auto parsed = tfseq::syntax::Parse(R"(harmony = sequence {
-  notes Bbm7b5@3 / D@2 (1 b3 5)@4 (C E G / B)@3
+  notes Bbm7b5@3 / D@2 (1 b3 5)@4 (C E G)@3 / B@3
 }
 play harmony
 )");
@@ -1149,17 +1470,21 @@ play harmony
   if (!sequence)
     return;
   const auto &steps = sequence->lanes.front().pattern.steps;
-  check(steps[0].kind == tfseq::syntax::PatternKind::Slash &&
-            steps[0].children.size() == 2 &&
-            steps[0].children[0].atom.text == "Bbm7b5@3" &&
-            steps[0].children[1].atom.text == "D@2",
+  check(steps[0].kind == tfseq::syntax::PatternKind::Event &&
+            steps[0].children[0].kind == tfseq::syntax::PatternKind::Slash &&
+            steps[0].children[0].children[0].atom.text == "Bbm7b5@3" &&
+            steps[0].children[0].children[1].atom.text == "D@2",
         "PEG emits the jazz chord and slash bass relationship directly");
-  check(steps[1].kind == tfseq::syntax::PatternKind::Voicing &&
-            steps[1].children.size() == 3 && steps[1].suffix.text == "@4",
+  check(steps[1].kind == tfseq::syntax::PatternKind::Event &&
+            steps[1].children[0].kind == tfseq::syntax::PatternKind::Voicing &&
+            steps[1].children[0].children.size() == 3 &&
+            steps[1].children[0].suffix.text == "@4",
         "PEG emits explicit tones and their shared register directly");
-  check(steps[2].kind == tfseq::syntax::PatternKind::Slash &&
-            steps[2].children[0].kind == tfseq::syntax::PatternKind::Voicing,
-        "a slash inside an explicit voicing remains structural AST");
+  check(steps[2].kind == tfseq::syntax::PatternKind::Event &&
+            steps[2].children[0].kind == tfseq::syntax::PatternKind::Slash &&
+            steps[2].children[0].children[0].kind ==
+                tfseq::syntax::PatternKind::Voicing,
+        "a slash after an explicit voicing remains structural AST");
 }
 
 void hotSwapCheckpointSurvivesLookahead() {
@@ -1234,21 +1559,113 @@ play a
 
 void patternExpansionUsesAddressableLimits() {
   const auto repeated = tfseq::Compile(R"(a = sequence {
-  notes 1!65
-  articulation x(3,65)
+  notes 1(3,65)*17
   glide 65
-  ratchet 17
 }
 play a
 )");
   check(static_cast<bool>(repeated), repeated.diagnostic.message);
   if (!repeated)
     return;
-  check(repeated.program->semantic().sequences[0].notes.size() == 65 &&
+  check(repeated.program->semantic().sequences[0].notes.size() == 3 &&
             repeated.program->semantic().sequences[0].articulation.size() ==
                 65 &&
             repeated.program->maximumEventsPerStep >= 17,
         "former fixed expansion ceilings are derived from allocation");
+}
+
+void euclideanTimingAndCvLanesHaveScoreTimeSemantics() {
+  const auto euclidean = tfseq::Compile(R"(a = sequence {
+  notes 1(3,8,1)
+}
+play a
+)");
+  check(static_cast<bool>(euclidean), euclidean.diagnostic.message);
+  if (euclidean) {
+    const auto &steps =
+        euclidean.program->semantic().sequences[0].articulation;
+    check(steps.size() == 8, "Euclidean syntax creates its stated cell count");
+    std::string rhythm;
+    for (const auto &step : steps)
+      rhythm += step.atoms.front().kind == tfseq::ArticulationKind::Attack
+                    ? 'x'
+                    : '.';
+    check(rhythm == ".x..x..x",
+          "positive Euclidean rotation moves hits later/right");
+  }
+
+  const auto timed = tfseq::Compile(R"(a = sequence {
+  notes [1 2] 3 4
+  offset -1/8!2 1/8 |> rate 1/2
+  cv1 0 . . 6 |> interp linear
+  cv2 0 4 |> interp power 2
+}
+play a
+)");
+  check(static_cast<bool>(timed), timed.diagnostic.message);
+  if (timed) {
+    tfseq::Runtime runtime;
+    runtime.setProgram(timed.program.get());
+    const auto first = runtime.next(0.0);
+    check(first.count == 2 &&
+              close(static_cast<float>(first.events[0].beat), -.125f) &&
+              close(static_cast<float>(first.events[1].beat), .375f),
+          "subdivisions sample one score-time offset without accelerating it");
+    check(close(first.events[0].cvValue[0], 0.f) &&
+              close(first.events[0].cvTarget[0], 6.f) &&
+              close(static_cast<float>(first.events[0].cvTargetBeat[0]),
+                    2.875f),
+          "linear CV skips no-op cells and targets the next explicit knot");
+
+    const auto halfBeat = runtime.next(.5);
+    check(halfBeat.count == 1 &&
+              close(halfBeat.events[0].cvValue[0], 1.f) &&
+              close(halfBeat.events[0].cvValue[1], 1.f),
+          "CV interpolation is evaluated from absolute score phase");
+    runtime.next(2.0);
+    runtime.next(3.0);
+    const auto later = runtime.next(4.0);
+    check(later.count > 0 &&
+              close(static_cast<float>(later.events[0].beat), 4.125f),
+          "a numeric lane rate changes phase without changing note time");
+  }
+
+  check(!tfseq::Compile(R"(a = sequence {
+  notes 1 2
+  offset ... -1/8 |> rate 1/2
+}
+play a
+ )"),
+        "rate and edge alignment are distinct lane modes");
+  check(!tfseq::Compile(R"(a = sequence {
+  notes 1 2
+  cv1 0 5 ... |> interp linear
+}
+play a
+ )"),
+        "continuous aligned CV waits for exact structural knot timing");
+  check(!tfseq::Compile(R"(a = sequence {
+  notes 1
+  cv3 1
+}
+play a
+ )"),
+        "unavailable CV output numbers are semantic diagnostics");
+
+  const auto cyclic = tfseq::Compile(R"(a = sequence {
+  notes 1
+  cv1 . . 5
+}
+play a
+)");
+  check(static_cast<bool>(cyclic), cyclic.diagnostic.message);
+  if (cyclic) {
+    tfseq::Runtime runtime;
+    runtime.setProgram(cyclic.program.get());
+    const auto event = runtime.next(0.0);
+    check(event.count == 1 && close(event.events[0].cvValue[0], 5.f),
+          "leading CV no-ops look backward through the cyclic lane");
+  }
 }
 
 void unsafeNumericInputsAreDiagnostics() {
@@ -1266,6 +1683,8 @@ void unsafeNumericInputsAreDiagnostics() {
 } // namespace
 
 int main() {
+  heatmapMapsScalarIntensity();
+  cursorAnimationIsFrameIndependentAndTempoBounded();
   pegFrontendBuildsTypedSyntax();
   pegFrontendRejectsMalformedStructure();
   typedPatternTreeOwnsReusableStructure();
@@ -1276,6 +1695,7 @@ int main() {
   compileAndCycleIndependentLanes();
   parseFirstClassArticulation();
   articulationModifiersComposeInEitherOrder();
+  nestedGroupReplicationAndProbabilityKeepPreparedIdentity();
   transformByCycleAndArrange();
   rejectInvalidInput();
   degreesContinueAcrossOctaves();
@@ -1283,6 +1703,7 @@ int main() {
   absoluteAndRelativeRegistersRemainDistinct();
   octaveSuffixesAndChordsAreUnambiguous();
   distinguishInKeyShiftsFromModulation();
+  romanChordsRetainDegreeAndQualitySemantics();
   scaleAndModulationPipelinesComposeLeftToRight();
   duplicateNamesAreRejectedInEitherOrder();
   settingLanePipelinesAreNeverIgnored();
@@ -1299,6 +1720,7 @@ int main() {
   quantifiedTimingTransforms();
   swingCrossesStepBoundariesAtExplicitSubdivisions();
   patternExpansionUsesAddressableLimits();
+  euclideanTimingAndCvLanesHaveScoreTimeSemantics();
   timingPreparationCoversEarlyLookaheadAndMilliseconds();
   unsafeNumericInputsAreDiagnostics();
   if (failures != 0)

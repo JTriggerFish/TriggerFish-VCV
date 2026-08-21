@@ -12,6 +12,7 @@
 #include <numeric>
 #include <stdexcept>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace tfseq {
 
@@ -37,6 +38,13 @@ std::uint64_t StableDefinitionId(const std::string &name) noexcept {
     hash *= 1099511628211ULL;
   }
   return hash == 0 ? 1 : hash;
+}
+
+bool IsReservedCvName(const std::string &name) noexcept {
+  if (name.size() < 3 || name[0] != 'c' || name[1] != 'v' || name[2] == '0')
+    return false;
+  return std::all_of(name.begin() + 2, name.end(),
+                     [](unsigned char value) { return std::isdigit(value); });
 }
 
 bool ParseNumber(const std::string &text, double &value) {
@@ -280,28 +288,6 @@ PitchValue NamedChordTone(int rootPitchClass, int interval, bool hasOctave,
   return pitch;
 }
 
-bool ParseSlashPitch(const Token &token, PitchValue &pitch,
-                     Diagnostic &diagnostic) {
-  Diagnostic ignored;
-  if (ParsePitchValue(token, pitch, ignored))
-    return true;
-  std::string text = token.text;
-  if (!ParseRegisterSuffix(text, pitch.hasOctave, pitch.octave,
-                           pitch.octaveOffset)) {
-    diagnostic = Error(token.span, "invalid slash-bass register");
-    return false;
-  }
-  std::size_t cursor = 0;
-  if (!ParseNoteName(text, cursor, pitch.pitchClass) || cursor != text.size()) {
-    diagnostic =
-        Error(token.span, "invalid slash-bass note '" + token.text + "'");
-    return false;
-  }
-  pitch.absolute = true;
-  pitch.span = token.span;
-  return true;
-}
-
 bool ParseJazzChord(const Token &token, ChordValue &chord,
                     Diagnostic &diagnostic) {
   std::string main = token.text;
@@ -462,6 +448,83 @@ bool ParseJazzChord(const Token &token, ChordValue &chord,
   return true;
 }
 
+bool ParseRomanChord(const Token &token, ChordValue &chord,
+                     Diagnostic &diagnostic) {
+  std::string text = token.text;
+  bool hasOctave = false;
+  int octave = 0;
+  int octaveOffset = 0;
+  if (!ParseRegisterSuffix(text, hasOctave, octave, octaveOffset))
+    return false;
+
+  std::size_t cursor = 0;
+  int accidental = 0;
+  while (cursor < text.size() &&
+         (text[cursor] == 'b' || text[cursor] == '#')) {
+    accidental += text[cursor++] == '#' ? 1 : -1;
+  }
+  const auto numeralBegin = cursor;
+  while (cursor < text.size() &&
+         (text[cursor] == 'I' || text[cursor] == 'V' ||
+          text[cursor] == 'i' || text[cursor] == 'v'))
+    ++cursor;
+  if (cursor == numeralBegin)
+    return false;
+  const auto numeral = text.substr(numeralBegin, cursor - numeralBegin);
+  const bool lower = std::islower(static_cast<unsigned char>(numeral.front()));
+  static const std::unordered_map<std::string, int> Degrees{
+      {"I", 1},   {"II", 2},  {"III", 3}, {"IV", 4},
+      {"V", 5},   {"VI", 6},  {"VII", 7}, {"i", 1},
+      {"ii", 2},  {"iii", 3}, {"iv", 4},  {"v", 5},
+      {"vi", 6},  {"vii", 7},
+  };
+  const auto degree = Degrees.find(numeral);
+  if (degree == Degrees.end()) {
+    diagnostic = Error(token.span,
+                       "Roman chord degree must be I through VII");
+    return false;
+  }
+
+  const std::string quality = text.substr(cursor);
+  auto begins = [&](const char *prefix) { return quality.rfind(prefix, 0) == 0; };
+  const bool explicitMinor = begins("min") ||
+                             (begins("m") && !begins("maj"));
+  const bool specialTriad =
+      begins("dim") || begins("aug") || begins("sus");
+  if ((!lower && explicitMinor) ||
+      (lower && begins("maj"))) {
+    diagnostic = Error(token.span,
+                       "Roman-numeral case and chord quality contradict");
+    return false;
+  }
+  std::string synthetic = "C";
+  if (lower && quality.empty())
+    synthetic += "m";
+  else if (lower && !explicitMinor && !specialTriad)
+    synthetic += "m" + quality;
+  else
+    synthetic += quality;
+
+  ChordValue realized;
+  Token syntheticToken{synthetic, token.span};
+  if (!ParseJazzChord(syntheticToken, realized, diagnostic))
+    return false;
+  chord.meaning = ChordValue::Meaning::RomanSymbol;
+  chord.jazzSymbol = token.text;
+  chord.romanRoot.degree = degree->second;
+  chord.romanRoot.accidental = accidental;
+  chord.romanRoot.hasOctave = hasOctave;
+  chord.romanRoot.octave = octave;
+  chord.romanRoot.octaveOffset = octaveOffset;
+  chord.romanRoot.span = token.span;
+  chord.span = token.span;
+  for (const auto &voice : realized.voices) {
+    const int interval = voice.octaveOffset * 12 + voice.pitchClass;
+    chord.intervals.push_back(interval);
+  }
+  return true;
+}
+
 void ApplyChordRegister(ChordValue &chord, bool hasOctave, int octave,
                         int octaveOffset) {
   for (auto &voice : chord.voices) {
@@ -493,32 +556,17 @@ bool ParseExplicitChord(const syntax::PatternNode &node, ChordValue &chord,
     diagnostic = Error(node.span, "chord cannot be empty");
     return false;
   }
-  if (node.children.size() == 1) {
-    const auto &tone = node.children.front().atom;
-    PitchValue namedPitch;
-    if (ParseBareNamedPitch(tone, namedPitch)) {
-      chord.voices.push_back(namedPitch);
-      chord.meaning = ChordValue::Meaning::ExplicitVoicing;
-      ApplyChordRegister(chord, hasOctave, octave, octaveOffset);
-      chord.span = node.span;
-      return true;
-    }
-    Diagnostic jazzDiagnostic;
-    if (ParseJazzChord(tone, chord, jazzDiagnostic)) {
-      ApplyChordRegister(chord, hasOctave, octave, octaveOffset);
-      chord.meaning = ChordValue::Meaning::ExplicitVoicing;
-      chord.span = node.span;
-      return true;
-    }
-  }
-
   for (const auto &child : node.children) {
     const Token &tone = child.atom;
     PitchValue pitch;
-    Diagnostic pitchDiagnostic;
-    if (!ParsePitchValue(tone, pitch, pitchDiagnostic) &&
-        !ParseBareNamedPitch(tone, pitch)) {
-      diagnostic = pitchDiagnostic;
+    const bool parsed = child.kind == syntax::PatternKind::NamedPitch
+                            ? ParseBareNamedPitch(tone, pitch)
+                            : child.kind == syntax::PatternKind::ScaleDegree
+                                  ? ParsePitchValue(tone, pitch, diagnostic)
+                                  : false;
+    if (!parsed) {
+      if (diagnostic.message.empty())
+        diagnostic = Error(child.span, "invalid explicit chord tone");
       return false;
     }
     chord.voices.push_back(pitch);
@@ -537,33 +585,37 @@ bool ParseExplicitChord(const syntax::PatternNode &node, ChordValue &chord,
   return true;
 }
 
-bool ParsePitchedChoice(const Token &token, ChordValue &chord,
-                        Diagnostic &diagnostic) {
-  PitchValue pitch;
-  Diagnostic pitchDiagnostic;
-  if (ParsePitchValue(token, pitch, pitchDiagnostic)) {
-    chord.voices.push_back(pitch);
-    chord.span = token.span;
-    return true;
-  }
-  Diagnostic chordDiagnostic;
-  if (ParseJazzChord(token, chord, chordDiagnostic))
-    return true;
-  diagnostic =
-      chordDiagnostic.message.empty() ? pitchDiagnostic : chordDiagnostic;
-  return false;
-}
-
 std::string PatternNodeText(const syntax::PatternNode &node);
 
 bool ParsePitchedChoice(const syntax::PatternNode &node, ChordValue &chord,
                         Diagnostic &diagnostic) {
-  if (node.kind == syntax::PatternKind::Atom)
-    return ParsePitchedChoice(node.atom, chord, diagnostic);
+  if (node.kind == syntax::PatternKind::NamedPitch) {
+    PitchValue pitch;
+    if (!ParseBareNamedPitch(node.atom, pitch)) {
+      diagnostic = Error(node.span, "invalid named pitch");
+      return false;
+    }
+    chord.voices.push_back(pitch);
+    chord.span = node.span;
+    return true;
+  }
+  if (node.kind == syntax::PatternKind::ScaleDegree) {
+    PitchValue pitch;
+    if (!ParsePitchValue(node.atom, pitch, diagnostic))
+      return false;
+    chord.voices.push_back(pitch);
+    chord.span = node.span;
+    return true;
+  }
+  if (node.kind == syntax::PatternKind::JazzChord)
+    return ParseJazzChord(node.atom, chord, diagnostic);
+  if (node.kind == syntax::PatternKind::RomanChord)
+    return ParseRomanChord(node.atom, chord, diagnostic);
   if (node.kind == syntax::PatternKind::Voicing)
     return ParseExplicitChord(node, chord, diagnostic);
   if (node.kind != syntax::PatternKind::Slash || node.children.size() != 2 ||
-      node.children[1].kind != syntax::PatternKind::Atom) {
+      (node.children[1].kind != syntax::PatternKind::NamedPitch &&
+       node.children[1].kind != syntax::PatternKind::ScaleDegree)) {
     diagnostic = Error(node.span, "invalid pitched value");
     return false;
   }
@@ -573,292 +625,577 @@ bool ParsePitchedChoice(const syntax::PatternNode &node, ChordValue &chord,
     diagnostic = Error(node.span, "a chord can contain only one slash bass");
     return false;
   }
-  if (!ParseSlashPitch(node.children[1].atom, chord.bass, diagnostic))
+  if (node.children[1].kind == syntax::PatternKind::NamedPitch) {
+    if (!ParseBareNamedPitch(node.children[1].atom, chord.bass)) {
+      diagnostic = Error(node.children[1].span, "invalid slash-bass note");
+      return false;
+    }
+  } else if (!ParsePitchValue(node.children[1].atom, chord.bass, diagnostic)) {
     return false;
+  }
   chord.hasBass = true;
   chord.span = node.span;
   if (chord.meaning == ChordValue::Meaning::JazzSymbol)
     chord.jazzSymbol = PatternNodeText(node);
-  if (chord.voices.size() + 1 > MaximumPolyphony) {
+  const auto harmonicVoices =
+      chord.meaning == ChordValue::Meaning::RomanSymbol
+          ? chord.intervals.size()
+          : chord.voices.size();
+  if (harmonicVoices + 1 > MaximumPolyphony) {
     diagnostic = Error(node.span, "chord exceeds Rack's 16-channel polyphony");
     return false;
   }
   return true;
 }
 
-bool PatternRepeat(const syntax::PatternNode &source, const std::string &label,
-                   const syntax::PatternNode *&node, std::size_t &repetitions,
-                   Diagnostic &diagnostic) {
-  node = &source;
-  repetitions = 1;
-  if (source.kind != syntax::PatternKind::Repeat)
-    return true;
-  if (source.children.size() != 1) {
-    diagnostic = Error(source.span, "invalid repeat pattern");
-    return false;
-  }
-  errno = 0;
-  char *end = nullptr;
-  const auto parsed = std::strtoull(source.repeatCount.text.c_str(), &end, 10);
-  if (source.repeatCount.text.empty() ||
-      source.repeatCount.text.front() == '-' || errno == ERANGE ||
-      parsed == 0 ||
-      end != source.repeatCount.text.c_str() + source.repeatCount.text.size() ||
-      parsed > std::numeric_limits<std::size_t>::max()) {
-    diagnostic = Error(source.repeatCount.span,
-                       label + " repetition must be a positive integer that "
-                               "fits addressable memory");
-    return false;
-  }
-  repetitions = static_cast<std::size_t>(parsed);
-  node = &source.children.front();
-  return true;
-}
-
 bool ParsePitchPatternNode(const syntax::PatternNode &node, PitchItem &item,
                            Diagnostic &diagnostic) {
   item.span = node.span;
-  const std::vector<syntax::PatternNode> *choices = nullptr;
-  if (node.kind == syntax::PatternKind::CycleChoice) {
-    item.choice = PitchItem::Choice::Alternate;
-    choices = &node.children;
-  } else if (node.kind == syntax::PatternKind::RandomChoice) {
-    item.choice = PitchItem::Choice::Random;
-    choices = &node.children;
-  } else if (node.kind == syntax::PatternKind::Subdivision) {
-    diagnostic = Error(
-        node.span,
-        "note subdivisions are reserved but not executable in this version");
+  ChordValue value;
+  if (!ParsePitchedChoice(node, value, diagnostic))
     return false;
-  } else if (node.kind != syntax::PatternKind::Atom &&
-             node.kind != syntax::PatternKind::Voicing &&
-             node.kind != syntax::PatternKind::Slash) {
-    diagnostic = Error(node.span, "invalid nested note pattern");
-    return false;
-  }
+  item.values.push_back(std::move(value));
+  return true;
+}
 
-  if (!choices) {
-    ChordValue value;
-    if (!ParsePitchedChoice(node, value, diagnostic))
-      return false;
-    item.values.push_back(std::move(value));
+bool ParsePositiveCount(const Token &token, const std::string &label,
+                        std::size_t &count, Diagnostic &diagnostic) {
+  count = 1;
+  if (token.text.empty())
     return true;
+  errno = 0;
+  char *end = nullptr;
+  const auto parsed = std::strtoull(token.text.c_str(), &end, 10);
+  if (errno == ERANGE || parsed == 0 ||
+      end != token.text.c_str() + token.text.size() ||
+      parsed > std::numeric_limits<std::size_t>::max()) {
+    diagnostic = Error(token.span, label +
+                                       " must be a positive integer that fits "
+                                       "addressable memory");
+    return false;
   }
-  for (const auto &choice : *choices) {
-    if (choice.kind != syntax::PatternKind::Atom &&
-        choice.kind != syntax::PatternKind::Voicing &&
-        choice.kind != syntax::PatternKind::Slash) {
-      diagnostic =
-          Error(choice.span, "nested note choices are reserved for a future "
-                             "pattern evaluator");
-      return false;
+  count = static_cast<std::size_t>(parsed);
+  return true;
+}
+
+bool ParseDurationWeight(const Token &token, double &weight,
+                         Diagnostic &diagnostic) {
+  weight = 1.0;
+  if (token.text.empty())
+    return true;
+  const auto dot = token.text.find('.');
+  const auto elongation = token.text.substr(0, dot);
+  if (!elongation.empty()) {
+    if (std::all_of(elongation.begin(), elongation.end(),
+                    [](char value) { return value == '_'; })) {
+      weight = static_cast<double>(elongation.size() + 1);
+    } else if (elongation.front() == '_') {
+      double value = 0.0;
+      if (!ParseNumber(elongation.substr(1), value) || value <= 0.0) {
+        diagnostic = Error(token.span, "invalid duration suffix");
+        return false;
+      }
+      weight = value;
     }
-    ChordValue value;
-    if (!ParsePitchedChoice(choice, value, diagnostic))
-      return false;
-    item.values.push_back(std::move(value));
+  }
+  if (dot != std::string::npos) {
+    const auto dots = token.text.size() - dot;
+    weight *= dots == 1 ? 1.5 : 1.75;
+  }
+  if (!std::isfinite(weight) || weight <= 0.0) {
+    diagnostic = Error(token.span, "duration must be positive and finite");
+    return false;
   }
   return true;
+}
+
+bool ParseEuclideanSuffix(const syntax::PatternNode &node, int &pulses,
+                          int &steps, int &rotation,
+                          Diagnostic &diagnostic) {
+  if (node.arguments.empty())
+    return false;
+  if (node.arguments.size() < 2 || node.arguments.size() > 3) {
+    diagnostic = Error(node.span, "expected (pulses,steps[,rotation])");
+    return true;
+  }
+  auto parse = [&](const Token &argument, int &value) {
+    errno = 0;
+    char *end = nullptr;
+    const auto parsed = std::strtoll(argument.text.c_str(), &end, 10);
+    if (errno == ERANGE ||
+        end != argument.text.c_str() + argument.text.size() ||
+        parsed < std::numeric_limits<int>::min() ||
+        parsed > std::numeric_limits<int>::max())
+      return false;
+    value = static_cast<int>(parsed);
+    return true;
+  };
+  if (!parse(node.arguments[0], pulses) ||
+      !parse(node.arguments[1], steps) ||
+      (node.arguments.size() == 3 &&
+       !parse(node.arguments[2], rotation))) {
+    diagnostic = Error(node.span, "expected integer Euclidean arguments");
+    return true;
+  }
+  if (steps < 1 || pulses < 0 || pulses > steps) {
+    diagnostic = Error(node.span,
+                       "Euclidean rhythm requires 0 <= pulses <= steps");
+  }
+  return true;
+}
+
+bool EuclideanHit(int cell, int pulses, int steps, int rotation) {
+  const auto source = ((cell - rotation) % steps + steps) % steps;
+  return (static_cast<std::int64_t>(source) * pulses) % steps < pulses;
+}
+
+bool ParseScalarWithUnit(const Token &token, double &value, bool &milliseconds) {
+  std::string text = token.text;
+  milliseconds = text.size() >= 2 && text.substr(text.size() - 2) == "ms";
+  if (milliseconds)
+    text.resize(text.size() - 2);
+  return ParseNumber(text, value) && std::isfinite(value);
+}
+
+bool ApplyEventAttributes(const syntax::PatternNode &node,
+                          ArticulationAtom &atom, double &durationWeight,
+                          bool rest, Diagnostic &diagnostic) {
+  std::unordered_set<std::string> seen;
+  for (const auto &attribute : node.attributes) {
+    if (!seen.insert(attribute.name.text).second) {
+      diagnostic = Error(attribute.name.span, "duplicate event attribute '" +
+                                                   attribute.name.text + "'");
+      return false;
+    }
+    double value = 0.0;
+    bool milliseconds = false;
+    if (!ParseScalarWithUnit(attribute.value, value, milliseconds)) {
+      diagnostic = Error(attribute.value.span, "invalid event attribute value");
+      return false;
+    }
+    if (attribute.name.text == "len") {
+      if (!node.durationSuffix.text.empty()) {
+        diagnostic = Error(attribute.name.span,
+                           "len duplicates the event duration suffix");
+        return false;
+      }
+      if (milliseconds || value <= 0.0) {
+        diagnostic = Error(attribute.value.span,
+                           "len must be a positive beat value");
+        return false;
+      }
+      durationWeight = value;
+    } else if (attribute.name.text == "vel" && !rest) {
+      if (milliseconds || value < 0.0 || value > 1.0) {
+        diagnostic = Error(attribute.value.span, "vel must be from 0 to 1");
+        return false;
+      }
+      atom.hasVelocity = true;
+      atom.velocity = static_cast<float>(value);
+    } else if (attribute.name.text == "gate" && !rest) {
+      if (value < 0.0 || (!milliseconds && value > 1.0)) {
+        diagnostic = Error(attribute.value.span,
+                           "gate must be 0..1 or non-negative ms");
+        return false;
+      }
+      atom.hasGate = true;
+      atom.gate = static_cast<float>(value);
+      atom.gateMilliseconds = milliseconds;
+    } else if (attribute.name.text == "slide" && !rest) {
+      if (node.slidePrefix.text.empty()) {
+        diagnostic = Error(attribute.name.span,
+                           "slide is only meaningful on a > event");
+        return false;
+      }
+      if (value < 0.0) {
+        diagnostic = Error(attribute.value.span,
+                           "slide must be non-negative");
+        return false;
+      }
+      atom.hasSlide = true;
+      atom.slide = static_cast<float>(value);
+      atom.slideMilliseconds = milliseconds;
+    } else {
+      diagnostic = Error(attribute.name.span,
+                         rest ? "a rest accepts only the len attribute"
+                              : "unknown event attribute '" +
+                                    attribute.name.text + "'");
+      return false;
+    }
+  }
+  return true;
+}
+
+bool ParseNodeDurationWeight(const syntax::PatternNode &node, double &weight,
+                             Diagnostic &diagnostic) {
+  if (!ParseDurationWeight(node.durationSuffix, weight, diagnostic))
+    return false;
+  for (const auto &attribute : node.attributes) {
+    if (attribute.name.text != "len")
+      continue;
+    if (!node.durationSuffix.text.empty()) {
+      diagnostic = Error(attribute.name.span,
+                         "len duplicates the event duration suffix");
+      return false;
+    }
+    bool milliseconds = false;
+    if (!ParseScalarWithUnit(attribute.value, weight, milliseconds) ||
+        milliseconds || weight <= 0.0) {
+      diagnostic = Error(attribute.value.span,
+                         "len must be a positive beat value");
+      return false;
+    }
+  }
+  return true;
+}
+
+bool ParseAtomicEvent(const syntax::PatternNode &node, Sequence &sequence,
+                      ArticulationAtom &atom, double &weight,
+                      Diagnostic &diagnostic) {
+  atom = {};
+  atom.span = node.span;
+  if (!ParseDurationWeight(node.durationSuffix, weight, diagnostic))
+    return false;
+  if (node.kind == syntax::PatternKind::Rest) {
+    atom.kind = ArticulationKind::Rest;
+    return ApplyEventAttributes(node, atom, weight, true, diagnostic);
+  }
+  if (node.kind == syntax::PatternKind::Tie) {
+    atom.kind = ArticulationKind::Tie;
+    return true;
+  }
+  if (node.kind != syntax::PatternKind::Event || node.children.size() != 1) {
+    diagnostic = Error(node.span, "invalid nested note event");
+    return false;
+  }
+  PitchItem pitch;
+  if (!ParsePitchPatternNode(node.children.front(), pitch, diagnostic))
+    return false;
+  pitch.span = node.span;
+  atom.pitch = pitch;
+  atom.hasPitch = true;
+  sequence.notes.push_back(std::move(pitch));
+  atom.kind = node.slidePrefix.text.empty() ? ArticulationKind::Attack
+                                            : ArticulationKind::Slide;
+  if (node.dynamicPrefix.text == "x") {
+    if (atom.kind == ArticulationKind::Slide) {
+      diagnostic = Error(node.span, "a ghost cannot also be a slide");
+      return false;
+    }
+    atom.ghost = true;
+  } else if (node.dynamicPrefix.text == "^") {
+    atom.hasAccent = true;
+    atom.accent = 0.88f;
+  } else if (node.dynamicPrefix.text == "^^") {
+    atom.hasAccent = true;
+    atom.accent = 1.f;
+  }
+  if (!node.ratchetCount.text.empty() &&
+      !ParsePositiveCount(node.ratchetCount, "ratchet count", atom.ratchets,
+                          diagnostic))
+    return false;
+  if (atom.kind == ArticulationKind::Slide && atom.ratchets > 1) {
+    diagnostic = Error(node.ratchetCount.span,
+                       "a slide cannot also be ratcheted");
+    return false;
+  }
+  atom.probability = node.defaultProbability ? 0.5f : 1.f;
+  if (!node.probability.text.empty()) {
+    double probability = 0.0;
+    if (!ParseNumber(node.probability.text, probability) || probability < 0.0 ||
+        probability > 1.0) {
+      diagnostic = Error(node.probability.span,
+                         "probability must be from 0 to 1");
+      return false;
+    }
+    atom.probability = static_cast<float>(probability);
+  }
+  return ApplyEventAttributes(node, atom, weight, false, diagnostic);
+}
+
+bool AppendFlatGroup(const syntax::PatternNode &node, Sequence &sequence,
+                     std::vector<ArticulationAtom> &atoms, double offset,
+                     double span, std::uint64_t &nextProbabilityGroup,
+                     Diagnostic &diagnostic) {
+  std::size_t copies = 1;
+  if (!ParsePositiveCount(node.repeatCount, "event replication", copies,
+                          diagnostic))
+    return false;
+  if (copies > 1) {
+    auto body = node;
+    body.repeatCount = {};
+    const double copySpan = span / static_cast<double>(copies);
+    for (std::size_t copy = 0; copy < copies; ++copy) {
+      if (!AppendFlatGroup(body, sequence, atoms,
+                           offset + copySpan * static_cast<double>(copy),
+                           copySpan, nextProbabilityGroup, diagnostic))
+        return false;
+    }
+    return true;
+  }
+
+  int pulses = 0;
+  int steps = 0;
+  int rotation = 0;
+  if (ParseEuclideanSuffix(node, pulses, steps, rotation, diagnostic)) {
+    if (!diagnostic.message.empty())
+      return false;
+    auto body = node;
+    body.arguments.clear();
+    body.repeatCount = {};
+    for (int cell = 0; cell < steps; ++cell) {
+      const double cellOffset =
+          offset + span * static_cast<double>(cell) / static_cast<double>(steps);
+      const double cellSpan = span / static_cast<double>(steps);
+      if (EuclideanHit(cell, pulses, steps, rotation)) {
+        if (!AppendFlatGroup(body, sequence, atoms, cellOffset, cellSpan,
+                             nextProbabilityGroup, diagnostic))
+          return false;
+      } else {
+        ArticulationAtom rest;
+        rest.kind = ArticulationKind::Rest;
+        rest.span = node.span;
+        rest.offsetFraction = cellOffset;
+        rest.spanFraction = cellSpan;
+        rest.cellOffset = atoms.size();
+        atoms.push_back(std::move(rest));
+      }
+    }
+    return true;
+  }
+  if (node.kind == syntax::PatternKind::Event ||
+      node.kind == syntax::PatternKind::Rest ||
+      node.kind == syntax::PatternKind::Tie) {
+    double weight = 1.0;
+    ArticulationAtom prototype;
+    if (!ParseAtomicEvent(node, sequence, prototype, weight, diagnostic))
+      return false;
+    prototype.offsetFraction = offset;
+    prototype.spanFraction = span;
+    prototype.cellOffset = atoms.size();
+    atoms.push_back(std::move(prototype));
+    return true;
+  }
+  if (node.kind != syntax::PatternKind::Subdivision) {
+    diagnostic = Error(node.span,
+                       "nested random/alternate groups require equal typed "
+                       "branches and are not yet executable");
+    return false;
+  }
+  const auto firstAtom = atoms.size();
+  std::vector<double> weights;
+  weights.reserve(node.children.size());
+  double total = 0.0;
+  for (const auto &child : node.children) {
+    double weight = 1.0;
+    if (!ParseNodeDurationWeight(child, weight, diagnostic))
+      return false;
+    std::size_t copies = 1;
+    if (!ParsePositiveCount(child.repeatCount, "event replication", copies,
+                            diagnostic))
+      return false;
+    weight *= static_cast<double>(copies);
+    if (!child.arguments.empty()) {
+      int childPulses = 0;
+      int childSteps = 0;
+      int childRotation = 0;
+      ParseEuclideanSuffix(child, childPulses, childSteps, childRotation,
+                            diagnostic);
+      if (!diagnostic.message.empty())
+        return false;
+      weight *= static_cast<double>(childSteps);
+    }
+    weights.push_back(weight);
+    total += weight;
+  }
+  double cursor = offset;
+  for (std::size_t index = 0; index < node.children.size(); ++index) {
+    const double childSpan = span * weights[index] / total;
+    if (!AppendFlatGroup(node.children[index], sequence, atoms, cursor,
+                         childSpan, nextProbabilityGroup, diagnostic))
+      return false;
+    cursor += childSpan;
+  }
+  float groupProbability = node.defaultProbability ? 0.5f : 1.f;
+  if (!node.probability.text.empty()) {
+    double parsed = 0.0;
+    if (!ParseNumber(node.probability.text, parsed) || parsed < 0.0 ||
+        parsed > 1.0) {
+      diagnostic = Error(node.probability.span,
+                         "probability must be from 0 to 1");
+      return false;
+    }
+    groupProbability = static_cast<float>(parsed);
+  }
+  if (groupProbability < 1.f) {
+    const auto group = ++nextProbabilityGroup;
+    for (std::size_t index = firstAtom; index < atoms.size(); ++index) {
+      atoms[index].enclosingProbabilityGates.push_back(
+          {groupProbability, group});
+    }
+  }
+  return true;
+}
+
+std::size_t FixedVoiceCount(const PitchItem &item) {
+  std::size_t result = 0;
+  for (const auto &choice : item.values) {
+    const auto voices =
+        (choice.meaning == ChordValue::Meaning::RomanSymbol
+             ? choice.intervals.size()
+             : choice.voices.size()) +
+        (choice.hasBass ? 1u : 0u);
+    if (voices == 0 || (result != 0 && result != voices))
+      return 0;
+    result = voices;
+  }
+  return result;
 }
 
 bool ParseNotes(const syntax::Pattern &pattern, Sequence &sequence,
                 Diagnostic &diagnostic) {
-  for (const auto &source : pattern.steps) {
-    const syntax::PatternNode *musicalNode = nullptr;
-    std::size_t repetitions = 1;
-    if (!PatternRepeat(source, "note", musicalNode, repetitions, diagnostic))
-      return false;
-    PitchItem item;
-    if (!ParsePitchPatternNode(*musicalNode, item, diagnostic))
-      return false;
-    item.span = source.span;
-    for (std::size_t repetition = 0; repetition < repetitions; ++repetition)
-      sequence.notes.push_back(item);
-  }
-  return true;
-}
-
-ArticulationAtom ParseArticulationAtom(const Token &token,
-                                       Diagnostic &diagnostic) {
-  ArticulationAtom atom;
-  atom.span = token.span;
-  if (token.text.empty()) {
-    diagnostic = Error(token.span, "empty articulation");
-    return atom;
-  }
-
-  const char base = token.text.front();
-  bool hasProbability = false;
-  bool hasRatchet = false;
-  std::size_t cursor = 1;
-  while (cursor < token.text.size()) {
-    const char modifier = token.text[cursor++];
-    if (modifier != '?' && modifier != '*') {
-      diagnostic =
-          Error(token.span, "unknown articulation '" + token.text + "'");
-      return atom;
-    }
-    const auto argumentBegin = cursor;
-    while (cursor < token.text.size() && token.text[cursor] != '?' &&
-           token.text[cursor] != '*')
-      ++cursor;
-    const auto argument =
-        token.text.substr(argumentBegin, cursor - argumentBegin);
-    if (modifier == '?') {
-      if (hasProbability) {
-        diagnostic =
-            Error(token.span, "articulation probability is specified twice");
-        return atom;
+  bool hasPitchedPredecessor = false;
+  std::size_t predecessorVoices = 0;
+  std::uint64_t nextProbabilityGroup = 0;
+  auto finishStep = [&](ArticulationStep &&step) {
+    step.cellCount = std::max<std::size_t>(1, step.atoms.size());
+    for (const auto &atom : step.atoms) {
+      if ((atom.kind == ArticulationKind::Tie ||
+           atom.kind == ArticulationKind::Slide) &&
+          !hasPitchedPredecessor) {
+        diagnostic = Error(atom.span,
+                           atom.kind == ArticulationKind::Tie
+                               ? "a tie requires a preceding pitched event"
+                               : "a slide requires a preceding pitched event");
+        return false;
       }
-      hasProbability = true;
-      atom.probability = 0.5f;
-      if (!argument.empty()) {
-        double parsed = 0.0;
-        if (!ParseNumber(argument, parsed) || parsed < 0.0 || parsed > 1.0) {
-          diagnostic = Error(token.span, "invalid articulation probability");
-          return atom;
+      if (atom.kind == ArticulationKind::Rest)
+      {
+        hasPitchedPredecessor = false;
+        predecessorVoices = 0;
+      } else if (atom.kind == ArticulationKind::Attack ||
+                 atom.kind == ArticulationKind::Slide) {
+        const auto voices = atom.hasPitch ? FixedVoiceCount(atom.pitch) : 0;
+        if (atom.kind == ArticulationKind::Slide &&
+            (voices == 0 || voices != predecessorVoices)) {
+          diagnostic = Error(
+              atom.span,
+              "a chord slide requires equal, statically known voice counts");
+          return false;
         }
-        atom.probability = static_cast<float>(parsed);
+        hasPitchedPredecessor = !atom.ghost;
+        predecessorVoices = atom.ghost ? 0 : voices;
       }
-    } else {
-      if (hasRatchet) {
-        diagnostic =
-            Error(token.span, "articulation ratchet is specified twice");
-        return atom;
-      }
-      hasRatchet = true;
-      double parsed = 0.0;
-      if (!ParseNumber(argument, parsed) || parsed < 1.0 ||
-          static_cast<long double>(parsed) >
-              std::numeric_limits<std::size_t>::max() ||
-          std::floor(parsed) != parsed) {
-        diagnostic = Error(
-            token.span, "ratchet count must be a positive addressable integer");
-        return atom;
-      }
-      atom.ratchets = static_cast<std::size_t>(parsed);
     }
-  }
-
-  if (base == 'x' || base == '.')
-    atom.kind = ArticulationKind::Attack;
-  else if (base == '>')
-    atom.kind = ArticulationKind::Slide;
-  else if (base == '_')
-    atom.kind = ArticulationKind::Tie;
-  else if (base == '~')
-    atom.kind = ArticulationKind::Rest;
-  else
-    diagnostic = Error(token.span, "unknown articulation '" + token.text + "'");
-  return atom;
-}
-
-void AppendEuclidean(const Token &token, int pulses, int steps, int rotation,
-                     Sequence &sequence, Diagnostic &diagnostic) {
-  if (pulses < 0 || pulses > steps || steps < 1) {
-    diagnostic =
-        Error(token.span, "Euclidean rhythm requires 0 <= pulses <= steps");
-    return;
-  }
-  for (int step = 0; step < steps; ++step) {
-    const auto rotated =
-        ((static_cast<std::int64_t>(step) + rotation) % steps + steps) % steps;
-    const bool hit = (rotated * pulses) % steps < pulses;
-    ArticulationStep item;
-    item.span = token.span;
-    item.atoms.push_back(
-        {hit ? ArticulationKind::Attack : ArticulationKind::Rest, 1, 1.f,
-         token.span});
-    sequence.articulation.push_back(std::move(item));
-  }
-}
-
-bool AppendArticulationAtoms(const syntax::PatternNode &source,
-                             std::vector<ArticulationAtom> &atoms,
-                             Diagnostic &diagnostic) {
-  const syntax::PatternNode *node = nullptr;
-  std::size_t repetitions = 1;
-  if (!PatternRepeat(source, "articulation", node, repetitions, diagnostic))
-    return false;
-  if (node->kind != syntax::PatternKind::Atom) {
-    diagnostic = Error(node->span, "nested articulation groups are not valid");
-    return false;
-  }
-  const auto atom = ParseArticulationAtom(node->atom, diagnostic);
-  if (!diagnostic.message.empty())
-    return false;
-  for (std::size_t repetition = 0; repetition < repetitions; ++repetition)
-    atoms.push_back(atom);
-  return true;
-}
-
-bool ParseEuclidean(const syntax::PatternNode &node, int &pulses, int &steps,
-                    int &rotation, Diagnostic &diagnostic) {
-  if (node.kind != syntax::PatternKind::Euclidean)
-    return false;
-  if (node.arguments.size() < 2 || node.arguments.size() > 3) {
-    diagnostic = Error(node.span, "expected x(pulses,steps[,rotation])");
-    return true;
-  }
-  auto parse = [](const Token &argument, int &value) {
-    double number = 0.0;
-    if (!ParseNumber(argument.text, number) || std::floor(number) != number ||
-        number < std::numeric_limits<int>::min() ||
-        number > std::numeric_limits<int>::max())
-      return false;
-    value = static_cast<int>(number);
+    sequence.articulation.push_back(std::move(step));
     return true;
   };
-  if (!parse(node.arguments[0], pulses) || !parse(node.arguments[1], steps) ||
-      (node.arguments.size() == 3 && !parse(node.arguments[2], rotation)))
-    diagnostic = Error(node.span, "expected x(pulses,steps[,rotation])");
-  return true;
-}
+  auto compileStep = [&](const syntax::PatternNode &body,
+                         ArticulationStep &step) {
+    step.span = body.span;
+    if (!ParseDurationWeight(body.durationSuffix, step.durationMultiplier,
+                             diagnostic))
+      return false;
+    if (body.kind == syntax::PatternKind::Subdivision) {
+      return AppendFlatGroup(body, sequence, step.atoms, 0.0, 1.0,
+                             nextProbabilityGroup, diagnostic);
+    }
+    if (body.kind == syntax::PatternKind::CycleChoice ||
+        body.kind == syntax::PatternKind::RandomChoice) {
+      PitchItem item;
+      item.choice = body.kind == syntax::PatternKind::CycleChoice
+                        ? PitchItem::Choice::Alternate
+                        : PitchItem::Choice::Random;
+      item.span = body.span;
+      for (const auto &choice : body.children) {
+        const syntax::PatternNode *event = &choice;
+        if (choice.kind == syntax::PatternKind::Subdivision &&
+            choice.children.size() == 1)
+          event = &choice.children.front();
+        if (event->kind != syntax::PatternKind::Event ||
+            event->children.size() != 1) {
+          diagnostic = Error(
+              choice.span,
+              "multi-event random/alternate branches are not yet executable");
+          return false;
+        }
+        if (!event->slidePrefix.text.empty() ||
+            !event->dynamicPrefix.text.empty() ||
+            !event->durationSuffix.text.empty() || !event->arguments.empty() ||
+            !event->ratchetCount.text.empty() ||
+            !event->probability.text.empty() || event->defaultProbability ||
+            !event->repeatCount.text.empty() || !event->attributes.empty()) {
+          diagnostic = Error(
+              event->span,
+              "atomic choices currently require plain pitched alternatives");
+          return false;
+        }
+        ChordValue value;
+        if (!ParsePitchedChoice(event->children.front(), value, diagnostic))
+          return false;
+        item.values.push_back(std::move(value));
+      }
+      sequence.notes.push_back(item);
+      ArticulationAtom atom;
+      atom.span = body.span;
+      atom.pitch = std::move(item);
+      atom.hasPitch = true;
+      atom.probability = body.defaultProbability ? 0.5f : 1.f;
+      if (!body.probability.text.empty()) {
+        double probability = 0.0;
+        if (!ParseNumber(body.probability.text, probability) ||
+            probability < 0.0 || probability > 1.0) {
+          diagnostic = Error(body.probability.span,
+                             "probability must be from 0 to 1");
+          return false;
+        }
+        atom.probability = static_cast<float>(probability);
+      }
+      step.atoms.push_back(std::move(atom));
+      return true;
+    }
+    ArticulationAtom atom;
+    double ignoredWeight = 1.0;
+    if (!ParseAtomicEvent(body, sequence, atom, ignoredWeight, diagnostic))
+      return false;
+    step.durationMultiplier = ignoredWeight;
+    step.atoms.push_back(std::move(atom));
+    return true;
+  };
 
-bool ParseArticulation(const syntax::Pattern &pattern, Sequence &sequence,
-                       Diagnostic &diagnostic) {
   for (const auto &source : pattern.steps) {
-    const syntax::PatternNode *node = nullptr;
-    std::size_t repetitions = 1;
-    if (!PatternRepeat(source, "articulation", node, repetitions, diagnostic))
+    std::size_t copies = 1;
+    if (!ParsePositiveCount(source.repeatCount, "event replication", copies,
+                            diagnostic))
       return false;
-    if (node->kind == syntax::PatternKind::CycleChoice ||
-        node->kind == syntax::PatternKind::RandomChoice) {
-      diagnostic = Error(node->span,
-                         "articulation choices are reserved but not executable "
-                         "in this version");
+    int pulses = 0;
+    int euclideanSteps = 0;
+    int rotation = 0;
+    const bool euclidean = ParseEuclideanSuffix(
+        source, pulses, euclideanSteps, rotation, diagnostic);
+    if (!diagnostic.message.empty())
       return false;
-    }
-    if (node->kind == syntax::PatternKind::Euclidean) {
-      int pulses = 0;
-      int steps = 0;
-      int rotation = 0;
-      const bool euclidean =
-          ParseEuclidean(*node, pulses, steps, rotation, diagnostic);
-      if (!diagnostic.message.empty())
-        return false;
-      if (euclidean) {
-        const Token site{node->atom.text, node->span};
-        for (std::size_t repetition = 0; repetition < repetitions; ++repetition)
-          AppendEuclidean(site, pulses, steps, rotation, sequence, diagnostic);
-        if (!diagnostic.message.empty())
-          return false;
-        continue;
-      }
-    }
-
-    ArticulationStep step;
-    step.span = source.span;
-    if (node->kind == syntax::PatternKind::Subdivision) {
-      for (const auto &child : node->children) {
-        if (!AppendArticulationAtoms(child, step.atoms, diagnostic))
+    auto body = source;
+    body.repeatCount = {};
+    body.arguments.clear();
+    for (std::size_t copy = 0; copy < copies; ++copy) {
+      const int cells = euclidean ? euclideanSteps : 1;
+      for (int cell = 0; cell < cells; ++cell) {
+        ArticulationStep step;
+        if (!euclidean || EuclideanHit(cell, pulses, euclideanSteps, rotation)) {
+          if (!compileStep(body, step))
+            return false;
+        } else {
+          step.span = source.span;
+          ArticulationAtom rest;
+          rest.kind = ArticulationKind::Rest;
+          rest.span = source.span;
+          step.atoms.push_back(std::move(rest));
+        }
+        if (!finishStep(std::move(step)))
           return false;
       }
-    } else if (!AppendArticulationAtoms(*node, step.atoms, diagnostic)) {
-      return false;
     }
-    for (std::size_t repetition = 0; repetition < repetitions; ++repetition)
-      sequence.articulation.push_back(step);
   }
   return true;
 }
@@ -867,35 +1204,28 @@ bool ParseScalars(const syntax::Pattern &pattern,
                   std::vector<ScalarItem> &items, const std::string &lane,
                   Diagnostic &diagnostic) {
   for (const auto &source : pattern.steps) {
-    const syntax::PatternNode *node = nullptr;
     std::size_t repetitions = 1;
-    if (!PatternRepeat(source, lane, node, repetitions, diagnostic))
+    if (!ParsePositiveCount(source.repeatCount, lane + " repetition",
+                            repetitions, diagnostic))
       return false;
-    if (node->kind != syntax::PatternKind::Atom &&
-        node->kind != syntax::PatternKind::Slash) {
+    const auto *node = &source;
+    if (node->kind != syntax::PatternKind::Atom) {
       diagnostic =
           Error(node->span, lane + " grouped patterns are reserved but not "
                                    "executable in this version");
       return false;
     }
-    Token reconstructed;
     const Token *scalarToken = &node->atom;
-    if (node->kind == syntax::PatternKind::Slash) {
-      reconstructed = {PatternNodeText(*node), node->span};
-      scalarToken = &reconstructed;
-    }
     ScalarItem item;
     item.span = source.span;
     if (scalarToken->text == ".") {
       item.isDefault = true;
-    } else if (lane == "accent" && scalarToken->text == "+") {
-      item.value = 0.88f;
-    } else if (lane == "accent" && scalarToken->text == "++") {
-      item.value = 1.f;
-    } else if (lane == "slide" && scalarToken->text == ">") {
-      item.value = 0.25f;
     } else {
       std::string number = scalarToken->text;
+      if (number.size() >= 2 && number.substr(number.size() - 2) == "ms") {
+        item.isMilliseconds = true;
+        number.resize(number.size() - 2);
+      }
       if (!number.empty() && number.front() == '.')
         number.insert(number.begin(), '0');
       double parsed = 0.0;
@@ -911,9 +1241,14 @@ bool ParseScalars(const syntax::Pattern &pattern,
           source.span, lane + " value is outside the supported numeric range");
       return false;
     }
+    if (!item.isDefault && item.isMilliseconds && lane != "gate" &&
+        lane != "slide" && lane != "offset") {
+      diagnostic = Error(source.span, lane + " does not accept milliseconds");
+      return false;
+    }
     if (!item.isDefault &&
         (lane == "velocity" || lane == "vel" || lane == "accent" ||
-         lane == "gate") &&
+         (lane == "gate" && !item.isMilliseconds)) &&
         (item.value < 0.f || item.value > 1.f)) {
       diagnostic = Error(source.span, lane + " must be from 0 to 1");
       return false;
@@ -923,8 +1258,10 @@ bool ParseScalars(const syntax::Pattern &pattern,
       diagnostic = Error(source.span, "duration must be positive");
       return false;
     }
-    if (!item.isDefault && lane == "slide" && item.value < 0.f) {
-      diagnostic = Error(source.span, "slide must be non-negative");
+    if (!item.isDefault &&
+        ((lane == "gate" && item.isMilliseconds) || lane == "slide") &&
+        item.value < 0.f) {
+      diagnostic = Error(source.span, lane + " must be non-negative");
       return false;
     }
     if (!item.isDefault && lane == "ratchet" &&
@@ -952,7 +1289,6 @@ bool ParseScalars(const syntax::Pattern &pattern,
 
 enum class LaneValueKind {
   Notes,
-  Articulation,
   Scalar,
   Cycle,
   Tonic,
@@ -968,13 +1304,9 @@ struct LaneSpec {
   bool acceptsPipelines;
 };
 
-constexpr std::array<LaneSpec, 16> LaneSpecs{{
+constexpr std::array<LaneSpec, 15> LaneSpecs{{
     {"notes", "notes", LaneValueKind::Notes, CursorLane::Notes, true},
     {"octave", "octave", LaneValueKind::Scalar, CursorLane::Octave, true},
-    {"articulation", "articulation", LaneValueKind::Articulation,
-     CursorLane::Articulation, true},
-    {"art", "articulation", LaneValueKind::Articulation,
-     CursorLane::Articulation, true},
     {"velocity", "velocity", LaneValueKind::Scalar, CursorLane::Velocity, true},
     {"vel", "velocity", LaneValueKind::Scalar, CursorLane::Velocity, true},
     {"accent", "accent", LaneValueKind::Scalar, CursorLane::Accent, true},
@@ -983,6 +1315,7 @@ constexpr std::array<LaneSpec, 16> LaneSpecs{{
     {"gate", "gate", LaneValueKind::Scalar, CursorLane::Gate, true},
     {"slide", "slide", LaneValueKind::Scalar, CursorLane::Slide, true},
     {"ratchet", "ratchet", LaneValueKind::Scalar, CursorLane::Ratchet, true},
+    {"offset", "offset", LaneValueKind::Scalar, CursorLane::Offset, true},
     {"cycle", "cycle", LaneValueKind::Cycle, CursorLane::Sequence, false},
     {"tonic", "tonic", LaneValueKind::Tonic, CursorLane::Sequence, false},
     {"scale", "scale", LaneValueKind::Scale, CursorLane::Sequence, false},
@@ -1045,7 +1378,7 @@ struct TransformSpec {
   TransformDomain domain;
 };
 
-constexpr std::array<TransformSpec, 13> TransformSpecs{{
+constexpr std::array<TransformSpec, 14> TransformSpecs{{
     {"rev", TransformKind::Reverse, TransformArgumentKind::None,
      TransformDomain::General},
     {"reverse", TransformKind::Reverse, TransformArgumentKind::None,
@@ -1072,6 +1405,8 @@ constexpr std::array<TransformSpec, 13> TransformSpecs{{
      TransformDomain::Timing},
     {"late", TransformKind::Late, TransformArgumentKind::Timing,
      TransformDomain::Timing},
+    {"rate", TransformKind::Rate, TransformArgumentKind::PositiveNumber,
+     TransformDomain::Phase},
 }};
 
 const TransformSpec *FindTransformSpec(const std::string &operation) {
@@ -1223,7 +1558,11 @@ std::vector<int> ScaleIntervals(const std::string &name) {
 }
 
 std::string PatternNodeText(const syntax::PatternNode &node) {
-  if (node.kind == syntax::PatternKind::Atom)
+  if (node.kind == syntax::PatternKind::Atom ||
+      node.kind == syntax::PatternKind::NamedPitch ||
+      node.kind == syntax::PatternKind::ScaleDegree ||
+      node.kind == syntax::PatternKind::JazzChord ||
+      node.kind == syntax::PatternKind::RomanChord)
     return node.atom.text;
   if (node.kind == syntax::PatternKind::Voicing) {
     std::string text = "(";
@@ -1239,19 +1578,6 @@ std::string PatternNodeText(const syntax::PatternNode &node) {
       return {};
     return PatternNodeText(node.children[0]) + "/" +
            PatternNodeText(node.children[1]);
-  }
-  if (node.kind == syntax::PatternKind::Repeat)
-    return node.children.empty() ? std::string{}
-                                 : PatternNodeText(node.children.front()) +
-                                       "!" + node.repeatCount.text;
-  if (node.kind == syntax::PatternKind::Euclidean) {
-    std::string text = node.atom.text + "(";
-    for (std::size_t index = 0; index < node.arguments.size(); ++index) {
-      if (index != 0)
-        text += ',';
-      text += node.arguments[index].text;
-    }
-    return text + ")";
   }
   const char open = node.kind == syntax::PatternKind::CycleChoice ? '<' : '[';
   const char close = node.kind == syntax::PatternKind::CycleChoice ? '>' : ']';
@@ -1294,6 +1620,7 @@ bool ParsePipelines(const std::vector<syntax::Pipeline> &pipelines,
       return false;
     const bool pitchTransform = transform.domain == TransformDomain::Pitch;
     const bool timingTransform = transform.domain == TransformDomain::Timing;
+    const bool phaseTransform = transform.domain == TransformDomain::Phase;
     if (target != CursorLane::Sequence &&
         ((pitchTransform && target != CursorLane::Notes) || timingTransform)) {
       diagnostic =
@@ -1304,7 +1631,82 @@ bool ParsePipelines(const std::vector<syntax::Pipeline> &pipelines,
                                       " only applies to the notes lane");
       return false;
     }
+    if (target == CursorLane::Sequence && phaseTransform) {
+      diagnostic = Error(pipeline.operation.span,
+                         "rate is lane-local; use fast or slow for a whole "
+                         "sequence");
+      return false;
+    }
+    if (target == CursorLane::Notes && phaseTransform) {
+      diagnostic = Error(pipeline.operation.span,
+                         "use brackets for local note density or fast/slow "
+                         "for the complete sequence");
+      return false;
+    }
     transforms.push_back(transform);
+  }
+  return true;
+}
+
+bool ParseCvPipelines(const std::vector<syntax::Pipeline> &pipelines,
+                      Sequence &sequence, std::size_t cvIndex,
+                      CursorLane target, Diagnostic &diagnostic) {
+  for (const auto &pipeline : pipelines) {
+    if (pipeline.operation.text != "interp") {
+      if (!ParsePipelines({pipeline},
+                          sequence.transforms[static_cast<std::size_t>(target)],
+                          target, diagnostic))
+        return false;
+      continue;
+    }
+    if (pipeline.condition != syntax::Pipeline::Condition::Always ||
+        pipeline.arguments.empty() || pipeline.arguments.size() > 2) {
+      diagnostic = Error(
+          pipeline.operation.span,
+          "interp requires MODE or power POSITIVE_NUMBER and is unconditional");
+      return false;
+    }
+    const auto &mode = pipeline.arguments.front();
+    if (mode.text == "step" && pipeline.arguments.size() == 1) {
+      sequence.cvInterpolation[cvIndex] = CvInterpolation::Step;
+    } else if (mode.text == "linear" && pipeline.arguments.size() == 1) {
+      sequence.cvInterpolation[cvIndex] = CvInterpolation::Linear;
+    } else if (mode.text == "smooth" && pipeline.arguments.size() == 1) {
+      sequence.cvInterpolation[cvIndex] = CvInterpolation::Smooth;
+    } else if (mode.text == "power" && pipeline.arguments.size() == 2) {
+      double power = 0.0;
+      if (!ParseNumber(pipeline.arguments[1].text, power) || power <= 0.0 ||
+          !std::isfinite(power)) {
+        diagnostic = Error(pipeline.arguments[1].span,
+                           "interp power requires a positive finite exponent");
+        return false;
+      }
+      sequence.cvInterpolation[cvIndex] = CvInterpolation::Power;
+      sequence.cvPower[cvIndex] = power;
+    } else {
+      diagnostic = Error(mode.span,
+                         "interp mode must be step, linear, smooth, or power P");
+      return false;
+    }
+  }
+  return true;
+}
+
+bool ValidateRomanCardinality(const Sequence &sequence,
+                              Diagnostic &diagnostic) {
+  for (const auto &item : sequence.notes) {
+    for (const auto &choice : item.values) {
+      if (choice.meaning != ChordValue::Meaning::RomanSymbol)
+        continue;
+      if (choice.romanRoot.degree < 1 ||
+          static_cast<std::size_t>(choice.romanRoot.degree) >
+              sequence.scale.intervals.size()) {
+        diagnostic = Error(
+            choice.romanRoot.span,
+            "Roman chord degree exceeds the active scale cardinality");
+        return false;
+      }
+    }
   }
   return true;
 }
@@ -1333,6 +1735,11 @@ bool ApplySequencePipelines(const std::vector<syntax::Pipeline> &pipelines,
     Transform transform;
     if (!ParseTransform(pipeline, transform, diagnostic))
       return false;
+    if (transform.domain == TransformDomain::Phase) {
+      diagnostic = Error(pipeline.operation.span,
+                         "rate is lane-local and cannot transform a sequence");
+      return false;
+    }
     if (transform.kind == TransformKind::ModulateDegree)
       transform.modulationIntervals = sequence.scale.intervals;
     const bool timingTransform = transform.domain == TransformDomain::Timing;
@@ -1345,14 +1752,15 @@ bool ApplySequencePipelines(const std::vector<syntax::Pipeline> &pipelines,
           .push_back(transform);
     } else {
       for (auto lane :
-           {CursorLane::Notes, CursorLane::Articulation, CursorLane::Octave,
+           {CursorLane::Notes, CursorLane::Octave,
             CursorLane::Velocity, CursorLane::Accent, CursorLane::Duration,
-            CursorLane::Gate, CursorLane::Slide, CursorLane::Ratchet})
+            CursorLane::Gate, CursorLane::Slide, CursorLane::Ratchet,
+            CursorLane::Offset, CursorLane::Cv1, CursorLane::Cv2})
         sequence.transforms[static_cast<std::size_t>(lane)].push_back(
             transform);
     }
   }
-  return true;
+  return ValidateRomanCardinality(sequence, diagnostic);
 }
 
 bool CheckedMultiply(std::size_t left, std::size_t right, std::size_t &result) {
@@ -1378,8 +1786,18 @@ bool PrepareWorkspaces(CompiledProgram &program, Diagnostic &diagnostic) {
     double sequenceLateMilliseconds = 0.0;
     for (const auto &transform :
          sequence.transforms[static_cast<std::size_t>(CursorLane::Sequence)]) {
-      if (transform.kind == TransformKind::Fast)
-        fastestScale /= transform.number;
+      if (transform.kind == TransformKind::Fast ||
+          transform.kind == TransformKind::Slow) {
+        const double factor = transform.kind == TransformKind::Fast
+                                  ? 1.0 / transform.number
+                                  : transform.number;
+        const bool alwaysEnabled =
+            transform.condition == TransformCondition::Always ||
+            (transform.condition == TransformCondition::Every &&
+             transform.period == 1);
+        if (alwaysEnabled || factor < 1.0)
+          fastestScale *= factor;
+      }
       if (transform.kind == TransformKind::Early) {
         if (transform.timeUnit == TimeUnit::Beats)
           sequenceEarlyBeats += transform.number;
@@ -1397,12 +1815,36 @@ bool PrepareWorkspaces(CompiledProgram &program, Diagnostic &diagnostic) {
                          "combined fast factors create an invalid event rate");
       return false;
     }
-    maximumEarlyBeats = std::max(maximumEarlyBeats, sequenceEarlyBeats);
-    maximumEarlyMilliseconds =
-        std::max(maximumEarlyMilliseconds, sequenceEarlyMilliseconds);
-    maximumLateBeats = std::max(maximumLateBeats, sequenceLateBeats);
-    maximumLateMilliseconds =
-        std::max(maximumLateMilliseconds, sequenceLateMilliseconds);
+    double offsetEarlyBeats = 0.0;
+    double offsetEarlyMilliseconds = 0.0;
+    double offsetLateBeats = 0.0;
+    double offsetLateMilliseconds = 0.0;
+    for (const auto &item : sequence.offset) {
+      if (item.isDefault)
+        continue;
+      if (item.isMilliseconds) {
+        if (item.value < 0.0)
+          offsetEarlyMilliseconds =
+              std::max(offsetEarlyMilliseconds, -item.value);
+        else
+          offsetLateMilliseconds =
+              std::max(offsetLateMilliseconds, item.value);
+      } else if (item.value < 0.0) {
+        offsetEarlyBeats = std::max(offsetEarlyBeats, -item.value);
+      } else {
+        offsetLateBeats = std::max(offsetLateBeats, item.value);
+      }
+    }
+    maximumEarlyBeats =
+        std::max(maximumEarlyBeats, sequenceEarlyBeats + offsetEarlyBeats);
+    maximumEarlyMilliseconds = std::max(
+        maximumEarlyMilliseconds,
+        sequenceEarlyMilliseconds + offsetEarlyMilliseconds);
+    maximumLateBeats =
+        std::max(maximumLateBeats, sequenceLateBeats + offsetLateBeats);
+    maximumLateMilliseconds = std::max(
+        maximumLateMilliseconds,
+        sequenceLateMilliseconds + offsetLateMilliseconds);
     std::size_t maximumLaneRatchet = 1;
     for (const auto &item : sequence.ratchet) {
       if (!item.isDefault)
@@ -1437,7 +1879,10 @@ bool PrepareWorkspaces(CompiledProgram &program, Diagnostic &diagnostic) {
         maximumVoices =
             std::max(maximumVoices,
                      std::min<std::size_t>(MaximumPolyphony,
-                                           choice.voices.size() +
+                                           (choice.meaning ==
+                                                    ChordValue::Meaning::RomanSymbol
+                                                ? choice.intervals.size()
+                                                : choice.voices.size()) +
                                                (choice.hasBass ? 1u : 0u)));
       }
     }
@@ -1447,13 +1892,27 @@ bool PrepareWorkspaces(CompiledProgram &program, Diagnostic &diagnostic) {
     }
     maximumEvents = std::max(maximumEvents, sequenceMaximum);
 
+    double shortestDurationLaneValue = 1.0;
     for (const auto &item : sequence.duration) {
       const double value = item.isDefault ? 1.0 : item.value;
       if (value > 0.0)
-        minimumDuration = std::min(minimumDuration, value * fastestScale);
+        shortestDurationLaneValue =
+            std::min(shortestDurationLaneValue, value);
     }
-    if (sequence.duration.empty())
-      minimumDuration = std::min(minimumDuration, fastestScale);
+    double shortestStepMultiplier = 1.0;
+    for (const auto &step : sequence.articulation) {
+      shortestStepMultiplier =
+          std::min(shortestStepMultiplier, step.durationMultiplier);
+    }
+    const double shortestPreparedStep =
+        shortestDurationLaneValue * shortestStepMultiplier * fastestScale;
+    if (!std::isfinite(shortestPreparedStep) || shortestPreparedStep <= 0.0) {
+      diagnostic =
+          Error(sequence.nameSpan,
+                "combined duration and time factors create an invalid event rate");
+      return false;
+    }
+    minimumDuration = std::min(minimumDuration, shortestPreparedStep);
   }
 
   const double preparedEarlyBeats =
@@ -1548,6 +2007,13 @@ CompileResult CompileDocument(const syntax::Document &document) {
       continue;
     }
     if (const auto *assignment = std::get_if<syntax::Assignment>(&statement)) {
+      if (IsReservedCvName(assignment->name.text)) {
+        result.diagnostic = Error(
+            assignment->name.span,
+            assignment->name.text +
+                " is reserved for a future typed signal assignment");
+        return result;
+      }
       if (assignments.find(assignment->name.text) != assignments.end() ||
           names.find(assignment->name.text) != names.end()) {
         result.diagnostic =
@@ -1565,16 +2031,55 @@ CompileResult CompileDocument(const syntax::Document &document) {
       continue;
     Sequence sequence;
     sequence.name = definition->name.text;
+    if (IsReservedCvName(sequence.name)) {
+      result.diagnostic = Error(
+          definition->name.span,
+          sequence.name + " is reserved for CV lanes and signal values");
+      return result;
+    }
     sequence.stableId = StableDefinitionId(sequence.name);
     sequence.nameSpan = definition->name.span;
+    std::array<SourceSpan, static_cast<std::size_t>(CursorLane::Count)>
+        alignmentSpans{};
+    std::array<syntax::Pattern::Alignment,
+               static_cast<std::size_t>(CursorLane::Count)>
+        alignmentModes{};
+    std::unordered_set<std::string> seenLanes;
     for (const auto &lane : definition->lanes) {
       const std::string laneName = lane.name.text;
       const std::string laneValue = LaneText(lane);
       const SourceSpan valueSpan = LaneValueSpan(lane);
+      LaneSpec cvSpec{};
+      std::size_t cvIndex = 0;
+      const bool isCv = lane.kind == syntax::Lane::Kind::Cv;
       const LaneSpec *laneSpec = FindLaneSpec(laneName);
+      if (isCv) {
+        errno = 0;
+        char *end = nullptr;
+        const auto parsed = std::strtoull(laneName.c_str() + 2, &end, 10);
+        if (errno == ERANGE || end != laneName.c_str() + laneName.size() ||
+            parsed < 1 || parsed > 2) {
+          result.diagnostic =
+              Error(lane.name.span,
+                    "this module currently provides only cv1 and cv2");
+          return result;
+        }
+        cvIndex = static_cast<std::size_t>(parsed - 1);
+        cvSpec = {laneName.c_str(), laneName.c_str(), LaneValueKind::Scalar,
+                  cvIndex == 0 ? CursorLane::Cv1 : CursorLane::Cv2, true};
+        laneSpec = &cvSpec;
+      }
       if (!laneSpec) {
         result.diagnostic =
             Error(lane.name.span, "unknown sequence lane '" + laneName + "'");
+        return result;
+      }
+      const std::string canonicalLane =
+          isCv ? laneName : std::string(laneSpec->canonical);
+      if (!seenLanes.insert(canonicalLane).second) {
+        result.diagnostic =
+            Error(lane.name.span, "duplicate sequence lane '" +
+                                      canonicalLane + "'");
         return result;
       }
       if (!laneSpec->acceptsPipelines && !lane.pipelines.empty()) {
@@ -1631,8 +2136,6 @@ CompileResult CompileDocument(const syntax::Document &document) {
       bool ok = true;
       if (laneSpec->valueKind == LaneValueKind::Notes) {
         ok = ParseNotes(lane.pattern, sequence, result.diagnostic);
-      } else if (laneSpec->valueKind == LaneValueKind::Articulation) {
-        ok = ParseArticulation(lane.pattern, sequence, result.diagnostic);
       } else {
         auto *items = &sequence.accent;
         if (parsedLane == CursorLane::Octave)
@@ -1647,20 +2150,139 @@ CompileResult CompileDocument(const syntax::Document &document) {
           items = &sequence.slide;
         else if (parsedLane == CursorLane::Ratchet)
           items = &sequence.ratchet;
+        else if (parsedLane == CursorLane::Offset)
+          items = &sequence.offset;
+        else if (parsedLane == CursorLane::Cv1)
+          items = &sequence.cv[0];
+        else if (parsedLane == CursorLane::Cv2)
+          items = &sequence.cv[1];
         ok = ParseScalars(lane.pattern, *items, laneSpec->canonical,
                           result.diagnostic);
+        if (lane.pattern.alignment != syntax::Pattern::Alignment::Free) {
+          sequence.aligned[static_cast<std::size_t>(parsedLane)] = true;
+          alignmentSpans[static_cast<std::size_t>(parsedLane)] =
+              lane.pattern.span;
+          alignmentModes[static_cast<std::size_t>(parsedLane)] =
+              lane.pattern.alignment;
+        }
       }
-      if (!ok || !ParsePipelines(
+      const bool pipelinesOk =
+          isCv ? ParseCvPipelines(lane.pipelines, sequence, cvIndex, parsedLane,
+                                  result.diagnostic)
+               : ParsePipelines(
                      lane.pipelines,
                      sequence.transforms[static_cast<std::size_t>(parsedLane)],
-                     parsedLane, result.diagnostic))
+                     parsedLane, result.diagnostic);
+      if (!ok || !pipelinesOk)
         return result;
+      if ((parsedLane == CursorLane::Offset || parsedLane == CursorLane::Cv1 ||
+           parsedLane == CursorLane::Cv2) &&
+          lane.pattern.alignment == syntax::Pattern::Alignment::Free) {
+        auto &transforms =
+            sequence.transforms[static_cast<std::size_t>(parsedLane)];
+        if (std::none_of(transforms.begin(), transforms.end(),
+                         [](const Transform &transform) {
+                           return transform.kind == TransformKind::Rate;
+                         })) {
+          Transform unitRate;
+          unitRate.kind = TransformKind::Rate;
+          unitRate.domain = TransformDomain::Phase;
+          unitRate.number = 1.0;
+          unitRate.span = lane.pattern.span;
+          transforms.push_back(unitRate);
+        }
+      }
     }
 
-    if (sequence.notes.empty()) {
+    if (sequence.articulation.empty()) {
       result.diagnostic =
           Error(sequence.nameSpan, "sequence requires a notes lane");
       return result;
+    }
+    if (!ValidateRomanCardinality(sequence, result.diagnostic))
+      return result;
+    if (!sequence.ratchet.empty()) {
+      for (const auto &step : sequence.articulation) {
+        const auto duplicate = std::find_if(
+            step.atoms.begin(), step.atoms.end(),
+            [](const ArticulationAtom &atom) { return atom.ratchets > 1; });
+        if (duplicate != step.atoms.end()) {
+          result.diagnostic = Error(
+              duplicate->span,
+              "inline *N ratchet cannot be combined with a ratchet lane");
+          return result;
+        }
+      }
+    }
+    std::size_t structuralCells = 0;
+    for (const auto &step : sequence.articulation) {
+      if (structuralCells > std::numeric_limits<std::size_t>::max() -
+                                step.cellCount) {
+        result.diagnostic =
+            Error(step.span, "note pattern has too many structural cells");
+        return result;
+      }
+      structuralCells += step.cellCount;
+    }
+    auto alignLane = [&](CursorLane lane, std::vector<ScalarItem> &items) {
+      const auto index = static_cast<std::size_t>(lane);
+      if (!sequence.aligned[index])
+        return true;
+      if (items.size() > structuralCells) {
+        result.diagnostic = Error(alignmentSpans[index],
+                                  "aligned lane has more values than notes");
+        return false;
+      }
+      ScalarItem inherited;
+      inherited.isDefault = true;
+      inherited.span = alignmentSpans[index];
+      const auto padding = structuralCells - items.size();
+      const bool right = alignmentModes[index] ==
+                         syntax::Pattern::Alignment::Right;
+      if (right)
+        items.insert(items.begin(), padding, inherited);
+      else
+        items.insert(items.end(), padding, inherited);
+      return true;
+    };
+    if (!alignLane(CursorLane::Octave, sequence.octave) ||
+        !alignLane(CursorLane::Velocity, sequence.velocity) ||
+        !alignLane(CursorLane::Accent, sequence.accent) ||
+        !alignLane(CursorLane::Duration, sequence.duration) ||
+        !alignLane(CursorLane::Gate, sequence.gate) ||
+        !alignLane(CursorLane::Slide, sequence.slide) ||
+        !alignLane(CursorLane::Ratchet, sequence.ratchet) ||
+        !alignLane(CursorLane::Offset, sequence.offset) ||
+        !alignLane(CursorLane::Cv1, sequence.cv[0]) ||
+        !alignLane(CursorLane::Cv2, sequence.cv[1]))
+      return result;
+    for (const auto lane : {CursorLane::Octave, CursorLane::Velocity,
+                            CursorLane::Accent, CursorLane::Duration,
+                            CursorLane::Gate, CursorLane::Slide,
+                            CursorLane::Ratchet, CursorLane::Offset,
+                            CursorLane::Cv1, CursorLane::Cv2}) {
+      if (!sequence.aligned[static_cast<std::size_t>(lane)])
+        continue;
+      if ((lane == CursorLane::Cv1 || lane == CursorLane::Cv2) &&
+          sequence.cvInterpolation[lane == CursorLane::Cv1 ? 0 : 1] !=
+              CvInterpolation::Step) {
+        result.diagnostic = Error(
+            alignmentSpans[static_cast<std::size_t>(lane)],
+            "continuous interpolation is not yet supported on an "
+            "edge-aligned CV lane");
+        return result;
+      }
+      const auto &transforms =
+          sequence.transforms[static_cast<std::size_t>(lane)];
+      if (std::any_of(transforms.begin(), transforms.end(),
+                      [](const Transform &transform) {
+                        return transform.kind == TransformKind::Rate;
+                      })) {
+        result.diagnostic = Error(
+            alignmentSpans[static_cast<std::size_t>(lane)],
+            "rate cannot be combined with an edge-aligned lane");
+        return result;
+      }
     }
     for (auto &transform :
          sequence.transforms[static_cast<std::size_t>(CursorLane::Notes)]) {
@@ -1721,8 +2343,15 @@ CompileResult CompileDocument(const syntax::Document &document) {
                 *term.group, label + "$group" + std::to_string(generatedName++),
                 false, termParts))
           return false;
-      } else if (!resolveName(term.name.text, term.name.span, termParts)) {
-        return false;
+      } else {
+        if (!resolveName(term.name.text, term.name.span, termParts))
+          return false;
+        // A named arrangement is an abstraction boundary for playback
+        // feedback. Its expanded parts must point at the caller's term rather
+        // than leaking spans from the referenced definition. Explicit groups
+        // deliberately retain their inner term spans.
+        for (auto &part : termParts)
+          part.span = term.name.span;
       }
       if (term.repeats < 1) {
         result.diagnostic =
@@ -1862,14 +2491,26 @@ CompileResult CompileDocument(const syntax::Document &document) {
 } // namespace
 
 CompileResult Compile(const syntax::Document &document) {
-  return CompileDocument(document);
+  try {
+    return CompileDocument(document);
+  } catch (const std::bad_alloc &) {
+    return {nullptr, {"not enough memory to compile this program", 1, 1}};
+  } catch (const std::length_error &) {
+    return {nullptr, {"program exceeds addressable memory", 1, 1}};
+  }
 }
 
 CompileResult Compile(const std::string &source) {
-  auto parsed = syntax::Parse(source);
-  if (!parsed)
-    return {nullptr, parsed.diagnostic};
-  return Compile(parsed.document);
+  try {
+    auto parsed = syntax::Parse(source);
+    if (!parsed)
+      return {nullptr, parsed.diagnostic};
+    return Compile(parsed.document);
+  } catch (const std::bad_alloc &) {
+    return {nullptr, {"not enough memory to parse this program", 1, 1}};
+  } catch (const std::length_error &) {
+    return {nullptr, {"program exceeds addressable memory", 1, 1}};
+  }
 }
 
 } // namespace tfseq

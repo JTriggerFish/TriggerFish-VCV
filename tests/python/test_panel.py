@@ -53,9 +53,12 @@ def test_prog_sequencer_has_three_valid_3u_widths_with_outlined_runtime_text():
     assert "SplitPatternChildren" not in parser_source
     assert "ReadPatternNode" not in parser_source
     assert "SplitChordTones" not in compiler_source
-    assert "PatternElement <-" in parser_source
-    assert "VoicingTone" in parser_source
+    assert "NoteElement     <-" in parser_source
+    assert "ExplicitVoicing" in parser_source
     assert "SlashSuffix" in parser_source
+    assert "ParseArticulation(" not in compiler_source
+    assert "CV1_OUTPUT" in module_source
+    assert "CV2_OUTPUT" in module_source
     assert "stateTransferOrder" in runtime_source
     assert "activationCheckpointBeat" in module_source
     assert "activationNextStepBeat" in module_source
@@ -75,6 +78,8 @@ def test_prog_sequencer_has_three_valid_3u_widths_with_outlined_runtime_text():
         assert not runtime.findall(f".//{SVG}text")
         labels = {node.text: node for node in source.findall(f".//{SVG}text")}
         assert labels["TRIGGERFISH"].attrib["y"] == labels["PROG SEQUENCER"].attrib["y"]
+        assert labels["CV1"].attrib["y"] == "328"
+        assert labels["CV2"].attrib["y"] == "356"
 
 
 def test_room_reverb_tooltips_use_physical_units():
@@ -544,6 +549,8 @@ def test_readme_and_technical_report_local_links_resolve():
     link_pattern = re.compile(r"\[[^]]*\]\(([^)]+)\)|(?:src|href)=\"([^\"]+)\"")
     for document in documents:
         source = document.read_text(encoding="utf-8")
+        source = re.sub(r"```.*?```", "", source, flags=re.DOTALL)
+        source = re.sub(r"`[^`\n]*`", "", source)
         for match in link_pattern.finditer(source):
             target = next(value for value in match.groups() if value)
             if target.startswith(("#", "http://", "https://")):

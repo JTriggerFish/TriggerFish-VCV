@@ -11,10 +11,12 @@
 namespace tfdsp {
 
 // A deliberately diffuse octave shifter for use inside a reverb feedback
-// path. Eight staggered grains avoid the exposed two-head crossfade of a
-// conventional delay-line shifter. Each new grain gets a small, deterministic
-// random look-back offset and pitch offset, turning a fixed comb of modulation
-// sidebands into a quiet, decorrelated skirt.
+// path. Eight uniformly staggered grains avoid the exposed two-head crossfade
+// of a conventional delay-line shifter. Their equal durations preserve that
+// spacing (and therefore a constant overlap sum); each restart gets only a
+// small deterministic random look-back and pitch offset, turning a fixed comb
+// of modulation sidebands into a quiet, decorrelated skirt without allowing
+// grain phases to bunch together and expose clicks.
 //
 // An eighth-order Butterworth low-pass precedes the grain buffer. Its cutoff is
 // derived from the +12-semitone ratio so out-of-band input cannot repeatedly
@@ -72,6 +74,20 @@ public:
   }
 
   float Process(const float input) noexcept {
+    return ProcessInternal(input, true);
+  }
+
+  // Keep the input history, anti-alias filters, grain phases and deterministic
+  // random sequence current without paying for interpolated grain reads and
+  // window evaluation. This makes a zero-gain shimmer branch cheap while
+  // allowing it to become audible immediately when its gain is raised.
+  void Advance(const float input) noexcept { ProcessInternal(input, false); }
+
+  double SampleRate() const noexcept { return sampleRate_; }
+  float WindowSamples() const noexcept { return windowSamples_; }
+
+private:
+  float ProcessInternal(const float input, const bool render) noexcept {
     if (buffer_.empty())
       return 0.f;
 
@@ -83,9 +99,11 @@ public:
     float output = 0.f;
     float windowSum = 0.f;
     for (auto &grain : grains_) {
-      const float window = Hann(grain.phase);
-      output += window * Read(grain.delaySamples);
-      windowSum += window;
+      if (render) {
+        const float window = Hann(grain.phase);
+        output += window * Read(grain.delaySamples);
+        windowSum += window;
+      }
 
       grain.delaySamples -= grain.pitchRatio - 1.f;
       const float nextPhase = grain.phase + 1.f / grain.durationSamples;
@@ -97,18 +115,14 @@ public:
 
     if (++writeIndex_ == buffer_.size())
       writeIndex_ = 0;
+    if (!render)
+      return 0.f;
     output /= std::max(windowSum, 1.e-6f);
     return std::isfinite(output) ? output : 0.f;
   }
-
-  double SampleRate() const noexcept { return sampleRate_; }
-  float WindowSamples() const noexcept { return windowSamples_; }
-
-private:
   static constexpr float Pi = 3.14159265358979323846f;
   static constexpr float MinimumDelaySamples = 4.f;
   static constexpr float PitchWanderCents = 3.f;
-  static constexpr float GrainDurationJitter = 0.08f;
 
   struct Biquad {
     float b0{1.f};
@@ -175,8 +189,7 @@ private:
   void StartGrain(Grain &grain, const float phase) noexcept {
     const float cents = PitchWanderCents * BipolarRandom();
     grain.pitchRatio = 2.f * std::exp2(cents / 1200.f);
-    grain.durationSamples =
-        windowSamples_ * (1.f + GrainDurationJitter * BipolarRandom());
+    grain.durationSamples = windowSamples_;
     grain.phase = phase;
     const float jitter = lookbackJitterSamples_ * BipolarRandom();
     const float elapsed = phase * grain.durationSamples;

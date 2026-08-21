@@ -609,6 +609,14 @@ public:
   }
 
   double SampleRate() const noexcept { return sampleRate_; }
+  void SetLateReverbFlavour(const LateReverbFlavour flavour) noexcept {
+    late_.SetFlavour(flavour);
+  }
+  void SetLateReverbFlavourImmediate(
+      const LateReverbFlavour flavour) noexcept {
+    late_.SetFlavourImmediate(flavour);
+  }
+  LateReverbFlavour LateFlavour() const noexcept { return late_.Flavour(); }
   bool HasSubmittedScene() const noexcept { return hasSubmittedScene_; }
 
   bool WaitForLatestScene(const std::chrono::milliseconds timeout) {

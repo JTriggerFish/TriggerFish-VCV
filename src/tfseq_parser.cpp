@@ -6,7 +6,6 @@
 #include <cstdlib>
 #include <limits>
 #include <memory>
-#include <string_view>
 #include <type_traits>
 #include <unordered_set>
 
@@ -17,65 +16,123 @@ constexpr const char *Grammar = R"PEG(
   Document    <- (Sequence / Play / Stop / Seed / Assignment / BlankLine)* Trailing End
 
   Sequence    <- H Identifier H '=' H 'sequence' H '{' H Comment? Newline
-                 (Lane / BodyContinuation / BlankLine)*
+                 (NotesLane / ScalarLane / CvLane / SettingLine /
+                  BodyContinuation / BlankLine)*
                  H '}' H Comment? LineEnd SequenceContinuation*
   Play        <- H 'play' S Identifier H Comment? LineEnd
   Stop        <- H < 'stop' > H Comment? LineEnd
-  Seed        <- H 'seed' S ValueText H Comment? LineEnd
+  Seed        <- H 'seed' S UnsignedInteger H Comment? LineEnd
   Assignment  <- H Identifier H '=' H Expression H Comment? LineEnd
+                 AssignmentContinuation*
 
-  Lane         <- H Identifier S Pattern (H Pipeline)* H Comment? LineEnd
+  NotesLane    <- H NotesLaneName S NotePattern (H Pipeline)* H Comment? LineEnd
+  ScalarLane   <- H ScalarLaneName S ScalarPattern (H Pipeline)* H Comment? LineEnd
+  CvLane       <- H CvLaneName S ScalarPattern (H Pipeline)* H Comment? LineEnd
+  SettingLine  <- H SettingName S SettingValue H Comment? LineEnd
+  NotesLaneName  <- < 'notes' >
+  ScalarLaneName <- < 'octave' / 'velocity' / 'vel' / 'accent' /
+                      'duration' / 'dur' / 'gate' / 'slide' / 'ratchet' /
+                      'offset' >
+  CvLaneName     <- < 'cv' PositiveInteger >
+  SettingName    <- < 'cycle' / 'tonic' / 'scale' / 'glide' >
   BodyContinuation     <- H Pipeline (H Pipeline)* H Comment? LineEnd
   SequenceContinuation <- H Pipeline (H Pipeline)* H Comment? LineEnd
-  Pattern        <- PatternElement (S PatternElement)*
-  PatternElement <- (CycleChoice / BracketGroup / Euclidean / TopValue) Repeat?
+  AssignmentContinuation <- H Pipeline (H Pipeline)* H Comment? LineEnd
 
-  CycleChoice <- '<' H CycleElement (S CycleElement)* H '>'
-  CycleElement <- (CycleChoice / BracketGroup / Euclidean / CycleValue) Repeat?
-  CycleValue   <- (Voicing / CycleAtom) SlashSuffix?
-  CycleAtom    <- < (Paren / CycleAtomChar)+ >
-  CycleAtomChar <- !('[' / '<' / '(' / '/' / ']' / '>' / ')' / '!' / '|' /
-                     HChar / CommentStart / Pipe / Newline) .
+  NotePattern     <- NoteElement (S NoteElement)*
+  NoteElement     <- GroupElement / NoteEvent / RestEvent / TieExtension
+  GroupElement    <- GroupPrimary DurationSuffix? EuclideanSuffix?
+                     ProbabilitySuffix? ReplicationSuffix?
+  GroupPrimary    <- BracketGroup / Alternate
+  BracketGroup    <- '[' H (RandomChoice / NotePattern) H ']'
+  RandomChoice    <- NotePattern H '|' H NotePattern
+                     (H '|' H NotePattern)*
+  Alternate       <- '<' H NoteElement (S NoteElement)* H '>'
 
-  BracketGroup   <- '[' H (RandomChoice / Subdivision) H ']'
-  RandomChoice   <- BracketElement H '|' H BracketElement
-                    (H '|' H BracketElement)*
-  Subdivision    <- BracketElement (S BracketElement)*
-  BracketElement <- (CycleChoice / BracketGroup / Euclidean / SlideAtom /
-                     BracketValue) Repeat?
-  BracketValue   <- (Voicing / BracketAtom) SlashSuffix?
-  SlideAtom      <- < '>' >
-  BracketAtom    <- < (Paren / BracketAtomChar)+ >
-  BracketAtomChar <- !('[' / '<' / '(' / '/' / ']' / '>' / ')' / '!' / '|' /
-                       HChar / CommentStart / Pipe / Newline) .
+  NoteEvent       <- OnsetPrefix? PitchedValue DurationSuffix?
+                     EuclideanSuffix? RatchetSuffix? ProbabilitySuffix?
+                     ReplicationSuffix? Attributes?
+  RestEvent       <- RestMark DurationSuffix? ReplicationSuffix? Attributes?
+  TieExtension    <- TieMark ReplicationSuffix?
+  RestMark        <- < '~' >
+  TieMark         <- < '_' >
 
-  Euclidean         <- EuclideanOperator '(' H EuclideanArgument
-                       ((H ',' H / S) EuclideanArgument)* H ')'
-  EuclideanOperator <- < 'x' / '.' >
-  EuclideanArgument <- < (!HChar !',' !')' !Newline .)+ >
-  Repeat            <- '!' RepeatCount
-  RepeatCount       <- < (!HChar !CommentStart !Pipe !Newline !']' !'>' !'|'
-                          !'!' .)+ >
-  TopValue          <- (Voicing / TopAtom) SlashSuffix?
-  TopAtom           <- < TopAtomChar+ >
-  TopAtomChar       <- !('[' / '<' / '(' / '/' / ']' / ')' / '!' / '|' /
-                         HChar / CommentStart / Pipe / Newline) .
-  SlashSuffix       <- H '/' H SlashBass
-  SlashBass         <- < (!HChar !'(' !')' !'/' !'[' !']' !'<' !'>' !'!' !'|'
-                         !CommentStart !Pipe !Newline .)+ >
-  Voicing           <- '(' H VoicingTone (S VoicingTone)* H VoicingSlash? H ')'
-                       RegisterSuffix?
-  VoicingSlash      <- '/' H VoicingTone
-  VoicingTone       <- < (!HChar !'(' !')' !'/' !'[' !']' !'<' !'>' !'!' !'|'
-                         !CommentStart !Pipe !Newline .)+ >
-  RegisterSuffix    <- < ('@' [+-]? [0-9]+ [',]*) / [',]+ >
-  Paren             <- '(' (Paren / (!')' !Newline .))* ')'
+  OnsetPrefix     <- SlidePrefix? DynamicPrefix?
+  SlidePrefix     <- < '>' >
+  DynamicPrefix   <- < '^^' / '^' / 'x' >
+
+  PitchedValue    <- ChordValue (H SlashSuffix)? / PitchValue
+  ChordValue      <- (ExplicitVoicing / RomanChord / JazzChord) RegisterSuffix?
+  PitchValue      <- (NamedPitch / ScaleDegree) RegisterSuffix?
+  ExplicitVoicing <- '(' H PitchValue (S PitchValue)+ H ')'
+  SlashSuffix     <- '/' H SlashBass
+  SlashBass       <- PitchValue
+
+  RomanChord      <- < RootAccidental* (UpperRoman / LowerRoman) ChordSuffix? >
+  JazzChord       <- < NamedRoot ChordSuffix >
+  ChordSuffix     <- TriadQuality ChordExtension? ChordModification* /
+                     ChordExtension ChordModification* / ChordModification+
+  TriadQuality    <- 'sus2' / 'sus4' / 'maj' / 'min' / 'dim' / 'aug' / 'm'
+  ChordExtension  <- '13' / '11' / '9' / '7' / '6' / '5'
+  ChordModification <- ('b' / '#') ChordDegree / 'add' ChordDegree
+  ChordDegree     <- '13' / '11' / '9' / '7' / '6' / '5' / '4' / '3' / '2' / '1'
+  RootAccidental  <- 'b' / '#'
+  UpperRoman      <- 'VII' / 'VI' / 'V' / 'IV' / 'III' / 'II' / 'I'
+  LowerRoman      <- 'vii' / 'vi' / 'v' / 'iv' / 'iii' / 'ii' / 'i'
+  NamedPitch      <- < NamedRoot >
+  NamedRoot       <- [A-G] ('b' / '#')?
+  ScaleDegree     <- < RootAccidental* SignedInteger >
+
+  RegisterSuffix  <- < AbsoluteRegister RelativeRegister? / RelativeRegister >
+  AbsoluteRegister <- '@' SignedInteger
+  RelativeRegister <- Apostrophe+ / Comma+
+  Apostrophe      <- "'"
+  Comma           <- ','
+
+  DurationSuffix  <- < Elongation Dots? / Dots >
+  Elongation      <- '_' PositiveInteger / '_'+
+  Dots            <- '..' / '.'
+  EuclideanSuffix <- '(' H EuclideanPulses H ',' H EuclideanSteps
+                     (H ',' H EuclideanRotation)? H ')'
+  EuclideanPulses   <- < UnsignedInteger >
+  EuclideanSteps    <- < PositiveInteger >
+  EuclideanRotation <- < SignedInteger >
+  RatchetSuffix   <- '*' RatchetCount
+  RatchetCount    <- < PositiveInteger >
+  ProbabilitySuffix <- '?' Probability?
+  Probability     <- < Number >
+  ReplicationSuffix <- '!' RepeatCount
+  RepeatCount     <- < PositiveInteger >
+
+  Attributes      <- '{' H Attribute (H ',' H Attribute)* H '}'
+  Attribute       <- AttributeName H '=' H AttributeValue
+  AttributeName   <- < Identifier >
+  AttributeValue  <- < ScalarValue >
+
+  ScalarPattern   <- RightAligned / LeftAligned / FreePattern
+  RightAligned    <- Ellipsis S ScalarTerm (S ScalarTerm)*
+  LeftAligned     <- ScalarTerm (S ScalarTerm)* S Ellipsis
+  FreePattern     <- ScalarTerm (S ScalarTerm)*
+  ScalarTerm      <- (ScalarAtom / Default) ReplicationSuffix?
+  ScalarAtom      <- < ScalarValue >
+  Ellipsis        <- '...'
+  Default         <- < '.' >
+
+  SettingValue    <- < ScalarValue / PitchValue / Identifier >
+  ScalarValue     <- Number Unit?
+  Unit            <- 'ms'
+  Number          <- SignedInteger '/' PositiveInteger / Decimal
+  Decimal         <- Sign? ([0-9]+ ('.' [0-9]+)? / '.' [0-9]+)
+  SignedInteger   <- Sign? UnsignedInteger
+  PositiveInteger <- [1-9] [0-9]*
+  UnsignedInteger <- < [0-9]+ >
+  Sign            <- '+' / '-'
 
   Expression <- Concatenation (H Pipeline)*
   Concatenation <- Term (H '+' H Term)*
   Term       <- Primary (H '*' H Integer)?
   Primary    <- Identifier / '(' H Expression H ')'
-  Integer    <- < [0-9]+ >
+  Integer    <- < [1-9] [0-9]* >
 
   Pipeline      <- Pipe H (EveryTransform / SometimesTransform / TransformCall)
   EveryTransform <- 'every' S ConditionArgument S TransformCall
@@ -85,7 +142,6 @@ constexpr const char *Grammar = R"PEG(
   Operation     <- < [A-Za-z_] [A-Za-z0-9_]* >
   ConditionArgument <- < (!HChar !Pipe !CommentStart !Newline !')' .)+ >
   TransformArgument <- < (!HChar !Pipe !CommentStart !Newline !')' .)+ >
-  ValueText     <- < (!CommentStart !Newline .)+ >
   Identifier    <- < [A-Za-z_] [A-Za-z0-9_]* >
 
   ~BlankLine   <- H Comment? Newline
@@ -113,25 +169,6 @@ Token AstToken(const Ast &node) {
   return {node->token_to_string(), Span(node)};
 }
 
-Token TrimmedAstToken(const Ast &node) {
-  std::string_view value = node->token;
-  std::size_t leading = 0;
-  while (leading < value.size() &&
-         (value[leading] == ' ' || value[leading] == '\t'))
-    ++leading;
-  std::size_t trailing = value.size();
-  while (trailing > leading &&
-         (value[trailing - 1] == ' ' || value[trailing - 1] == '\t'))
-    --trailing;
-  Token token;
-  token.text = std::string(value.substr(leading, trailing - leading));
-  token.span = Span(node);
-  token.span.begin += static_cast<int>(leading);
-  token.span.end = token.span.begin + static_cast<int>(token.text.size());
-  token.span.column += static_cast<int>(leading);
-  return token;
-}
-
 std::vector<Ast> ChildrenNamed(const Ast &node, const std::string &name) {
   std::vector<Ast> children;
   for (const auto &child : node->nodes) {
@@ -149,123 +186,232 @@ Ast FirstChildNamed(const Ast &node, const std::string &name) {
   return nullptr;
 }
 
-PatternNode ReadPatternElement(const Ast &element, Diagnostic &diagnostic) {
-  PatternNode node;
-  if (const auto choice = FirstChildNamed(element, "CycleChoice")) {
-    node.kind = PatternKind::CycleChoice;
-    node.span = Span(choice);
-    for (const auto &child : ChildrenNamed(choice, "CycleElement"))
-      node.children.push_back(ReadPatternElement(child, diagnostic));
-  } else if (const auto group = FirstChildNamed(element, "BracketGroup")) {
-    node.span = Span(group);
-    if (const auto random = FirstChildNamed(group, "RandomChoice")) {
-      node.kind = PatternKind::RandomChoice;
-      for (const auto &child : ChildrenNamed(random, "BracketElement"))
-        node.children.push_back(ReadPatternElement(child, diagnostic));
-    } else if (const auto subdivision = FirstChildNamed(group, "Subdivision")) {
-      node.kind = PatternKind::Subdivision;
-      for (const auto &child : ChildrenNamed(subdivision, "BracketElement"))
-        node.children.push_back(ReadPatternElement(child, diagnostic));
-    }
-  } else if (const auto euclidean = FirstChildNamed(element, "Euclidean")) {
-    node.kind = PatternKind::Euclidean;
-    node.span = Span(euclidean);
-    node.atom = AstToken(FirstChildNamed(euclidean, "EuclideanOperator"));
-    for (const auto &argument : ChildrenNamed(euclidean, "EuclideanArgument"))
-      node.arguments.push_back(AstToken(argument));
-  } else {
-    Ast value = FirstChildNamed(element, "TopValue");
-    if (!value)
-      value = FirstChildNamed(element, "CycleValue");
-    if (!value)
-      value = FirstChildNamed(element, "BracketValue");
-
-    auto readValue = [&](const Ast &source) {
-      PatternNode parsed;
-      if (const auto voicing = FirstChildNamed(source, "Voicing")) {
-        parsed.kind = PatternKind::Voicing;
-        parsed.span = Span(voicing);
-        if (const auto suffix = FirstChildNamed(voicing, "RegisterSuffix"))
-          parsed.suffix = AstToken(suffix);
-        for (const auto &tone : ChildrenNamed(voicing, "VoicingTone")) {
-          PatternNode child;
-          child.kind = PatternKind::Atom;
-          child.atom = AstToken(tone);
-          child.span = child.atom.span;
-          parsed.children.push_back(std::move(child));
-        }
-        if (const auto slash = FirstChildNamed(voicing, "VoicingSlash")) {
-          PatternNode bass;
-          bass.kind = PatternKind::Atom;
-          bass.atom = AstToken(FirstChildNamed(slash, "VoicingTone"));
-          bass.span = bass.atom.span;
-          PatternNode joined;
-          joined.kind = PatternKind::Slash;
-          joined.span = Span(voicing);
-          joined.children.push_back(std::move(parsed));
-          joined.children.push_back(std::move(bass));
-          parsed = std::move(joined);
-        }
-      } else {
-        Ast atom = FirstChildNamed(source, "TopAtom");
-        if (!atom)
-          atom = FirstChildNamed(source, "CycleAtom");
-        if (!atom)
-          atom = FirstChildNamed(source, "BracketAtom");
-        parsed.kind = PatternKind::Atom;
-        parsed.atom = AstToken(atom);
-        parsed.span = parsed.atom.span;
-      }
-      if (const auto slash = FirstChildNamed(source, "SlashSuffix")) {
-        PatternNode bass;
-        bass.kind = PatternKind::Atom;
-        bass.atom = AstToken(FirstChildNamed(slash, "SlashBass"));
-        bass.span = bass.atom.span;
-        PatternNode joined;
-        joined.kind = PatternKind::Slash;
-        joined.span = Span(source);
-        joined.children.push_back(std::move(parsed));
-        joined.children.push_back(std::move(bass));
-        parsed = std::move(joined);
-      }
-      return parsed;
-    };
-
-    if (value) {
-      node = readValue(value);
-    } else if (const auto slide = FirstChildNamed(element, "SlideAtom")) {
-      node.kind = PatternKind::Atom;
-      node.atom = AstToken(slide);
-      node.span = node.atom.span;
-    } else {
-      diagnostic = {"internal sequencer pattern AST is incomplete",
-                    static_cast<int>(element->line),
-                    static_cast<int>(element->column)};
-      return {};
-    }
+Ast FirstDescendantNamed(const Ast &node, const std::string &name) {
+  if (!node)
+    return nullptr;
+  if (node->name == name)
+    return node;
+  for (const auto &child : node->nodes) {
+    if (const auto found = FirstDescendantNamed(child, name))
+      return found;
   }
-  if (!diagnostic.message.empty())
-    return {};
-
-  if (const auto repeat = FirstChildNamed(element, "Repeat")) {
-    PatternNode repeated;
-    repeated.kind = PatternKind::Repeat;
-    repeated.repeatCount = AstToken(FirstChildNamed(repeat, "RepeatCount"));
-    repeated.children.push_back(std::move(node));
-    repeated.span = Span(element);
-    return repeated;
-  }
-  return node;
+  return nullptr;
 }
 
-Pattern ReadPattern(const Ast &node, Diagnostic &diagnostic) {
-  Pattern pattern;
-  pattern.span = Span(node);
-  for (const auto &element : ChildrenNamed(node, "PatternElement")) {
-    pattern.steps.push_back(ReadPatternElement(element, diagnostic));
+PatternNode ReadPitchedValue(const Ast &pitched, Diagnostic &diagnostic) {
+  auto pitchLeaf = [](const Ast &pitch) {
+    PatternNode leaf;
+    const auto named = FirstDescendantNamed(pitch, "NamedPitch");
+    const auto degree = FirstDescendantNamed(pitch, "ScaleDegree");
+    leaf.kind = named ? PatternKind::NamedPitch : PatternKind::ScaleDegree;
+    leaf.atom = AstToken(named ? named : degree);
+    if (const auto suffix = FirstDescendantNamed(pitch, "RegisterSuffix"))
+      leaf.atom.text += AstToken(suffix).text;
+    leaf.atom.span = Span(pitch);
+    leaf.span = Span(pitch);
+    return leaf;
+  };
+  PatternNode value;
+  value.span = Span(pitched);
+  if (const auto chord = FirstChildNamed(pitched, "ChordValue")) {
+    if (const auto voicing = FirstChildNamed(chord, "ExplicitVoicing")) {
+      value.kind = PatternKind::Voicing;
+      value.span = Span(chord);
+      for (const auto &tone : ChildrenNamed(voicing, "PitchValue")) {
+        value.children.push_back(pitchLeaf(tone));
+      }
+      if (const auto suffix = FirstChildNamed(chord, "RegisterSuffix"))
+        value.suffix = AstToken(suffix);
+    } else {
+      const auto roman = FirstChildNamed(chord, "RomanChord");
+      value.kind = roman ? PatternKind::RomanChord : PatternKind::JazzChord;
+      const auto symbol = roman ? roman : FirstChildNamed(chord, "JazzChord");
+      value.atom = AstToken(symbol);
+      if (const auto suffix = FirstChildNamed(chord, "RegisterSuffix"))
+        value.atom.text += AstToken(suffix).text;
+      value.atom.span = Span(chord);
+      value.span = value.atom.span;
+    }
+    if (const auto slash = FirstChildNamed(pitched, "SlashSuffix")) {
+      const auto bassPitch = FirstDescendantNamed(slash, "PitchValue");
+      if (!bassPitch) {
+        diagnostic = {"internal slash-chord AST is incomplete",
+                      static_cast<int>(slash->line),
+                      static_cast<int>(slash->column)};
+        return {};
+      }
+      PatternNode bass;
+      bass = pitchLeaf(bassPitch);
+      PatternNode joined;
+      joined.kind = PatternKind::Slash;
+      joined.span = Span(pitched);
+      joined.children.push_back(std::move(value));
+      joined.children.push_back(std::move(bass));
+      value = std::move(joined);
+    }
+    return value;
+  }
+  const auto pitch = pitched->name == "PitchValue"
+                         ? pitched
+                         : FirstChildNamed(pitched, "PitchValue");
+  if (!pitch) {
+    diagnostic = {"internal pitched-value AST is incomplete",
+                  static_cast<int>(pitched->line),
+                  static_cast<int>(pitched->column)};
+    return {};
+  }
+  return pitchLeaf(pitch);
+}
+
+void ReadSuffixes(const Ast &source, PatternNode &node) {
+  if (const auto duration = FirstChildNamed(source, "DurationSuffix"))
+    node.durationSuffix = AstToken(duration);
+  if (const auto euclidean = FirstChildNamed(source, "EuclideanSuffix"))
+  {
+    node.arguments.push_back(
+        AstToken(FirstChildNamed(euclidean, "EuclideanPulses")));
+    node.arguments.push_back(
+        AstToken(FirstChildNamed(euclidean, "EuclideanSteps")));
+    if (const auto rotation =
+            FirstChildNamed(euclidean, "EuclideanRotation"))
+      node.arguments.push_back(AstToken(rotation));
+  }
+  if (const auto ratchet = FirstChildNamed(source, "RatchetSuffix"))
+    node.ratchetCount =
+        AstToken(FirstDescendantNamed(ratchet, "RatchetCount"));
+  if (const auto probability =
+          FirstChildNamed(source, "ProbabilitySuffix")) {
+    if (const auto amount = FirstChildNamed(probability, "Probability"))
+      node.probability = AstToken(amount);
+    else
+      node.defaultProbability = true;
+  }
+  if (const auto replication =
+          FirstChildNamed(source, "ReplicationSuffix"))
+    node.repeatCount =
+        AstToken(FirstDescendantNamed(replication, "RepeatCount"));
+  if (const auto attributes = FirstChildNamed(source, "Attributes")) {
+    for (const auto &attribute : ChildrenNamed(attributes, "Attribute")) {
+      node.attributes.push_back(
+          {AstToken(FirstChildNamed(attribute, "AttributeName")),
+           AstToken(FirstChildNamed(attribute, "AttributeValue"))});
+    }
+  }
+}
+
+PatternNode ReadNoteElement(const Ast &element, Diagnostic &diagnostic);
+
+std::vector<PatternNode> ReadNoteElements(const Ast &pattern,
+                                          Diagnostic &diagnostic) {
+  std::vector<PatternNode> result;
+  for (const auto &element : ChildrenNamed(pattern, "NoteElement")) {
+    result.push_back(ReadNoteElement(element, diagnostic));
     if (!diagnostic.message.empty())
       break;
   }
+  return result;
+}
+
+PatternNode ReadNoteElement(const Ast &element, Diagnostic &diagnostic) {
+  if (const auto event = FirstChildNamed(element, "NoteEvent")) {
+    PatternNode node;
+    node.kind = PatternKind::Event;
+    node.span = Span(event);
+    if (const auto onset = FirstChildNamed(event, "OnsetPrefix")) {
+      if (const auto slide = FirstChildNamed(onset, "SlidePrefix"))
+        node.slidePrefix = AstToken(slide);
+      if (const auto dynamic = FirstChildNamed(onset, "DynamicPrefix"))
+        node.dynamicPrefix = AstToken(dynamic);
+    }
+    const auto pitched = FirstChildNamed(event, "PitchedValue");
+    node.children.push_back(ReadPitchedValue(pitched, diagnostic));
+    ReadSuffixes(event, node);
+    return node;
+  }
+  if (const auto rest = FirstChildNamed(element, "RestEvent")) {
+    PatternNode node;
+    node.kind = PatternKind::Rest;
+    node.atom = AstToken(FirstDescendantNamed(rest, "RestMark"));
+    node.span = Span(rest);
+    ReadSuffixes(rest, node);
+    return node;
+  }
+  if (const auto tie = FirstChildNamed(element, "TieExtension")) {
+    PatternNode node;
+    node.kind = PatternKind::Tie;
+    node.atom = AstToken(FirstDescendantNamed(tie, "TieMark"));
+    node.span = Span(tie);
+    ReadSuffixes(tie, node);
+    return node;
+  }
+  const auto group = FirstChildNamed(element, "GroupElement");
+  if (!group) {
+    diagnostic = {"internal note-pattern AST is incomplete",
+                  static_cast<int>(element->line),
+                  static_cast<int>(element->column)};
+    return {};
+  }
+  PatternNode node;
+  node.span = Span(group);
+  const auto primary = FirstChildNamed(group, "GroupPrimary");
+  if (const auto alternate = FirstChildNamed(primary, "Alternate")) {
+    node.kind = PatternKind::CycleChoice;
+    for (const auto &child : ChildrenNamed(alternate, "NoteElement"))
+      node.children.push_back(ReadNoteElement(child, diagnostic));
+  } else if (const auto bracket = FirstChildNamed(primary, "BracketGroup")) {
+    if (const auto random = FirstChildNamed(bracket, "RandomChoice")) {
+      node.kind = PatternKind::RandomChoice;
+      for (const auto &branch : ChildrenNamed(random, "NotePattern")) {
+        PatternNode branchNode;
+        branchNode.kind = PatternKind::Subdivision;
+        branchNode.span = Span(branch);
+        branchNode.children = ReadNoteElements(branch, diagnostic);
+        node.children.push_back(std::move(branchNode));
+      }
+    } else {
+      node.kind = PatternKind::Subdivision;
+      const auto pattern = FirstChildNamed(bracket, "NotePattern");
+      node.children = ReadNoteElements(pattern, diagnostic);
+    }
+  }
+  ReadSuffixes(group, node);
+  return node;
+}
+
+Pattern ReadNotePattern(const Ast &node, Diagnostic &diagnostic) {
+  Pattern pattern;
+  pattern.span = Span(node);
+  pattern.steps = ReadNoteElements(node, diagnostic);
+  return pattern;
+}
+
+PatternNode ReadScalarTerm(const Ast &term) {
+  PatternNode node;
+  node.kind = PatternKind::Atom;
+  node.span = Span(term);
+  if (const auto atom = FirstChildNamed(term, "ScalarAtom"))
+    node.atom = AstToken(atom);
+  else
+    node.atom = AstToken(FirstChildNamed(term, "Default"));
+  if (const auto replication = FirstChildNamed(term, "ReplicationSuffix"))
+    node.repeatCount =
+        AstToken(FirstDescendantNamed(replication, "RepeatCount"));
+  return node;
+}
+
+Pattern ReadScalarPattern(const Ast &node) {
+  Pattern pattern;
+  pattern.span = Span(node);
+  Ast body = FirstChildNamed(node, "FreePattern");
+  if (const auto right = FirstChildNamed(node, "RightAligned")) {
+    body = right;
+    pattern.alignment = Pattern::Alignment::Right;
+  } else if (const auto left = FirstChildNamed(node, "LeftAligned")) {
+    body = left;
+    pattern.alignment = Pattern::Alignment::Left;
+  }
+  for (const auto &term : ChildrenNamed(body, "ScalarTerm"))
+    pattern.steps.push_back(ReadScalarTerm(term));
   return pattern;
 }
 
@@ -293,10 +439,30 @@ Pipeline ReadPipeline(const Ast &node) {
 
 Lane ReadLane(const Ast &node, Diagnostic &diagnostic) {
   Lane lane;
-  lane.name = AstToken(FirstChildNamed(node, "Identifier"));
-  const auto pattern = FirstChildNamed(node, "Pattern");
-  if (pattern)
-    lane.pattern = ReadPattern(pattern, diagnostic);
+  if (node->name == "NotesLane") {
+    lane.kind = Lane::Kind::Notes;
+    lane.name = AstToken(FirstChildNamed(node, "NotesLaneName"));
+    lane.pattern =
+        ReadNotePattern(FirstChildNamed(node, "NotePattern"), diagnostic);
+  } else if (node->name == "CvLane") {
+    lane.kind = Lane::Kind::Cv;
+    lane.name = AstToken(FirstChildNamed(node, "CvLaneName"));
+    lane.pattern = ReadScalarPattern(FirstChildNamed(node, "ScalarPattern"));
+  } else if (node->name == "SettingLine") {
+    lane.kind = Lane::Kind::Setting;
+    lane.name = AstToken(FirstChildNamed(node, "SettingName"));
+    const auto value = FirstChildNamed(node, "SettingValue");
+    lane.pattern.span = Span(value);
+    PatternNode atom;
+    atom.kind = PatternKind::Atom;
+    atom.atom = AstToken(value);
+    atom.span = atom.atom.span;
+    lane.pattern.steps.push_back(std::move(atom));
+  } else {
+    lane.kind = Lane::Kind::Scalar;
+    lane.name = AstToken(FirstChildNamed(node, "ScalarLaneName"));
+    lane.pattern = ReadScalarPattern(FirstChildNamed(node, "ScalarPattern"));
+  }
   for (const auto &pipeline : ChildrenNamed(node, "Pipeline"))
     lane.pipelines.push_back(ReadPipeline(pipeline));
   return lane;
@@ -307,7 +473,8 @@ SequenceDefinition ReadSequence(const Ast &node, Diagnostic &diagnostic) {
   sequence.span = Span(node);
   sequence.name = AstToken(FirstChildNamed(node, "Identifier"));
   for (const auto &child : node->nodes) {
-    if (child->name == "Lane")
+    if (child->name == "NotesLane" || child->name == "ScalarLane" ||
+        child->name == "CvLane" || child->name == "SettingLine")
       sequence.lanes.push_back(ReadLane(child, diagnostic));
     else if (child->name == "BodyContinuation") {
       if (sequence.lanes.empty())
@@ -362,30 +529,22 @@ Assignment ReadAssignment(const Ast &node) {
   assignment.span = Span(node);
   assignment.name = AstToken(FirstChildNamed(node, "Identifier"));
   assignment.expression = ReadExpression(FirstChildNamed(node, "Expression"));
+  for (const auto &continuation :
+       ChildrenNamed(node, "AssignmentContinuation")) {
+    for (const auto &pipeline : ChildrenNamed(continuation, "Pipeline"))
+      assignment.expression.pipelines.push_back(ReadPipeline(pipeline));
+  }
   return assignment;
 }
 
-} // namespace
-
-ParseResult Parse(const std::string &source) {
+ParseResult ParseUsing(peg::parser &parser, const std::string &source) {
   ParseResult result;
-  peg::parser parser;
   parser.set_logger(
       [&](std::size_t line, std::size_t column, const std::string &message) {
         if (result.diagnostic.message.empty())
           result.diagnostic = {message, static_cast<int>(line),
                                static_cast<int>(column)};
       });
-  if (!parser.load_grammar(Grammar)) {
-    if (result.diagnostic.message.empty())
-      result.diagnostic = {"internal sequencer grammar is invalid", 1, 1};
-    else
-      result.diagnostic.message =
-          "internal sequencer grammar: " + result.diagnostic.message;
-    return result;
-  }
-  parser.enable_ast();
-
   Ast ast;
   if (!parser.parse(source, ast)) {
     if (result.diagnostic.message.empty())
@@ -408,9 +567,137 @@ ParseResult Parse(const std::string &source) {
       result.document.statements.emplace_back(StopCommand{Span(node)});
     } else if (node->name == "Seed") {
       result.document.statements.emplace_back(SeedCommand{
-          TrimmedAstToken(FirstChildNamed(node, "ValueText")), Span(node)});
+          AstToken(FirstChildNamed(node, "UnsignedInteger")), Span(node)});
     }
   }
+  return result;
+}
+
+bool LoadParser(peg::parser &parser, Diagnostic &diagnostic) {
+  parser.set_logger(
+      [&](std::size_t line, std::size_t column, const std::string &message) {
+        if (diagnostic.message.empty())
+          diagnostic = {"internal sequencer grammar: " + message,
+                        static_cast<int>(line), static_cast<int>(column)};
+      });
+  if (!parser.load_grammar(Grammar)) {
+    if (diagnostic.message.empty())
+      diagnostic = {"internal sequencer grammar is invalid", 1, 1};
+    return false;
+  }
+  parser.enable_ast();
+  return true;
+}
+
+} // namespace
+
+ParseResult Parse(const std::string &source) {
+  ParseResult result;
+  peg::parser parser;
+  if (!LoadParser(parser, result.diagnostic))
+    return result;
+  return ParseUsing(parser, source);
+}
+
+ParseResult ParseStatementsContaining(const std::string &source,
+                                       int selectionBegin,
+                                       int selectionEnd) {
+  ParseResult result;
+  const int sourceSize = static_cast<int>(std::min<std::size_t>(
+      source.size(), static_cast<std::size_t>(std::numeric_limits<int>::max())));
+  selectionBegin = std::clamp(selectionBegin, 0, sourceSize);
+  selectionEnd = std::clamp(selectionEnd, 0, sourceSize);
+  if (selectionEnd < selectionBegin)
+    std::swap(selectionBegin, selectionEnd);
+
+  peg::parser parser;
+  if (!LoadParser(parser, result.diagnostic))
+    return result;
+
+  std::vector<int> lineStarts{0};
+  for (int index = 0; index < sourceSize; ++index) {
+    if (source[static_cast<std::size_t>(index)] == '\n' &&
+        index + 1 <= sourceSize)
+      lineStarts.push_back(index + 1);
+  }
+  auto lineAt = [&](int position) {
+    const auto found = std::upper_bound(lineStarts.begin(), lineStarts.end(),
+                                        position);
+    return static_cast<std::size_t>(
+        std::max<std::ptrdiff_t>(0, found - lineStarts.begin() - 1));
+  };
+  const auto firstLine = lineAt(selectionBegin);
+  const auto lastLine = lineAt(
+      selectionEnd > selectionBegin ? selectionEnd - 1 : selectionBegin);
+
+  std::size_t bestLines = std::numeric_limits<std::size_t>::max();
+  for (std::size_t startLine = firstLine + 1; startLine-- > 0;) {
+    for (std::size_t endLine = lastLine; endLine < lineStarts.size();
+         ++endLine) {
+      const int begin = lineStarts[startLine];
+      const int end = endLine + 1 < lineStarts.size()
+                          ? lineStarts[endLine + 1]
+                          : sourceSize;
+      if (end < selectionEnd)
+        continue;
+
+      // A continuation beginning with |> belongs to the sequence above it;
+      // do not accept a shorter otherwise-valid prefix that silently drops it.
+      if (endLine + 1 < lineStarts.size()) {
+        int cursor = lineStarts[endLine + 1];
+        while (cursor < sourceSize &&
+               (source[static_cast<std::size_t>(cursor)] == ' ' ||
+                source[static_cast<std::size_t>(cursor)] == '\t'))
+          ++cursor;
+        if (cursor + 1 < sourceSize &&
+            source[static_cast<std::size_t>(cursor)] == '|' &&
+            source[static_cast<std::size_t>(cursor + 1)] == '>')
+          continue;
+      }
+
+      std::string candidate = source.substr(0, static_cast<std::size_t>(end));
+      for (int index = 0; index < begin; ++index) {
+        auto &character = candidate[static_cast<std::size_t>(index)];
+        if (character != '\n' && character != '\r')
+          character = ' ';
+      }
+      auto parsed = ParseUsing(parser, candidate);
+      if (!parsed || parsed.document.statements.empty())
+        continue;
+      const bool overlaps = std::any_of(
+          parsed.document.statements.begin(), parsed.document.statements.end(),
+          [&](const Statement &statement) {
+            const auto span =
+                std::visit([](const auto &value) { return value.span; },
+                           statement);
+            return selectionBegin == selectionEnd
+                       ? span.begin <= selectionBegin && selectionBegin < span.end
+                       : span.begin < selectionEnd && selectionBegin < span.end;
+          });
+      if (!overlaps)
+        continue;
+      const auto lineCount = endLine - startLine + 1;
+      if (lineCount < bestLines) {
+        bestLines = lineCount;
+        result = std::move(parsed);
+      }
+    }
+  }
+  if (bestLines != std::numeric_limits<std::size_t>::max())
+    return result;
+
+  int line = 1;
+  int column = 1;
+  for (int index = 0; index < selectionBegin; ++index) {
+    if (source[static_cast<std::size_t>(index)] == '\n') {
+      ++line;
+      column = 1;
+    } else {
+      ++column;
+    }
+  }
+  result.diagnostic =
+      {"selected text is not a complete valid statement", line, column};
   return result;
 }
 
@@ -462,6 +749,15 @@ void Invalidate(PatternNode &node) {
   Invalidate(node.atom);
   Invalidate(node.suffix);
   Invalidate(node.repeatCount);
+  Invalidate(node.slidePrefix);
+  Invalidate(node.dynamicPrefix);
+  Invalidate(node.durationSuffix);
+  Invalidate(node.ratchetCount);
+  Invalidate(node.probability);
+  for (auto &attribute : node.attributes) {
+    Invalidate(attribute.name);
+    Invalidate(attribute.value);
+  }
   for (auto &argument : node.arguments)
     Invalidate(argument);
   for (auto &child : node.children)

@@ -1,23 +1,16 @@
 # TriggerFish Prog Sequencer: syntax options
 
-> **Implementation status:** Option A is now the v1 language. The first
-> playable implementation includes independent `notes`, `articulation`,
-> `velocity`, `accent`, `duration`, `gate`, `slide`, and `ratchet` lanes;
-> `rotate`, `rev`, `every`, `sometimes`, and pitch transposition pipelines;
-> named concatenation/repetition; deterministic choices; and per-lane playback
-> cursors. The smoke-303 syntax spike also added compact lane repetition
-> (`1!4`, `.!3`), absolute and relative octave registers (`1@4` / `1'`),
-> `glide`, and immutable
-> derived sequences such as `low = acid |> transpose_semitone -7`.
-> Explicitly numeric `fast`, `slow`, `swing`, `early`, and `late` transforms,
-> dynamically prepared event/state workspaces, nested composition, an
-> independent `octave` lane, explicit degree chords, jazz/slash chords, and
-> Rack polyphonic output are also implemented. The `take`, explicit
-> `quantize`, and general-purpose
-> host-language escape hatches shown as design directions below remain future
-> work. The backend decision is now a vendored, version-pinned cpp-peglib PEG
-> front end feeding the custom semantic compiler and prepared pattern graph;
-> no general-purpose VM is embedded in v1.
+> **Current syntax decision:** The executable v5 prefix/suffix event
+> grammar and edge-aligned numerical-lane ellipsis are recorded in
+> [TfProgSequencer-language-grammar.md](TfProgSequencer-language-grammar.md).
+> The alternatives below remain design history rather than the current syntax
+> decision.
+
+> **Historical implementation note:** Option A became the first playable
+> prototype, including a separate `articulation` lane. Version 5 has replaced
+> that source language outright; use the authoritative grammar above for all
+> executable syntax. The remainder of this file records the alternatives that
+> led to it.
 
 ## Why revisit the first proposal
 

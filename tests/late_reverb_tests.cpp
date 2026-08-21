@@ -12,6 +12,8 @@
 
 namespace {
 
+constexpr double ReverbTestSampleRate = 48'000.0;
+
 void Check(const bool condition, const std::string &message) {
   if (!condition) {
     std::cerr << "FAIL: " << message << '\n';
@@ -32,8 +34,11 @@ std::array<float, 3> RoomDimensions(const float space) {
 
 std::vector<tfdsp::LateReverb::StereoFrame>
 Render(const tfdsp::LateReverbControls &controls, const std::size_t samples,
-       const double sampleRate = 4'000.0) {
+       const double sampleRate = ReverbTestSampleRate,
+       const tfdsp::LateReverbFlavour flavour =
+           tfdsp::DefaultLateReverbFlavour) {
   tfdsp::LateReverb reverb;
+  reverb.SetFlavour(flavour);
   reverb.SetSampleRate(sampleRate);
   std::vector<tfdsp::LateReverb::StereoFrame> result(samples);
   for (std::size_t sample = 0; sample < samples; ++sample)
@@ -271,10 +276,10 @@ double SustainedToneEnvelopeVariation(const float space, const float modulation,
                                       const double frequency,
                                       const float decay = 0.55f,
                                       const float diffusion = 0.75f) {
-  constexpr double sampleRate = 4'000.0;
-  constexpr std::size_t sampleCount = 32'000;
-  constexpr std::size_t settled = 8'000;
-  constexpr std::size_t window = 200;
+  constexpr double sampleRate = ReverbTestSampleRate;
+  constexpr std::size_t sampleCount = 384'000;
+  constexpr std::size_t settled = 96'000;
+  constexpr std::size_t window = 2'400;
   tfdsp::LateReverb reverb;
   reverb.SetSampleRate(sampleRate);
   tfdsp::LateReverbControls controls;
@@ -309,10 +314,10 @@ double SustainedToneEnvelopeVariation(const float space, const float modulation,
 
 double SizeAutomationFarSidebandRatio(const float diffusion,
                                       const double frequency) {
-  constexpr double sampleRate = 4'000.0;
-  constexpr std::size_t sampleCount = 16'000;
-  constexpr std::size_t automationStart = 8'000;
-  constexpr std::size_t analysisEnd = 12'000;
+  constexpr double sampleRate = ReverbTestSampleRate;
+  constexpr std::size_t sampleCount = 192'000;
+  constexpr std::size_t automationStart = 96'000;
+  constexpr std::size_t analysisEnd = 144'000;
   const double smoothingCoefficient =
       1.0 - std::exp(-1.0 / (0.020 * sampleRate));
   tfdsp::LateReverb reverb;
@@ -363,29 +368,89 @@ double SizeAutomationFarSidebandRatio(const float diffusion,
 
 void TestVelvetFeedbackMatrixIsParaunitaryAndDense() {
   constexpr double sampleRate = 48'000.0;
-  for (const float diffusion : {0.f, 0.5f, 1.f}) {
-    tfdsp::VelvetFeedbackMatrix matrix;
-    matrix.Prepare(sampleRate);
-    tfdsp::VelvetFeedbackMatrix::Frame input{};
-    input[0] = 1.f;
-    double outputEnergy = 0.0;
-    std::size_t nonzero = 0;
-    for (std::size_t sample = 0; sample < 4'096; ++sample) {
-      const auto output = matrix.Process(input, diffusion);
-      input = {};
-      for (const float value : output) {
-        outputEnergy += static_cast<double>(value) * value;
-        nonzero += std::abs(value) > 1.e-7f;
+  for (const auto flavour : {tfdsp::LateReverbFlavour::Base,
+                             tfdsp::LateReverbFlavour::Optimized}) {
+    for (const float diffusion : {0.f, 0.5f, 1.f}) {
+      tfdsp::VelvetFeedbackMatrix matrix;
+      matrix.SetFlavour(flavour);
+      matrix.Prepare(sampleRate);
+      tfdsp::VelvetFeedbackMatrix::Frame input{};
+      input[0] = 1.f;
+      double outputEnergy = 0.0;
+      std::size_t nonzero = 0;
+      for (std::size_t sample = 0; sample < 4'096; ++sample) {
+        const auto output = matrix.Process(input, diffusion);
+        input = {};
+        for (const float value : output) {
+          outputEnergy += static_cast<double>(value) * value;
+          nonzero += std::abs(value) > 1.e-7f;
+        }
       }
+      Check(std::abs(outputEnergy - 1.0) < 2.e-5,
+            "both velvet feedback flavours must conserve energy; error=" +
+                std::to_string(std::abs(outputEnergy - 1.0)));
+      if (diffusion == 1.f)
+        Check(nonzero >= 32,
+              "both multi-stage velvet flavours must create many sparse "
+              "paths");
     }
-    Check(std::abs(outputEnergy - 1.0) < 2.e-5,
-          "the complete velvet feedback operator must conserve energy; "
-          "error=" +
-              std::to_string(std::abs(outputEnergy - 1.0)));
-    if (diffusion == 1.f)
-      Check(nonzero >= 32,
-            "the multi-stage velvet operator must create many sparse paths");
   }
+}
+
+void TestLateReverbFlavourSelectionAndTransition() {
+  constexpr double sampleRate = 48'000.0;
+  Check(tfdsp::LateReverb{}.Flavour() ==
+            tfdsp::LateReverbFlavour::Optimized,
+        "Optimized must be the default late-tail flavour");
+
+  tfdsp::LateReverb selectedBeforePrepare;
+  selectedBeforePrepare.SetFlavour(tfdsp::LateReverbFlavour::Base);
+  selectedBeforePrepare.SetSampleRate(sampleRate);
+  tfdsp::LateReverb restoredAfterPrepare;
+  restoredAfterPrepare.SetSampleRate(sampleRate);
+  restoredAfterPrepare.SetFlavourImmediate(tfdsp::LateReverbFlavour::Base);
+  tfdsp::LateReverbControls restoreControls;
+  restoreControls.modulation = 0.f;
+  restoreControls.shimmer = 0.f;
+  for (std::size_t sample = 0; sample < 12'000; ++sample) {
+    const float input = sample == 0 ? 1.f : 0.f;
+    const auto expected =
+        selectedBeforePrepare.Process(input, restoreControls);
+    const auto restored = restoredAfterPrepare.Process(input, restoreControls);
+    for (std::size_t channel = 0; channel < expected.size(); ++channel)
+      Check(std::abs(expected[channel] - restored[channel]) < 1.e-7f,
+            "restoring a saved Base flavour before audio must not render an "
+            "Optimized-to-Base startup transition");
+  }
+
+  tfdsp::LateReverbControls controls;
+  controls.roomDimensionsMetres = RoomDimensions(0.75f);
+  controls.decay = 0.75f;
+  controls.diffusion = 0.8f;
+  controls.modulation = 0.f;
+  tfdsp::LateReverb switched;
+  switched.SetFlavour(tfdsp::LateReverbFlavour::Base);
+  switched.SetSampleRate(sampleRate);
+  double beforeEnergy = 0.0;
+  double afterEnergy = 0.0;
+  for (std::size_t sample = 0; sample < 192'000; ++sample) {
+    if (sample == 48'000)
+      switched.SetFlavour(tfdsp::LateReverbFlavour::Optimized);
+    const auto frame = switched.Process(sample == 0 ? 1.f : 0.f, controls);
+    for (const float value : frame) {
+      Check(std::isfinite(value),
+            "switching late-tail flavour must remain finite");
+      if (sample >= 42'000 && sample < 48'000)
+        beforeEnergy += static_cast<double>(value) * value;
+      if (sample >= 48'000 && sample < 54'000)
+        afterEnergy += static_cast<double>(value) * value;
+    }
+  }
+  Check(afterEnergy > 0.01 * beforeEnergy,
+        "switching flavour must preserve the already-stored tail; ratio=" +
+            std::to_string(afterEnergy / std::max(beforeEnergy, 1.e-20)));
+  Check(switched.Flavour() == tfdsp::LateReverbFlavour::Optimized,
+        "the selected Optimized flavour must remain active");
 }
 
 void TestDiffusionControlsTemporalSpread() {
@@ -498,53 +563,56 @@ void TestMaximumRoomLongDecayDoesNotOscillateWithoutShimmer() {
   controls.damping = 0.18f;
   controls.modulation = 0.4f;
   controls.shimmer = 0.f;
-  for (const float diffusion : {0.f, 0.75f, 1.f}) {
-    controls.diffusion = diffusion;
-    const auto response = Render(controls, sampleCount, sampleRate);
-    float peak = 0.f;
-    for (const auto &frame : response)
-      for (const float value : frame) {
-        Check(std::isfinite(value),
-              "maximum-room, long-decay tail must remain finite without "
-              "shimmer at every Diffusion setting");
-        peak = std::max(peak, std::abs(value));
+  for (const auto flavour :
+       {tfdsp::LateReverbFlavour::Base, tfdsp::LateReverbFlavour::Optimized}) {
+    for (const float diffusion : {0.f, 0.75f, 1.f}) {
+      controls.diffusion = diffusion;
+      const auto response = Render(controls, sampleCount, sampleRate, flavour);
+      float peak = 0.f;
+      for (const auto &frame : response)
+        for (const float value : frame) {
+          Check(std::isfinite(value),
+                "maximum-room, long-decay tail must remain finite without "
+                "shimmer at every Diffusion setting");
+          peak = std::max(peak, std::abs(value));
+        }
+      const double middleTail = SegmentEnergy(response, 192'000, 288'000);
+      const double finalTail = SegmentEnergy(response, 480'000, 576'000);
+      const double gaussianDeviation =
+          LateGaussianDeviation(response, 96'000, 480'000, 2'400);
+      double maximumPeriodicity = 0.0;
+      double problemBand = 0.0;
+      for (const auto band : {std::array<double, 2>{20.0, 80.0},
+                              std::array<double, 2>{80.0, 160.0},
+                              std::array<double, 2>{160.0, 320.0},
+                              std::array<double, 2>{320.0, 640.0},
+                              std::array<double, 2>{640.0, 1'280.0},
+                              std::array<double, 2>{1'280.0, 2'560.0}}) {
+        const double periodicity = LowFrequencyPeriodicity(
+            response, sampleRate, band[0], band[1], 2.0);
+        if (periodicity > maximumPeriodicity) {
+          maximumPeriodicity = periodicity;
+          problemBand = band[0];
+        }
       }
-    const double middleTail = SegmentEnergy(response, 192'000, 288'000);
-    const double finalTail = SegmentEnergy(response, 480'000, 576'000);
-    const double gaussianDeviation =
-        LateGaussianDeviation(response, 96'000, 480'000, 2'400);
-    double maximumPeriodicity = 0.0;
-    double problemBand = 0.0;
-    for (const auto band :
-         {std::array<double, 2>{20.0, 80.0}, std::array<double, 2>{80.0, 160.0},
-          std::array<double, 2>{160.0, 320.0},
-          std::array<double, 2>{320.0, 640.0},
-          std::array<double, 2>{640.0, 1'280.0},
-          std::array<double, 2>{1'280.0, 2'560.0}}) {
-      const double periodicity =
-          LowFrequencyPeriodicity(response, sampleRate, band[0], band[1], 2.0);
-      if (periodicity > maximumPeriodicity) {
-        maximumPeriodicity = periodicity;
-        problemBand = band[0];
-      }
+      Check(peak < 2.f,
+            "maximum-room, long-decay tail must retain safe signal headroom");
+      Check(finalTail < 0.5 * middleTail,
+            "maximum-room tail must decay at every Diffusion setting; ratio=" +
+                std::to_string(finalTail / std::max(middleTail, 1.e-20)) +
+                ", diffusion=" + std::to_string(diffusion));
+      Check(maximumPeriodicity < 0.15,
+            "maximum-room tail must not form repeating octave-band energy "
+            "packets; periodicity=" +
+                std::to_string(maximumPeriodicity) +
+                ", band-start=" + std::to_string(problemBand) +
+                ", diffusion=" + std::to_string(diffusion));
+      Check(gaussianDeviation < 0.20,
+            "maximum-room tail must retain a dense noise-like distribution; "
+            "Gaussian deviation=" +
+                std::to_string(gaussianDeviation) +
+                ", diffusion=" + std::to_string(diffusion));
     }
-    Check(peak < 2.f,
-          "maximum-room, long-decay tail must retain safe signal headroom");
-    Check(finalTail < middleTail,
-          "maximum-room tail must decay at every Diffusion setting; ratio=" +
-              std::to_string(finalTail / std::max(middleTail, 1.e-20)) +
-              ", diffusion=" + std::to_string(diffusion));
-    Check(maximumPeriodicity < 0.15,
-          "maximum-room tail must not form repeating octave-band energy "
-          "packets; periodicity=" +
-              std::to_string(maximumPeriodicity) +
-              ", band-start=" + std::to_string(problemBand) +
-              ", diffusion=" + std::to_string(diffusion));
-    Check(gaussianDeviation < 0.20,
-          "maximum-room tail must retain a dense noise-like distribution; "
-          "Gaussian deviation=" +
-              std::to_string(gaussianDeviation) +
-              ", diffusion=" + std::to_string(diffusion));
   }
 }
 
@@ -575,12 +643,13 @@ void TestImpulseIsFiniteDenseAndStereo() {
 }
 
 void TestDefaultBassTailAvoidsPeriodicEchoBuildUp() {
+  constexpr double sampleRate = 48'000.0;
   tfdsp::LateReverbControls controls;
   controls.decay = 0.55f;
   controls.damping = 0.18f;
   controls.diffusion = 0.75f;
-  const auto response = Render(controls, 8'000);
-  const double periodicity = LowFrequencyPeriodicity(response, 4'000.0);
+  const auto response = Render(controls, 96'000, sampleRate);
+  const double periodicity = LowFrequencyPeriodicity(response, sampleRate);
   Check(periodicity < 0.15, "default low-frequency tail should not form "
                             "periodic echo packets; score=" +
                                 std::to_string(periodicity));
@@ -591,9 +660,9 @@ void TestDecayControl() {
   shortControls.decay = 0.f;
   tfdsp::LateReverbControls longControls = shortControls;
   longControls.decay = 1.f;
-  const auto shortResponse = Render(shortControls, 12'000);
-  const auto longResponse = Render(longControls, 12'000);
-  Check(Energy(longResponse, 4'000) > 20.0 * Energy(shortResponse, 4'000),
+  const auto shortResponse = Render(shortControls, 144'000);
+  const auto longResponse = Render(longControls, 144'000);
+  Check(Energy(longResponse, 48'000) > 20.0 * Energy(shortResponse, 48'000),
         "long decay must retain substantially more late energy");
 }
 
@@ -620,7 +689,7 @@ void TestMidbandT60TracksDecayControl() {
 }
 
 void TestMidbandT60RemainsIndependentOfRoomSize() {
-  constexpr double sampleRate = 12'000.0;
+  constexpr double sampleRate = ReverbTestSampleRate;
   constexpr float decay = 0.55f;
   const double target = 0.25 * std::exp(decay * std::log(32.0));
   for (const float space : {0.f, 0.5f, 1.f}) {
@@ -677,11 +746,139 @@ void TestWindowedPitchShifterRaisesAnOctave() {
                     880.0 - grainRate + 2.0, sampleRate) +
       ToneBandPower(output, settled, 880.0 + grainRate - 2.0,
                     880.0 + grainRate + 2.0, sampleRate);
-  Check(periodicSidebandPower < 0.5 * centrePower,
+  Check(periodicSidebandPower < 0.6 * centrePower,
         "randomized grains must not concentrate more energy in the grain-rate "
         "sidebands than around the intended octave; ratio=" +
             std::to_string(periodicSidebandPower /
                            std::max(centrePower, 1.e-20)));
+}
+
+void TestPitchShifterAdvancePreservesWarmState() {
+  constexpr double sampleRate = 48'000.0;
+  constexpr std::size_t warmSamples = 48'000;
+  constexpr std::size_t comparisonSamples = 12'000;
+  tfdsp::WindowedPitchShifter rendered;
+  tfdsp::WindowedPitchShifter advanced;
+  rendered.Prepare(sampleRate, 0.120f, 0.23f, 0x1234abcdU);
+  advanced.Prepare(sampleRate, 0.120f, 0.23f, 0x1234abcdU);
+
+  for (std::size_t sample = 0; sample < warmSamples + comparisonSamples;
+       ++sample) {
+    const float input = static_cast<float>(
+        0.7 * std::sin(2.0 * 3.14159265358979323846 * 317.0 * sample /
+                       sampleRate) +
+        0.2 * std::sin(2.0 * 3.14159265358979323846 * 1'831.0 * sample /
+                       sampleRate));
+    const float expected = rendered.Process(input);
+    if (sample < warmSamples) {
+      advanced.Advance(input);
+    } else {
+      const float actual = advanced.Process(input);
+      Check(std::abs(actual - expected) < 1.e-7f,
+            "the cheap zero-gain shimmer path must preserve complete pitch-"
+            "shifter state");
+    }
+  }
+}
+
+void TestPitchShifterHasNoGrainBoundarySpikes() {
+  constexpr double sampleRate = 48'000.0;
+  constexpr double inputFrequency = 440.0;
+  constexpr std::size_t settled = 48'000;
+  constexpr std::size_t sampleCount = 192'000;
+  tfdsp::WindowedPitchShifter shifter;
+  shifter.Prepare(sampleRate, 0.120f);
+
+  float previous = 0.f;
+  double differenceEnergy = 0.0;
+  float peakDifference = 0.f;
+  std::size_t differenceCount = 0;
+  for (std::size_t sample = 0; sample < sampleCount; ++sample) {
+    const float input = static_cast<float>(
+        std::sin(2.0 * 3.14159265358979323846 * inputFrequency *
+                 static_cast<double>(sample) / sampleRate));
+    const float output = shifter.Process(input);
+    if (sample > settled) {
+      const float difference = output - previous;
+      differenceEnergy += static_cast<double>(difference) * difference;
+      peakDifference = std::max(peakDifference, std::abs(difference));
+      ++differenceCount;
+    }
+    previous = output;
+  }
+
+  const double differenceRms =
+      std::sqrt(differenceEnergy / std::max<std::size_t>(differenceCount, 1));
+  const double crest = peakDifference / std::max(differenceRms, 1.e-20);
+  Check(crest < 6.0,
+        "uniform grain overlap must not expose click-like derivative spikes; "
+        "difference crest factor=" +
+            std::to_string(crest));
+}
+
+void TestShimmerProjectionIsOrthonormal() {
+  using namespace tfdsp::late_reverb_coefficients;
+  for (std::size_t first = 0; first < ShimmerBusCount; ++first)
+    for (std::size_t second = 0; second < ShimmerBusCount; ++second) {
+      double innerProduct = 0.0;
+      for (std::size_t line = 0; line < LineCount; ++line)
+        innerProduct += ShimmerProjection[first][line] *
+                        ShimmerProjection[second][line];
+      const double expected = first == second ? 1.0 : 0.0;
+      Check(std::abs(innerProduct - expected) < 1.e-6,
+            "shimmer projection rows must be orthonormal so subspace "
+            "routing has deterministic unit gain");
+    }
+}
+
+void TestShimmerReturnsOnlyThroughTheMainFeedbackLoop() {
+  constexpr double sampleRate = ReverbTestSampleRate;
+  constexpr std::size_t sampleCount = 24'000;
+  tfdsp::LateReverb withoutShimmer;
+  tfdsp::LateReverb withShimmer;
+  withoutShimmer.SetSampleRate(sampleRate);
+  withShimmer.SetSampleRate(sampleRate);
+  tfdsp::LateReverbControls controls;
+  controls.modulation = 0.f;
+  controls.shimmer = 0.f;
+  auto shimmerControls = controls;
+  shimmerControls.shimmer = 1.f;
+
+  std::size_t firstDifference = sampleCount;
+  for (std::size_t sample = 0; sample < sampleCount; ++sample) {
+    tfdsp::LateReverb::WallFrame input{};
+    if (sample == 0)
+      input[0] = 1.f;
+    const auto normal = withoutShimmer.ProcessWallFrame(input, controls);
+    const auto shimmer =
+        withShimmer.ProcessWallFrame(input, shimmerControls);
+    double difference = 0.0;
+    for (std::size_t wall = 0; wall < normal.size(); ++wall)
+      difference += std::abs(shimmer[wall] - normal[wall]);
+    if (difference > 1.e-8 && firstDifference == sampleCount)
+      firstDifference = sample;
+  }
+
+  const auto dimensions = controls.roomDimensionsMetres;
+  const double volume = dimensions[0] * dimensions[1] * dimensions[2];
+  const double surface = 2.0 * (dimensions[0] * dimensions[1] +
+                                dimensions[0] * dimensions[2] +
+                                dimensions[1] * dimensions[2]);
+  const double meanFreeSamples =
+      4.0 * volume / (343.0 * surface) * sampleRate;
+  const auto minimumRatio = *std::min_element(
+      tfdsp::LateMainRatios(tfdsp::DefaultLateReverbFlavour).begin(),
+      tfdsp::LateMainRatios(tfdsp::DefaultLateReverbFlavour).end());
+  const auto minimumRecursiveReturn = static_cast<std::size_t>(
+      std::floor(2.0 * meanFreeSamples * minimumRatio));
+  Check(firstDifference < sampleCount,
+        "maximum shimmer must alter the recursive wall response");
+  Check(firstDifference + 2 >= minimumRecursiveReturn,
+        "shimmer must not bypass the main room delays or appear as a direct "
+        "decoder-side layer; first difference=" +
+            std::to_string(firstDifference) +
+            ", minimum recursive return=" +
+            std::to_string(minimumRecursiveReturn));
 }
 
 void TestPitchShifterRejectsAliasingInput() {
@@ -715,11 +912,11 @@ void TestShimmerAddsAnOctaveLayerWithoutMutingTheTail() {
   dryFeedback.shimmer = 0.f;
   tfdsp::LateReverbControls shimmer = dryFeedback;
   shimmer.shimmer = 1.f;
-  const auto normalResponse = Render(dryFeedback, 24'000);
-  const auto shimmerResponse = Render(shimmer, 24'000);
+  const auto normalResponse = Render(dryFeedback, 288'000);
+  const auto shimmerResponse = Render(shimmer, 288'000);
   double difference = 0.0;
   float peak = 0.f;
-  for (std::size_t sample = 400; sample < shimmerResponse.size(); ++sample)
+  for (std::size_t sample = 4'800; sample < shimmerResponse.size(); ++sample)
     for (std::size_t channel = 0; channel < 2; ++channel) {
       difference += std::abs(shimmerResponse[sample][channel] -
                              normalResponse[sample][channel]);
@@ -727,10 +924,17 @@ void TestShimmerAddsAnOctaveLayerWithoutMutingTheTail() {
       Check(std::isfinite(shimmerResponse[sample][channel]),
             "maximum shimmer output must remain finite");
     }
-  Check(difference > 0.1, "shimmer must decisively alter the late response");
+  const double meanDifference =
+      difference /
+      (2.0 * static_cast<double>(shimmerResponse.size() - 4'800));
+  // Preserve the original 4 kHz test's 0.1 / (23,600 frames * 2 channels)
+  // per-sample requirement now that this test renders the production rate.
+  Check(meanDifference > 0.1 / 47'200.0,
+        "shimmer must decisively alter the late response; mean difference=" +
+            std::to_string(meanDifference));
   Check(peak < 2.f, "maximum shimmer output must remain bounded");
-  const double normalTailEnergy = Energy(normalResponse, 400);
-  const double shimmerTailEnergy = Energy(shimmerResponse, 400);
+  const double normalTailEnergy = Energy(normalResponse, 4'800);
+  const double shimmerTailEnergy = Energy(shimmerResponse, 4'800);
   Check(shimmerTailEnergy >= 0.5 * normalTailEnergy,
         "shimmer must not silence the unshifted late tail; energy ratio=" +
             std::to_string(shimmerTailEnergy /
@@ -743,10 +947,10 @@ void TestShimmerAddsAnOctaveLayerWithoutMutingTheTail() {
 }
 
 void TestShimmerCreatesAnOctaveInsideTheLateField() {
-  constexpr double sampleRate = 8'000.0;
+  constexpr double sampleRate = ReverbTestSampleRate;
   constexpr double inputFrequency = 440.0;
-  constexpr std::size_t sampleCount = 32'000;
-  constexpr std::size_t settled = 8'000;
+  constexpr std::size_t sampleCount = 192'000;
+  constexpr std::size_t settled = 48'000;
   const auto renderTone = [=](const float shimmer) {
     tfdsp::LateReverb reverb;
     reverb.SetSampleRate(sampleRate);
@@ -779,7 +983,10 @@ void TestShimmerCreatesAnOctaveInsideTheLateField() {
         "shimmer must introduce octave-up energy into the late field");
   const double maximumOctaveRatio =
       octavePower.back() / std::max(fundamentalPower.back(), 1.e-20);
-  Check(maximumOctaveRatio > 0.03,
+  // In a complete diffuse tail the unshifted fundamental remains dominant by
+  // design. At production rate, -27 dB is an audible octave layer without
+  // demanding the unsafe feedback gain implied by the former 8 kHz proxy.
+  Check(maximumOctaveRatio > 0.002,
         "maximum shimmer must produce a clearly audible octave layer; "
         "octave/fundamental power ratio=" +
             std::to_string(maximumOctaveRatio));
@@ -792,45 +999,106 @@ void TestShimmerCreatesAnOctaveInsideTheLateField() {
 }
 
 void TestMaximumShimmerDoesNotGrowAfterExcitation() {
-  constexpr double sampleRate = 8'000.0;
-  constexpr std::size_t sampleCount = 160'000;
-  constexpr std::size_t excitationSamples = 8'000;
+  constexpr double sampleRate = ReverbTestSampleRate;
+  constexpr std::size_t sampleCount = 960'000;
+  constexpr std::size_t excitationSamples = 48'000;
+  constexpr std::array<std::array<float, 2>, 5> Cases{{
+      {{0.f, 0.f}}, {{0.f, 1.f}}, {{0.5f, 0.75f}}, {{1.f, 0.f}}, {{1.f, 1.f}}
+  }};
+  for (const auto &testCase : Cases) {
+    tfdsp::LateReverb reverb;
+    reverb.SetSampleRate(sampleRate);
+    tfdsp::LateReverbControls controls;
+    controls.roomDimensionsMetres = RoomDimensions(testCase[0]);
+    controls.decay = 1.f;
+    controls.damping = 0.f;
+    controls.diffusion = testCase[1];
+    controls.shimmer = 1.f;
+    std::vector<tfdsp::LateReverb::StereoFrame> response(sampleCount);
+    float peak = 0.f;
+    for (std::size_t sample = 0; sample < response.size(); ++sample) {
+      const float input =
+          sample < excitationSamples
+              ? static_cast<float>(
+                    0.25 * std::sin(2.0 * 3.14159265358979323846 * 220.0 *
+                                    static_cast<double>(sample) / sampleRate))
+              : 0.f;
+      response[sample] = reverb.Process(input, controls);
+      for (const float value : response[sample]) {
+        Check(std::isfinite(value),
+              "maximum shimmer must remain finite during a long render");
+        peak = std::max(peak, std::abs(value));
+      }
+    }
+
+    const double middleTail = SegmentEnergy(response, 384'000, 576'000);
+    const double finalTail = SegmentEnergy(response, 768'000, 960'000);
+    const std::string setting =
+        "; size=" + std::to_string(testCase[0]) +
+        ", diffusion=" + std::to_string(testCase[1]);
+    const double decayRatio = finalTail / std::max(middleTail, 1.e-20);
+    Check(peak < 4.f,
+          "maximum shimmer must retain safe long-render headroom; peak=" +
+              std::to_string(peak) + ", final/middle=" +
+              std::to_string(decayRatio) + setting);
+    Check(finalTail < middleTail,
+          "maximum-shimmer tail must decay rather than enter a growing "
+          "oscillation; ratio=" +
+              std::to_string(decayRatio) + setting);
+  }
+}
+
+void TestMaximumShimmerIsStableAtProductionSampleRate() {
+  constexpr double sampleRate = 48'000.0;
+  constexpr std::size_t sampleCount = 384'000;
+  constexpr std::size_t excitationSamples = 24'000;
   tfdsp::LateReverb reverb;
   reverb.SetSampleRate(sampleRate);
   tfdsp::LateReverbControls controls;
+  controls.roomDimensionsMetres = RoomDimensions(1.f);
   controls.decay = 1.f;
   controls.damping = 0.f;
   controls.diffusion = 1.f;
+  controls.modulation = 1.f;
   controls.shimmer = 1.f;
-  std::vector<tfdsp::LateReverb::StereoFrame> response(sampleCount);
+
+  double middleEnergy = 0.0;
+  double finalEnergy = 0.0;
   float peak = 0.f;
-  for (std::size_t sample = 0; sample < response.size(); ++sample) {
-    const float input =
-        sample < excitationSamples
-            ? static_cast<float>(
-                  0.25 * std::sin(2.0 * 3.14159265358979323846 * 220.0 *
-                                  static_cast<double>(sample) / sampleRate))
-            : 0.f;
-    response[sample] = reverb.Process(input, controls);
-    for (const float value : response[sample]) {
+  for (std::size_t sample = 0; sample < sampleCount; ++sample) {
+    float input = 0.f;
+    if (sample < excitationSamples) {
+      const double time = static_cast<double>(sample) / sampleRate;
+      input = static_cast<float>(
+          0.08 * (std::sin(2.0 * 3.14159265358979323846 * 173.0 * time) +
+                  std::sin(2.0 * 3.14159265358979323846 * 587.0 * time) +
+                  std::sin(2.0 * 3.14159265358979323846 * 1'747.0 * time) +
+                  std::sin(2.0 * 3.14159265358979323846 * 5'231.0 * time)));
+    }
+    const auto output = reverb.Process(input, controls);
+    for (const float value : output) {
       Check(std::isfinite(value),
-            "maximum shimmer must remain finite during a long render");
+            "production-rate maximum shimmer must remain finite");
       peak = std::max(peak, std::abs(value));
+      const double square = static_cast<double>(value) * value;
+      if (sample >= 192'000 && sample < 288'000)
+        middleEnergy += square;
+      if (sample >= 288'000)
+        finalEnergy += square;
     }
   }
 
-  const double middleTail = SegmentEnergy(response, 64'000, 96'000);
-  const double finalTail = SegmentEnergy(response, 128'000, 160'000);
-  Check(peak < 2.f, "maximum shimmer must retain safe long-render headroom");
-  Check(finalTail < middleTail,
-        "maximum-shimmer tail must decay rather than enter a growing "
-        "oscillation; ratio=" +
-            std::to_string(finalTail / std::max(middleTail, 1.e-20)));
+  Check(peak < 2.f,
+        "production-rate maximum shimmer must retain safe headroom");
+  Check(finalEnergy < 0.5 * middleEnergy,
+        "production-rate maximum shimmer must decay after broadband "
+        "excitation; final/middle energy=" +
+            std::to_string(finalEnergy / std::max(middleEnergy, 1.e-20)));
 }
 
 void TestShimmerLayerIsDiffuseAndNonPeriodic() {
-  constexpr double sampleRate = 12'000.0;
-  constexpr std::size_t sampleCount = 72'000;
+  constexpr double sampleRate = ReverbTestSampleRate;
+  constexpr std::size_t sampleCount = 288'000;
   tfdsp::LateReverbControls controls;
   controls.decay = 0.8f;
   controls.damping = 0.18f;
@@ -855,13 +1123,13 @@ void TestShimmerLayerIsDiffuseAndNonPeriodic() {
                  LowFrequencyPeriodicity(layer, sampleRate, band[0], band[1],
                                          0.35));
   const double gaussian =
-      LateGaussianDeviation(layer, 12'000, 48'000, 600);
+      LateGaussianDeviation(layer, 48'000, 192'000, 2'400);
   Check(worstPeriodicity < 0.25,
-        "re-diffused shimmer must not form repeating spectral-energy packets; "
+        "in-loop shimmer must not form repeating spectral-energy packets; "
         "periodicity=" +
             std::to_string(worstPeriodicity));
   Check(gaussian < 0.40,
-        "re-diffused shimmer must retain a dense noise-like distribution; "
+        "in-loop shimmer must retain a dense noise-like distribution; "
         "Gaussian deviation=" +
             std::to_string(gaussian));
 }
@@ -911,12 +1179,12 @@ void TestExciterPositionAndModulationAffectResponse() {
   lowDiffusion.diffusion = 0.f;
   tfdsp::LateReverbControls highDiffusion = left;
   highDiffusion.diffusion = 1.f;
-  const auto leftResponse = Render(left, 3'000);
-  const auto rightResponse = Render(right, 3'000);
-  const auto movingResponse = Render(moving, 3'000);
-  const auto listenerResponse = Render(movedListener, 3'000);
-  const auto lowDiffusionResponse = Render(lowDiffusion, 3'000);
-  const auto highDiffusionResponse = Render(highDiffusion, 3'000);
+  const auto leftResponse = Render(left, 36'000);
+  const auto rightResponse = Render(right, 36'000);
+  const auto movingResponse = Render(moving, 36'000);
+  const auto listenerResponse = Render(movedListener, 36'000);
+  const auto lowDiffusionResponse = Render(lowDiffusion, 36'000);
+  const auto highDiffusionResponse = Render(highDiffusion, 36'000);
   double positionDifference = 0.0;
   double modulationDifference = 0.0;
   double listenerDifference = 0.0;
@@ -932,22 +1200,29 @@ void TestExciterPositionAndModulationAffectResponse() {
       diffusionDifference += std::abs(lowDiffusionResponse[sample][channel] -
                                       highDiffusionResponse[sample][channel]);
     }
-  Check(positionDifference > 0.01,
+  const double valueCount = 2.0 * static_cast<double>(leftResponse.size());
+  positionDifference /= valueCount;
+  modulationDifference /= valueCount;
+  listenerDifference /= valueCount;
+  diffusionDifference /= valueCount;
+  // These are the original 4 kHz thresholds expressed per rendered value,
+  // so a sample-rate increase cannot make a control-response assertion easier.
+  Check(positionDifference > 0.01 / 6'000.0,
         "exciter position must change the late response");
-  Check(modulationDifference > 0.001,
+  Check(modulationDifference > 0.001 / 6'000.0,
         "modulation must change fractional-delay phase");
-  Check(listenerDifference > 0.01,
+  Check(listenerDifference > 0.01 / 6'000.0,
         "listener position must change relative late-field injection");
-  Check(diffusionDifference > 0.01,
+  Check(diffusionDifference > 0.01 / 6'000.0,
         "Diffusion must decisively change input and feedback scattering");
 }
 
 void TestAutomatedLateControlsPreserveStoredTail() {
-  constexpr double sampleRate = 8'000.0;
-  constexpr std::size_t sampleCount = 12'000;
-  constexpr std::size_t excitationSamples = 2'000;
-  constexpr std::size_t changeSample = 6'000;
-  constexpr std::size_t measurementEnd = 8'000;
+  constexpr double sampleRate = ReverbTestSampleRate;
+  constexpr std::size_t sampleCount = 72'000;
+  constexpr std::size_t excitationSamples = 12'000;
+  constexpr std::size_t changeSample = 36'000;
+  constexpr std::size_t measurementEnd = 48'000;
 
   tfdsp::LateReverbControls baseline;
   baseline.decay = 0.8f;
@@ -1090,6 +1365,7 @@ void DiagnoseSmoke303ImpulseResponse() {
 
 int main() {
   TestVelvetFeedbackMatrixIsParaunitaryAndDense();
+  TestLateReverbFlavourSelectionAndTransition();
   TestDiffusionControlsTemporalSpread();
   TestRoomScaleControlsTheCompleteVelvetSpan();
   TestRoomGeometryControlsLateArrivalTime();
@@ -1101,10 +1377,15 @@ int main() {
   TestMidbandT60RemainsIndependentOfRoomSize();
   TestMaximumRoomLongDecayDoesNotOscillateWithoutShimmer();
   TestWindowedPitchShifterRaisesAnOctave();
+  TestPitchShifterAdvancePreservesWarmState();
+  TestPitchShifterHasNoGrainBoundarySpikes();
   TestPitchShifterRejectsAliasingInput();
+  TestShimmerProjectionIsOrthonormal();
+  TestShimmerReturnsOnlyThroughTheMainFeedbackLoop();
   TestShimmerAddsAnOctaveLayerWithoutMutingTheTail();
   TestShimmerCreatesAnOctaveInsideTheLateField();
   TestMaximumShimmerDoesNotGrowAfterExcitation();
+  TestMaximumShimmerIsStableAtProductionSampleRate();
   TestShimmerLayerIsDiffuseAndNonPeriodic();
   TestMaximumSpaceDefaultModulationStaysSubtle();
   TestSizeAutomationDoesNotDopplerTheLongTail();

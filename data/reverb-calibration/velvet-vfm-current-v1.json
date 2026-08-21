@@ -1,0 +1,607 @@
+{
+  "format": "TriggerFish current two-stage VFM coefficients v1",
+  "architecture": {
+    "line_count": 16,
+    "velvet_stage_count": 2,
+    "main_delay_scale": "room mean free time",
+    "diffusion_law": "0.20 + 1.30 * smoothstep(control)",
+    "loss": "three-band attenuation on every delay segment"
+  },
+  "sample_rate": 48000.0,
+  "frequency_seconds": 32.0,
+  "frequency_range_hz": [
+    20.0,
+    20000.0
+  ],
+  "control_grid_size": 135,
+  "optimizer": {
+    "name": "normalized steepest descent with adaptive backtracking",
+    "initial_trust_radius": 0.2,
+    "requested_steps": 160,
+    "completed_steps": 45
+  },
+  "best_step": 44,
+  "best_loss": 41.75348935008049,
+  "selected_step": 44,
+  "selected_loss": 42.7085334,
+  "selected_discrete_seed": 73021,
+  "selection": {
+    "main_ratio_blend": 0.5,
+    "reason": "training, held-out and secondary-validation aggregate objectives all improve while retaining the Base VFM"
+  },
+  "main_delay_ratio": [
+    0.5662036696,
+    0.6296109879,
+    0.6795341291,
+    0.7309483308,
+    0.7887473513,
+    0.8514010509,
+    0.9201005196,
+    0.9672777068,
+    1.026566553,
+    1.078808736,
+    1.13545105,
+    1.201338571,
+    1.262490718,
+    1.32714254,
+    1.386827746,
+    1.447550339
+  ],
+  "velvet_delay_ms": [
+    [
+      0.125,
+      0.875,
+      1.375,
+      2.0,
+      2.75,
+      3.25,
+      3.875,
+      4.5,
+      5.25,
+      5.75,
+      6.375,
+      7.125,
+      7.75,
+      8.25,
+      9.125,
+      9.75
+    ],
+    [
+      0.375,
+      1.0,
+      1.625,
+      2.375,
+      2.875,
+      3.625,
+      4.125,
+      4.875,
+      5.375,
+      6.125,
+      6.75,
+      7.375,
+      8.0,
+      8.75,
+      9.375,
+      10.125
+    ]
+  ],
+  "permutations": [
+    [
+      11,
+      1,
+      15,
+      0,
+      6,
+      3,
+      4,
+      13,
+      8,
+      10,
+      14,
+      12,
+      9,
+      7,
+      2,
+      5
+    ],
+    [
+      9,
+      10,
+      12,
+      4,
+      7,
+      5,
+      13,
+      1,
+      3,
+      6,
+      0,
+      8,
+      2,
+      15,
+      11,
+      14
+    ],
+    [
+      5,
+      12,
+      1,
+      9,
+      14,
+      3,
+      10,
+      0,
+      7,
+      15,
+      4,
+      11,
+      2,
+      13,
+      8,
+      6
+    ]
+  ],
+  "signs": [
+    [
+      -1.0,
+      -1.0,
+      -1.0,
+      -1.0,
+      -1.0,
+      -1.0,
+      1.0,
+      -1.0,
+      -1.0,
+      -1.0,
+      1.0,
+      -1.0,
+      -1.0,
+      -1.0,
+      1.0,
+      -1.0
+    ],
+    [
+      1.0,
+      -1.0,
+      -1.0,
+      1.0,
+      -1.0,
+      1.0,
+      -1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      -1.0,
+      -1.0,
+      1.0,
+      1.0,
+      -1.0
+    ],
+    [
+      1.0,
+      -1.0,
+      1.0,
+      1.0,
+      -1.0,
+      -1.0,
+      1.0,
+      -1.0,
+      1.0,
+      -1.0,
+      -1.0,
+      1.0,
+      -1.0,
+      1.0,
+      1.0,
+      -1.0
+    ]
+  ],
+  "history": [
+    {
+      "step": 0,
+      "total": 44.19823097661138,
+      "accepted_total": 43.8813591003418,
+      "accepted_distance": 0.2,
+      "trial_radius": 0.2,
+      "worst_band": 37.57659912109375,
+      "regularization": 0.06211793050169945
+    },
+    {
+      "step": 1,
+      "total": 43.881358596682546,
+      "accepted_total": 43.50129699707031,
+      "accepted_distance": 0.19998265164338583,
+      "trial_radius": 0.19998265164338583,
+      "worst_band": 37.18603515625,
+      "regularization": 0.06080843508243561
+    },
+    {
+      "step": 2,
+      "total": 43.501296685934065,
+      "accepted_total": 43.17586898803711,
+      "accepted_distance": 0.19993061326166509,
+      "trial_radius": 0.19993061326166509,
+      "worst_band": 36.58899688720703,
+      "regularization": 0.05950668454170227
+    },
+    {
+      "step": 3,
+      "total": 43.17586957111955,
+      "accepted_total": 42.864830017089844,
+      "accepted_distance": 0.19984390491662446,
+      "trial_radius": 0.19984390491662446,
+      "worst_band": 36.17548751831055,
+      "regularization": 0.059768449515104294
+    },
+    {
+      "step": 4,
+      "total": 42.86483141809702,
+      "accepted_total": 42.67105484008789,
+      "accepted_distance": 0.19972256003598154,
+      "trial_radius": 0.19972256003598154,
+      "worst_band": 35.699825286865234,
+      "regularization": 0.058090440928936005
+    },
+    {
+      "step": 5,
+      "total": 42.6710566483438,
+      "accepted_total": 42.45439147949219,
+      "accepted_distance": 0.19956662540049774,
+      "trial_radius": 0.19956662540049774,
+      "worst_band": 35.37467956542969,
+      "regularization": 0.0577123649418354
+    },
+    {
+      "step": 6,
+      "total": 42.45439266964793,
+      "accepted_total": 42.31810760498047,
+      "accepted_distance": 0.1993761611259434,
+      "trial_radius": 0.1993761611259434,
+      "worst_band": 35.013771057128906,
+      "regularization": 0.057103220373392105
+    },
+    {
+      "step": 7,
+      "total": 42.31810584455729,
+      "accepted_total": 42.17082214355469,
+      "accepted_distance": 0.19915124063992196,
+      "trial_radius": 0.19915124063992196,
+      "worst_band": 34.88822937011719,
+      "regularization": 0.05510770529508591
+    },
+    {
+      "step": 8,
+      "total": 42.17082361698151,
+      "accepted_total": 42.03936767578125,
+      "accepted_distance": 0.1988919506535624,
+      "trial_radius": 0.1988919506535624,
+      "worst_band": 34.67668533325195,
+      "regularization": 0.05475318431854248
+    },
+    {
+      "step": 9,
+      "total": 42.03936588227749,
+      "accepted_total": 41.98089599609375,
+      "accepted_distance": 0.19859839112809025,
+      "trial_radius": 0.19859839112809025,
+      "worst_band": 34.446773529052734,
+      "regularization": 0.05453522503376007
+    },
+    {
+      "step": 10,
+      "total": 41.98089789241553,
+      "accepted_total": 41.91728973388672,
+      "accepted_distance": 0.19827067523629074,
+      "trial_radius": 0.19827067523629074,
+      "worst_band": 34.38192367553711,
+      "regularization": 0.0538984015583992
+    },
+    {
+      "step": 11,
+      "total": 41.91728833645582,
+      "accepted_total": 41.89554977416992,
+      "accepted_distance": 0.09895446465943926,
+      "trial_radius": 0.19790892931887852,
+      "worst_band": 34.194984436035156,
+      "regularization": 0.05415705591440201
+    },
+    {
+      "step": 12,
+      "total": 41.895550720840696,
+      "accepted_total": 41.86910629272461,
+      "accepted_distance": 0.07421584849457945,
+      "trial_radius": 0.1484316969891589,
+      "worst_band": 34.26622009277344,
+      "regularization": 0.05478058382868767
+    },
+    {
+      "step": 13,
+      "total": 41.86910462573171,
+      "accepted_total": 41.83259201049805,
+      "accepted_distance": 0.11132377274186916,
+      "trial_radius": 0.11132377274186916,
+      "worst_band": 34.190311431884766,
+      "regularization": 0.05482238158583641
+    },
+    {
+      "step": 14,
+      "total": 41.83259311676025,
+      "accepted_total": 41.80392837524414,
+      "accepted_distance": 0.08349282955640187,
+      "trial_radius": 0.16698565911280375,
+      "worst_band": 34.193641662597656,
+      "regularization": 0.05535411834716797
+    },
+    {
+      "step": 15,
+      "total": 41.80392972305417,
+      "accepted_total": 41.79045486450195,
+      "accepted_distance": 0.06261962216730141,
+      "trial_radius": 0.12523924433460282,
+      "worst_band": 34.129886627197266,
+      "regularization": 0.05522897467017174
+    },
+    {
+      "step": 16,
+      "total": 41.79045625597239,
+      "accepted_total": 41.78975296020508,
+      "accepted_distance": 0.09392943325095211,
+      "trial_radius": 0.09392943325095211,
+      "worst_band": 34.154441833496094,
+      "regularization": 0.05535649508237839
+    },
+    {
+      "step": 17,
+      "total": 41.78975150197744,
+      "accepted_total": 41.7728385925293,
+      "accepted_distance": 0.07044707493821409,
+      "trial_radius": 0.14089414987642818,
+      "worst_band": 34.11494064331055,
+      "regularization": 0.05511022359132767
+    },
+    {
+      "step": 18,
+      "total": 41.77284008637071,
+      "accepted_total": 41.77092742919922,
+      "accepted_distance": 0.052835306203660566,
+      "trial_radius": 0.10567061240732113,
+      "worst_band": 34.12063980102539,
+      "regularization": 0.05526198074221611
+    },
+    {
+      "step": 19,
+      "total": 41.770928445160386,
+      "accepted_total": 41.765872955322266,
+      "accepted_distance": 0.039626479652745426,
+      "trial_radius": 0.07925295930549085,
+      "worst_band": 34.062347412109375,
+      "regularization": 0.055257998406887054
+    },
+    {
+      "step": 20,
+      "total": 41.7658731931448,
+      "accepted_total": 41.764503479003906,
+      "accepted_distance": 0.029719859739559068,
+      "trial_radius": 0.059439719479118136,
+      "worst_band": 34.100032806396484,
+      "regularization": 0.05531509220600128
+    },
+    {
+      "step": 21,
+      "total": 41.76450401961804,
+      "accepted_total": 41.762229919433594,
+      "accepted_distance": 0.0222898948046693,
+      "trial_radius": 0.0445797896093386,
+      "worst_band": 34.063629150390625,
+      "regularization": 0.055285826325416565
+    },
+    {
+      "step": 22,
+      "total": 41.762230474948886,
+      "accepted_total": 41.76091003417969,
+      "accepted_distance": 0.016717421103501974,
+      "trial_radius": 0.03343484220700395,
+      "worst_band": 34.08467102050781,
+      "regularization": 0.055349528789520264
+    },
+    {
+      "step": 23,
+      "total": 41.76090947911143,
+      "accepted_total": 41.7601318359375,
+      "accepted_distance": 0.02507613165525296,
+      "trial_radius": 0.02507613165525296,
+      "worst_band": 34.06588363647461,
+      "regularization": 0.05537206307053566
+    },
+    {
+      "step": 24,
+      "total": 41.76013162732124,
+      "accepted_total": 41.758644104003906,
+      "accepted_distance": 0.01880709874143972,
+      "trial_radius": 0.03761419748287944,
+      "worst_band": 34.080135345458984,
+      "regularization": 0.05537495017051697
+    },
+    {
+      "step": 25,
+      "total": 41.758645262420174,
+      "accepted_total": 41.758331298828125,
+      "accepted_distance": 0.014105324056079789,
+      "trial_radius": 0.028210648112159578,
+      "worst_band": 34.05778884887695,
+      "regularization": 0.055386342108249664
+    },
+    {
+      "step": 26,
+      "total": 41.758329648822546,
+      "accepted_total": 41.757442474365234,
+      "accepted_distance": 0.010578993042059842,
+      "trial_radius": 0.021157986084119684,
+      "worst_band": 34.07250213623047,
+      "regularization": 0.0553947277367115
+    },
+    {
+      "step": 27,
+      "total": 41.757443790435794,
+      "accepted_total": 41.75682830810547,
+      "accepted_distance": 0.015868489563089762,
+      "trial_radius": 0.015868489563089762,
+      "worst_band": 34.06037521362305,
+      "regularization": 0.0554194450378418
+    },
+    {
+      "step": 28,
+      "total": 41.756827192753555,
+      "accepted_total": 41.75621795654297,
+      "accepted_distance": 0.011901367172317321,
+      "trial_radius": 0.023802734344634643,
+      "worst_band": 34.068687438964844,
+      "regularization": 0.05549455061554909
+    },
+    {
+      "step": 29,
+      "total": 41.75621933296323,
+      "accepted_total": 41.75585174560547,
+      "accepted_distance": 0.00892602537923799,
+      "trial_radius": 0.01785205075847598,
+      "worst_band": 34.0546875,
+      "regularization": 0.055515315383672714
+    },
+    {
+      "step": 30,
+      "total": 41.75585245534778,
+      "accepted_total": 41.755523681640625,
+      "accepted_distance": 0.0066945190344284925,
+      "trial_radius": 0.013389038068856985,
+      "worst_band": 34.06422424316406,
+      "regularization": 0.05554154887795448
+    },
+    {
+      "step": 31,
+      "total": 41.75552282437682,
+      "accepted_total": 41.75529098510742,
+      "accepted_distance": 0.01004177855164274,
+      "trial_radius": 0.01004177855164274,
+      "worst_band": 34.057518005371094,
+      "regularization": 0.05556027963757515
+    },
+    {
+      "step": 32,
+      "total": 41.75529228553176,
+      "accepted_total": 41.75493240356445,
+      "accepted_distance": 0.007531333913732055,
+      "trial_radius": 0.01506266782746411,
+      "worst_band": 34.0645866394043,
+      "regularization": 0.0556100495159626
+    },
+    {
+      "step": 33,
+      "total": 41.75493209585547,
+      "accepted_total": 41.7548942565918,
+      "accepted_distance": 0.011297000870598081,
+      "trial_radius": 0.011297000870598081,
+      "worst_band": 34.0565185546875,
+      "regularization": 0.05562843754887581
+    },
+    {
+      "step": 34,
+      "total": 41.754893575906756,
+      "accepted_total": 41.75421142578125,
+      "accepted_distance": 0.008472750652948561,
+      "trial_radius": 0.016945501305897122,
+      "worst_band": 34.066646575927734,
+      "regularization": 0.05565711855888367
+    },
+    {
+      "step": 35,
+      "total": 41.7542127455771,
+      "accepted_total": 41.75411605834961,
+      "accepted_distance": 0.006354562989711421,
+      "trial_radius": 0.012709125979422841,
+      "worst_band": 34.056541442871094,
+      "regularization": 0.055673789232969284
+    },
+    {
+      "step": 36,
+      "total": 41.7541171272099,
+      "accepted_total": 41.754032135009766,
+      "accepted_distance": 0.00953184448456713,
+      "trial_radius": 0.00953184448456713,
+      "worst_band": 34.06160354614258,
+      "regularization": 0.05570348724722862
+    },
+    {
+      "step": 37,
+      "total": 41.75403307497501,
+      "accepted_total": 41.75373077392578,
+      "accepted_distance": 0.007148883363425348,
+      "trial_radius": 0.014297766726850696,
+      "worst_band": 34.052223205566406,
+      "regularization": 0.05573420226573944
+    },
+    {
+      "step": 38,
+      "total": 41.75372963950038,
+      "accepted_total": 41.753719329833984,
+      "accepted_distance": 0.0026808312612845056,
+      "trial_radius": 0.010723325045138022,
+      "worst_band": 34.06071472167969,
+      "regularization": 0.05574870482087135
+    },
+    {
+      "step": 39,
+      "total": 41.753718807399274,
+      "accepted_total": 41.75361251831055,
+      "accepted_distance": 0.004021246891926758,
+      "trial_radius": 0.004021246891926758,
+      "worst_band": 34.05723571777344,
+      "regularization": 0.05575380474328995
+    },
+    {
+      "step": 40,
+      "total": 41.75361131086945,
+      "accepted_total": 41.753578186035156,
+      "accepted_distance": 0.003015935168945069,
+      "trial_radius": 0.006031870337890138,
+      "worst_band": 34.0572624206543,
+      "regularization": 0.05577988550066948
+    },
+    {
+      "step": 41,
+      "total": 41.75357686907053,
+      "accepted_total": 41.75353240966797,
+      "accepted_distance": 0.0002827439220886002,
+      "trial_radius": 0.004523902753417603,
+      "worst_band": 34.05488204956055,
+      "regularization": 0.055778972804546356
+    },
+    {
+      "step": 42,
+      "total": 41.753531242012976,
+      "accepted_total": 41.753509521484375,
+      "accepted_distance": 0.00021205794156645017,
+      "trial_radius": 0.00042411588313290033,
+      "worst_band": 34.05519485473633,
+      "regularization": 0.05578021705150604
+    },
+    {
+      "step": 43,
+      "total": 41.75350842580199,
+      "accepted_total": 41.75349044799805,
+      "accepted_distance": 1.9880432021854705e-05,
+      "trial_radius": 0.0003180869123496753,
+      "worst_band": 34.05545425415039,
+      "regularization": 0.055780816823244095
+    },
+    {
+      "step": 44,
+      "total": 41.75348935008049,
+      "accepted_total": 41.75348935008049,
+      "accepted_distance": 0.0,
+      "trial_radius": 2.9820648032782057e-05,
+      "worst_band": 34.0554084777832,
+      "regularization": 0.0557807981967926
+    }
+  ]
+}

@@ -17,13 +17,10 @@ shared wet pre-delay
         +-- six position-dependent wall sends            |
              -> 16 geometry-scaled main delays           |
              -> three-band loss per delay segment        |
+             -> four-coordinate filtered octave blend    |
              -> geometry-scaled two-stage velvet matrix -+
                        ^                                  |
                        +-- optional delay modulation -----+
-                                                          |
-                  four orthogonal late-field buses
-                       -> octave shift -> two-stage velvet diffuser
-                       -> bounded auxiliary shimmer loop
                                                           |
 geometry- and distance-matched ER/tail balance -> stereo decode -> wet filters -> width
 ```
@@ -38,9 +35,9 @@ spreading so Size does not also become an unintended wet/dry control.
 
 ## Late field
 
-The late field has 16 main delays. Their relative ratios are a fixed prime-delay
-sequence normalized to unit mean. Their absolute mean delay is derived from the
-room mean free time
+The late field has 16 main delays. Their selected relative ratios are
+normalized to unit mean, so changing coefficient flavour cannot redefine the
+Size control. Their absolute mean delay is derived from the room mean free time
 
 ```text
 t_mean = 4 V / (c S)
@@ -66,11 +63,24 @@ setting the operator is paraunitary. Diffusion scales the temporal span of both
 span; it does not weaken or rotate the feedback transforms. Runtime changes
 crossfade between integer delay taps and remain passive.
 
-The coefficients in `src/tfdsp/late_reverb_coefficients.hpp` are deterministic
-heuristics and define the immutable Base flavour. The differentiable reference
-now reproduces this exact two-stage architecture. A future accepted fit will be
-exported to a separate optimized-coefficient namespace and exposed as the
-Optimized flavour; it will not overwrite Base.
+The deterministic heuristics in `src/tfdsp/late_reverb_coefficients.hpp`
+define the immutable Base flavour. A separately exported fit defines the
+Optimized flavour without changing the topology or control laws. The module's
+**Late-tail FDN** context menu selects **Base FDN** or **Optimized FDN**;
+Optimized FDN is the default and Base FDN remains available as the fixed
+comparison reference.
+Switching crossfades the main-delay reads, velvet taps, and passive transform
+blend while retaining every delay buffer, so the same live tail can be used
+for a direct comparison.
+
+The accepted Optimized flavour deliberately retains Base's velvet delays,
+signed permutations, and signs. An unconstrained discrete candidate improved
+the aggregate frequency-domain objective but failed the native maximum-room,
+minimum-Diffusion 20--80 Hz periodicity limit. The production fit therefore
+changes only the normalized main-delay ratios, each within 0.005 of its Base
+heuristic, and uses the midpoint between Base and the converged fit. This makes
+the context-menu comparison specifically about late-mode spacing rather than
+two different scattering networks.
 
 ## Decay and damping
 
@@ -98,19 +108,23 @@ Modulation applies independent, slow random motion of the 16 main-delay read
 positions. The lower 35% of the knob is a deliberately static region. Above it,
 depth rises cubically to 0.25 ms peak excursion.
 
-Shimmer projects all 16 late-field coordinates onto four orthonormal Walsh
-buses. Each bus is high-pass filtered and shifted up one octave by an
-independently seeded eight-grain shifter. The four shifted buses pass through a
-separate two-stage paraunitary velvet diffuser and a two-pole high-cut. A
-strictly sub-unity auxiliary return creates repeated octave bloom inside this
-isolated shimmer network. The diffused result is decoded across all 16 lines
-and added to the output.
+Shimmer is part of the recursive late-room loop, as it is in the established
+feedback-shimmer topology. It projects the attenuated 16-line late field onto
+four orthonormal Walsh coordinates. Each is high-pass filtered, shifted up one
+octave by an independently seeded eight-grain shifter, and darkened by two
+low-pass stages at `min(6.5 kHz, 0.2 * sample rate)`. The knob adds a bounded
+shifted return of up to 85% within those four coordinates without replacing
+the original late field. The other 12 coordinates are untouched.
 
-The shimmer network never replaces or feeds the recursive dry room
-coordinates. This avoids an ear or line bias, preserves the selected room RT60,
-and prevents Shimmer from changing the main feedback poles. Post-shift
-diffusion also hides grain resets and shifted modal concentrations before they
-reach the stereo decoder.
+The reconstructed 16-line field then passes through the complete two-stage
+velvet feedback matrix and the main room delays before it can reach the stereo
+decoder. There is no direct pitch-shifter output, separate shimmer tank, or
+decoder-side shifted layer. Consequently every octave return is scattered by
+the production diffuser, while orthonormal projection confines the bounded
+return to a known subspace rather than creating an independent tank. Grain
+durations stay equal so their uniformly staggered Hann windows maintain
+constant overlap; only look-back and pitch receive small deterministic random
+offsets.
 
 ## Position and stereo
 
@@ -138,19 +152,23 @@ read heads and smooth crossfades; no parameter path calls `Reset()`.
 
 The native test suite verifies that:
 
-- each static VFM setting conserves energy;
+- all rendered-audio regressions run at the 48 kHz production sample rate;
+- each static VFM setting conserves energy in both coefficient flavours;
 - Diffusion decisively expands temporal scattering support;
 - Size monotonically increases every room dimension and the complete recursive
   delay span;
 - Size compensation prevents a large wet-level inversion;
 - Damping shortens high-frequency decay much more than low-mid decay;
-- maximum Size and Decay remain finite, decaying, dense, and non-periodic;
+- maximum Size and Decay remain finite, decaying, dense, and non-periodic in
+  both coefficient flavours;
 - automated size changes crossfade without Doppler sidebands;
-- Shimmer increases octave energy monotonically, remains spectrally diffuse,
-  reaches a useful absolute octave/fundamental ratio, and cannot mute or
-  destabilize the dry room tail;
+- Shimmer enters only through the recursive late-field path, increases octave
+  energy monotonically, remains spectrally diffuse and free of grain-boundary
+  spikes, reaches a useful octave/fundamental ratio, and cannot destabilize the
+  room tail;
 - source-listener distance monotonically moves the automatic ER/tail balance;
-- control automation preserves stored tail and pre-delay history;
+- control automation and coefficient-flavour changes preserve stored tail and
+  pre-delay history;
 - the default stereo response has no left/right energy bias.
 
 The coefficient search reproduces this exact architecture and must retain these

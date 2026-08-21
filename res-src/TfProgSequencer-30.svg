@@ -11,12 +11,14 @@
       <text x="423" y="54">CLOCK</text>
       <text x="423" y="102">RESET</text>
       <text x="423" y="150">RUN</text>
-      <text x="423" y="198">OUTPUTS</text>
-      <text x="423" y="202">V/OCT</text>
-      <text x="423" y="236">GATE</text>
-      <text x="423" y="270">TRIG</text>
-      <text x="423" y="304">VEL</text>
-      <text x="423" y="338">ACC</text>
+      <text x="423" y="180">OUTPUTS</text>
+      <text x="423" y="188">V/OCT</text>
+      <text x="423" y="216">GATE</text>
+      <text x="423" y="244">TRIG</text>
+      <text x="423" y="272">VEL</text>
+      <text x="423" y="300">ACC</text>
+      <text x="423" y="328">CV1</text>
+      <text x="423" y="356">CV2</text>
     </g>
   </g>
 </svg>

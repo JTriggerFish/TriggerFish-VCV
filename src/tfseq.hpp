@@ -39,13 +39,15 @@ enum class CursorLane : std::size_t {
   Sequence,
   Notes,
   Octave,
-  Articulation,
   Velocity,
   Accent,
   Duration,
   Gate,
   Slide,
   Ratchet,
+  Offset,
+  Cv1,
+  Cv2,
   Count
 };
 
@@ -65,12 +67,14 @@ struct PitchValue {
 };
 
 struct ChordValue {
-  enum class Meaning { SinglePitch, ExplicitVoicing, JazzSymbol };
+  enum class Meaning { SinglePitch, ExplicitVoicing, JazzSymbol, RomanSymbol };
   Meaning meaning = Meaning::SinglePitch;
   // Preserve harmonic intent beside the current default realization so a
   // future interpreter can voice or arpeggiate the chord contextually.
   std::string jazzSymbol;
   int rootPitchClass = 0;
+  PitchValue romanRoot;
+  std::vector<int> intervals;
   std::vector<PitchValue> voices;
   bool hasBass = false;
   PitchValue bass;
@@ -85,22 +89,49 @@ struct PitchItem {
 };
 
 struct ArticulationAtom {
+  struct ProbabilityGate {
+    float probability = 1.f;
+    std::uint64_t group = 0;
+  };
   ArticulationKind kind = ArticulationKind::Attack;
+  PitchItem pitch;
+  bool hasPitch = false;
   std::size_t ratchets = 1;
   float probability = 1.f;
+  std::uint64_t probabilityGroup = 0;
+  std::vector<ProbabilityGate> enclosingProbabilityGates;
+  double offsetFraction = 0.0;
+  double spanFraction = 1.0;
+  std::size_t cellOffset = 0;
+  bool ghost = false;
+  bool hasVelocity = false;
+  float velocity = 0.f;
+  bool hasAccent = false;
+  float accent = 0.f;
+  bool hasGate = false;
+  float gate = 0.f;
+  bool gateMilliseconds = false;
+  bool hasSlide = false;
+  float slide = 0.f;
+  bool slideMilliseconds = false;
   SourceSpan span;
 };
 
 struct ArticulationStep {
   std::vector<ArticulationAtom> atoms;
+  double durationMultiplier = 1.0;
+  std::size_t cellCount = 1;
   SourceSpan span;
 };
 
 struct ScalarItem {
   double value = 0.0;
   bool isDefault = false;
+  bool isMilliseconds = false;
   SourceSpan span;
 };
+
+enum class CvInterpolation { Step, Linear, Smooth, Power };
 
 enum class TransformKind {
   Reverse,
@@ -113,11 +144,12 @@ enum class TransformKind {
   Slow,
   Swing,
   Early,
-  Late
+  Late,
+  Rate
 };
 
 enum class TransformCondition { Always, Every, Sometimes };
-enum class TransformDomain { General, Pitch, Timing };
+enum class TransformDomain { General, Pitch, Timing, Phase };
 enum class TimeUnit { Beats, Milliseconds };
 
 struct Transform {
@@ -161,9 +193,15 @@ struct Sequence {
   std::vector<ScalarItem> gate;
   std::vector<ScalarItem> slide;
   std::vector<ScalarItem> ratchet;
+  std::vector<ScalarItem> offset;
+  std::array<std::vector<ScalarItem>, 2> cv;
+  std::array<CvInterpolation, 2> cvInterpolation{CvInterpolation::Step,
+                                                 CvInterpolation::Step};
+  std::array<double, 2> cvPower{1.0, 1.0};
   std::array<std::vector<Transform>,
              static_cast<std::size_t>(CursorLane::Count)>
       transforms;
+  std::array<bool, static_cast<std::size_t>(CursorLane::Count)> aligned{};
 };
 
 struct ArrangementPart {
@@ -184,6 +222,11 @@ struct SequencePlaybackState {
   std::uint64_t gate = 0;
   std::uint64_t slide = 0;
   std::uint64_t ratchet = 0;
+  std::uint64_t offset = 0;
+  std::array<std::uint64_t, 2> cv{};
+  std::uint64_t structuralCell = 0;
+  double lastBaseDuration = 1.0;
+  bool hasSoundingPitch = false;
 };
 
 struct SemanticProgram {
@@ -244,16 +287,27 @@ double SchedulingLookaheadBeats(const CompiledProgram &program,
 struct RuntimeEvent {
   EventKind kind = EventKind::Rest;
   double beat = 0.0;
+  std::uint64_t scheduleOrder = 0;
   double spanBeats = 1.0;
   float pitchVolts = 0.f;
   float velocity = 0.72f;
   float accent = 0.f;
   float gateFraction = 0.8f;
+  float gateMilliseconds = -1.f;
+  float gateCapMilliseconds = -1.f;
   float slideBeats = 0.25f;
+  float slideMilliseconds = -1.f;
   std::uint8_t voice = 0;
   std::uint8_t voiceCount = 1;
   bool legatoToNext = false;
+  double timingOffsetBeats = 0.0;
   double timingOffsetMilliseconds = 0.0;
+  std::array<float, 2> cvValue{};
+  std::array<float, 2> cvTarget{};
+  std::array<CvInterpolation, 2> cvInterpolation{CvInterpolation::Step,
+                                                 CvInterpolation::Step};
+  std::array<float, 2> cvPower{1.f, 1.f};
+  std::array<double, 2> cvTargetBeat{};
   std::array<SourceSpan, static_cast<std::size_t>(CursorLane::Count)> cursors{};
 };
 

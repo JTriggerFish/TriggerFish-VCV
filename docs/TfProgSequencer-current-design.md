@@ -4,9 +4,12 @@ This is the authoritative implementation note for Prog Sequencer. The syntax
 study records alternatives and the v1 proposal retains historical context;
 this document records the boundaries the current code must preserve.
 
-The current persisted language version is 3. Version 3 makes pipeline order
-musically significant for `modulate_degree` followed or preceded by `scale`,
-and extends explicit named-note voicings without changing their old meanings.
+The authoritative executable language is specified in
+[TfProgSequencer-language-grammar.md](TfProgSequencer-language-grammar.md).
+The current persisted language version is 5. It replaces the earlier prototype
+outright: this build contains one cpp-peglib grammar and one semantic compiler,
+with no v3/v4 parser or compatibility branch. The saved version is an explicit
+incompatibility marker and a future migration boundary, not runtime dispatch.
 
 ## Compiler architecture
 
@@ -20,15 +23,16 @@ cpp-peglib document AST
   -> bounded RuntimeEvent stream
 ```
 
-`PatternNode` owns reusable structure—atom, subdivision, cycle choice, random
-choice, Euclidean generation, and repeat—before a lane assigns musical meaning.
+`PatternNode` owns reusable structure—complete note event, rest, tie,
+subdivision, cycle choice, random choice, voicing, slash bass, and typed
+suffixes—before semantic lowering assigns runtime meaning.
 cpp-peglib productions emit these structural nodes directly; there is no
 secondary delimiter or nesting parser. Voicing tones, shared register suffixes,
 and slash-bass relationships are likewise syntax nodes rather than text split
-again by the compiler. Lane compilers turn the leaves into typed pitches/chords,
-articulations, or scalars. Unsupported nested forms are
-therefore retained by the grammar and rejected at an explicit semantic
-boundary.
+again by the compiler. Lane compilers turn the validated leaves into typed
+pitches/chords, note-entry semantics, scalars, timing offsets, or CV knots.
+Unsupported multi-event nested choice branches are retained by the grammar and
+rejected at an explicit semantic boundary rather than flattened ambiguously.
 
 Lane names and transform spellings, aliases, argument shapes, and domains are
 central specification tables. The audio runtime never dispatches source names.
@@ -64,17 +68,16 @@ program is removed before saved source is evaluated, so a document that has
 never compiled remains silent rather than playing unrelated factory notes.
 
 The evaluated state is a typed `Document`, not reconstructed source text.
-Ctrl+Enter parses the draft once, merges selected statements by definition or
-command identity, and compiles the merged tree directly. An unchanged retained
-statement adopts current editor spans only when its source text is identical;
-an inactive edited statement keeps its old meaning with invalid spans so it
-cannot produce a misleading cursor over text that has not run.
-
-Accepted v1 limitation: Ctrl+Enter still requires the complete editor draft to
-be syntactically valid because cpp-peglib first identifies the draft's complete
-top-level structure. Semantic errors in unselected statements remain isolated,
-but an unfinished delimiter or bracket elsewhere in the draft can block the
-selected evaluation.
+Ctrl+Enter first parses the complete draft so unchanged statements can adopt
+current source spans. If unrelated draft syntax is incomplete, a line-bounded
+fallback searches for the smallest complete statement containing the selection
+and parses it with the same cpp-peglib grammar; there is no second syntax
+parser. The selected statements are merged by definition or command identity
+and the typed tree is compiled directly. An unchanged retained statement adopts
+current editor spans only when its source text is identical; an inactive edited
+statement keeps its old meaning with invalid spans so it cannot produce a
+misleading cursor over text that has not run. A continuation line beginning
+with `|>` is always retained with its containing sequence.
 
 cpp-peglib parses only on the UI thread. The semantic compiler produces an
 immutable program plus mutable workspaces whose sizes are prepared before
@@ -95,13 +98,78 @@ sequence state, preserves the first unscheduled logical onset and currently
 held outputs, and regenerates only the future queue. Preparing sub-beat events
 beyond the boundary therefore cannot advance the state adopted by a hot swap.
 
+## Editor rendering
+
+The text display renderer expresses every visual state as one normalized
+intensity. Background, ordinary text, comments, selection, status text,
+execution flashes, and cursor persistence all pass through the same active
+heatmap; none owns a semantic RGB colour. The current map uses uniformly spaced
+samples from Matplotlib's canonical magma table. Replacing the single active
+table changes the complete display scheme without modifying drawing or decay
+logic. Cursor histories remain fixed-size UI-thread state and never affect the
+audio thread.
+
+For short moves, the cursor itself is a fractional-pixel phosphor beam; the
+destination has only a faint resting marker until the beam arrives. Each lane
+retains four timestamped motions, so a new clock does not erase an older trail.
+Every beam deposits up to fourteen overlapping additive glow samples across
+glyphs and whitespace. Each sample represents an earlier beam timestamp and
+decays according to the time since the beam passed it, giving the completed
+path spatially coherent exponential persistence.
+These are fixed-capacity, UI-thread-only arrays rather than per-frame heap
+allocations.
+
+Events without local travel--especially repeated locations--also create a
+subtle bloom around their glyph. Eighteen antialiased, sub-pixel-spaced fills
+diffuse outward from the rectangular caret's footprint. The tight inner field
+retains that shape; successively wider layers become fainter and more rounded
+until the outside is only a soft haze, with no stroked rings or contours. This
+fixed layer count avoids heap allocation and the unreliable tiny-glyph corner
+case in NanoVG's box-gradient shader. Four independent blooms are retained per
+lane, so retriggers add energy rather than resetting the previous halo. First
+events and deliberate long jumps use the same stationary feedback.
+
+Successful `Ctrl+Enter` and `Ctrl+.` evaluations reuse the diffusion field at
+lower opacity. The editor derives one source rectangle per executed visual text
+row, so a selection, line, or complete program blooms from its actual occupied
+area instead of flashing a panel-sized rectangle.
+
+Envelope intensity is calculated from event timestamps rather than accumulated
+per-frame state, so dropped UI frames cannot change brightness. Travel uses 75%
+of the observed interval between that lane's pulses, bounded to 35--120 ms; its
+afterglow also follows the interval, bounded to 75--300 ms. Thus motion remains
+visible across several display frames without turning very fast patterns into
+a permanent smear. Repeated positions pulse in place. The saved `Cursor travel`
+menu setting switches only spatial progress between constant-speed `Linear` and
+eased `Smoothstep`; both use the identical temporal envelope and heatmap.
+
+The sequence/arrangement cursor observes the outer played expression. A named
+term is a feedback abstraction boundary: in `song = acid + iv + v`, playback
+highlights those three tokens on the `song` row and never leaks an internal
+`acid` span from the definitions of `iv` or `v`. Explicit parenthesized groups
+retain their inner term spans. With the default duration of one and no explicit
+subdivision, the active arrangement term pulses once per incoming-clock beat.
+
 ## Musical representation
+
+The `notes` lane is event-first. A pitched token is an ordinary onset; `x`,
+`^`/`^^`, and `>` prefix ghost, accent, and slide entry. `_` is a standalone
+tie cell, `~` a rest, and duration/Euclidean/ratchet/probability/replication
+suffixes belong to the event or group they follow. There is no source-level
+articulation lane and no legacy articulation parser. Optional scalar lanes are
+overrides or independent polymeters rather than the primary event model.
 
 A pitched item explicitly distinguishes:
 
 - one scale degree or absolute note;
 - a literal parenthesized voicing; and
 - a semantic jazz chord with preserved root and source symbol.
+
+Roman symbols `I` through `VII` retain a scale-relative root plus explicit
+chromatic chord intervals. Uppercase implies major and lowercase minor, so the
+same prepared representation can stay in key under `shift_degree`, modulate as
+a complete event under `modulate_degree`, and later be handed to an instrument
+interpreter without losing harmonic intent.
 
 `D@4` is one named note while `D7@3` is a dominant seventh rooted in octave 3.
 `(1 b3 5)@4` and `(C E G)@4` are literal simultaneous voicings; individual
@@ -111,9 +179,9 @@ voicings bypass future interpretation by default.
 `@` always denotes an absolute octave, including signed values such as
 `C@-1`. Apostrophes and commas are the composable relative register syntax:
 `1'` and `Cm7'` are one octave above the active sequence register, while `1,,`
-is two octaves below. Language version 4 establishes this distinction; the
-former version-3 interpretation of signed `@` as relative is intentionally not
-retained because it made negative absolute octaves ambiguous.
+is two octaves below. Version 5 retains this unambiguous distinction while
+moving articulation, duration, replication, probability, ratchet, and
+Euclidean structure onto complete note events.
 
 Pipelines compose from left to right. In particular:
 
@@ -128,7 +196,8 @@ one namespace regardless of whether they name a sequence or an arrangement.
 
 Runtime output is one aligned Rack polyphonic bundle: Pitch, Gate, Trigger,
 Velocity, and Accent use the same voice indices, up to Rack's 16 channels.
-One musical onset publishes one editor cursor pulse regardless of chord width.
+CV1 and CV2 are monophonic sequence controls. One musical onset publishes one
+editor cursor pulse regardless of chord width.
 
 ## Timing and prepared scheduling
 
@@ -155,6 +224,13 @@ clock edge.
 so `swing .6 1/8` and `swing .6 1/16` can groove independently of the duration
 lane. Swing is a beat-grid transform and therefore continues across evaluator
 step boundaries rather than being confined to one bracket group.
+
+The `offset` lane is the patternable form of early/late displacement. Negative
+values are early, positive values late, and both beat fractions and `ms` are
+typed values. Free offset and CV lanes derive phase from absolute incoming-clock
+score time; `rate R` scales only that lane. Thus subdivisions sample the same
+lane more often without accelerating it. Edge-aligned ellipsis and numeric
+`rate` are intentionally distinct modes and cannot be combined.
 
 Pattern repetition, Euclidean step counts, ratchets, timing displacement, and
 glide have no small musical constants. The compiler expands and validates them
@@ -190,10 +266,56 @@ Interpreters may emit simultaneous voices or bounded sub-events within the
 current item span, but user callbacks and dynamic allocation remain forbidden
 on the audio thread.
 
+Pattern-driven arpeggiation is a first-class instance of this binding rather
+than a MIDI special case. Conceptually, `midi.in |> arp arp1_seq` combines a
+timestamped performance source with a compiled event template. The canonical
+sequence form keeps timing ownership visible:
+
+```text
+arp1 = sequence {
+  notes 1 2 3 4 3 2
+  input midi.chord
+  interpret arp.index
+}
+```
+
+`arp.index` treats the written degree as an index into the ordered held-note
+set, so rests, ties, durations, probability, subdivisions, and ratchets remain
+properties of `arp1`. `arp.up`/`arp.down` are different interpreters: they may
+emit several bounded sub-events inside one source event. A future source-first
+expression may be accepted as typed sugar, but bare `midi.in |> arp1_seq` is
+not used because it would make an ordinary sequence value implicitly callable.
+Both surfaces lower to a node typed as `(PerformanceSource, EventPattern) ->
+PitchedEventStream` and read the immutable MIDI snapshot at scheduled event
+time.
+
 MIDI input is normalized into a fixed-size timestamped performance state:
 held notes, velocities, most recent note, and pedal/controller state. It never
 mutates editor text or the immutable compiled graph. With no live input the
 program stays deterministic; with an input event log it is replayable.
+
+### Sequenced CV lanes
+
+The grammar recognizes positive `cvN` lane names and the module implements
+`cv1` and `cv2`; unavailable output indices are semantic diagnostics. These are
+time-indexed scalar patterns, not pitch events and not the future top-level
+signal assignments below. They use the same polymetric and edge-aligned forms
+as other numerical lanes. Step output is the default; `interp linear`,
+`interp smooth`, and `interp power P` create curve segments between explicit
+score-time points. Every logical event, including a rest or tie, samples the
+lane; ratchets share that sample. Edge-aligned CV is stepped in the current
+direct interpreter, because interpolating it correctly requires prepared times
+for every following structural boundary.
+
+Compilation lowers every curve to typed scalar knots with source spans and
+enough cyclic lookahead to identify the next deterministic point. The audio
+thread evaluates only the active segment into preallocated output state. Lane
+phase derives from absolute incoming-clock score time; subdivisions may sample
+more often but do not advance it, and numeric `rate` is explicit. If an event
+span crosses several CV knots, the current interpreter reaches its pending
+target and holds until the next logical event; a future prepared control-event
+stream will traverse the intermediate segments independently. See the
+normative interpolation rules in `TfProgSequencer-language-grammar.md`.
 
 ### Future signal expressions
 
@@ -225,6 +347,8 @@ current `SemanticProgram`/`CompiledProgram` publication boundary.
 
 The following are designed but not wired yet:
 
+- prepared execution of multi-event and recursively nested random/alternate
+  branches (atomic choices already execute);
 - Rack MIDI input UI and timestamped performance-state adapter;
 - executable `input`, `interpret`, and `chords` lane vocabulary;
 - contextual voicing/voice-leading and bass/arp interpreters;

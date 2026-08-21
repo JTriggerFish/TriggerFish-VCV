@@ -1,8 +1,12 @@
 # TriggerFish Prog Sequencer: v1 proposal
 
+> **Historical event syntax:** The executable v5 event and numerical
+> lane grammar superseding the event examples below is recorded in
+> [TfProgSequencer-language-grammar.md](TfProgSequencer-language-grammar.md).
+
 > **Design status:** This is the original architecture proposal. Option A in
-> [TfProgSequencer-syntax-options.md](TfProgSequencer-syntax-options.md) is now
-> the implemented surface language. The implementation now uses a
+> [TfProgSequencer-syntax-options.md](TfProgSequencer-syntax-options.md) led to
+> the now-replaced first prototype. The implementation uses a
 > version-pinned, vendored cpp-peglib PEG front end, a separate semantic
 > compiler, and a separate allocation-free playback runtime. The Lua material
 > below is historical, not the current direction. The implementation has also

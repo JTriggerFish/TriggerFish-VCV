@@ -156,6 +156,17 @@ double SideToMidEnergy(const RenderResult &render) {
 }
 
 void TestCanonicalFactoryDefaults() {
+  tfdsp::RoomReverb processor;
+  Check(processor.LateFlavour() == tfdsp::LateReverbFlavour::Optimized,
+        "the complete room must default to the Optimized late-tail flavour");
+  processor.SetLateReverbFlavour(tfdsp::LateReverbFlavour::Base);
+  Check(processor.LateFlavour() == tfdsp::LateReverbFlavour::Base,
+        "the complete room must forward the Base late-tail selection");
+  processor.SetLateReverbFlavourImmediate(
+      tfdsp::LateReverbFlavour::Optimized);
+  Check(processor.LateFlavour() == tfdsp::LateReverbFlavour::Optimized,
+        "the complete room must forward an immediate restored flavour");
+
   const tfdsp::RoomReverbControls room;
   Check(room.space == tfdsp::reverb_defaults::Space &&
             room.aspect == tfdsp::reverb_defaults::Aspect &&

@@ -588,16 +588,16 @@ def test_prog_303_replaces_foundry_with_the_concise_program():
     assert modules(patch, "VCMixer") == []
 
     source = sequencer["data"]["source"]
-    assert "notes 1!4 5 7 1!2 8 1, 1 1, 1" in source
-    assert sequencer["data"]["languageVersion"] == 4
-    assert "articulation x!7 ~ > ~ >!2 ~ >!3" in source
-    assert "accent + .!3 + . + . + .!2 + ." in source
+    assert "notes 1!4 5 7 1 ~ 1 ~ 8 >1, ~ 1 >1, >1" in source
+    assert sequencer["data"]["languageVersion"] == 5
+    assert "articulation" not in source
+    assert "accent .88 .!3 .88 . .88 . .88 .!2 .88 ." in source
     assert "gate .5" in source
     assert "velocity .5" in source
     assert "iv = acid |> modulate_degree 4 |> octave -1" in source
     assert "v  = acid |> modulate_degree 5 |> octave -1 |> scale major" in source
     assert "song = acid * 8 + iv * 4 + v * 4" in source
-    assert len(source.splitlines()) == 16
+    assert len(source.splitlines()) == 15
 
 
 def test_room_reverb_patch_routes_programmed_303_mono_to_stereo():

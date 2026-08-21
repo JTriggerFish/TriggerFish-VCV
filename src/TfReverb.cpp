@@ -183,36 +183,75 @@ struct TfReverb : Module {
     configParam(SHIMMER, 0.f, 1.f, tfdsp::reverb_defaults::Shimmer,
                 "Octave shimmer", "%", 0.f, 100.f);
     getParamQuantity(ASPECT)->description =
-        "Changes the rectangular room's width/depth ratio without changing its "
-        "floor area.";
+        "Reshapes the floor without changing its area. Below centre is "
+        "narrower and deeper; above centre is wider and shallower, changing "
+        "the reflection pattern while preserving overall room size.";
     getParamQuantity(SPACE)->description =
-        "Equivalent floor dimension: the square root of room floor area. It "
-        "also derives a plausible ceiling height and scales every recursive "
-        "late-field delay; Decay independently sets RT60.";
-    getParamQuantity(WIDTH)->description =
-        "Scales the complete wet response's stereo side component: 0% is mono, "
-        "100% preserves the native room image, and 150% exaggerates it.";
-    getParamQuantity(MODULATION)->description =
-        "Smooth random motion of the late-field delay reads. The default is "
-        "deliberately subtle; the upper range reaches 0.25 ms peak excursion.";
-    getParamQuantity(DIFFUSION)->description =
-        "Controls the temporal span of two velvet scattering stages. The "
-        "feedback transforms remain fully mixed and energy preserving.";
-    getParamQuantity(DAMPING)->description =
-        "Sets frequency-dependent room decay. At maximum, decay above about "
-        "3.5 kHz is one fifth of the mid-band RT60; bass decay is 72%.";
-    getParamQuantity(EARLY_LEVEL)->description =
-        "Trim around the geometry-derived early-reflection baseline. Source "
-        "and listener distance automatically favors early definition nearby "
-        "and diffuse tail farther away.";
-    getParamQuantity(TAIL_LEVEL)->description =
-        "Trim around the position-dependent late-tail send. 0 dB accepts the "
-        "spectral handoff match and automatic source-listener distance "
+        "Sets the room's overall dimensions. Larger values give later, more "
+        "widely spaced reflections and a slower sense of buildup. Decay sets "
+        "how long the tail lasts independently.";
+    getParamQuantity(PRE_DELAY)->description =
+        "Delays the entire wet response behind the dry signal. Increase it to "
+        "separate the source from the room, preserve attack, or create a "
+        "rhythmic gap before the reflections begin.";
+    getParamQuantity(SOURCE_X)->description =
+        "Moves the default source from the left wall to the right wall. Source "
+        "position changes early-reflection timing and its relationship to the "
+        "listener.";
+    getParamQuantity(SOURCE_Y)->description =
+        "Moves the default source from the front wall to the back wall. Its "
+        "distance from the listener also influences the automatic early/tail "
         "balance.";
+    getParamQuantity(LISTENER_X)->description =
+        "Moves the listening point from the left wall to the right wall, "
+        "changing reflection timing and the stereo perspective.";
+    getParamQuantity(LISTENER_Y)->description =
+        "Moves the listening point from the front wall to the back wall. "
+        "Moving it relative to the source changes perceived distance and the "
+        "early/tail balance.";
+    getParamQuantity(DECAY)->description =
+        "Sets how long the midrange late tail takes to fall by 60 dB. Use "
+        "Damping to make low and high frequencies decay at different rates.";
+    getParamQuantity(WIDTH)->description =
+        "Sets the spread of the wet signal. 0% is mono, 100% keeps the natural "
+        "room image, and 150% exaggerates the stereo width.";
+    getParamQuantity(MODULATION)->description =
+        "Adds slow random movement to the late tail, reducing stationary "
+        "ringing and adding animation. The first 35% is static; higher values "
+        "progress from subtle motion to audible chorusing.";
+    getParamQuantity(DIFFUSION)->description =
+        "Controls how quickly individual echoes merge into a smooth tail. Low "
+        "values keep more separated, textured reflections; high values create "
+        "a denser, softer wash. It does not change the decay time.";
+    getParamQuantity(DAMPING)->description =
+        "Makes low and high frequencies die away sooner than the midrange. "
+        "Increase it for a darker, tighter and more absorbent room; reduce it "
+        "for a brighter, more persistent tail.";
+    getParamQuantity(EARLY_LEVEL)->description =
+        "Adjusts the first discrete wall reflections around their automatic "
+        "position-based level. Raise it for more room shape and definition; "
+        "lower it for a smoother onset.";
+    getParamQuantity(TAIL_LEVEL)->description =
+        "Adjusts the diffuse sustain around its automatic position-based "
+        "level. Raise it for a larger wash or lower it for a shorter, more "
+        "reflection-focused impression.";
     getParamQuantity(SHIMMER)->description =
-        "Sends four orthogonal late-field buses through a filtered "
-        "+12-semitone grain shifter and a bounded auxiliary velvet tank. The "
-        "main room decay remains unchanged.";
+        "Feeds octave-up energy back through the late tail. Higher values "
+        "create a stronger rising harmonic bloom; increase Damping or lower "
+        "Wet high cut if the result is too bright.";
+    getParamQuantity(LOW_CUT)->description =
+        "Removes bass from the wet output without thinning the dry signal. "
+        "Raise it to prevent low-frequency mud or leave more space for bass "
+        "and kick.";
+    getParamQuantity(HIGH_CUT)->description =
+        "Softens the wet output above the selected frequency. Lower it for a "
+        "darker or more distant room; use Damping when the high frequencies "
+        "should also decay faster.";
+    getParamQuantity(MIX)->description =
+        "Balances the original signal against the complete room response. 0% "
+        "is dry and 100% is wet.";
+    getParamQuantity(LEVEL)->description =
+        "Sets the final output level after the dry/wet mix.";
     getParamQuantity(LOW_CUT)->displayPrecision = 5;
     getParamQuantity(HIGH_CUT)->displayPrecision = 5;
     getParamQuantity(DECAY)->displayPrecision = 4;
@@ -247,13 +286,23 @@ struct TfReverb : Module {
   }
 
   void onReset() override {
+    setLateReverbFlavour(tfdsp::DefaultLateReverbFlavour);
+    reverb_.SetLateReverbFlavourImmediate(tfdsp::DefaultLateReverbFlavour);
     reverb_.Reset();
+    hasProcessed_ = false;
     smoothInitialized_ = false;
     outputGainInitialized_ = false;
     outputGainCountdown_ = 0;
   }
 
   void process(const ProcessArgs &args) override {
+    const auto flavour = lateReverbFlavour();
+    if (!hasProcessed_) {
+      reverb_.SetLateReverbFlavourImmediate(flavour);
+      hasProcessed_ = true;
+    } else {
+      reverb_.SetLateReverbFlavour(flavour);
+    }
     if (smoothingCoefficient_ <= 0.f)
       smoothingCoefficient_ = 1.f - std::exp(-args.sampleTime / 0.020f);
 
@@ -344,6 +393,36 @@ struct TfReverb : Module {
     outputs[RIGHT_OUTPUT].setVoltage(mixed[1]);
   }
 
+  json_t *dataToJson() override {
+    json_t *root = json_object();
+    json_object_set_new(
+        root, "lateReverbFlavour",
+        json_integer(static_cast<int>(lateReverbFlavour())));
+    return root;
+  }
+
+  void dataFromJson(json_t *root) override {
+    if (json_t *flavourJson = json_object_get(root, "lateReverbFlavour")) {
+      if (json_is_integer(flavourJson)) {
+        setLateReverbFlavour(
+            json_integer_value(flavourJson) ==
+                    static_cast<int>(tfdsp::LateReverbFlavour::Optimized)
+                ? tfdsp::LateReverbFlavour::Optimized
+                : tfdsp::LateReverbFlavour::Base);
+      }
+    }
+  }
+
+  tfdsp::LateReverbFlavour lateReverbFlavour() const noexcept {
+    return static_cast<tfdsp::LateReverbFlavour>(
+        reverbFlavour_.load(std::memory_order_relaxed));
+  }
+
+  void setLateReverbFlavour(const tfdsp::LateReverbFlavour flavour) noexcept {
+    reverbFlavour_.store(static_cast<int>(flavour),
+                         std::memory_order_relaxed);
+  }
+
   std::size_t roomPlanSourceCount() const noexcept {
     return roomPlanSourceCount_.load(std::memory_order_acquire);
   }
@@ -366,9 +445,12 @@ private:
       roomPlanPositions_{};
   std::atomic<std::size_t> roomPlanSourceCount_{0};
   std::atomic<bool> roomPlanPositioned_{false};
+  std::atomic<int> reverbFlavour_{
+      static_cast<int>(tfdsp::DefaultLateReverbFlavour)};
   std::array<float, NUM_PARAMS> smoothed_{};
   float smoothingCoefficient_{};
   bool smoothInitialized_{};
+  bool hasProcessed_{};
   tfdsp::ReverbOutputGains outputGains_{};
   tfdsp::ReverbOutputGains outputGainStep_{};
   std::size_t outputGainCountdown_{};
@@ -409,7 +491,9 @@ struct TfRoomPlanWidget : widget::OpaqueWidget {
         auto &params = plan->module->params;
         text = string::f(
             "Room plan\nSource: %.1f%%, %.1f%%\nListener: %.1f%%, %.1f%%\n"
-            "Drag amber or blue marker; double-click to reset.",
+            "Distance automatically balances early reflections against the "
+            "tail; off-centre placement changes reflection timing and stereo "
+            "perspective.\nDrag amber or blue marker; double-click to reset.",
             100.f * params[TfReverb::SOURCE_X].getValue(),
             100.f * params[TfReverb::SOURCE_Y].getValue(),
             100.f * params[TfReverb::LISTENER_X].getValue(),
@@ -685,6 +769,24 @@ struct TfReverbWidget : ModuleWidget {
         createOutput<PJ301MPort>(Vec(101, 335), module, TfReverb::LEFT_OUTPUT));
     addOutput(createOutput<PJ301MPort>(Vec(155, 335), module,
                                        TfReverb::RIGHT_OUTPUT));
+  }
+
+  void appendContextMenu(Menu *menu) override {
+    auto *reverb = getModule<TfReverb>();
+    if (!reverb)
+      return;
+    menu->addChild(new MenuSeparator);
+    menu->addChild(createMenuLabel("Late-tail FDN"));
+    for (const auto flavour : {tfdsp::LateReverbFlavour::Base,
+                               tfdsp::LateReverbFlavour::Optimized}) {
+      const char *label = flavour == tfdsp::LateReverbFlavour::Base
+                              ? "Base FDN"
+                              : "Optimized FDN";
+      menu->addChild(createCheckMenuItem(
+          label, "",
+          [=]() { return reverb->lateReverbFlavour() == flavour; },
+          [=]() { reverb->setLateReverbFlavour(flavour); }));
+    }
   }
 };
 

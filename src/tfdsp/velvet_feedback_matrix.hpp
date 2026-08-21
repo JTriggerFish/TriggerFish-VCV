@@ -1,6 +1,6 @@
 #pragma once
 
-#include "late_reverb_coefficients.hpp"
+#include "late_reverb_coefficient_sets.hpp"
 #include "multiband_decay_filter.hpp"
 
 #include <algorithm>
@@ -106,6 +106,10 @@ private:
   float sampleRate_{48'000.f};
   float lastDiffusion_{-1.f};
   float lastRoomScale_{-1.f};
+  LateReverbFlavour transitionFrom_{DefaultLateReverbFlavour};
+  LateReverbFlavour transitionTarget_{DefaultLateReverbFlavour};
+  float flavourTransitionPhase_{1.f};
+  float flavourTransitionIncrement_{1.f};
 
   static void ButterflyLayer(Frame &frame, const std::size_t stride,
                              const float cosine, const float sine) noexcept {
@@ -120,17 +124,33 @@ private:
       }
   }
 
-  static Frame Transform(Frame frame, const std::size_t transform) noexcept {
+  static Frame TransformFor(Frame frame, const std::size_t transform,
+                            const LateReverbFlavour flavour) noexcept {
     constexpr float InverseRootTwo = 0.7071067811865475f;
     for (std::size_t stride = 1; stride < LineCount; stride *= 2)
       ButterflyLayer(frame, stride, InverseRootTwo, InverseRootTwo);
+    const auto &signs = LateSigns(flavour);
+    const auto &permutations = LatePermutations(flavour);
     Frame permuted{};
     for (std::size_t line = 0; line < LineCount; ++line)
-      permuted[line] =
-          late_reverb_coefficients::TransformSign[transform][line] *
-          frame[late_reverb_coefficients::TransformPermutation[transform]
-                                                        [line]];
+      permuted[line] = signs[transform][line] *
+                       frame[permutations[transform][line]];
     return permuted;
+  }
+
+  Frame Transform(const Frame &frame, const std::size_t transform) const
+      noexcept {
+    if (flavourTransitionPhase_ >= 1.f ||
+        transitionFrom_ == transitionTarget_)
+      return TransformFor(frame, transform, transitionTarget_);
+    const float phase = flavourTransitionPhase_;
+    const float fade = phase * phase * (3.f - 2.f * phase);
+    const auto from = TransformFor(frame, transform, transitionFrom_);
+    const auto to = TransformFor(frame, transform, transitionTarget_);
+    Frame result{};
+    for (std::size_t line = 0; line < LineCount; ++line)
+      result[line] = from[line] + fade * (to[line] - from[line]);
+    return result;
   }
 
   void UpdateDelayTargets(const float control,
@@ -146,11 +166,11 @@ private:
     lastRoomScale_ = roomScale;
     const float smooth = x * x * (3.f - 2.f * x);
     const float scale = (0.20f + 1.30f * smooth) * roomScale;
+    const auto &velvetDelays =
+        LateVelvetDelayMilliseconds(transitionTarget_);
     for (std::size_t stage = 0; stage < delays_.size(); ++stage)
       for (std::size_t line = 0; line < LineCount; ++line) {
-        const float seconds =
-            late_reverb_coefficients::VelvetDelayMs[stage][line] * scale *
-            0.001f;
+        const float seconds = velvetDelays[stage][line] * scale * 0.001f;
         delays_[stage][line].SetTarget(static_cast<std::size_t>(
             std::max(1.f, std::round(seconds * sampleRate_))));
       }
@@ -169,12 +189,17 @@ public:
     constexpr float TransitionSeconds = 0.100f;
     const float transitionIncrement =
         1.f / std::max(1.f, TransitionSeconds * sampleRate_);
+    flavourTransitionIncrement_ = transitionIncrement;
+    const auto &baseDelays =
+        LateVelvetDelayMilliseconds(LateReverbFlavour::Base);
+    const auto &optimizedDelays =
+        LateVelvetDelayMilliseconds(LateReverbFlavour::Optimized);
     for (std::size_t stage = 0; stage < delays_.size(); ++stage)
       for (std::size_t line = 0; line < LineCount; ++line) {
+        const float maximumDelay =
+            std::max(baseDelays[stage][line], optimizedDelays[stage][line]);
         const auto capacity = static_cast<std::size_t>(std::ceil(
-                                  late_reverb_coefficients::
-                                          VelvetDelayMs[stage][line] *
-                                      MaximumDiffusionScale *
+                                  maximumDelay * MaximumDiffusionScale *
                                       MaximumRoomScale * 0.001f *
                                       sampleRate_)) +
                               3;
@@ -192,7 +217,31 @@ public:
         filter.Reset();
     lastDiffusion_ = -1.f;
     lastRoomScale_ = -1.f;
+    transitionFrom_ = transitionTarget_;
+    flavourTransitionPhase_ = 1.f;
   }
+
+  void SetFlavour(const LateReverbFlavour flavour) noexcept {
+    if (flavour == transitionTarget_)
+      return;
+    if (flavourTransitionPhase_ >= 1.f)
+      transitionFrom_ = transitionTarget_;
+    else if (flavourTransitionPhase_ >= 0.5f)
+      transitionFrom_ = transitionTarget_;
+    transitionTarget_ = flavour;
+    flavourTransitionPhase_ = 0.f;
+    lastDiffusion_ = -1.f;
+    lastRoomScale_ = -1.f;
+  }
+
+  void SetFlavourImmediate(const LateReverbFlavour flavour) noexcept {
+    transitionFrom_ = transitionTarget_ = flavour;
+    flavourTransitionPhase_ = 1.f;
+    lastDiffusion_ = -1.f;
+    lastRoomScale_ = -1.f;
+  }
+
+  LateReverbFlavour Flavour() const noexcept { return transitionTarget_; }
 
   // Lossless reference path, used to verify paraunitarity independently of
   // the reverb's attenuation filters.
@@ -224,6 +273,13 @@ public:
             frame[line], seconds, lowT60, midT60, highT60);
       }
       frame = Transform(frame, stage + 1);
+    }
+    if (flavourTransitionPhase_ < 1.f) {
+      flavourTransitionPhase_ =
+          std::min(1.f,
+                   flavourTransitionPhase_ + flavourTransitionIncrement_);
+      if (flavourTransitionPhase_ >= 1.f)
+        transitionFrom_ = transitionTarget_;
     }
     return frame;
   }

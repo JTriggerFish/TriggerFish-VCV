@@ -18,12 +18,13 @@ add_library(triggerfish_dsp STATIC
 	src/tfdsp/early_reflections_worker.cpp
 	src/tfdsp/early_reflections_worker.hpp
 	src/tfdsp/late_reverb.hpp
+	src/tfdsp/late_reverb_coefficient_sets.hpp
 	src/tfdsp/late_reverb_coefficients.hpp
+	src/tfdsp/late_reverb_optimized_coefficients.hpp
 	src/tfdsp/multiband_decay_filter.hpp
 	src/tfdsp/velvet_feedback_matrix.hpp
 	src/tfdsp/room_reverb.hpp
 	src/tfdsp/scene_pack.hpp
-	src/tfdsp/shimmer_velvet_diffuser.hpp
 	src/tfdsp/windowed_pitch_shifter.hpp
 )
 set_target_properties(triggerfish_dsp PROPERTIES POSITION_INDEPENDENT_CODE ON)

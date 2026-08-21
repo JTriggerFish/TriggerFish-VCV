@@ -1,6 +1,8 @@
 import importlib.util
+import json
 from pathlib import Path
 import re
+import sys
 
 import pytest
 
@@ -22,6 +24,9 @@ from triggerfish_reverb.velvet import (
     room_dimensions_metres,
 )
 
+PRODUCTION_SAMPLE_RATE = 48_000.0
+PARITY_IMPULSE_SAMPLES = 196_608
+
 
 def _numbers_between(text: str, first: str, last: str) -> list[float]:
     section = text.split(first, 1)[1].split(last, 1)[0]
@@ -33,7 +38,7 @@ def _numbers_between(text: str, first: str, last: str) -> list[float]:
 def test_reference_has_the_current_two_stage_topology_only():
     assert LINE_COUNT == 16
     assert VELVET_STAGE_COUNT == 2
-    model = DifferentiableVelvetReverb(sample_rate=4_000.0)
+    model = DifferentiableVelvetReverb(sample_rate=PRODUCTION_SAMPLE_RATE)
     assert model.base_velvet_ms.shape == (2, 16)
     assert model.permutations.shape == (3, 16)
     source = Path("python/triggerfish_reverb/velvet.py").read_text(encoding="utf-8")
@@ -67,8 +72,8 @@ def test_python_baseline_coefficients_match_the_cpp_header():
     ),
 )
 def test_cpp_runtime_wall_impulse_matches_pytorch_static_response(controls):
-    sample_rate = 4_000.0
-    sample_count = 16_384
+    sample_rate = PRODUCTION_SAMPLE_RATE
+    sample_count = PARITY_IMPULSE_SAMPLES
     impulse = dsp.late_reverb_wall_impulse(
         sample_count,
         sample_rate=sample_rate,
@@ -80,11 +85,89 @@ def test_cpp_runtime_wall_impulse_matches_pytorch_static_response(controls):
     )
     actual = torch.fft.rfft(torch.from_numpy(impulse), dim=0)
     all_frequencies = torch.fft.rfftfreq(sample_count, 1.0 / sample_rate)
-    requested = torch.tensor((20.0, 67.0, 173.0, 511.0, 997.0, 1_499.0, 1_850.0))
+    requested = torch.tensor(
+        (
+            20.0,
+            67.0,
+            173.0,
+            511.0,
+            997.0,
+            1_499.0,
+            1_850.0,
+            3_500.0,
+            8_000.0,
+            15_000.0,
+            20_000.0,
+        )
+    )
     bins = torch.round(requested * sample_count / sample_rate).to(torch.long)
     frequencies = all_frequencies[bins]
 
     model = DifferentiableVelvetReverb(sample_rate=sample_rate)
+    expected, _ = model.response(frequencies, (controls,))
+    torch.testing.assert_close(actual[bins], expected[0], rtol=4.0e-3, atol=8.0e-4)
+
+
+def test_exported_optimized_cpp_runtime_matches_fitted_pytorch_response():
+    artifact_path = Path("data/reverb-calibration/velvet-vfm-current-v1.json")
+    if not artifact_path.exists():
+        pytest.skip("no accepted optimized coefficient artifact has been exported")
+    artifact = json.loads(artifact_path.read_text(encoding="utf-8"))
+    assert artifact["selection"]["main_ratio_blend"] == 0.5
+    assert artifact["velvet_delay_ms"] == [list(stage) for stage in VELVET_DELAY_MS]
+    assert artifact["permutations"] == [list(row) for row in PERMUTATIONS]
+    assert artifact["signs"] == [list(row) for row in SIGNS]
+    assert (
+        max(
+            abs(actual - base)
+            for actual, base in zip(
+                artifact["main_delay_ratio"], MAIN_DELAY_RATIO, strict=True
+            )
+        )
+        <= 0.005
+    )
+    controls = VelvetControls(
+        space=0.65, aspect=0.2, decay=0.6, damping=0.35, diffusion=0.9
+    )
+    sample_rate = PRODUCTION_SAMPLE_RATE
+    sample_count = PARITY_IMPULSE_SAMPLES
+    impulse = dsp.late_reverb_wall_impulse(
+        sample_count,
+        sample_rate=sample_rate,
+        space=controls.space,
+        aspect=controls.aspect,
+        decay=controls.decay,
+        damping=controls.damping,
+        diffusion=controls.diffusion,
+        optimized=True,
+    )
+    actual = torch.fft.rfft(torch.from_numpy(impulse), dim=0)
+    all_frequencies = torch.fft.rfftfreq(sample_count, 1.0 / sample_rate)
+    requested = torch.tensor(
+        (
+            20.0,
+            67.0,
+            173.0,
+            511.0,
+            997.0,
+            1_499.0,
+            1_850.0,
+            3_500.0,
+            8_000.0,
+            15_000.0,
+            20_000.0,
+        )
+    )
+    bins = torch.round(requested * sample_count / sample_rate).to(torch.long)
+    frequencies = all_frequencies[bins]
+
+    model = DifferentiableVelvetReverb(sample_rate=sample_rate)
+    model.set_coefficients(
+        torch.tensor(artifact["main_delay_ratio"]),
+        torch.tensor(artifact["velvet_delay_ms"]),
+        torch.tensor(artifact["permutations"]),
+        torch.tensor(artifact["signs"]),
+    )
     expected, _ = model.response(frequencies, (controls,))
     torch.testing.assert_close(actual[bins], expected[0], rtol=4.0e-3, atol=8.0e-4)
 
@@ -119,7 +202,7 @@ def test_exporter_requires_current_architecture_and_separate_namespace():
 
 
 def test_fixed_signed_hadamard_transforms_are_orthogonal():
-    model = DifferentiableVelvetReverb(sample_rate=4_000.0)
+    model = DifferentiableVelvetReverb(sample_rate=PRODUCTION_SAMPLE_RATE)
     identity = torch.eye(16)
     for transform in range(3):
         matrix = model.transform(transform)
@@ -127,7 +210,7 @@ def test_fixed_signed_hadamard_transforms_are_orthogonal():
 
 
 def test_wall_projection_is_an_energy_preserving_embedding():
-    model = DifferentiableVelvetReverb(sample_rate=4_000.0)
+    model = DifferentiableVelvetReverb(sample_rate=PRODUCTION_SAMPLE_RATE)
     identity = torch.eye(6)
     assert torch.allclose(
         model.wall_projection.T @ model.wall_projection, identity, atol=1.0e-7
@@ -151,7 +234,7 @@ def test_room_geometry_and_mean_free_time_match_the_cpp_control_law():
 
 
 def test_diffusion_and_room_scale_set_the_exact_integer_velvet_taps():
-    model = DifferentiableVelvetReverb(sample_rate=48_000.0)
+    model = DifferentiableVelvetReverb(sample_rate=PRODUCTION_SAMPLE_RATE)
     controls = (
         VelvetControls(space=0.5, diffusion=0.0),
         VelvetControls(space=0.5, diffusion=0.75),
@@ -172,7 +255,7 @@ def test_diffusion_and_room_scale_set_the_exact_integer_velvet_taps():
 
 
 def test_lossless_two_stage_vfm_is_paraunitary_at_every_static_setting():
-    model = DifferentiableVelvetReverb(sample_rate=4_000.0)
+    model = DifferentiableVelvetReverb(sample_rate=PRODUCTION_SAMPLE_RATE)
     frequencies = torch.tensor((31.0, 237.0, 997.0, 1_731.0))
     controls = tuple(
         VelvetControls(space=space, aspect=aspect, diffusion=diffusion)
@@ -189,7 +272,7 @@ def test_lossless_two_stage_vfm_is_paraunitary_at_every_static_setting():
 
 
 def test_zero_damping_multiband_filter_reconstructs_one_scalar_gain():
-    model = DifferentiableVelvetReverb(sample_rate=48_000.0)
+    model = DifferentiableVelvetReverb(sample_rate=PRODUCTION_SAMPLE_RATE)
     frequencies = torch.tensor((20.0, 220.0, 3_500.0, 15_000.0))
     controls = (VelvetControls(decay=0.55, damping=0.0),)
     paths = torch.linspace(0.002, 0.05, 16).reshape(1, 16)
@@ -202,7 +285,7 @@ def test_zero_damping_multiband_filter_reconstructs_one_scalar_gain():
 
 
 def test_runtime_lagrange_delay_is_exact_for_integer_taps():
-    model = DifferentiableVelvetReverb(sample_rate=4_000.0)
+    model = DifferentiableVelvetReverb(sample_rate=PRODUCTION_SAMPLE_RATE)
     frequencies = torch.tensor((20.0, 500.0, 1_500.0))
     delays = torch.tensor((100.0, 127.0)).reshape(1, 2)
     response = model._fractional_delay_response(frequencies, delays)
@@ -214,8 +297,8 @@ def test_runtime_lagrange_delay_is_exact_for_integer_taps():
 
 
 def test_static_current_response_is_finite_and_differentiable():
-    model = DifferentiableVelvetReverb(sample_rate=4_000.0)
-    frequencies = torch.linspace(20.0, 1_900.0, 384)
+    model = DifferentiableVelvetReverb(sample_rate=PRODUCTION_SAMPLE_RATE)
+    frequencies = torch.linspace(20.0, 20_000.0, 384)
     controls = (
         VelvetControls(space=0.0, aspect=0.5, decay=1.0, damping=0.0, diffusion=0.0),
         VelvetControls(space=1.0, aspect=1.0, decay=1.0, damping=1.0, diffusion=1.0),
@@ -247,7 +330,7 @@ def test_resonance_loss_uses_physical_frequency_scales_not_bin_counts():
 
 
 def test_control_batching_has_the_exact_full_objective_gradient():
-    frequencies = torch.linspace(20.0, 1_900.0, 192)
+    frequencies = torch.linspace(20.0, 20_000.0, 192)
     controls = tuple(
         VelvetControls(
             space=space,
@@ -268,12 +351,12 @@ def test_control_batching_has_the_exact_full_objective_gradient():
         wall, resolvent = model.response(frequencies, selected_controls)
         return torch.cat((wall.flatten(2), resolvent.flatten(2)), dim=2)
 
-    full = DifferentiableVelvetReverb(sample_rate=4_000.0)
+    full = DifferentiableVelvetReverb(sample_rate=PRODUCTION_SAMPLE_RATE)
     full_loss, _ = resonance_loss(combined_response(full, controls), frequencies)
     full_loss.backward()
     expected = full.raw_main_ratios.grad.clone()
 
-    batched = DifferentiableVelvetReverb(sample_rate=4_000.0)
+    batched = DifferentiableVelvetReverb(sample_rate=PRODUCTION_SAMPLE_RATE)
     with torch.no_grad():
         reference = torch.cat(
             [
@@ -295,3 +378,26 @@ def test_control_batching_has_the_exact_full_objective_gradient():
     assert torch.allclose(
         batched.raw_main_ratios.grad, expected, rtol=3.0e-4, atol=3.0e-5
     )
+
+
+def test_comparison_validation_grids_are_disjoint_from_training_controls():
+    tools = str(Path("tools").resolve())
+    sys.path.insert(0, tools)
+    spec = importlib.util.spec_from_file_location(
+        "compare_reverb_flavours", "tools/compare_reverb_flavours.py"
+    )
+    assert spec is not None and spec.loader is not None
+    try:
+        comparison = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(comparison)
+        training = set(comparison.control_grid())
+        validation = set(comparison.validation_control_grid())
+        secondary = set(comparison.secondary_validation_control_grid())
+        assert len(training) == 135
+        assert len(validation) == 40
+        assert len(secondary) == 40
+        assert training.isdisjoint(validation)
+        assert training.isdisjoint(secondary)
+        assert validation.isdisjoint(secondary)
+    finally:
+        sys.path.remove(tools)

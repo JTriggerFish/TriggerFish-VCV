@@ -1,9 +1,8 @@
 #pragma once
 
-#include "late_reverb_coefficients.hpp"
+#include "late_reverb_coefficient_sets.hpp"
 #include "multiband_decay_filter.hpp"
 #include "reverb_defaults.hpp"
-#include "shimmer_velvet_diffuser.hpp"
 #include "velvet_feedback_matrix.hpp"
 #include "windowed_pitch_shifter.hpp"
 
@@ -45,12 +44,10 @@ private:
   static constexpr float Pi = 3.14159265358979323846f;
   static constexpr float SpeedOfSound = 343.f;
   static constexpr float MaximumFdnModulationSeconds = 0.000250f;
-  // Four orthogonal shimmer buses span one quarter of the 16-line field. A
-  // higher output calibration is therefore required for the octave layer to
-  // reach a musically useful level; this is outside the passive room loop and
-  // cannot move its poles.
-  static constexpr float MaximumShimmerOutputGain = 4.0f;
-  static constexpr float MaximumShimmerFeedback = 0.32f;
+  // Shimmer adds a bounded octave return to four orthogonal coordinates inside
+  // the main velvet loop without replacing the unshifted room feedback. The
+  // remaining twelve coordinates are unaltered.
+  static constexpr float MaximumShimmerLoopGain = 0.85f;
   static constexpr float MainDelayTransitionSeconds = 0.050f;
   static constexpr float GeometryTransitionSeconds = 0.100f;
   static constexpr std::size_t GeometryUpdateInterval = 64;
@@ -230,16 +227,12 @@ private:
   std::array<std::array<float, WallCount>, 2> listenerDecoder_{};
   std::array<WindowedPitchShifter, late_reverb_coefficients::ShimmerBusCount>
       shimmerShifters_{};
-  ShimmerVelvetDiffuser shimmerDiffuser_{};
   std::array<float, late_reverb_coefficients::ShimmerBusCount>
       shimmerHighpassState_{};
-  std::array<float, late_reverb_coefficients::ShimmerBusCount>
-      shimmerFeedbackState_{};
   std::array<std::array<float, late_reverb_coefficients::ShimmerBusCount>, 2>
       shimmerLowpassState_{};
   float shimmerHighpassAlpha_{};
   float shimmerLowpassAlpha_{};
-  std::size_t shimmerTailSamples_{};
   float currentMeanDelaySamples_{480.f};
   float fromMeanDelaySamples_{480.f};
   float toMeanDelaySamples_{480.f};
@@ -247,6 +240,13 @@ private:
   float mainDelayPhase_{1.f};
   float mainDelayIncrement_{1.f};
   bool mainDelayInitialized_{};
+  LateMainDelayRatios mainRatioFrom_ =
+      LateMainRatios(DefaultLateReverbFlavour);
+  LateMainDelayRatios mainRatioTarget_ =
+      LateMainRatios(DefaultLateReverbFlavour);
+  float mainRatioTransitionPhase_{1.f};
+  float mainRatioTransitionIncrement_{1.f};
+  LateReverbFlavour flavour_{DefaultLateReverbFlavour};
   std::size_t geometryCountdown_{};
   std::size_t controlCountdown_{};
   float controlRoomScale_{1.f};
@@ -312,8 +312,8 @@ private:
     mainDelayPhase_ = 0.f;
   }
 
-  float ReadMainDelay(const std::size_t line, const float delayRatio,
-                      const float modulation) const noexcept {
+  float ReadMainDelayForRatio(const std::size_t line, const float delayRatio,
+                              const float modulation) const noexcept {
     if (mainDelayPhase_ >= 1.f)
       return mainDelays_[line].Read(delayRatio * currentMeanDelaySamples_ +
                                     modulation);
@@ -323,6 +323,19 @@ private:
         mainDelays_[line].Read(delayRatio * fromMeanDelaySamples_ + modulation);
     const float to =
         mainDelays_[line].Read(delayRatio * toMeanDelaySamples_ + modulation);
+    return from + fade * (to - from);
+  }
+
+  float ReadMainDelay(const std::size_t line,
+                      const float modulation) const noexcept {
+    if (mainRatioTransitionPhase_ >= 1.f)
+      return ReadMainDelayForRatio(line, mainRatioTarget_[line], modulation);
+    const float phase = mainRatioTransitionPhase_;
+    const float fade = phase * phase * (3.f - 2.f * phase);
+    const float from =
+        ReadMainDelayForRatio(line, mainRatioFrom_[line], modulation);
+    const float to =
+        ReadMainDelayForRatio(line, mainRatioTarget_[line], modulation);
     return from + fade * (to - from);
   }
 
@@ -454,8 +467,7 @@ private:
     std::array<float, FdnLineCount> delayed{};
     for (std::size_t line = 0; line < FdnLineCount; ++line)
       delayed[line] = ReadMainDelay(
-          line, late_reverb_coefficients::MainDelayRatio[line],
-          controlModulationDepth_ * modulators_[line].Next());
+          line, controlModulationDepth_ * modulators_[line].Next());
 
     const float attenuationMeanSamples =
         mainDelayPhase_ < 1.f
@@ -463,61 +475,61 @@ private:
             : currentMeanDelaySamples_;
     std::array<float, FdnLineCount> attenuated{};
     for (std::size_t line = 0; line < FdnLineCount; ++line) {
-      const float pathSeconds = late_reverb_coefficients::MainDelayRatio[line] *
-                                attenuationMeanSamples /
+      const float attenuationRatio =
+          mainRatioTransitionPhase_ < 1.f
+              ? std::max(mainRatioFrom_[line], mainRatioTarget_[line])
+              : mainRatioTarget_[line];
+      const float pathSeconds = attenuationRatio * attenuationMeanSamples /
                                 static_cast<float>(sampleRate_);
       attenuated[line] = mainDecayFilters_[line].Process(
           delayed[line], pathSeconds, controlLowT60_, controlDecaySeconds_,
           controlHighT60_);
     }
 
+    // The octave branch belongs inside the production velvet loop. Projecting
+    // a bounded return onto four orthonormal coordinates and then running the
+    // complete 16-line VFM avoids a direct grainy output layer and a separate
+    // recursive tank. At zero gain the shifters advance their filters, input
+    // history and grain state but omit window evaluation and interpolated
+    // reads, so automation remains immediate without paying the full render
+    // cost for an inaudible branch.
+    std::array<float, late_reverb_coefficients::ShimmerBusCount> shimmerBus{};
+    std::array<float, late_reverb_coefficients::ShimmerBusCount> shiftedBus{};
+    const bool renderShimmer = controlShimmerAmount_ > 1.e-6f;
+    for (std::size_t bus = 0; bus < shimmerBus.size(); ++bus) {
+      for (std::size_t line = 0; line < FdnLineCount; ++line)
+        shimmerBus[bus] +=
+            late_reverb_coefficients::ShimmerProjection[bus][line] *
+            attenuated[line];
+      shimmerHighpassState_[bus] +=
+          shimmerHighpassAlpha_ *
+          (shimmerBus[bus] - shimmerHighpassState_[bus]);
+      const float highpassed = shimmerBus[bus] - shimmerHighpassState_[bus];
+      float shifted = 0.f;
+      if (renderShimmer)
+        shifted = shimmerShifters_[bus].Process(highpassed);
+      else
+        shimmerShifters_[bus].Advance(highpassed);
+      for (auto &stage : shimmerLowpassState_) {
+        stage[bus] += shimmerLowpassAlpha_ * (shifted - stage[bus]);
+        shifted = stage[bus];
+      }
+      shiftedBus[bus] = std::isfinite(shifted) ? shifted : 0.f;
+    }
+
+    const float shimmerGain =
+        MaximumShimmerLoopGain * controlShimmerAmount_;
+    if (shimmerGain > 1.e-6f) {
+      for (std::size_t line = 0; line < FdnLineCount; ++line)
+        for (std::size_t bus = 0; bus < shimmerBus.size(); ++bus)
+          attenuated[line] +=
+              late_reverb_coefficients::ShimmerProjection[bus][line] *
+              (shimmerGain * shiftedBus[bus]);
+    }
+
     auto feedback = feedbackMatrix_.Process(
         attenuated, controlDiffusion_, controlDecaySeconds_, controlHighT60_,
         controlLowT60_, controlRoomScale_);
-    std::array<float, late_reverb_coefficients::ShimmerBusCount> shimmerBus{};
-    std::array<float, late_reverb_coefficients::ShimmerBusCount> shiftedBus{};
-    const float shimmerFeedback =
-        MaximumShimmerFeedback * controlShimmerAmount_;
-    if (controlShimmerAmount_ > 1.e-6f)
-      shimmerTailSamples_ =
-          static_cast<std::size_t>(std::ceil(0.75 * sampleRate_));
-    const bool processShimmer =
-        controlShimmerAmount_ > 1.e-6f || shimmerTailSamples_ > 0;
-    if (processShimmer) {
-      if (controlShimmerAmount_ <= 1.e-6f)
-        --shimmerTailSamples_;
-      for (std::size_t bus = 0; bus < shimmerBus.size(); ++bus) {
-        for (std::size_t line = 0; line < FdnLineCount; ++line)
-          shimmerBus[bus] +=
-              late_reverb_coefficients::ShimmerProjection[bus][line] *
-              feedback[line];
-        shimmerHighpassState_[bus] +=
-            shimmerHighpassAlpha_ *
-            (shimmerBus[bus] - shimmerHighpassState_[bus]);
-        const float fresh = shimmerBus[bus] - shimmerHighpassState_[bus];
-        shiftedBus[bus] = shimmerShifters_[bus].Process(
-            controlShimmerAmount_ * fresh +
-            shimmerFeedback * shimmerFeedbackState_[bus]);
-      }
-      shiftedBus = shimmerDiffuser_.Process(shiftedBus, controlRoomScale_);
-      for (std::size_t bus = 0; bus < shiftedBus.size(); ++bus) {
-        float filtered = shiftedBus[bus];
-        for (auto &stage : shimmerLowpassState_) {
-          stage[bus] += shimmerLowpassAlpha_ * (filtered - stage[bus]);
-          filtered = stage[bus];
-        }
-        shimmerFeedbackState_[bus] =
-            std::isfinite(filtered) ? filtered : 0.f;
-        shiftedBus[bus] = shimmerFeedbackState_[bus];
-      }
-    }
-
-    std::array<float, FdnLineCount> shiftedLines{};
-    for (std::size_t line = 0; line < FdnLineCount; ++line)
-      for (std::size_t bus = 0; bus < shimmerBus.size(); ++bus)
-        shiftedLines[line] +=
-            late_reverb_coefficients::ShimmerProjection[bus][line] *
-            shiftedBus[bus];
 
     for (std::size_t line = 0; line < FdnLineCount; ++line)
       mainDelays_[line].Push(feedback[line] + 0.42f * injection[line]);
@@ -528,7 +540,7 @@ private:
         outputWalls[wall] +=
             late_reverb_coefficients::InverseRootLineCount *
             late_reverb_coefficients::WallProjection[line][wall] *
-            (delayed[line] + MaximumShimmerOutputGain * shiftedLines[line]);
+            delayed[line];
 
     if (mainDelayPhase_ < 1.f) {
       mainDelayPhase_ = std::min(1.f, mainDelayPhase_ + mainDelayIncrement_);
@@ -541,6 +553,13 @@ private:
           mainDelayPhase_ = 0.f;
         }
       }
+    }
+    if (mainRatioTransitionPhase_ < 1.f) {
+      mainRatioTransitionPhase_ =
+          std::min(1.f, mainRatioTransitionPhase_ +
+                            mainRatioTransitionIncrement_);
+      if (mainRatioTransitionPhase_ >= 1.f)
+        mainRatioFrom_ = mainRatioTarget_;
     }
     for (const auto value : outputWalls)
       if (!std::isfinite(value)) {
@@ -557,8 +576,15 @@ public:
     if (!std::isfinite(sampleRate) || sampleRate <= 0.0)
       throw std::invalid_argument("late reverb sample rate must be positive");
     sampleRate_ = sampleRate;
+    const auto &baseRatios = LateMainRatios(LateReverbFlavour::Base);
+    const auto &optimizedRatios = LateMainRatios(LateReverbFlavour::Optimized);
+    const float maximumRatio =
+        std::max(*std::max_element(baseRatios.begin(), baseRatios.end()),
+                 *std::max_element(optimizedRatios.begin(),
+                                   optimizedRatios.end()));
     const auto mainCapacity = static_cast<std::size_t>(std::ceil(
-        (0.078 * 1.45 + MaximumFdnModulationSeconds) * sampleRate_ + 8.0));
+        (0.078 * maximumRatio + MaximumFdnModulationSeconds) * sampleRate_ +
+        8.0));
     for (std::size_t line = 0; line < FdnLineCount; ++line) {
       mainDelays_[line].Prepare(mainCapacity);
       mainDecayFilters_[line].Prepare(sampleRate_);
@@ -586,14 +612,17 @@ public:
           sampleRate_, 0.120f,
           static_cast<float>(bus) / static_cast<float>(shimmerShifters_.size()),
           ShimmerSeeds[bus]);
-    shimmerDiffuser_.Prepare(sampleRate_);
     shimmerHighpassAlpha_ =
         1.f - std::exp(-2.f * Pi * 250.f / static_cast<float>(sampleRate_));
-    shimmerLowpassAlpha_ =
-        1.f - std::exp(-2.f * Pi * 9'000.f / static_cast<float>(sampleRate_));
+    const float shimmerLowpassCutoff =
+        std::min(6'500.f, 0.20f * static_cast<float>(sampleRate_));
+    shimmerLowpassAlpha_ = 1.f -
+                           std::exp(-2.f * Pi * shimmerLowpassCutoff /
+                                    static_cast<float>(sampleRate_));
     mainDelayIncrement_ =
         1.f / std::max(1.f, MainDelayTransitionSeconds *
                                 static_cast<float>(sampleRate_));
+    mainRatioTransitionIncrement_ = mainDelayIncrement_;
     Reset();
   }
 
@@ -612,12 +641,9 @@ public:
       delay.Reset();
     for (auto &shifter : shimmerShifters_)
       shifter.Reset();
-    shimmerDiffuser_.Reset();
     shimmerHighpassState_.fill(0.f);
-    shimmerFeedbackState_.fill(0.f);
     for (auto &stage : shimmerLowpassState_)
       stage.fill(0.f);
-    shimmerTailSamples_ = 0;
     sourceWallWeights_ = {};
     listenerWallWeights_ = {};
     listenerDecoder_ = {};
@@ -625,6 +651,8 @@ public:
         pendingMeanDelaySamples_ = static_cast<float>(0.010 * sampleRate_);
     mainDelayPhase_ = 1.f;
     mainDelayInitialized_ = false;
+    mainRatioFrom_ = mainRatioTarget_ = LateMainRatios(flavour_);
+    mainRatioTransitionPhase_ = 1.f;
     geometryCountdown_ = 0;
     controlCountdown_ = 0;
     controlRoomScale_ = 1.f;
@@ -635,6 +663,29 @@ public:
   }
 
   double SampleRate() const noexcept { return sampleRate_; }
+
+  void SetFlavour(const LateReverbFlavour flavour) noexcept {
+    if (flavour == flavour_)
+      return;
+    if (mainRatioTransitionPhase_ >= 0.5f)
+      mainRatioFrom_ = mainRatioTarget_;
+    mainRatioTarget_ = LateMainRatios(flavour);
+    mainRatioTransitionPhase_ = 0.f;
+    flavour_ = flavour;
+    feedbackMatrix_.SetFlavour(flavour);
+  }
+
+  // Select a coefficient set without a transition. This is intended for
+  // restoring a saved flavour before the first audio sample; live changes use
+  // SetFlavour() so the stored tail is crossfaded instead of reinterpreted.
+  void SetFlavourImmediate(const LateReverbFlavour flavour) noexcept {
+    flavour_ = flavour;
+    mainRatioFrom_ = mainRatioTarget_ = LateMainRatios(flavour);
+    mainRatioTransitionPhase_ = 1.f;
+    feedbackMatrix_.SetFlavourImmediate(flavour);
+  }
+
+  LateReverbFlavour Flavour() const noexcept { return flavour_; }
 
   // Static wall-domain probe used by the differentiable-reference parity
   // test. It runs the exact production delay/loss/VFM loop while bypassing

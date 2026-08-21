@@ -9,10 +9,8 @@ responses and it is never executed by the audio thread.
 The hand-authored coefficients in
 `src/tfdsp/late_reverb_coefficients.hpp` remain the immutable **Base**
 flavour. A fitted artifact is exported separately as
-`src/tfdsp/late_reverb_optimized_coefficients.hpp` for the future
+`src/tfdsp/late_reverb_optimized_coefficients.hpp` for the optional
 **Optimized** flavour. Exporting can therefore never overwrite Base.
-
-No optimization has been run for this generation yet.
 
 ## Production operator
 
@@ -102,9 +100,10 @@ constraint.
 
 Signed permutations and integer velvet taps are screened as discrete
 candidates. Main-delay ratios receive differentiable local refinement around
-the selected candidate. Their mean is normalized to one after every
-evaluation, preserving the meaning of room mean free time and therefore the
-Size control.
+the selected candidate. The continuous radius is limited to 0.005 around each
+heuristic ratio so neighbouring main paths cannot collapse into a slow beating
+pair. Their mean is normalized to one after every evaluation, preserving the
+meaning of room mean free time and therefore the Size control.
 
 Regularization rejects closely spaced main delays, repeated pairwise
 path-length differences, and coincident velvet taps. It does not learn output
@@ -130,9 +129,14 @@ peak VRAM only. A first pass obtains all per-control values and global
 smooth-worst weights; a second pass accumulates their exact aggregate gradient.
 
 Discrete screening uses the same controls over 20 Hz--20 kHz at 1 Hz spacing.
-Continuous refinement uses normalized steepest descent with backtracking.
-Every proposal is accepted only if the complete objective improves, and the
-best checkpoint is retained.
+Continuous refinement uses normalized steepest descent with adaptive
+backtracking. The trust radius starts from the last accepted scale instead of
+repeating known-oversized trials, but it may grow again when subsequent
+directions support a larger move. Every proposal is accepted only if the
+complete objective improves, and the best checkpoint is retained.
+Refinement may finish before the requested step ceiling only after all eight
+backtracking trials fail at the minimum trust radius; the artifact records both
+requested and completed step counts.
 
 ## Artifact and flavour boundary
 
@@ -150,9 +154,10 @@ The optimizer writes
 
 The exporter validates every dimension, permutation, sign, positive delay,
 ratio ordering, and unit-mean ratio constraint. Its output namespace is
-`late_reverb_optimized_coefficients`, distinct from Base. Runtime flavour
-selection will be added only after a fitted artifact passes objective,
-time-domain, and listening acceptance.
+`late_reverb_optimized_coefficients`, distinct from Base. The Rack context-menu
+selector reads these two immutable namespaces; it never reads the JSON artifact
+on the audio thread. Main-delay reads, velvet taps, and transforms crossfade
+without clearing the live tail when the selected flavour changes.
 
 ## Commands
 
@@ -167,6 +172,12 @@ $env:PYTHONPATH = "python"
   --lr 0.20
 ```
 
+After a complete discrete screen has recorded its winning seed, a continuous
+rerun can replay that candidate deterministically without rescoring the screen
+by adding `--selected-discrete-seed <seed>`. This changes no coefficients at
+the start of continuous refinement; matching first-step diagnostics verify the
+replay.
+
 Export remains a separate explicit action:
 
 ```powershell
@@ -174,13 +185,18 @@ $env:PYTHONPATH = "python"
 .venv\Scripts\python.exe tools\export_reverb_coefficients.py
 ```
 
-Compare Base and Optimized without changing the Rack runtime:
+Compare Base and Optimized offline before exporting or auditioning:
 
 ```powershell
 $env:PYTHONPATH = "python"
 .venv\Scripts\python.exe tools\compare_reverb_flavours.py `
   data\reverb-calibration\velvet-vfm-current-v1.json --device cuda
 ```
+
+The comparison reports both the 135-point optimization grid and a disjoint
+40-point validation grid using intermediate geometry, Decay, Damping, and
+Diffusion values. Run it without an artifact to record the Base baseline before
+optimization.
 
 ## Acceptance
 
@@ -194,7 +210,37 @@ flavour is exposed in the module it must also pass:
 - automation, stereo-balance, source/listener, damping, and shimmer tests;
 - level-matched listening comparison against Base.
 
-Once the runtime flavour selector is implemented, Base must remain available
-so the optimizer's contribution can be auditioned directly and reversed
-without changing patches. At present the module runs Base only; no optimized
-artifact has passed the acceptance gate yet.
+Optimized FDN is the production default. Base FDN remains available so the
+optimizer's contribution can be auditioned directly and reversed without
+changing patches.
+The selected flavour is stored in the patch, and changing it retains the
+current delay contents for a level-consistent live comparison.
+
+## Accepted fit
+
+The accepted v1 artifact uses the 32-second (0.03125 Hz) grid and requested up
+to 160 continuous steps. Adaptive backtracking converged after 45 steps. The
+unconstrained discrete-screen winner was rejected because the compiled
+maximum-Size/Decay, minimum-Diffusion impulse response exceeded the established
+20--80 Hz envelope-periodicity limit. The accepted candidate consequently
+keeps the complete Base VFM and searches only main-delay ratios within the
+0.005 physical radius.
+
+The converged endpoint improved its training objective but was almost neutral
+on disjoint controls. The selected production point is the 50% interpolation
+between Base and that endpoint. At 32-second resolution it measures:
+
+- 135-point training grid: objective 44.1908 to 42.7016 (3.37% lower), raw
+  worst band 37.5766 to 35.4085 (5.77% lower);
+- 40-point held-out grid: objective 26.9560 to 26.9338 (0.082% lower), raw
+  worst band 20.7967 to 20.8144 (0.085% higher);
+- disjoint 40-point secondary validation grid: objective 33.9111 to 33.8854
+  (0.076% lower),
+  raw worst band 24.6463 to 24.6753 (0.118% higher).
+
+The two tiny off-grid worst-bin changes are treated as neutral rather than an
+improvement. Acceptance rests on lower aggregate modal prominence on all three
+grids, the substantial training worst-band reduction, exact optimized
+C++/PyTorch parity, and all native time-domain tests passing. Optimized FDN is
+the factory default; Base FDN remains available so this tradeoff can be
+auditioned directly.

@@ -44,7 +44,7 @@ namespace
 
 	py::array_t<float> RenderLateReverbWallImpulse(
 		py::ssize_t sampleCount, double sampleRate, double space, double aspect,
-		double decay, double damping, double diffusion)
+		double decay, double damping, double diffusion, bool optimized)
 	{
 		if (sampleCount <= 0)
 			throw std::invalid_argument("sample_count must be positive");
@@ -64,6 +64,8 @@ namespace
 			 inputWall < tfdsp::LateReverb::WallCount; ++inputWall)
 		{
 			tfdsp::LateReverb reverb;
+			reverb.SetFlavour(optimized ? tfdsp::LateReverbFlavour::Optimized
+			                              : tfdsp::LateReverbFlavour::Base);
 			reverb.SetSampleRate(sampleRate);
 			tfdsp::LateReverbControls controls;
 			controls.decay = static_cast<float>(decay);
@@ -1018,10 +1020,10 @@ PYBIND11_MODULE(_triggerfish_dsp, module)
 {
 	module.doc() = "TriggerFish DSP development bindings";
 	module.def("late_reverb_wall_impulse", &RenderLateReverbWallImpulse,
-		py::arg("sample_count"), py::arg("sample_rate") = 4000.0,
+		py::arg("sample_count"), py::arg("sample_rate") = 48'000.0,
 		py::arg("space") = 0.5, py::arg("aspect") = 0.5,
 		py::arg("decay") = 0.0, py::arg("damping") = 0.45,
-		py::arg("diffusion") = 0.75);
+		py::arg("diffusion") = 0.75, py::arg("optimized") = false);
 
 	module.def("diode_ladder_map_cutoff", [](double requestedHz,
 		double maximumHz)

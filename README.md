@@ -333,12 +333,13 @@ actual room width/depth geometry and therefore its reflection times.
 ### Prog Sequencer
 
 Prog Sequencer is an externally clocked live-coding sequencer with
-up to 16 polyphonic V/OCT, Gate, Trigger, Velocity, and Accent channels per
-output cable. Edit the program
+up to 16 polyphonic V/OCT, Gate, Trigger, Velocity, and Accent channels, plus
+monophonic CV1 and CV2. Edit the program
 directly on the module. Ctrl+`.` compiles the complete document; Ctrl+Enter
 evaluates the top-level statement containing the selection or current line.
-Other edited statements remain inactive until separately evaluated. A successful edit
-swaps in on the next Clock edge while preserving the arrangement phase and the
+Other edited statements remain inactive until separately evaluated; unrelated
+malformed draft text does not block a complete valid selected statement. A
+successful edit swaps in on the next Clock edge while preserving the arrangement phase and the
 lane cursors of sequences whose names still exist. Successfully executed code
 flashes in the editor. `stop` is a valid transport command and an executed
 `play` or `stop` line overrides other transport lines. Diagnostics wrap in the
@@ -355,34 +356,34 @@ riff = sequence {
   cycle 8
   tonic D@4
   scale dorian
-  notes 1 2 3 4 5 6 7 8
+  notes 1 2 ^3 4 x5 6 _ >7 [8 9] 10*3 ~ 11(3,8,1)
         |> rotate 2
         |> every 4 rev
-  articulation x x _ > [x x] x*3 ~ x
   velocity .72 .63
-  accent + . .
   duration 1 1/2 1/2 1 2
   gate .8
-  slide . . . >
+  offset -8ms!2 6ms |> rate 1/2
+  cv1 0 . . 5 |> interp smooth
 }
 
 fill = sequence {
   cycle 4
-  notes 5 6 7 8
-  articulation x x x*3 x
+  notes 5 6 7*3 8
 }
 
 song = riff * 2 + fill
 play song
 ```
 
-Every lane loops independently, so the three-position accent pattern moves
-against the eight notes. `x` starts a note, `_` alone ties it without a new
-onset, `~` rests, and `>` slides into the next pitch. `[x x]` subdivides one
-clock beat, `x*3` ratchets within a beat, `x!3` repeats across three beats, and
-`x(3,8,1)` creates a rotated Euclidean rhythm. Sparse control lanes use `.` for
-their default. A velocity such as `.5` means 5 V; `+` and `++` produce .88 and
-1.0 on the Accent lane and raise Velocity to at least that value.
+Articulation normally lives on the note itself: `^3` and `^^3` are the two
+accent strengths, `x3` is a short quiet ghost, `_` ties the preceding pitch,
+`~` rests, and `>3` slides from its predecessor. `[8 9]` subdivides one parent
+span, `7*3` ratchets within a span, `7!3` repeats across three cells, and
+`7(3,8,1)` distributes that event over a rotated eight-cell Euclidean rhythm.
+Inactive Euclidean cells are rests. `7_`, `7_3`, and `7.` make a note doubled,
+three times as long, and dotted respectively. Sparse numerical lanes use `.`
+as a typed no-op. A velocity such as `.5` means 5 V; an accent prefix raises
+Velocity to at least its accent value.
 
 Scale degrees refer to the selected scale, so degree `3` in `scale minor` is
 already the minor third; `b3` lowers that result by one more semitone. Degree
@@ -424,11 +425,12 @@ chromatic movement.
 Supported scale names include `harmonic_minor`, `major_pentatonic`,
 `minor_pentatonic`, `octatonic_whole_half`, and `octatonic_half_whole`.
 
-Parentheses are simultaneous scale-degree voicings, while conventional jazz
-symbols are accepted directly:
+Parentheses are simultaneous scale-degree voicings. Conventional jazz symbols
+and Roman-degree chords are accepted directly; uppercase Roman degrees imply
+major quality, lowercase implies minor, and degrees stop at VII:
 
 ```text
-notes (1 b3 5) Cm7 D7 Bbm7b5@3 / D@2 Cmaj9 C7#9
+notes I i iim7 bVII (1 b3 5) Cm7 D7 Bbm7b5@3 / D@2 Cmaj9 C7#9
 ```
 
 The jazz parser supports major, minor, diminished, augmented, suspended,
@@ -457,26 +459,39 @@ the event subdivision supplies the grid; an explicit `1/8`, `1/16`, or other
 positive incoming-clock fraction selects it directly. `early` and `late`
 accept beat fractions or `ms`, and `random AMOUNT` chooses a deterministic
 amount from zero to the stated maximum. Subdivision density can already vary
-with articulation groups such as `[x x] [x x x]`, an independent
-`ratchet 1 2 3` lane, and independently sequenced `duration` values.
+with note groups such as `[1 2] [3 4 5]`, an independent `ratchet 1 2 3` lane,
+and independently sequenced `duration` values. A patternable `offset` lane
+accepts signed beat fractions or `ms`; negative values are early and positive
+values late. Its optional numeric `rate`, as in
+`offset -10ms!2 8ms |> rate 1/2`, changes only that lane's score-time phase.
+CV1/CV2 use the same rate and sparse-lane rules and support `step`, `linear`,
+`smooth`, and `power P` interpolation. Ellipsis-aligned CV is stepped in this
+prototype; continuous modes currently use free score-time lanes.
 
 The checked-in [Prog Sequencer 303 smoke patch](test-prog-sequencer-303.vcv)
 uses this expression to reproduce the existing 16-bar smoke-303 line. Launch
 it with `./dev.ps1 smoke-prog-303` on Windows.
 
-During playback, translucent amber cursors follow the active sequence name and
-every independently advancing lane while retaining the Notes display's retro
-amber-on-black look. Each cursor flashes brighter on every event and fades to
-its resting level through a short exponential head and a longer glow tail.
-Recent positions decay independently, producing a travelling trail, while a
-repeated token still visibly pulses at its rhythm. The trail is a fixed-size,
-allocation-free UI buffer with a gentle 320 ms phosphor-like tail.
-Short moves illuminate the intervening whitespace as part of that same fading
-trail; long jumps and line wraps remain separate to avoid broad flashes. A
+During playback, heatmap cursors follow the active sequence name and every
+independently advancing lane. The display derives background, code, comments,
+selection, status, and cursor colours from scalar intensity through one
+replaceable magma map. Each event produces a bright moving beam and exponential
+glow persistence. Recent motions decay independently, while a repeated token
+emits overlapping, outward-expanding halo blooms at its rhythm. Short moves
+deposit overlapping fractional-pixel samples that illuminate intervening
+whitespace continuously; travel and afterglow both scale with the lane's pulse
+interval to avoid smearing dense patterns. The fixed-size, allocation-free UI
+history retains
+several concurrent sweeps per lane. The context menu switches between
+constant-speed Linear travel and eased Smoothstep travel for comparison. Long
+jumps and line wraps remain separate to avoid broad flashes. Successful
+`Ctrl+Enter` and `Ctrl+.` evaluation flashes use the same rectangular diffusion
+at lower intensity across their executed text rows. A
 vendored, version-pinned cpp-peglib PEG front end parses the language into
 typed syntax records, which
 the semantic compiler lowers to a prepared pattern graph. Parsing
 and program destruction stay off the audio thread. See the
+[authoritative language grammar](docs/TfProgSequencer-language-grammar.md),
 [current implementation design](docs/TfProgSequencer-current-design.md),
 [syntax study](docs/TfProgSequencer-syntax-options.md) and
 [v1 architecture](docs/TfProgSequencer-v1-proposal.md) for the design context.
