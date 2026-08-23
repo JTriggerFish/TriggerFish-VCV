@@ -1,412 +1,744 @@
-# TfReverb spatial and diffusion correction
+# TfReverb stereo spatial and diffusion correction
 
-## Status and scope
+## Status
 
-This document specifies the correction target for TfReverb's source/listener
-positioning, stereo early reflections, late spatial field, ER/late transition,
-and Diffusion control. It records intended production behaviour; the changes
-described here are not yet implemented.
+This document specifies the production changes required to make TfReverb a
+coherent positioned-source, stereo-output room reverb. It replaces the earlier
+proposal. The changes are not yet implemented.
 
-The target remains a mono or polyphonic-source, stereo-output room reverb for
-ordinary speaker and production use. Binaural rendering, HRTFs, head tracking,
-and literal behind-the-listener localization are out of scope.
+The important product decision is:
 
-Front/rear differences must come from the rectangular room geometry: different
-path lengths, wall encounters, attenuation, and reflection patterns. The engine
-must not add a synthetic rear EQ, pinna model, or other front/back heuristic.
-The room-plan top edge defines listener-forward only so left/right directions
-and geometry have a stable coordinate frame.
+> TfReverb renders conventional two-speaker stereo from one coincident
+> listener reference point. It is not a binaural renderer or a virtual stereo
+> microphone pair.
 
-## Why correction is required
+That decision determines how direct sound, image-source reflections, and the
+late field are decoded. It also avoids mixing incompatible amplitude-panning,
+spaced-microphone, and Ambisonic models in one signal path.
 
-The geometry engine currently calculates considerably more spatial information
-than the stereo signal path uses:
+## Goals and non-goals
 
-- early-reflection paths retain a three-dimensional arrival direction, but the
-  renderer reduces it to one frequency-independent equal-power pan;
-- the direct signals of every source are summed to centred mono before the
-  dry/wet mix, so source position cannot localize the dominant direct sound;
-- ER taps are placed at absolute propagation time while the direct signal is
-  emitted without its corresponding propagation delay;
-- late source/listener connections remove common wall delay and normalize wall
-  energy, then a fixed equal-energy side pattern replaces a directional stereo
-  decode;
-- the distance law changes ER/tail balance without acting on the direct sound;
-- Diffusion leaves every feedback transform fully mixed and changes only the
-  internal velvet-delay span.
+The corrected renderer must provide:
 
-The existing tests mostly prove that position changes some samples and that
-the output is not exactly mono. They do not establish correct lateral sign,
-mirror symmetry, direct-relative timing, directional persistence, stereo
-coherence, or perceptually meaningful diffusion behaviour.
+- independent positioning of every mono/polyphonic source;
+- physically calculated image-source reflection timing and lateral direction;
+- a smooth transition from discrete reflections into a spacious late field;
+- a late tail that initially reflects source and listener geometry, then loses
+  individual-source direction as it becomes diffuse;
+- stable, useful interchannel decorrelation without an arbitrary stereo pattern;
+- a Diffusion control that changes scattering strength as well as delay span;
+- deterministic output for a static scene and click-free parameter automation;
+- good mono compatibility and bounded gain throughout the room.
 
-These are architectural and verification problems, not coefficient-tuning
-problems. No optimization should be used to compensate for them.
+The following remain out of scope:
 
-## Target signal path
+- HRTFs, head shadow, pinna filtering, and head tracking;
+- literal front/rear or elevation localization over two speakers;
+- spaced A/B, ORTF, dummy-head, or other virtual microphone rendering;
+- surround or Ambisonic output;
+- assigning physical directions to FDN state variables that have no directional
+  meaning in the current topology.
+
+Front/rear and elevation still affect propagation distance, wall encounters,
+material loss, and response timing. They simply do not receive invented stereo
+cues that two speakers cannot reproduce reliably.
+
+## Problems in the current implementation
+
+The existing code contains useful geometric information, but the complete
+signal path is inconsistent:
+
+1. Each ER path already has a physical direction and equal-power stereo gains,
+   but the FIR is placed at absolute propagation time while dry sound is
+   immediate.
+2. Every dry source is summed into centred mono before the dry/wet mix.
+3. The late input and output connections preserve relative wall timing, but
+   discard common timing and use normalized directional vectors as though they
+   were also a complete distance and coupling model.
+4. The late network is decoded through a hand-written `SidePattern` rather than
+   through the actual lateral direction of each wall port.
+5. `PositionBalanceGains` changes ER and tail in opposite directions while the
+   dominant direct signal is unchanged.
+6. Diffusion changes only the velvet-delay span; every Hadamard transform remains
+   fully mixed at every setting.
+7. Existing spatial tests mostly establish that two responses differ. They do
+   not establish direction, symmetry, timing, coherence, or convergence toward
+   a diffuse field.
+
+The ER stereo pan itself is not missing. The current calculation in
+`EnumerateEarlyReflectionPaths()` is the correct starting point for the chosen
+speaker-stereo renderer. It needs a precise horizontal convention and stronger
+tests, not replacement with two virtual ears.
+
+## Coordinate convention
+
+All source and listener controls remain normalized XYZ positions in the room.
+After conversion to metres:
+
+- +X is right;
+- -Y is forward, toward the top of the room plan;
+- +Z is up;
+- the listener has no rotating head orientation;
+- stereo lateral direction is calculated from the horizontal XY projection.
+
+For a horizontal vector `v = (x, y)`, define
 
 ```text
-independent mono sources with XYZ positions
-        |
-        +-- positioned direct renderer -----------------> stereo direct
-        |
-        +-- shared user pre-delay
-             |
-             +-- direct-relative image-source ER
-             |       -> directional stereo decode ------+
-             |                                           |
-             +-- six geometry-dependent wall sends      |
-                    -> 16 room-scaled main delays        |
-                    -> passive multiband loss            |
-                    -> variable-strength two-stage VFM   |
-                    -> 12--16 directional late outputs   |
-                    -> stereo speaker decode ------------+
-                                                         |
-                         automatic ER/tail balance -> wet filters
-                                                         |
-stereo direct ----------------> direct/wet mix <----------+
-                                      |
-                                 output level
+lateral(v) = x / sqrt(x^2 + y^2)       when x^2 + y^2 > epsilon
+             0                         otherwise
 ```
 
-Direct sound, discrete reflections, and diffuse tail have different spatial
-roles:
+`lateral` is -1 at hard left, 0 at front or rear, and +1 at hard right.
+Elevation must not pull an otherwise lateral source toward the centre; Z is
+therefore excluded from this calculation.
 
-- direct sound is strongly positioned;
-- the first and strongest ERs remain strongly directional;
-- higher-order ERs lose directional specificity while approaching the mixing
-  interval;
-- the beginning of the tail may retain a weak source-dependent bias;
-- the established tail is spacious and mostly source-independent.
+The constant-power stereo decoder is
 
-It is correct for a diffuse late field to lose the direction of individual
-reflections. It is not correct to lose its lateral energy distribution and
-interchannel coherence. The late renderer therefore preserves spatial
-statistics rather than a permanently panned source direction.
+```text
+angle = (pi / 4) * (lateral + 1)
+gainL = cos(angle)
+gainR = sin(angle)
+```
 
-## Coordinate and orientation convention
+so `gainL^2 + gainR^2 = 1` for every decoded source or path.
 
-Source and listener positions remain normalized XYZ coordinates inside the
-room. In the two-dimensional room plan:
+## Corrected signal path
 
-- increasing X moves right;
-- the top edge is listener-forward;
-- increasing/decreasing Y changes front/rear geometry according to the panel's
-  established orientation;
-- Z continues to affect physical path lengths and wall interactions even though
-  the main panel exposes only the plan view.
+```text
+independent mono sources and XYZ positions
+        |
+        +-- positioned direct decode ----------------------------> stereo direct
+        |
+        +-- user wet pre-delay
+             |
+             +-- zero-latency head/tail image-source FIR
+             |      -- direct-relative reflection taps ----------> stereo ER
+             |
+             +-- source handoff-alignment delay
+                    -- six normalized source-wall sends
+                    -- 16-line room-scaled FDN and VFM
+                    -- six wall-domain outputs
+                    -- six physical listener-wall connections
+                    -- wall-direction stereo decode -------------> stereo tail
 
-All lateral decisions must use source or path direction relative to the
-listener, not absolute source X. Moving the source and listener together while
-preserving their relative geometry must preserve the direct stereo placement.
+stereo ER + stereo tail -- EARLY/TAIL trims -- wet filters -- WIDTH --> wet
+stereo direct + wet -- constant-power MIX -- output LEVEL -----------> output
+```
 
-No additional front/back coloration is applied. A source moved from front to
-rear may sound different because the set of image paths and wall encounters is
-different, but the stereo output does not claim to place sound behind the
-listener.
+The module remains zero-latency on its direct path. The ER convolver must
+therefore use a zero-latency head plus partitioned tail, described below. This
+avoids delaying every dry signal by the current 128-sample FFT partition and
+avoids non-causal compensation when an ER has less than 128 samples of excess
+delay.
 
 ## Direct path
 
-The direct path must remain separate per source until stereo decoding. The
-current polyphonic-to-mono sum before the output mix must be removed from the
-positioned mode.
+### Per-source rendering
 
-For each active source:
+The DSP layer must retain every source independently until direct stereo decode.
+For source `s`:
 
-1. calculate the source-to-listener vector in metres;
-2. derive its normalized lateral component or listener-relative azimuth;
-3. apply a constant-power stereo pan;
-4. sum the resulting stereo source pairs.
+1. Convert source and listener positions to metres.
+2. Calculate the source-minus-listener horizontal vector.
+3. Decode it with the constant-power law above.
+4. Apply the bounded direct-distance gain below.
+5. Add the stereo pair to the direct accumulator.
 
-Artificial interchannel delay is not added in speaker-stereo mode. Constant-
-power amplitude panning is predictable, mono-compatible, and does not create
-comb filtering when the two channels are summed.
+The dry API must consequently become stereo. A suitable interface is:
 
-The recommended product behaviour is **Position direct sound**, in which the
-dry side of the Mix control is the positioned stereo direct signal. A context
-option may retain **Centred direct sound** for conventional insert use and
-backward compatibility. This choice must be explicit; the engine must not call
-a centred mono sum physically positioned sound.
+```cpp
+struct RoomReverbFrame {
+  StereoFrame direct;
+  StereoFrame wet;
+};
 
-Distance gain on the direct path requires a bounded reference-distance law.
-It must avoid singular gain when source and listener coincide and must not make
-moving the room pad an uncontrolled output-level gesture. The final law should
-be calibrated together with ER spreading and the existing overall output
-level, rather than layered on top of the current ER/tail proxy unchanged.
-
-## Early-reflection correction
-
-The rectangular image-source enumeration, material encounter counts,
-frequency-band absorption, air loss, and worker-thread FIR construction remain
-the basis of the ER engine.
-
-### Timing reference
-
-The positioned direct sound is the zero-time reference. Each reflection tap is
-placed from its excess path length:
-
-```text
-t_ER = (d_reflection - d_direct) / c
+StereoFrame MixReverbOutput(const StereoFrame& direct,
+                            const StereoFrame& wet,
+                            const ReverbOutputGains& gains);
 ```
 
-The engine already calculates this value as `excessDelaySeconds`. Absolute
-propagation time must not be used for a reflection while its corresponding
-direct sound remains at zero latency. The user Pre-delay is applied afterward
-as an explicit creative offset to the wet paths.
+`TfReverb.cpp` must no longer create a scalar `dry` sum.
 
-### Stereo direction
+### Direct mode and patch compatibility
 
-Every retained path is decoded from its physical listener-relative arrival
-direction. For stereo speakers, only the lateral projection controls channel
-balance. Front/rear and elevation continue to influence geometry but do not
-receive invented localization processing.
+Add a serialized context setting:
 
-Constant-power path gains must satisfy equal power before distance and material
-losses. Left/right room mirror cases must produce mirrored kernels. A centred,
-geometrically symmetric path must be exactly balanced.
+```cpp
+enum class DirectMode { CentredLegacy, Positioned };
+```
 
-### Directional transition with reflection order
+- New module instances default to `Positioned`.
+- Existing patches that do not contain the setting load as `CentredLegacy`.
+- `CentredLegacy` reproduces the current immediate, unattenuated mono sum in
+  both channels.
+- `Positioned` uses independent panning and bounded distance gain.
 
-The first and strongest reflections carry the clearest directional
-information. Directional specificity should decrease smoothly as the response
-approaches the detected mixing interval. This can be implemented by blending
-each path's physical stereo pan toward an energy-normalized diffuse stereo
-distribution as a function of reflection order and/or normalized time to the
-mixing interval.
+The menu and manual must call these modes **Centred dry (legacy)** and
+**Positioned direct sound**. A centred mono sum must not be described as
+physically positioned output.
 
-The blend must not alter total path power. It must also be deterministic, so a
-static scene produces a static FIR and geometry updates can crossfade without
-image wander.
+### Bounded distance law
 
-## Distance and ER/tail balance
+Changing Size should not turn the room pad into a large dry-level control.
+Distance is therefore expressed relative to the room's characteristic length:
 
-Once direct and ER timing and gains share one reference, the existing
-`PositionBalanceGains` law must be reassessed rather than preserved by default.
-It currently applies equal-and-opposite gains only to ER and tail and therefore
-does not implement a genuine direct-to-reverberant distance cue.
+```text
+roomScale = cbrt(roomVolume)
+rho       = sourceListenerDistance / roomScale
+rhoRef    = factoryDistance / cbrt(factoryVolume)
 
-The corrected balance should arise primarily from:
+gDirect = clamp(rhoRef / max(rho, 0.05), 0.25, 2.0)
+```
 
-- bounded direct-distance gain;
-- image-path distance spreading;
-- source-dependent ER energy at the mixing interval;
-- geometry-dependent late injection.
+The initial limits are -12 dB and +6 dB. The factory source/listener placement
+has unity gain. Uniformly scaling the room while preserving normalized source
+and listener positions leaves this gain approximately unchanged.
 
-EARLY and TAIL remain user trims around the automatic baseline. Any remaining
-perceptual distance correction must be a documented bounded residual, measured
-after the physically connected terms above, rather than a second full-strength
-distance law.
+These constants may be adjusted once during validation, but the final values
+must be fixed in the implementation and tests. They must not be optimized as
+part of the FDN coefficient search.
 
-## ER/late transition
+No interchannel time delay is added to the direct sound. This is conventional
+speaker amplitude panning and remains mono-compatible.
 
-The detected ER mixing interval must control more than ER truncation and a
-scalar late-send gain.
+## Early reflections
 
-The production transition must:
+### One listener reference, not two ears
 
-- taper directional ER energy over the detected start/end interval;
-- arrange the FDN buildup so dense late energy arrives through the same
-  interval;
-- retain overlap so there is neither an energy hole nor a hard boundary;
-- preserve the spectrum measured at the handoff;
-- avoid an early diffuse wash that masks the first directional reflections.
+The image-source geometry continues to use one listener position. Each image
+source produces one propagation path whose horizontal arrival direction is
+decoded with the constant-power law.
 
-Possible implementations include delaying or pre-seeding each source's late
-injection so the first useful FDN output meets the mixing interval, or applying
-an energy-preserving buildup envelope to the late output. The choice must be
-made from measured impulse responses, not solely from implementation
-convenience.
+Using two receiver points would instead simulate a spaced microphone pair. It
+would introduce frequency-dependent interchannel phase, require an explicit
+spacing and orientation, and create possible mono-sum comb filtering. Without
+head shadow or HRTFs it would still not be binaural. That is a valid future
+effect mode, but it is not part of this correction.
 
-## Late spatial field
+### Direct-relative timing
 
-### What should and should not survive diffusion
+For every path:
 
-The mature tail should not remain hard-panned to the source. Diffusion is
-expected to destroy individual path direction and make the tail progressively
-source-independent.
+```text
+dDirect = distance(source, listener)
+dPath   = distance(imageSource, listener)
+tExcess = max(0, (dPath - dDirect) / speedOfSound)
+```
 
-The following must survive as controlled stereo properties:
+The FIR tap must use `tExcess`, not `propagationSeconds`:
 
-- balanced total left/right energy for a symmetric room;
-- useful interchannel decorrelation;
-- lateral energy and envelopment;
-- deterministic response for a static scene;
-- room/listener-dependent anisotropy where geometry or wall energy supports it;
-- a gradual loss of initial source-direction bias rather than an instantaneous
-  arbitrary remap.
+```text
+desiredTapSamples = tExcess * sampleRate
+```
 
-### Directional virtual outputs
+The current convolver adds one 128-sample partition of latency and compensates
+for it by moving sufficiently late FIR taps earlier. That cannot represent an
+ER whose excess delay is less than one partition without either delaying the
+direct path or making the FIR non-causal.
 
-The 16 FDN lines should feed 12--16 decorrelated virtual reverb outputs with
-fixed room-relative directions. Using all 16 is the preferred starting point
-because the signals already exist and avoids reducing the internal spatial
-resolution before stereo decoding.
+Replace it with a zero-latency head/tail convolver:
 
-The virtual-output projection must be passive or explicitly normalized. Its
-direction set should cover the room symmetrically. Horizontal directions are
-constant-power panned into stereo; vertical directions contribute centrally or
-with symmetric lateral weighting. Front and rear directions use the same
-speaker-stereo lateral law and differ only through the room field that reaches
-them.
+1. The first 128 FIR coefficients for every source/output kernel form the head.
+2. Process the head directly from a 128-sample per-source input history.
+3. Coefficients from sample 128 onward use the existing uniform partitioned
+   convolver, shifted down by 128 coefficient samples so its inherent
+   128-sample latency restores their exact requested output time.
+4. Sum head and tail results before FIR-bank transition gain is applied.
+5. Prepared head and tail banks change through the same numerical crossfade;
+   neither input history may be cleared during a scene change.
 
-Listener position and directional wall energy may weight the virtual outputs,
-but must not introduce an unexplained fixed `SidePattern`. In a uniform room,
-the mature late field should approach a balanced diffuse stereo field even when
-the source begins off-centre.
+The worst-case direct head is 128 taps by two outputs by eight active sources.
+Benchmark that path at the production polyphony. If it is too expensive, use a
+sparse head or non-uniform small first partitions, but retain exact zero-latency
+semantics.
 
-The STEREO WIDTH control remains a speaker-output control. It may adjust the
-late field's side energy after a physically meaningful base decode, but it must
-not substitute for that decode or change the underlying room geometry.
+`appliedLatencyCompensationSamples` and `ResidualLatencySeconds()` should be
+removed from the ER response if they are no longer used elsewhere. Tests and
+handoff analysis must operate entirely in direct-relative time.
 
-## Diffusion correction
+The user Pre-delay is additional creative wet delay:
 
-### Current problem
+```text
+audible ER time relative to direct = userPreDelay + tExcess
+```
 
-The current VFM applies fully mixing Hadamard transforms at every Diffusion
-setting. The control changes only the two internal velvet-delay spans. This is
-stable, but it does not control scattering strength and explains why low and
-high settings can sound insufficiently distinct.
+### Direction and gain
 
-### Target operator
+For every retained image path:
 
-Diffusion controls both orthogonal mixing strength and temporal scattering
-span. Each butterfly becomes a parameterized energy-preserving rotation. A
-representative pair operation is
+1. Calculate `pathVector = imagePosition - listenerPosition`.
+2. Calculate lateral direction from its XY projection.
+3. Calculate constant-power L/R gains.
+4. Multiply both channels by the existing distance spreading, air loss, and
+   four-band material response.
+
+Do not blend later image paths toward random or synthetic stereo directions.
+The transition becomes diffuse through the increasing number and overlap of
+physically directed paths. Changing individual directions would weaken room
+symmetry and introduce another arbitrary spatial pattern.
+
+### ER handoff taper
+
+The detected per-source handoff remains an interval:
+
+```text
+tStart = sourceHandoff.finalStartSeconds
+tEnd   = sourceHandoff.finalEndSeconds
+```
+
+For a kernel sample at direct-relative time `t`, apply
+
+```text
+ER envelope = 1                                      when t <= tStart
+              cos(pi/2 * smoothstep((t-tStart) /
+                                     (tEnd-tStart))) when tStart < t < tEnd
+              0                                      when t >= tEnd
+```
+
+The envelope is identical in both channels and therefore cannot move a
+reflection while fading it.
+
+## Late-field input and ER/late alignment
+
+### Six wall ports remain the physical interface
+
+The six late ports represent the room's -X, +X, -Y, +Y, -Z, and +Z walls. They
+are meaningful geometric signals. The 16 FDN lines are internal mixed state and
+must not be labelled as directions.
+
+For each source, retain the existing raw solid-angle proxy and calculate
+
+```text
+unitWallWeights = rawWallWeights / norm(rawWallWeights)
+relativeDelay[w] = (distanceToWall[w] - minimumDistanceToWall) / c
+```
+
+The normalized vector is desirable: it gives a bounded passive injection
+direction. Overall source energy is supplied separately by the ER handoff match
+`currentTailSend[source]`. Do not apply `PositionBalanceGains` on top of it.
+
+This separation is explicit:
+
+```text
+late source send = delayedSource
+                 * handoffMatchedScalar
+                 * unitWallWeight[w]
+```
+
+Normalization is therefore not treated as a distance model, and a second
+equal-and-opposite ER/tail distance proxy is unnecessary.
+
+### Source-specific alignment delay
+
+For an impulse injected into the current late topology, define
+`tIntrinsicFirst` as the first non-zero wall-domain output time excluding user
+Pre-delay. Initially calculate it from the minimum main delay and minimum
+connection delays; verify it against a rendered late-only impulse response.
+
+Each source receives a transition delay before its six wall sends:
+
+```text
+tAlign[source] = max(0,
+                     handoff.finalStartSeconds - tIntrinsicFirst)
+```
+
+The audible late onset relative to the logical direct reference is then
+
+```text
+userPreDelay + tAlign[source] + tIntrinsicFirst
+```
+
+The existing old/new fixed-read-head crossfade mechanism must be used when
+`tAlign` changes. It must never clear source, wall, or FDN delay buffers.
+
+If `tIntrinsicFirst` is later than the handoff start for any supported Size,
+the test must fail. The correction is then to shorten or restructure the late
+network at that Size; a negative delay or abrupt ER extension is not allowed.
+
+The late response must naturally build through `[tStart, tEnd]` while the ER
+envelope falls. A global output gate is not suitable because it would also gate
+reverberation already stored from earlier notes.
+
+## Late-field output and stereo decode
+
+### Keep the wall-domain output
+
+Continue to project the 16 delayed FDN values back into the same six-dimensional
+wall basis:
+
+```text
+outputWalls = transpose(WallProjection) * fdnDelayed
+```
+
+`WallProjection` has orthonormal columns after its `1/sqrt(16)` scale. Injection
+and extraction therefore remain passive. The complete VFM may populate the ten
+complementary FDN coordinates, but those coordinates do not acquire physical
+directions merely because they exist.
+
+No 12- or 16-source intermediate renderer is added for stereo output. With no
+direction-dependent filtering or multichannel reproduction it would collapse
+algebraically to another 2-by-16 output matrix and would not increase spatial
+resolution.
+
+### Physical six-wall speaker decode
+
+Keep the listener's normalized wall weights and relative wall delays. Replace
+`SidePattern` and its Gram-Schmidt construction with constant-power decoding of
+the actual wall directions.
+
+For the current wall order, use
+
+```text
+wallLateral = {-1, +1, 0, 0, 0, 0}
+```
+
+The front, rear, floor, and ceiling ports decode centrally because this product
+does not claim front/rear or height localization. For wall `w`:
+
+```text
+panL[w], panR[w] = constantPowerPan(wallLateral[w])
+
+decoderL[w] = listenerWallWeight[w] * panL[w]
+decoderR[w] = listenerWallWeight[w] * panR[w]
+```
+
+Because the listener weights have unit squared norm and every pan pair has unit
+power, the decoder's Frobenius norm is one and its spectral norm cannot exceed
+one. No fitted gain correction is required for passivity.
+
+A listener near a side wall may receive a real lateral energy bias because that
+wall has greater coupling. A centred listener in a left/right symmetric room
+must have exactly mirrored decode coefficients.
+
+### What the late tail should preserve
+
+The late field is not expected to keep a source hard-panned indefinitely.
+Instead:
+
+- the first late energy inherits bias from the source's six wall sends;
+- repeated FDN mixing reduces that source-specific bias;
+- mature tail energy is balanced for a symmetric room and centred listener;
+- the channels remain decorrelated enough to create width and envelopment;
+- listener position continues to affect wall delays and wall energy;
+- the response remains deterministic for a static scene.
+
+Mirror symmetry for ER is a sample-for-sample requirement. For the mixed late
+tail, mirrored scenes are required to match energy, decay, correlation, and
+lateral-bias statistics; their individual samples need not be identical.
+
+### Contingency for insufficient late decorrelation
+
+The six-wall decoder is the first production implementation. If its measured
+late interchannel correlation fails the limits below, add one explicitly
+diffuse residual stereo pair from the ten-dimensional complement of
+`WallProjection`.
+
+Such residual rows must:
+
+- be orthogonal to the six wall columns and to each other;
+- have equal energy and deterministic coefficients;
+- be described as geometry-independent diffuse energy, not virtual directions;
+- be mixed at a fixed, documented gain;
+- leave the combined output operator passive after normalization.
+
+Do not add this residual unless the six-wall implementation fails an objective
+correlation or listening requirement.
+
+## Width control
+
+The physical renderer is defined before Width. Width remains an intentional
+speaker-output transformation on the complete wet signal, preserving the
+current product behaviour:
+
+```text
+mid  = (L + R) / sqrt(2)
+side = width * (L - R) / sqrt(2)
+
+Lout = (mid + side) / sqrt(2)
+Rout = (mid - side) / sqrt(2)
+```
+
+The existing mapping from the normalized control to 0-150% width remains:
+
+```text
+width = 1.5 * smoothstep(control)
+```
+
+The factory control value maps to unity width. Zero Width makes the complete
+wet signal mono; maximum Width exaggerates the base room image. Spatial
+correctness tests must measure the base renderer at unity width, before this
+creative transformation.
+
+## Diffusion control
+
+### Required semantic change
+
+Diffusion must control both:
+
+1. how strongly each Hadamard butterfly mixes its pair; and
+2. the temporal span of both velvet-delay stages.
+
+Keep the existing delay-span law:
+
+```text
+u         = smoothstep(diffusion)
+spanScale = 0.20 + 1.30 * u
+```
+
+multiplied by the current room scale.
+
+Replace the fixed 45-degree butterfly with
 
 ```text
 [ y0 ]   [ cos(theta)   sin(theta) ] [ x0 ]
 [ y1 ] = [ sin(theta)  -cos(theta) ] [ x1 ]
 ```
 
-with `theta` increasing smoothly from a safe mild-scattering value to the full
-design angle. Signed permutations remain passive routing operations; they must
-not be counted as signal mixing merely because they move a line index.
+and initially use
 
-The control law should have these endpoints:
+```text
+thetaMin = pi / 16
+theta    = thetaMin + u * (pi / 4 - thetaMin)
+```
 
-- minimum: mild but nonzero scattering and short velvet span, retaining
-  separated texture without exposing unstable or strongly periodic comb loops;
-- default: a dense, natural room buildup;
-- maximum: full scattering and the maximum validated velvet span.
+At minimum the network is mildly mixed rather than reduced to independent comb
+loops. At maximum it is the present normalized Hadamard butterfly.
 
-Every static operator remains orthogonal/paraunitary before its explicit loss
-filters. Diffusion therefore cannot change loop energy or RT60 by accident.
-Runtime changes use state-preserving coefficient/tap transitions and never
-clear delay buffers.
+Use the same `theta` law for every butterfly layer and both coefficient
+flavours for the first implementation. If echo-density tests reveal a
+non-monotonic region, change the per-layer angle schedule explicitly and record
+it as part of the topology; do not repair it with fitted output EQ or gain.
 
-The Base and Optimized FDN flavours retain the same Diffusion law. Their menu
-comparison remains a coefficient-flavour comparison, not a topology change.
+### Energy and automation rules
 
-## Objective verification
+The parameterized pair matrix is orthogonal for every `theta`. Interpolate
+`theta` itself during automation, so every intermediate matrix remains
+orthogonal. Do not linearly crossfade the outputs of two diffusion matrices.
 
-All rendered-audio tests run at the 48 kHz production sample rate. No
-downsampled network or shortened physical control law may stand in for the
-production engine.
+Signed permutations remain passive routing. They do not count as mixing when
+describing the Diffusion control.
 
-### Direct and ER invariants
+Orthogonality guarantees that the instantaneous matrix does not change vector
+energy. It does not by itself guarantee unchanged measured RT60 once unequal
+delays and line-dependent loss filters are included. RT60 invariance must
+therefore be measured, not inferred.
 
-- a left source produces greater early/direct energy on the left;
-- a right source is the numerical mirror of the corresponding left source;
-- moving the listener across a fixed source reverses lateral placement;
-- a centred source in a symmetric scene remains channel-balanced;
-- moving source and listener together while preserving relative geometry
-  preserves direct lateral placement;
-- analytical first-order image paths match measured excess-delay tap times;
-- reflection panning preserves path power;
-- front/rear moves change the IR only through their calculated geometry;
-- multiple sources remain independently positioned through the direct and ER
-  paths;
-- geometry updates crossfade without clearing input or convolution history.
+Velvet tap changes continue to crossfade fixed integer taps without clearing
+buffers. No Diffusion automation path may call `Reset()`.
 
-### ER/late invariants
+## Distance and level policy
 
-- ER directionality decreases toward the mixing interval;
-- tail buildup overlaps the ER fade without a statistically significant energy
-  hole or step;
-- the handoff spectrum is continuous within explicit band tolerances;
-- source distance produces a monotonic, bounded direct/ER/tail relationship;
-- EARLY and TAIL trims remain exact decibel offsets around the automatic
+After this correction, automatic distance behaviour consists only of:
+
+- bounded, room-scale-normalized direct gain;
+- physical inverse-distance spreading on every ER image path;
+- existing wet Size calibration;
+- source-specific tail send derived from ER handoff power;
+- normalized source and listener wall direction vectors.
+
+Remove `PositionBalanceGains`, `currentEarlyPositionGain_`,
+`currentTailPositionGain_`, and their targets and smoothing state.
+
+`EARLY` and `TAIL` remain exact user decibel trims around this baseline. They
+must not alter direct sound, network feedback poles, or decay time.
+
+If listening tests later demonstrate that the direct-to-reverberant distance
+range remains inadequate, add only a bounded documented residual after
+measuring the terms above. Do not restore an equal-and-opposite ER/tail proxy by
+default.
+
+## Required verification
+
+All rendered tests use the production 48 kHz sample rate and the complete
+16-line topology.
+
+Use the following definitions consistently:
+
+```text
+EL = sum(L[n]^2) over the measurement window
+ER = sum(R[n]^2) over the measurement window
+
+lateralBias = (EL - ER) / max(EL + ER, epsilon)
+
+correlation = sum(L[n] * R[n]) /
+              sqrt(max(sum(L[n]^2) * sum(R[n]^2), epsilon))
+
+effectiveLineCount = (sum(lineEnergy[i]))^2 /
+                     sum(lineEnergy[i]^2)
+```
+
+Apply the specified band-pass filters before calculating band correlation or
+band energy. Window positions are measured from the logical direct reference,
+not from the host input sample.
+
+### Direct tests
+
+- Hard-left, centred, and hard-right test vectors match the analytical pan law.
+- A source left of the listener produces greater direct energy on the left.
+- Mirroring source and listener X positions swaps direct L/R samples exactly.
+- Moving source and listener together while preserving their relative vector
+  preserves direct pan and normalized distance gain.
+- Uniform Size scaling at fixed normalized positions changes direct gain by
+  less than 0.25 dB.
+- The bounded distance law never exceeds +6 dB or falls below -12 dB.
+- Multiple sources are independently panned before summation.
+- `CentredLegacy` produces identical L/R dry samples.
+- Direct output begins on the input sample with no implementation delay.
+
+### ER tests
+
+- Analytical first-order paths match measured excess-delay tap times within one
+  fractional-delay interpolation tolerance.
+- ER output begins at `round(tExcess * sampleRate)` samples before user Pre-delay
+  is added.
+- Every isolated path preserves power through its pan.
+- A centred path is exactly channel-balanced.
+- A left path has positive left-energy bias; a right path has the opposite sign.
+- Mirroring the complete room in X swaps ER kernels within numerical tolerance.
+- Front/rear moves alter the FIR only through calculated path geometry and
+  material encounters.
+- The ER envelope is monotonic over the handoff interval and identical in both
+  channels.
+- Geometry updates crossfade prepared FIR banks without clearing convolution or
+  input history.
+
+### ER/late transition tests
+
+- Late onset occurs no earlier than 2 ms before `handoff.finalStartSeconds` and
+  no later than 2 ms after it.
+- Windowed total wet energy across the handoff contains no dip or step greater
+  than 1.5 dB relative to adjacent equal-length windows.
+- Each four-band handoff-energy step is below 2 dB.
+- EARLY and TAIL controls remain exact decibel offsets around the automatic
   baseline.
+- Source alignment-delay automation preserves already stored late energy.
 
-### Late stereo invariants
+### Late stereo tests
 
-- virtual-output energy is bounded and normalized;
-- left/right energy is equal for symmetric rooms and mirrored for mirrored
-  scenes;
-- pairwise virtual-output correlation and final stereo interchannel
-  correlation remain within explicit limits over several time windows and
-  frequency bands;
-- source-direction bias decreases with time while late spatial extent remains;
-- Width changes side energy monotonically without changing RT60 or room
-  geometry.
+Measure windows relative to the direct reference and exclude Width processing.
 
-### Diffusion invariants
+- A symmetric room and centred listener have L/R energy imbalance below 0.5 dB
+  after 250 ms.
+- In 125-500 Hz, absolute normalized interchannel correlation is below 0.80
+  after 250 ms.
+- In 500 Hz-4 kHz, absolute normalized interchannel correlation is below 0.50
+  after 250 ms.
+- Mono-summed late energy must not fall more than 6 dB below the average stereo
+  channel energy in any test band.
+- For an off-centre source, initial late lateral bias has the same sign as the
+  source. After `max(250 ms, 2 * handoff.finalEndSeconds)`, its magnitude is at
+  most 25% of the initial bias in a symmetric room.
+- Mirrored scenes match late L/R energy, decay time, and band correlation after
+  channel swapping within explicit numerical tolerances.
+- Moving the listener changes wall timing and energy without changing feedback
+  poles or RT60.
+- Zero Width is exactly mono, unity Width equals the base decode, and Width
+  changes side energy monotonically without changing mid energy.
 
-- the lossless VFM conserves energy at minimum, default, maximum, and
-  intermediate settings;
-- echo density and temporal support rise monotonically with Diffusion;
-- Diffusion produces a decisive response difference at several control points;
-- RT60 and multiband damping remain invariant within tolerance;
-- modal prominence and low-frequency periodicity remain bounded across the
-  complete Size, Decay, Damping, and Diffusion grid;
-- static controls remain finite and decaying at maximum Size and Decay;
-- automation retains every delay buffer and produces no large amplitude hole,
-  click, or Doppler sweep.
+Correlation limits are initial production gates. If listening validation shows
+that one is unnecessarily strict or loose, change it once with recorded impulse
+responses and rationale; do not omit the assertion.
 
-Tests that merely assert that two responses differ are insufficient for spatial
-or diffusion controls. Each test must assert the sign, monotonic direction,
-symmetry, physical timing, correlation, density, or stability property that the
-control is intended to provide.
+### Diffusion tests
+
+- The lossless VFM conserves energy at diffusion 0, 0.25, 0.5, 0.75, and 1.
+- Effective line count over the first two network recurrences rises
+  monotonically as Diffusion increases.
+- Normalized echo density and temporal support rise monotonically at the same
+  control points.
+- Mid-band RT60 changes by less than 5% across the Diffusion sweep.
+- Low- and high-band RT60 change by less than 7% across the sweep.
+- Modal prominence and low-frequency periodicity remain within the existing
+  limits over the complete Size, Decay, Damping, and Diffusion grid.
+- Maximum Size and Decay remain finite and decaying at every Diffusion value.
+- Diffusion automation retains all delay buffers and creates no click, large
+  energy hole, or Doppler sweep.
+
+## Code change map
+
+| File | Required change |
+| --- | --- |
+| `src/tfdsp/early_reflections.hpp` | Use horizontal lateral direction; place FIR taps in excess time; remove latency-compensation response fields; split prepared FIRs into zero-latency heads and partitioned tails. |
+| `src/tfdsp/early_reflections_worker.*` | Publish the revised FIR and handoff representation without doing new work on the audio thread. |
+| `src/tfdsp/room_reverb.hpp` | Produce stereo direct and wet frames; add direct mode and direct-distance law; remove `PositionBalanceGains`; add per-source handoff-alignment delays. |
+| `src/tfdsp/late_reverb.hpp` | Retain six wall ports; replace `SidePattern` with the physical wall pan decoder; expose or calculate intrinsic late onset needed for alignment. |
+| `src/tfdsp/velvet_feedback_matrix.hpp` | Pass smoothed `theta` through every butterfly layer while retaining the existing velvet-span transition. |
+| `src/tfdsp/reverb_output.hpp` | Accept a stereo direct frame in both output-mix overloads. |
+| `src/TfReverb.cpp` | Remove scalar dry summation; consume `RoomReverbFrame`; serialize and display `DirectMode`; update parameter descriptions. |
+| `tests/early_reflections_tests.cpp` | Add analytical excess-time, horizontal-pan, mirror, and zero-latency head/tail tests. |
+| `tests/late_reverb_tests.cpp` | Add physical decoder, onset, band-correlation, lateral-bias decay, and variable-mixing tests. |
+| `tests/room_reverb_tests.cpp` | Add complete direct/ER/tail timing, positioned polyphony, distance, transition, Width, and migration tests. |
 
 ## Implementation sequence
 
-1. Add directional metrics and failing regression tests for the current direct,
-   ER, late-stereo, timing, and Diffusion behaviour.
-2. Separate and stereo-position every direct source; define the explicit
-   positioned/centred direct policy.
-3. Change ER tap placement to direct-relative excess delay and implement
-   physically directed stereo kernels.
-4. Replace the distance proxy with a calibrated direct/ER/tail relationship and
-   align FDN buildup with the detected mixing interval.
-5. Replace the fixed two-row late `SidePattern` decoder with 12--16 normalized
-   directional virtual outputs and a speaker-stereo decode.
-6. Parameterize the VFM butterflies so Diffusion controls real scattering
-   strength as well as velvet span.
-7. Run the complete native 48 kHz response, stability, automation, and
-   performance suites before listening comparison.
-8. Fine-tune only after the architecture and invariants pass. Optimization may
-   improve modal flatness or correlation, but must not define basic spatial or
-   control semantics.
+Implement and review the correction in the following order:
 
-Once the corrected design passes objective and listening validation, it becomes
-the single production path. The present spatial decoder and delay-reference
-shortcuts should be removed rather than retained as an undocumented alternate
-architecture.
+1. Add failing analytical pan, mirror, excess-time, correlation, lateral-bias,
+   and diffusion-strength tests.
+2. Introduce `RoomReverbFrame`, stereo direct mixing, and `DirectMode` while
+   retaining a zero-latency direct path.
+3. Convert ER FIR placement and handoff analysis completely to excess time;
+   implement the zero-latency FIR head/tail split and remove convolution-latency
+   compensation state.
+4. Remove `PositionBalanceGains` and position-gain smoothing. Retain the
+   handoff-derived scalar late send.
+5. Add source-specific late alignment delays and verify ER/late overlap across
+   the Size and Aspect ranges.
+6. Replace `SidePattern` with the normalized six-wall constant-power decoder.
+7. Measure late correlation before deciding whether the optional diffuse
+   complementary output pair is needed.
+8. Parameterize the VFM butterfly angle and add state-preserving smoothing.
+9. Update module serialization, menu text, parameter descriptions, current
+   design documentation, and patch migration.
+10. Run native tests, automation tests, benchmarks, and listening comparisons at
+    48 kHz before changing any FDN coefficient set.
+
+Once these stages pass, the corrected renderer becomes the sole production
+spatial path. `CentredLegacy` affects only direct-sound presentation; it must not
+retain the old ER timing, side pattern, distance proxy, or Diffusion behaviour.
+
+## Comparison with representative open-source reverbs
+
+The design deliberately differs from common musical stereo reverbs:
+
+- Freeverb creates width by feeding a mono sum into two networks with different
+  delay lengths, then crossmixing their outputs. It does not preserve room or
+  source direction.
+- Dragonfly/Freeverb3 keeps stereo tank halves, cross-feedback, distinct output
+  taps, and variable allpass diffusion. Its spatial image is designed rather
+  than geometric.
+- CloudSeed uses separate randomized left/right engines and controls how similar
+  their seeds and inputs are. Its late width is decorrelation, not a room decode.
+- zita-rev1 uses a fixed stereo input/output matrix around an eight-line FDN and
+  supplies a separately designed four-channel Ambisonic output mode.
+- Steam Audio preserves a directional Ambisonic reflection field until a final
+  speaker or binaural decoder.
+
+TfReverb sits between the musical and physical approaches: it has real
+image-source ER and meaningful six-wall late connections, but only two-speaker
+output. Keeping the six wall ports and decoding their true lateral directions
+preserves the geometry the topology actually owns. Treating the mixed FDN lines
+as 16 virtual directions would not.
 
 ## References
 
-- T. Wendt, S. van de Par, and S. D. Ewert, “A Computationally-Efficient and
-  Perceptually-Plausible Algorithm for Binaural Room Impulse Response
-  Simulation,” *Journal of the Audio Engineering Society*, 62(11), 2014.
-  The relevant architectural point is the hybrid image-source/FDN split and the
-  use of spatially distributed late outputs; this specification does not adopt
-  its binaural renderer.
-  <https://doi.org/10.17743/jaes.2014.0042>
-- C. Kirsch, J. Poppitz, T. Wendt, S. van de Par, and S. D. Ewert, “Spatial
-  Resolution of Late Reverberation in Virtual Acoustic Environments,” *Trends
-  in Hearing*, 25, 2021. The study found that 12 spatially distributed virtual
-  late sources could approximate higher resolutions in its tested isotropic
-  conditions, motivating retention of multiple directional late outputs before
-  final stereo decode.
-  <https://doi.org/10.1177/23312165211054924>
-- E. De Sena, H. Hacıhabiboğlu, Z. Cvetković, and J. O. Smith, “Efficient
-  Synthesis of Room Acoustics via Scattering Delay Networks,” *IEEE/ACM
-  Transactions on Audio, Speech, and Language Processing*, 23(9), 2015. This
-  provides a reference for geometry-connected passive scattering and
-  directional source/receiver treatment.
-  <https://doi.org/10.1109/TASLP.2015.2438547>
-- Valve, “Steam Audio Reflection Effect.” Its reflected field is retained in an
-  intermediate directional representation before output decoding, illustrating
-  the distinction between losing individual late rays and discarding the late
-  field's spatial distribution.
+- GRAME, `faustlibraries/reverbs.lib`: Freeverb, Dattorro, and zita-rev1 stereo
+  and Ambisonic implementations.
+  <https://github.com/grame-cncm/faustlibraries/blob/master/reverbs.lib>
+- Michael Willis and Freeverb3, Dragonfly Reverb source.
+  <https://github.com/michaelwillis/dragonfly-reverb>
+- Ghost Note Audio, CloudSeed Core source.
+  <https://github.com/GhostNoteAudio/CloudSeedCore>
+- Valve, Steam Audio Reflection Effect. Reflections remain Ambisonic before
+  speaker or binaural decoding.
   <https://valvesoftware.github.io/steam-audio/doc/capi/reflections-effect.html>
+- C. Kirsch, J. Poppitz, T. Wendt, S. van de Par, and S. D. Ewert, "Spatial
+  Resolution of Late Reverberation in Virtual Acoustic Environments," *Trends
+  in Hearing*, 25, 2021. Its 12-24 virtual-source result concerns spatial
+  reproduction over a spherical loudspeaker array, not ordinary stereo output.
+  <https://doi.org/10.1177/23312165211054924>
+- E. De Sena, H. Hacihabiboglu, Z. Cvetkovic, and J. O. Smith, "Efficient
+  Synthesis of Room Acoustics via Scattering Delay Networks," *IEEE/ACM TASLP*,
+  23(9), 2015. This is the reference model for geometry-connected passive wall,
+  source, and receiver nodes.
+  <https://doi.org/10.1109/TASLP.2015.2438547>

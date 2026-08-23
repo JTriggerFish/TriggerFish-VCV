@@ -128,7 +128,7 @@
     {
       "slug": "TfProgSequencer",
       "name": "Prog Sequencer",
-      "description": "Live-coded polyphonic note and chord sequencer with gate, trigger, velocity, and accent outputs",
+      "description": "Beta live-coded polyphonic note and chord sequencer; language and features may change",
       "manualUrl": "https://github.com/JTriggerFish/TriggerFish-VCV#prog-sequencer",
       "tags": [
         "Sequencer",

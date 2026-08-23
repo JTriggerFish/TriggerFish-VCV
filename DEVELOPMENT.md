@@ -231,6 +231,11 @@ release, commit, file hashes, and update procedure are recorded in
 After an update, run `./dev.ps1 test` and `./dev.ps1 dist`; the distribution
 must contain `vendor/cpp-peglib/LICENSE`.
 
+Future MIDI performance binding, instrument interpretation, richer pattern
+branches, CV expressions, tuning, and related realtime constraints are retained
+in the internal
+[Prog Sequencer development roadmap](docs/TfProgSequencer-planned-features.md).
+
 ## Python and pre-commit
 
 Install the development environment and Git hooks once per clone:

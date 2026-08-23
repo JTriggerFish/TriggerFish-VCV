@@ -345,6 +345,9 @@ flashes in the editor. `stop` is a valid transport command and an executed
 `play` or `stop` line overrides other transport lines. Diagnostics wrap in the
 status strip, and the last valid program keeps playing after an error.
 
+Prog Sequencer is currently in beta. Its language and feature set may change
+as musical workflows are refined.
+
 Double-click selects a word and triple-click selects a complete row. Rack
 requires every module to be exactly one 3U row high, but the module context
 menu offers 22, 30, and 38 HP widths. New modules default to 30 HP, and the
@@ -384,6 +387,11 @@ Inactive Euclidean cells are rests. `7_`, `7_3`, and `7.` make a note doubled,
 three times as long, and dotted respectively. Sparse numerical lanes use `.`
 as a typed no-op. A velocity such as `.5` means 5 V; an accent prefix raises
 Velocity to at least its accent value.
+
+`$` produces a seeded random note from the active scale. `${1,8}` selects an
+inclusive scale-degree range, `$n{4,1.5}` uses a normal distribution in degree
+space, and `$c{0,11}` selects unquantized chromatic semitone offsets. Numerical
+lanes use forms such as `velocity $u{.4,.9}` and `cv1 $n{0,2}`.
 
 Scale degrees refer to the selected scale, so degree `3` in `scale minor` is
 already the minor third; `b3` lowers that result by one more semitone. Degree
@@ -433,7 +441,7 @@ major quality, lowercase implies minor, and degrees stop at VII:
 notes I i iim7 bVII (1 b3 5) Cm7 D7 Bbm7b5@3 / D@2 Cmaj9 C7#9
 ```
 
-The jazz parser supports major, minor, diminished, augmented, suspended,
+Jazz chord syntax supports major, minor, diminished, augmented, suspended,
 power, sixth, seventh, ninth, eleventh, and thirteenth chords, plus `add` and
 `b`/`#` alterations. Close-position voices are emitted as Rack polyphonic
 channels on Pitch, Gate, Trigger, Velocity, and Accent. A slash bass is channel
@@ -466,35 +474,13 @@ values late. Its optional numeric `rate`, as in
 `offset -10ms!2 8ms |> rate 1/2`, changes only that lane's score-time phase.
 CV1/CV2 use the same rate and sparse-lane rules and support `step`, `linear`,
 `smooth`, and `power P` interpolation. Ellipsis-aligned CV is stepped in this
-prototype; continuous modes currently use free score-time lanes.
+version; continuous modes use free score-time lanes.
 
-The checked-in [Prog Sequencer 303 smoke patch](test-prog-sequencer-303.vcv)
-uses this expression to reproduce the existing 16-bar smoke-303 line. Launch
-it with `./dev.ps1 smoke-prog-303` on Windows.
-
-During playback, heatmap cursors follow the active sequence name and every
-independently advancing lane. The display derives background, code, comments,
-selection, status, and cursor colours from scalar intensity through one
-replaceable magma map. Each event produces a bright moving beam and exponential
-glow persistence. Recent motions decay independently, while a repeated token
-emits overlapping, outward-expanding halo blooms at its rhythm. Short moves
-deposit overlapping fractional-pixel samples that illuminate intervening
-whitespace continuously; travel and afterglow both scale with the lane's pulse
-interval to avoid smearing dense patterns. The fixed-size, allocation-free UI
-history retains
-several concurrent sweeps per lane. The context menu switches between
-constant-speed Linear travel and eased Smoothstep travel for comparison. Long
-jumps and line wraps remain separate to avoid broad flashes. Successful
-`Ctrl+Enter` and `Ctrl+.` evaluation flashes use the same rectangular diffusion
-at lower intensity across their executed text rows. A
-vendored, version-pinned cpp-peglib PEG front end parses the language into
-typed syntax records, which
-the semantic compiler lowers to a prepared pattern graph. Parsing
-and program destruction stay off the audio thread. See the
-[authoritative language grammar](docs/TfProgSequencer-language-grammar.md),
-[current implementation design](docs/TfProgSequencer-current-design.md),
-[syntax study](docs/TfProgSequencer-syntax-options.md) and
-[v1 architecture](docs/TfProgSequencer-v1-proposal.md) for the design context.
+During playback, heatmap cursors show the active arrangement term and every
+independently advancing lane. The context menu offers Linear or Smoothstep
+cursor travel. See the
+[complete Prog Sequencer reference](docs/TfProgSequencer-reference.md) for all
+syntax, additional musical examples, and current limits.
 
 ## Contributing
 

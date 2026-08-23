@@ -3,12 +3,15 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
 namespace tfseq {
+
+inline constexpr double NormalDeviationLimit = 4.0;
 
 namespace syntax {
 struct Document;
@@ -83,7 +86,17 @@ struct ChordValue {
 
 struct PitchItem {
   enum class Choice { Single, Alternate, Random };
+  enum class RandomDomain { None, ScaleDegree, ChromaticSemitone };
+  enum class RandomDistribution { Uniform, Normal };
   Choice choice = Choice::Single;
+  RandomDomain randomDomain = RandomDomain::None;
+  RandomDistribution randomDistribution = RandomDistribution::Uniform;
+  // A bare `$` derives its inclusive scale-degree range from the active
+  // scale. Explicit uniform bounds and normal mean/deviation use these fields.
+  bool randomDefaultRange = false;
+  double randomFirst = 0.0;
+  double randomSecond = 0.0;
+  std::uint64_t randomIdentity = 0;
   std::vector<ChordValue> values;
   SourceSpan span;
 };
@@ -125,9 +138,17 @@ struct ArticulationStep {
 };
 
 struct ScalarItem {
+  enum class RandomDistribution { None, Uniform, Normal };
   double value = 0.0;
+  double randomFirst = 0.0;
+  double randomSecond = 0.0;
+  double randomMinimum = -std::numeric_limits<double>::infinity();
+  double randomMaximum = std::numeric_limits<double>::infinity();
+  std::uint64_t randomIdentity = 0;
+  RandomDistribution randomDistribution = RandomDistribution::None;
   bool isDefault = false;
   bool isMilliseconds = false;
+  bool randomInteger = false;
   SourceSpan span;
 };
 

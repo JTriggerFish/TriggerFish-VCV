@@ -40,6 +40,54 @@ std::uint64_t StableDefinitionId(const std::string &name) noexcept {
   return hash == 0 ? 1 : hash;
 }
 
+std::uint64_t StableRandomIdentity(std::uint64_t definition,
+                                   CursorLane lane,
+                                   std::size_t position) noexcept {
+  std::uint64_t hash = definition;
+  auto append = [&](std::uint64_t value) {
+    for (int byte = 0; byte < 8; ++byte) {
+      hash ^= static_cast<unsigned char>(value & 0xffU);
+      hash *= 1099511628211ULL;
+      value >>= 8;
+    }
+  };
+  append(static_cast<std::uint64_t>(lane));
+  append(static_cast<std::uint64_t>(position));
+  return hash == 0 ? 1 : hash;
+}
+
+void AssignRandomIdentities(Sequence &sequence) {
+  for (std::size_t position = 0; position < sequence.notes.size(); ++position)
+    sequence.notes[position].randomIdentity = StableRandomIdentity(
+        sequence.stableId, CursorLane::Notes, position);
+
+  std::size_t pitchedPosition = 0;
+  for (auto &step : sequence.articulation) {
+    for (auto &atom : step.atoms) {
+      if (!atom.hasPitch)
+        continue;
+      atom.pitch.randomIdentity = StableRandomIdentity(
+          sequence.stableId, CursorLane::Notes, pitchedPosition++);
+    }
+  }
+
+  auto assignLane = [&](CursorLane lane, std::vector<ScalarItem> &items) {
+    for (std::size_t position = 0; position < items.size(); ++position)
+      items[position].randomIdentity =
+          StableRandomIdentity(sequence.stableId, lane, position);
+  };
+  assignLane(CursorLane::Octave, sequence.octave);
+  assignLane(CursorLane::Velocity, sequence.velocity);
+  assignLane(CursorLane::Accent, sequence.accent);
+  assignLane(CursorLane::Duration, sequence.duration);
+  assignLane(CursorLane::Gate, sequence.gate);
+  assignLane(CursorLane::Slide, sequence.slide);
+  assignLane(CursorLane::Ratchet, sequence.ratchet);
+  assignLane(CursorLane::Offset, sequence.offset);
+  assignLane(CursorLane::Cv1, sequence.cv[0]);
+  assignLane(CursorLane::Cv2, sequence.cv[1]);
+}
+
 bool IsReservedCvName(const std::string &name) noexcept {
   if (name.size() < 3 || name[0] != 'c' || name[1] != 'v' || name[2] == '0')
     return false;
@@ -651,6 +699,87 @@ bool ParsePitchedChoice(const syntax::PatternNode &node, ChordValue &chord,
 bool ParsePitchPatternNode(const syntax::PatternNode &node, PitchItem &item,
                            Diagnostic &diagnostic) {
   item.span = node.span;
+  if (node.kind == syntax::PatternKind::RandomPitch) {
+    const std::string distribution = node.atom.text;
+    const bool chromatic = distribution == "c" || distribution == "cn";
+    const bool normal = distribution == "n" || distribution == "cn";
+    if (!distribution.empty() && distribution != "u" &&
+        distribution != "n" && distribution != "c" &&
+        distribution != "cn") {
+      diagnostic = Error(node.span, "unknown random-pitch distribution");
+      return false;
+    }
+    item.randomDomain = chromatic
+                            ? PitchItem::RandomDomain::ChromaticSemitone
+                            : PitchItem::RandomDomain::ScaleDegree;
+    item.randomDistribution = normal
+                                  ? PitchItem::RandomDistribution::Normal
+                                  : PitchItem::RandomDistribution::Uniform;
+    if (node.arguments.empty()) {
+      if (!distribution.empty()) {
+        diagnostic = Error(node.span,
+                           "random-pitch distribution requires two values");
+        return false;
+      }
+      item.randomDefaultRange = true;
+      return true;
+    }
+    if (node.arguments.size() != 2) {
+      diagnostic = Error(node.span,
+                         "random pitch requires exactly two values");
+      return false;
+    }
+    auto parseArgument = [&](const Token &token, double &value) {
+      if (token.text.size() >= 2 &&
+          token.text.substr(token.text.size() - 2) == "ms")
+        return false;
+      return ParseNumber(token.text, value);
+    };
+    if (!parseArgument(node.arguments[0], item.randomFirst) ||
+        !parseArgument(node.arguments[1], item.randomSecond)) {
+      diagnostic = Error(node.span,
+                         "random-pitch values must be finite unitless numbers");
+      return false;
+    }
+    if (normal) {
+      if (item.randomSecond <= 0.0) {
+        diagnostic = Error(node.arguments[1].span,
+                           "normal standard deviation must be positive");
+        return false;
+      }
+      const double spread = NormalDeviationLimit * item.randomSecond;
+      if (!std::isfinite(spread) ||
+          !std::isfinite(item.randomFirst - spread) ||
+          !std::isfinite(item.randomFirst + spread)) {
+        diagnostic = Error(node.span,
+                           "normal pitch range exceeds the supported range");
+        return false;
+      }
+    } else {
+      if (std::floor(item.randomFirst) != item.randomFirst ||
+          std::floor(item.randomSecond) != item.randomSecond) {
+        diagnostic = Error(node.span,
+                           "uniform pitch bounds must be integers");
+        return false;
+      }
+      if (item.randomFirst > item.randomSecond) {
+        diagnostic = Error(node.span,
+                           "uniform pitch bounds must be low, high");
+        return false;
+      }
+    }
+    const auto minimum =
+        static_cast<double>(std::numeric_limits<int>::min() + 1);
+    const auto maximum = static_cast<double>(std::numeric_limits<int>::max());
+    if (item.randomFirst < minimum || item.randomFirst > maximum ||
+        (!normal &&
+         (item.randomSecond < minimum || item.randomSecond > maximum))) {
+      diagnostic = Error(node.span,
+                         "random-pitch values exceed the supported range");
+      return false;
+    }
+    return true;
+  }
   ChordValue value;
   if (!ParsePitchedChoice(node, value, diagnostic))
     return false;
@@ -1038,6 +1167,8 @@ bool AppendFlatGroup(const syntax::PatternNode &node, Sequence &sequence,
 }
 
 std::size_t FixedVoiceCount(const PitchItem &item) {
+  if (item.randomDomain != PitchItem::RandomDomain::None)
+    return 1;
   std::size_t result = 0;
   for (const auto &choice : item.values) {
     const auto voices =
@@ -1209,19 +1340,56 @@ bool ParseScalars(const syntax::Pattern &pattern,
                             repetitions, diagnostic))
       return false;
     const auto *node = &source;
-    if (node->kind != syntax::PatternKind::Atom) {
+    if (node->kind != syntax::PatternKind::Atom &&
+        node->kind != syntax::PatternKind::RandomScalar) {
       diagnostic =
           Error(node->span, lane + " grouped patterns are reserved but not "
                                    "executable in this version");
       return false;
     }
-    const Token *scalarToken = &node->atom;
     ScalarItem item;
     item.span = source.span;
-    if (scalarToken->text == ".") {
+    if (node->kind == syntax::PatternKind::RandomScalar) {
+      if (node->arguments.size() != 2) {
+        diagnostic = Error(source.span,
+                           "random scalar requires exactly two values");
+        return false;
+      }
+      bool firstMilliseconds = false;
+      bool secondMilliseconds = false;
+      if (!ParseScalarWithUnit(node->arguments[0], item.randomFirst,
+                               firstMilliseconds) ||
+          !ParseScalarWithUnit(node->arguments[1], item.randomSecond,
+                               secondMilliseconds) ||
+          firstMilliseconds != secondMilliseconds) {
+        diagnostic = Error(
+            source.span,
+            "random scalar values must be finite and use matching units");
+        return false;
+      }
+      item.isMilliseconds = firstMilliseconds;
+      if (node->atom.text == "u") {
+        item.randomDistribution = ScalarItem::RandomDistribution::Uniform;
+        if (item.randomFirst > item.randomSecond) {
+          diagnostic = Error(source.span,
+                             "uniform scalar bounds must be low, high");
+          return false;
+        }
+      } else if (node->atom.text == "n") {
+        item.randomDistribution = ScalarItem::RandomDistribution::Normal;
+        if (item.randomSecond <= 0.0) {
+          diagnostic = Error(node->arguments[1].span,
+                             "normal standard deviation must be positive");
+          return false;
+        }
+      } else {
+        diagnostic = Error(source.span, "unknown scalar distribution");
+        return false;
+      }
+    } else if (node->atom.text == ".") {
       item.isDefault = true;
     } else {
-      std::string number = scalarToken->text;
+      std::string number = node->atom.text;
       if (number.size() >= 2 && number.substr(number.size() - 2) == "ms") {
         item.isMilliseconds = true;
         number.resize(number.size() - 2);
@@ -1231,12 +1399,14 @@ bool ParseScalars(const syntax::Pattern &pattern,
       double parsed = 0.0;
       if (!ParseNumber(number, parsed)) {
         diagnostic = Error(source.span, "invalid " + lane + " value '" +
-                                            scalarToken->text + "'");
+                                            node->atom.text + "'");
         return false;
       }
       item.value = parsed;
     }
-    if (!item.isDefault && !std::isfinite(item.value)) {
+    if (!item.isDefault &&
+        item.randomDistribution == ScalarItem::RandomDistribution::None &&
+        !std::isfinite(item.value)) {
       diagnostic = Error(
           source.span, lane + " value is outside the supported numeric range");
       return false;
@@ -1246,40 +1416,82 @@ bool ParseScalars(const syntax::Pattern &pattern,
       diagnostic = Error(source.span, lane + " does not accept milliseconds");
       return false;
     }
+    const bool random =
+        item.randomDistribution != ScalarItem::RandomDistribution::None;
+    const bool uniform =
+        item.randomDistribution == ScalarItem::RandomDistribution::Uniform;
+    const double validationLow = random ? item.randomFirst : item.value;
+    const double validationHigh =
+        random && uniform ? item.randomSecond : validationLow;
+    auto setRandomDomain = [&](double minimum, double maximum) {
+      item.randomMinimum = minimum;
+      item.randomMaximum = maximum;
+    };
     if (!item.isDefault &&
         (lane == "velocity" || lane == "vel" || lane == "accent" ||
          (lane == "gate" && !item.isMilliseconds)) &&
-        (item.value < 0.f || item.value > 1.f)) {
+        (validationLow < 0.0 || validationHigh > 1.0)) {
       diagnostic = Error(source.span, lane + " must be from 0 to 1");
       return false;
     }
+    if (lane == "velocity" || lane == "vel" || lane == "accent" ||
+        (lane == "gate" && !item.isMilliseconds))
+      setRandomDomain(0.0, 1.0);
     if (!item.isDefault && (lane == "duration" || lane == "dur") &&
-        item.value <= 0.f) {
+        (validationLow <= 0.0 || validationHigh <= 0.0)) {
       diagnostic = Error(source.span, "duration must be positive");
       return false;
     }
+    if (lane == "duration" || lane == "dur")
+      setRandomDomain(1.0e-9, std::numeric_limits<double>::infinity());
     if (!item.isDefault &&
         ((lane == "gate" && item.isMilliseconds) || lane == "slide") &&
-        item.value < 0.f) {
+        (validationLow < 0.0 || validationHigh < 0.0)) {
       diagnostic = Error(source.span, lane + " must be non-negative");
       return false;
     }
+    if ((lane == "gate" && item.isMilliseconds) || lane == "slide")
+      setRandomDomain(0.0, std::numeric_limits<double>::infinity());
     if (!item.isDefault && lane == "ratchet" &&
-        (item.value < 1.0 ||
-         static_cast<long double>(item.value) >
+        (validationLow < 1.0 || validationHigh < 1.0 ||
+         static_cast<long double>(validationHigh) >
              std::numeric_limits<std::size_t>::max() ||
-         std::floor(item.value) != item.value)) {
+         (uniform && (std::floor(validationLow) != validationLow ||
+                      std::floor(validationHigh) != validationHigh)) ||
+         (!random && std::floor(item.value) != item.value))) {
       diagnostic =
           Error(source.span, "ratchet must be a positive addressable integer");
       return false;
     }
+    if (lane == "ratchet") {
+      item.randomInteger = true;
+      setRandomDomain(
+          1.0, static_cast<double>(std::numeric_limits<std::size_t>::max()));
+    }
     if (!item.isDefault && lane == "octave" &&
-        (std::floor(item.value) != item.value ||
-         item.value < std::numeric_limits<int>::min() ||
-         item.value > std::numeric_limits<int>::max())) {
+        ((uniform && (std::floor(validationLow) != validationLow ||
+                      std::floor(validationHigh) != validationHigh)) ||
+         (!random && std::floor(item.value) != item.value) ||
+         validationLow < std::numeric_limits<int>::min() ||
+         validationHigh > std::numeric_limits<int>::max())) {
       diagnostic =
           Error(source.span, "octave must fit the supported integer range");
       return false;
+    }
+    if (lane == "octave") {
+      item.randomInteger = true;
+      setRandomDomain(static_cast<double>(std::numeric_limits<int>::min()),
+                      static_cast<double>(std::numeric_limits<int>::max()));
+    }
+    if (item.randomDistribution == ScalarItem::RandomDistribution::Normal) {
+      const double spread = NormalDeviationLimit * item.randomSecond;
+      if (!std::isfinite(spread) ||
+          !std::isfinite(item.randomFirst - spread) ||
+          !std::isfinite(item.randomFirst + spread)) {
+        diagnostic = Error(
+            source.span, "normal range exceeds the supported numeric range");
+        return false;
+      }
     }
     for (std::size_t repetition = 0; repetition < repetitions; ++repetition)
       items.push_back(item);
@@ -1770,6 +1982,31 @@ bool CheckedMultiply(std::size_t left, std::size_t right, std::size_t &result) {
   return true;
 }
 
+struct ScalarRange {
+  double minimum = 0.0;
+  double maximum = 0.0;
+};
+
+ScalarRange PossibleScalarRange(const ScalarItem &item) noexcept {
+  ScalarRange range{item.value, item.value};
+  if (item.randomDistribution == ScalarItem::RandomDistribution::Uniform) {
+    range = {item.randomFirst, item.randomSecond};
+  } else if (item.randomDistribution ==
+             ScalarItem::RandomDistribution::Normal) {
+    const double spread = NormalDeviationLimit * item.randomSecond;
+    range = {item.randomFirst - spread, item.randomFirst + spread};
+    if (item.randomInteger) {
+      range.minimum = std::round(range.minimum);
+      range.maximum = std::round(range.maximum);
+    }
+  }
+  range.minimum =
+      std::clamp(range.minimum, item.randomMinimum, item.randomMaximum);
+  range.maximum =
+      std::clamp(range.maximum, item.randomMinimum, item.randomMaximum);
+  return range;
+}
+
 bool PrepareWorkspaces(CompiledProgram &program, Diagnostic &diagnostic) {
   const auto &sequences = program.semantic().sequences;
   std::size_t maximumEvents = 1;
@@ -1822,17 +2059,19 @@ bool PrepareWorkspaces(CompiledProgram &program, Diagnostic &diagnostic) {
     for (const auto &item : sequence.offset) {
       if (item.isDefault)
         continue;
+      const auto range = PossibleScalarRange(item);
       if (item.isMilliseconds) {
-        if (item.value < 0.0)
+        if (range.minimum < 0.0)
           offsetEarlyMilliseconds =
-              std::max(offsetEarlyMilliseconds, -item.value);
-        else
+              std::max(offsetEarlyMilliseconds, -range.minimum);
+        if (range.maximum > 0.0)
           offsetLateMilliseconds =
-              std::max(offsetLateMilliseconds, item.value);
-      } else if (item.value < 0.0) {
-        offsetEarlyBeats = std::max(offsetEarlyBeats, -item.value);
+              std::max(offsetLateMilliseconds, range.maximum);
       } else {
-        offsetLateBeats = std::max(offsetLateBeats, item.value);
+        if (range.minimum < 0.0)
+          offsetEarlyBeats = std::max(offsetEarlyBeats, -range.minimum);
+        if (range.maximum > 0.0)
+          offsetLateBeats = std::max(offsetLateBeats, range.maximum);
       }
     }
     maximumEarlyBeats =
@@ -1847,9 +2086,16 @@ bool PrepareWorkspaces(CompiledProgram &program, Diagnostic &diagnostic) {
         sequenceLateMilliseconds + offsetLateMilliseconds);
     std::size_t maximumLaneRatchet = 1;
     for (const auto &item : sequence.ratchet) {
-      if (!item.isDefault)
-        maximumLaneRatchet =
-            std::max(maximumLaneRatchet, static_cast<std::size_t>(item.value));
+      if (item.isDefault)
+        continue;
+      const double maximum = PossibleScalarRange(item).maximum;
+      if (static_cast<long double>(maximum) >
+          std::numeric_limits<std::size_t>::max()) {
+        diagnostic = Error(item.span, "random ratchet density is too large");
+        return false;
+      }
+      maximumLaneRatchet =
+          std::max(maximumLaneRatchet, static_cast<std::size_t>(maximum));
     }
 
     std::size_t sequenceMaximum =
@@ -1894,7 +2140,8 @@ bool PrepareWorkspaces(CompiledProgram &program, Diagnostic &diagnostic) {
 
     double shortestDurationLaneValue = 1.0;
     for (const auto &item : sequence.duration) {
-      const double value = item.isDefault ? 1.0 : item.value;
+      const double value =
+          item.isDefault ? 1.0 : PossibleScalarRange(item).minimum;
       if (value > 0.0)
         shortestDurationLaneValue =
             std::min(shortestDurationLaneValue, value);
@@ -2293,6 +2540,7 @@ CompileResult CompileDocument(const syntax::Document &document) {
     if (!ApplySequencePipelines(definition->pipelines, sequence,
                                 result.diagnostic))
       return result;
+    AssignRandomIdentities(sequence);
 
     const auto index = program->sequences.size();
     if (names.find(sequence.name) != names.end() ||

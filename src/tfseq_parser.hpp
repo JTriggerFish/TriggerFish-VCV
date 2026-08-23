@@ -29,6 +29,8 @@ enum class PatternKind {
   ScaleDegree,
   JazzChord,
   RomanChord,
+  RandomPitch,
+  RandomScalar,
   Event,
   Rest,
   Tie,

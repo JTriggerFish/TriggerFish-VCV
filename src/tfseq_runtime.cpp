@@ -174,6 +174,111 @@ std::int64_t ScaleDegreeInterval(const std::vector<int> &intervals,
   return direction * (12 * octaves + intervals[index]);
 }
 
+std::uint64_t MixRandom(std::uint64_t value) noexcept {
+  value ^= value >> 30;
+  value *= 0xbf58476d1ce4e5b9ULL;
+  value ^= value >> 27;
+  value *= 0x94d049bb133111ebULL;
+  value ^= value >> 31;
+  return value;
+}
+
+double RandomUnit(std::uint64_t seed, std::uint64_t key,
+                   std::uint64_t identity, std::uint64_t salt,
+                   std::uint64_t draw = 0) noexcept {
+  const auto bits = MixRandom(seed ^ MixRandom(key + 0x9e3779b97f4a7c15ULL) ^
+                               MixRandom(identity + 0xa0761d6478bd642fULL) ^ salt ^
+                               MixRandom(draw + 0xd1b54a32d192ed03ULL));
+  // The half-step keeps both logarithm inputs away from zero and one.
+  return (static_cast<double>(bits >> 11) + 0.5) / 9007199254740992.0;
+}
+
+double RandomNormal(std::uint64_t seed, std::uint64_t key,
+                     std::uint64_t identity, std::uint64_t salt) noexcept {
+  constexpr double TwoPi = 6.283185307179586476925286766559;
+  const double radius =
+      std::sqrt(-2.0 * std::log(RandomUnit(seed, key, identity, salt, 0)));
+  return std::clamp(
+      radius * std::cos(TwoPi * RandomUnit(seed, key, identity, salt, 1)),
+      -NormalDeviationLimit, NormalDeviationLimit);
+}
+
+double RandomInclusiveInteger(double low, double high, std::uint64_t seed,
+                               std::uint64_t key, std::uint64_t identity,
+                               std::uint64_t salt) noexcept {
+  const long double first = low;
+  const long double count = static_cast<long double>(high) - first + 1.0L;
+  const long double offset = std::floor(
+      static_cast<long double>(RandomUnit(seed, key, identity, salt)) * count);
+  return static_cast<double>(std::min(first + offset,
+                                      static_cast<long double>(high)));
+}
+
+double SampleScalarItem(const ScalarItem &item, std::uint64_t seed,
+                        std::uint64_t key, std::uint64_t salt) noexcept {
+  double value = item.value;
+  if (item.randomDistribution == ScalarItem::RandomDistribution::Uniform) {
+    value = item.randomInteger
+                ? RandomInclusiveInteger(item.randomFirst, item.randomSecond,
+                                          seed, key, item.randomIdentity, salt)
+                : item.randomFirst +
+                      (item.randomSecond - item.randomFirst) *
+                          RandomUnit(seed, key, item.randomIdentity, salt);
+  } else if (item.randomDistribution ==
+             ScalarItem::RandomDistribution::Normal) {
+    value = item.randomFirst + item.randomSecond *
+                                    RandomNormal(seed, key, item.randomIdentity,
+                                                 salt);
+    if (item.randomInteger)
+      value = std::round(value);
+  }
+  return std::clamp(value, item.randomMinimum, item.randomMaximum);
+}
+
+PitchValue SampleRandomPitch(const PitchItem &item, const Sequence &sequence,
+                             std::uint64_t seed, std::uint64_t key,
+                             std::uint64_t salt) noexcept {
+  double sampled = 1.0;
+  if (item.randomDefaultRange) {
+    sampled = RandomInclusiveInteger(
+        1.0, static_cast<double>(sequence.scale.intervals.size()), seed, key,
+        item.randomIdentity, salt);
+  } else if (item.randomDistribution ==
+             PitchItem::RandomDistribution::Uniform) {
+    sampled = RandomInclusiveInteger(item.randomFirst, item.randomSecond, seed,
+                                      key, item.randomIdentity, salt);
+  } else {
+    sampled = std::round(item.randomFirst +
+                         item.randomSecond *
+                             RandomNormal(seed, key, item.randomIdentity, salt));
+  }
+  sampled = std::clamp(
+      sampled, static_cast<double>(std::numeric_limits<int>::min() + 1),
+      static_cast<double>(std::numeric_limits<int>::max()));
+  const auto integer = static_cast<int>(sampled);
+  PitchValue pitch;
+  pitch.span = item.span;
+  if (item.randomDomain == PitchItem::RandomDomain::ScaleDegree) {
+    pitch.degree = integer;
+    return pitch;
+  }
+
+  const std::int64_t absolute =
+      static_cast<std::int64_t>(sequence.scale.tonicSemitone) + integer;
+  std::int64_t octave = absolute / 12;
+  std::int64_t pitchClass = absolute % 12;
+  if (pitchClass < 0) {
+    pitchClass += 12;
+    --octave;
+  }
+  pitch.absolute = true;
+  pitch.pitchClass = static_cast<int>(pitchClass);
+  pitch.octaveOffset = static_cast<int>(std::clamp<std::int64_t>(
+      octave, std::numeric_limits<int>::min(),
+      std::numeric_limits<int>::max()));
+  return pitch;
+}
+
 std::int64_t ModulateDegrees(const std::vector<Transform> &transforms,
                              const Scale &scale, std::uint64_t cycle,
                              std::uint64_t seed, std::uint64_t salt) noexcept {
@@ -256,22 +361,27 @@ double Scalar(const std::vector<ScalarItem> &items, std::uint64_t &cursor,
         return transform.kind == TransformKind::Rate;
       });
   std::uint64_t position = 0;
+  std::uint64_t randomKey = 0;
   if (aligned) {
     position = structuralCell;
+    randomKey = structuralCell;
   } else if (phaseRate) {
     const double whole =
         std::max(0.0,
                  std::floor(scoreBeat * LaneRate(transforms, cycle, seed)));
     position = static_cast<std::uint64_t>(
         std::fmod(whole, static_cast<double>(items.size())));
+    randomKey = static_cast<std::uint64_t>(whole);
   } else {
+    randomKey = cursor;
     position = cursor++;
   }
   const auto &item = Cycled(items, position, transforms, cycle, seed, salt);
   span = item.span;
   if (milliseconds)
     *milliseconds = item.isMilliseconds;
-  return item.isDefault ? fallback : item.value;
+  return item.isDefault ? fallback
+                        : SampleScalarItem(item, seed, randomKey, salt);
 }
 
 struct CvSample {
@@ -319,7 +429,17 @@ CvSample SampleCv(const std::vector<ScalarItem> &items,
   if (previousDistance == items.size())
     return sample;
   const auto &previous = at(previousDistance, true);
-  sample.value = static_cast<float>(previous.value);
+  auto randomKey = [](double knot) {
+    const auto bounded = std::clamp(
+        knot, static_cast<double>(std::numeric_limits<std::int64_t>::min()),
+        static_cast<double>(std::numeric_limits<std::int64_t>::max()));
+    return static_cast<std::uint64_t>(static_cast<std::int64_t>(bounded));
+  };
+  const double previousPhase =
+      std::floor(phase) - static_cast<double>(previousDistance);
+  const double previousValue = SampleScalarItem(
+      previous, seed, randomKey(previousPhase), salt);
+  sample.value = static_cast<float>(previousValue);
   sample.target = sample.value;
   if (interpolation == CvInterpolation::Step)
     return sample;
@@ -334,19 +454,19 @@ CvSample SampleCv(const std::vector<ScalarItem> &items,
   if (nextDistance > items.size())
     return sample;
   const auto &next = at(nextDistance, false);
-  sample.target = static_cast<float>(next.value);
-  const double previousPhase =
-      std::floor(phase) - static_cast<double>(previousDistance);
   const double nextPhase =
       std::floor(phase) + static_cast<double>(nextDistance);
+  const double nextValue =
+      SampleScalarItem(next, seed, randomKey(nextPhase), salt);
+  sample.target = static_cast<float>(nextValue);
   double amount = (phase - previousPhase) / (nextPhase - previousPhase);
   amount = std::clamp(amount, 0.0, 1.0);
   if (interpolation == CvInterpolation::Smooth)
     amount = amount * amount * (3.0 - 2.0 * amount);
   else if (interpolation == CvInterpolation::Power)
     amount = std::pow(amount, power);
-  sample.value = static_cast<float>(previous.value +
-                                    (next.value - previous.value) * amount);
+  sample.value = static_cast<float>(previousValue +
+                                    (nextValue - previousValue) * amount);
   sample.targetBeat =
       aligned ? scoreBeat + cellSpan * static_cast<double>(nextDistance)
               : scoreBeat + (nextPhase - phase) / rate;
@@ -744,6 +864,7 @@ StepEvents Runtime::next(double beat) noexcept {
                            ? atom.pitch
                            : Cycled(sequence->notes, state.notes,
                                     noteTransforms, cycle, seed, 0x4000);
+    const auto noteKey = state.notes;
     ++state.notes;
     std::size_t choice = 0;
     if (note.choice == PitchItem::Choice::Alternate)
@@ -753,7 +874,13 @@ StepEvents Runtime::next(double beat) noexcept {
       hash ^= hash >> 29;
       choice = static_cast<std::size_t>(hash % note.values.size());
     }
-    const auto &chord = note.values[choice];
+    PitchValue randomPitch;
+    const ChordValue *chord = nullptr;
+    if (note.randomDomain != PitchItem::RandomDomain::None) {
+      randomPitch = SampleRandomPitch(note, *sequence, seed, noteKey, 0x4050);
+    } else {
+      chord = &note.values[choice];
+    }
     const auto degreeTranspose =
         ModulateDegrees(noteTransforms, sequence->scale, cycle, seed, 0x4100);
     const auto degreeShift = Transpose(
@@ -840,19 +967,25 @@ StepEvents Runtime::next(double beat) noexcept {
     std::array<float, MaximumPolyphony> pitches{};
     std::array<SourceSpan, MaximumPolyphony> pitchSpans{};
     std::size_t voiceCount = 0;
-    if (chord.meaning == ChordValue::Meaning::RomanSymbol) {
+    if (!chord) {
+      pitches[voiceCount] =
+          PitchVolts(randomPitch, *sequence, sequenceOctave, degreeShift,
+                     degreeTranspose, semitoneTranspose, octaveTranspose);
+      pitchSpans[voiceCount] = randomPitch.span;
+      ++voiceCount;
+    } else if (chord->meaning == ChordValue::Meaning::RomanSymbol) {
       const float root = PitchVolts(
-          chord.romanRoot, *sequence, sequenceOctave, degreeShift,
+          chord->romanRoot, *sequence, sequenceOctave, degreeShift,
           degreeTranspose, semitoneTranspose, octaveTranspose);
-      for (const int interval : chord.intervals) {
+      for (const int interval : chord->intervals) {
         if (voiceCount >= MaximumPolyphony)
           break;
         pitches[voiceCount] = root + static_cast<float>(interval) / 12.f;
-        pitchSpans[voiceCount] = chord.romanRoot.span;
+        pitchSpans[voiceCount] = chord->romanRoot.span;
         ++voiceCount;
       }
     } else {
-      for (const auto &voice : chord.voices) {
+      for (const auto &voice : chord->voices) {
         if (voiceCount >= MaximumPolyphony)
           break;
         pitches[voiceCount] =
@@ -862,9 +995,9 @@ StepEvents Runtime::next(double beat) noexcept {
         ++voiceCount;
       }
     }
-    if (chord.hasBass && voiceCount > 0) {
+    if (chord && chord->hasBass && voiceCount > 0) {
       float bass =
-          PitchVolts(chord.bass, *sequence, sequenceOctave, degreeShift,
+          PitchVolts(chord->bass, *sequence, sequenceOctave, degreeShift,
                      degreeTranspose, semitoneTranspose, octaveTranspose);
       std::size_t matchingVoice = voiceCount;
       for (std::size_t voice = 0; voice < voiceCount; ++voice) {
@@ -883,7 +1016,7 @@ StepEvents Runtime::next(double beat) noexcept {
         --voiceCount;
       }
       const bool explicitBassRegister =
-          chord.bass.hasOctave || chord.bass.octaveOffset != 0;
+          chord->bass.hasOctave || chord->bass.octaveOffset != 0;
       if (!explicitBassRegister && voiceCount > 0) {
         const float lowest =
             *std::min_element(pitches.begin(), pitches.begin() + voiceCount);
@@ -896,7 +1029,7 @@ StepEvents Runtime::next(double beat) noexcept {
           pitchSpans[voice] = pitchSpans[voice - 1];
         }
         pitches[0] = bass;
-        pitchSpans[0] = chord.bass.span;
+        pitchSpans[0] = chord->bass.span;
         ++voiceCount;
       }
     }
@@ -928,10 +1061,10 @@ StepEvents Runtime::next(double beat) noexcept {
         event.cursors[static_cast<std::size_t>(CursorLane::Sequence)] =
             partSpan;
         event.cursors[static_cast<std::size_t>(CursorLane::Notes)] =
-            atom.span.valid()            ? atom.span
-            : chord.span.valid()          ? chord.span
-            : pitchSpans[voice].valid() ? pitchSpans[voice]
-                                        : note.span;
+            atom.span.valid()              ? atom.span
+            : chord && chord->span.valid() ? chord->span
+            : pitchSpans[voice].valid()    ? pitchSpans[voice]
+                                           : note.span;
         event.cursors[static_cast<std::size_t>(CursorLane::Octave)] =
             octaveSpan;
         event.cursors[static_cast<std::size_t>(CursorLane::Velocity)] =

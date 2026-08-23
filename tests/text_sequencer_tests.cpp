@@ -3,6 +3,7 @@
 #include "tfui_animation.hpp"
 #include "tfui_colormap.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
@@ -670,6 +671,261 @@ void rejectInvalidInput() {
   check(!compiled, "invalid degree is rejected");
   check(compiled.diagnostic.line == 2 && compiled.diagnostic.column > 1,
         "diagnostic includes a useful source location");
+}
+
+void deterministicRandomPitchAndScalarValues() {
+  const std::string source = R"(randoms = sequence {
+  tonic D@4
+  scale minor_pentatonic
+  notes $ ${2,4} $n{3,.75} $c{0,0} $cn{6,1.5}
+  velocity $u{.2,.4}
+  gate $n{.6,.15}
+  cv1 $u{-2,2}
+}
+seed 1729
+play randoms
+)";
+  const auto compiled = tfseq::Compile(source);
+  const auto replayCompiled = tfseq::Compile(source);
+  check(static_cast<bool>(compiled), compiled.diagnostic.message);
+  check(static_cast<bool>(replayCompiled), replayCompiled.diagnostic.message);
+  if (!compiled || !replayCompiled)
+    return;
+
+  const auto &sequence = compiled.program->semantic().sequences[0];
+  check(sequence.notes.size() == 5 &&
+            sequence.notes[0].randomDefaultRange &&
+            sequence.notes[1].randomDomain ==
+                tfseq::PitchItem::RandomDomain::ScaleDegree &&
+            sequence.notes[3].randomDomain ==
+                tfseq::PitchItem::RandomDomain::ChromaticSemitone,
+        "random pitch forms lower to typed semantic values");
+  check(sequence.velocity[0].randomDistribution ==
+            tfseq::ScalarItem::RandomDistribution::Uniform &&
+            sequence.gate[0].randomDistribution ==
+                tfseq::ScalarItem::RandomDistribution::Normal,
+        "random scalar forms retain their distributions");
+
+  tfseq::Runtime first;
+  tfseq::Runtime replay;
+  first.setProgram(compiled.program.get());
+  replay.setProgram(replayCompiled.program.get());
+  constexpr int pentatonicSemitones[] = {0, 3, 5, 7, 10};
+  for (int step = 0; step < 100; ++step) {
+    const auto one = first.next(static_cast<double>(step));
+    const auto two = replay.next(static_cast<double>(step));
+    check(one.count == 1 && two.count == 1,
+          "each random pitch remains one prepared voice");
+    if (one.count != 1 || two.count != 1)
+      continue;
+    check(close(one.events[0].pitchVolts, two.events[0].pitchVolts) &&
+              close(one.events[0].velocity, two.events[0].velocity) &&
+              close(one.events[0].gateFraction, two.events[0].gateFraction) &&
+              close(one.events[0].cvValue[0], two.events[0].cvValue[0]),
+          "the seed and event path reproduce every random draw");
+    check(one.events[0].velocity >= .2f &&
+              one.events[0].velocity <= .4f &&
+              one.events[0].gateFraction >= 0.f &&
+              one.events[0].gateFraction <= 1.f &&
+              one.events[0].cvValue[0] >= -2.f &&
+              one.events[0].cvValue[0] <= 2.f,
+          "random scalar draws remain within lane domains");
+
+    const int patternPosition = step % 5;
+    const int semitone = static_cast<int>(
+        std::lround(one.events[0].pitchVolts * 12.f)) - 2;
+    if (patternPosition == 0 || patternPosition == 2) {
+      const int pitchClass = ((semitone % 12) + 12) % 12;
+      check(std::find(std::begin(pentatonicSemitones),
+                      std::end(pentatonicSemitones), pitchClass) !=
+                std::end(pentatonicSemitones),
+            "scale-domain random notes are quantized to the active scale");
+    } else if (patternPosition == 1) {
+      check(semitone == 3 || semitone == 5 || semitone == 7,
+            "uniform scale-degree bounds are inclusive and quantized");
+    } else if (patternPosition == 3) {
+      check(semitone == 0,
+            "chromatic uniform zero is the unquantized tonic offset");
+    } else {
+      check(close(one.events[0].pitchVolts * 12.f,
+                  std::round(one.events[0].pitchVolts * 12.f)),
+            "chromatic normal pitches round to semitone offsets");
+    }
+  }
+
+  const auto milliseconds = tfseq::Compile(R"(a = sequence {
+  notes 1
+  gate $u{10ms,20ms}
+}
+play a
+)");
+  check(static_cast<bool>(milliseconds), milliseconds.diagnostic.message);
+  if (milliseconds) {
+    tfseq::Runtime runtime;
+    runtime.setProgram(milliseconds.program.get());
+    const auto event = runtime.next(0.0);
+    check(event.count == 1 && event.events[0].gateMilliseconds >= 10.f &&
+              event.events[0].gateMilliseconds <= 20.f,
+          "uniform scalar arguments preserve matching millisecond units");
+  }
+
+  check(!tfseq::Compile("a = sequence {\n notes $u{1.5,4}\n}\nplay a\n"),
+        "uniform pitch ranges require integer endpoints");
+  check(!tfseq::Compile("a = sequence {\n notes $n{3,0}\n}\nplay a\n"),
+        "normal pitch standard deviation must be positive");
+  check(!tfseq::Compile(
+            "a = sequence {\n notes 1\n velocity $u{.8,.2}\n}\nplay a\n"),
+        "uniform scalar bounds must be ordered");
+  check(!tfseq::Compile(
+            "a = sequence {\n notes 1\n cv1 $u{1ms,2}\n}\nplay a\n"),
+        "random scalar units must match and suit the lane");
+}
+
+void randomPreparationUsesBoundedRanges() {
+  const auto bounded = tfseq::Compile(R"(a = sequence {
+  notes 1
+  duration $u{1/4,1/4}
+  ratchet $u{2,2}
+  offset $u{-2,-2}
+}
+play a
+)");
+  check(static_cast<bool>(bounded), bounded.diagnostic.message);
+  if (bounded) {
+    check(bounded.program->maximumEventsPerStep >= 2,
+          "uniform random ratchets contribute their upper bound to capacity");
+    check(close(static_cast<float>(bounded.program->maximumEarlyBeats), 2.f),
+          "uniform random offsets contribute their early bound to lookahead");
+    check(bounded.program->scheduleCapacity >= 28,
+          "uniform random durations contribute their lower bound to capacity");
+    tfseq::Runtime runtime;
+    runtime.setProgram(bounded.program.get());
+    const auto step = runtime.next(0.0);
+    check(step.count == 2 && !step.overflowed &&
+              close(static_cast<float>(step.durationBeats), .25f) &&
+              close(static_cast<float>(step.events[0].beat), -2.f),
+          "bounded random timing and ratchets fit their prepared workspace");
+  }
+
+  const auto normal = tfseq::Compile(R"(a = sequence {
+  notes 1
+  ratchet $n{3,.6}
+  offset $n{0,.5}
+}
+play a
+)");
+  check(static_cast<bool>(normal), normal.diagnostic.message);
+  if (normal) {
+    check(normal.program->maximumEventsPerStep >= 5 &&
+              close(static_cast<float>(normal.program->maximumEarlyBeats), 2.f),
+          "four-sigma normal bounds prepare ratchet and timing capacity");
+    tfseq::Runtime runtime;
+    runtime.setProgram(normal.program.get());
+    for (int stepIndex = 0; stepIndex < 64; ++stepIndex) {
+      const auto step = runtime.next(static_cast<double>(stepIndex));
+      check(step.count >= 1 && step.count <= 5 && !step.overflowed,
+            "normal random ratchets stay inside their prepared bound");
+    }
+  }
+}
+
+void selectiveEvaluationPreservesRandomIdentity() {
+  const std::string evaluated = R"(a = sequence {
+  notes 1
+}
+b = sequence {
+  notes ${1,97}
+}
+play b
+)";
+  const std::string draft = R"(a = sequence {
+  notes 2
+}
+b = sequence {
+  notes ${2,98}
+}
+play b
+)";
+  const auto evaluatedDocument = tfseq::syntax::Parse(evaluated);
+  const auto draftDocument = tfseq::syntax::Parse(draft);
+  check(evaluatedDocument && draftDocument,
+        "random selective-evaluation fixtures parse");
+  if (!evaluatedDocument || !draftDocument)
+    return;
+  const auto selectionBegin = static_cast<int>(draft.find("notes 2"));
+  const auto merged = tfseq::syntax::MergeSelectionDocuments(
+      evaluatedDocument.document, evaluated, draftDocument.document, draft,
+      selectionBegin, selectionBegin + 7);
+  const auto original = tfseq::Compile(evaluatedDocument.document);
+  const auto selected = merged ? tfseq::Compile(merged.document)
+                               : tfseq::Compile("");
+  check(merged && original && selected,
+        "random selective-evaluation programs compile");
+  if (!merged || !original || !selected)
+    return;
+
+  tfseq::Runtime before;
+  tfseq::Runtime after;
+  before.setProgram(original.program.get());
+  after.setProgram(selected.program.get());
+  for (int stepIndex = 0; stepIndex < 64; ++stepIndex) {
+    const auto expected = before.next(static_cast<double>(stepIndex));
+    const auto actual = after.next(static_cast<double>(stepIndex));
+    check(expected.count == 1 && actual.count == 1 &&
+              close(expected.events[0].pitchVolts,
+                    actual.events[0].pitchVolts),
+          "an inactive random edit does not change the evaluated random stream");
+  }
+}
+
+void documentedMusicalExamplesCompile() {
+  const auto generative = tfseq::Compile(R"(melody = sequence {
+  cycle 16
+  tonic A@3
+  scale minor_pentatonic
+  notes $u{1,10}(5,8) $n{5,1.25}(3,8,2)
+  octave 0 1 0
+  velocity $n{.72,.12}
+  gate $u{.35,.8}
+  cv1 0 2 5 3 |> interp smooth
+}
+seed 2026
+play melody
+)");
+  check(static_cast<bool>(generative),
+        "generative reference example: " + generative.diagnostic.message);
+
+  const auto harmony = tfseq::Compile(R"(changes = sequence {
+  cycle 16
+  tonic C@3
+  scale major
+  notes iim7 V7 Imaj7 VI7
+  duration 2
+  velocity .62 .78 .7
+  gate .9
+  cv1 0 3 5 2 |> interp power 2
+}
+lift = changes |> modulate_degree 4
+song = changes * 2 + lift * 2
+play song
+)");
+  check(static_cast<bool>(harmony),
+        "harmony reference example: " + harmony.diagnostic.message);
+
+  const auto groove = tfseq::Compile(R"(groove = sequence {
+  cycle 8
+  notes [1 5] 3 [4 6 8] 5
+  duration 1 1 2
+  offset -7ms 4ms 0 |> rate 1/2
+  ratchet 1 1 2
+}
+|> swing .58 1/8
+|> early random 3ms
+seed 99
+play groove
+)");
+  check(static_cast<bool>(groove),
+        "timing reference example: " + groove.diagnostic.message);
 }
 
 void degreesContinueAcrossOctaves() {
@@ -1698,6 +1954,10 @@ int main() {
   nestedGroupReplicationAndProbabilityKeepPreparedIdentity();
   transformByCycleAndArrange();
   rejectInvalidInput();
+  deterministicRandomPitchAndScalarValues();
+  randomPreparationUsesBoundedRanges();
+  selectiveEvaluationPreservesRandomIdentity();
+  documentedMusicalExamplesCompile();
   degreesContinueAcrossOctaves();
   scaleCardinalityAndExplicitOctaves();
   absoluteAndRelativeRegistersRemainDistinct();

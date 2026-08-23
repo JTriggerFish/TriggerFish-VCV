@@ -61,7 +61,9 @@ constexpr const char *Grammar = R"PEG(
   SlidePrefix     <- < '>' >
   DynamicPrefix   <- < '^^' / '^' / 'x' >
 
-  PitchedValue    <- ChordValue (H SlashSuffix)? / PitchValue
+  PitchedValue    <- RandomPitch / ChordValue (H SlashSuffix)? / PitchValue
+  RandomPitch     <- '$' (PitchRandomDistribution? RandomArguments)?
+  PitchRandomDistribution <- < 'cn' / 'c' / 'n' / 'u' >
   ChordValue      <- (ExplicitVoicing / RomanChord / JazzChord) RegisterSuffix?
   PitchValue      <- (NamedPitch / ScaleDegree) RegisterSuffix?
   ExplicitVoicing <- '(' H PitchValue (S PitchValue)+ H ')'
@@ -113,7 +115,11 @@ constexpr const char *Grammar = R"PEG(
   RightAligned    <- Ellipsis S ScalarTerm (S ScalarTerm)*
   LeftAligned     <- ScalarTerm (S ScalarTerm)* S Ellipsis
   FreePattern     <- ScalarTerm (S ScalarTerm)*
-  ScalarTerm      <- (ScalarAtom / Default) ReplicationSuffix?
+  ScalarTerm      <- (RandomScalar / ScalarAtom / Default) ReplicationSuffix?
+  RandomScalar    <- '$' ScalarRandomDistribution RandomArguments
+  ScalarRandomDistribution <- < 'u' / 'n' >
+  RandomArguments <- '{' H RandomArgument H ',' H RandomArgument H '}'
+  RandomArgument  <- < ScalarValue >
   ScalarAtom      <- < ScalarValue >
   Ellipsis        <- '...'
   Default         <- < '.' >
@@ -213,6 +219,18 @@ PatternNode ReadPitchedValue(const Ast &pitched, Diagnostic &diagnostic) {
   };
   PatternNode value;
   value.span = Span(pitched);
+  if (const auto random = FirstChildNamed(pitched, "RandomPitch")) {
+    value.kind = PatternKind::RandomPitch;
+    value.span = Span(random);
+    if (const auto distribution =
+            FirstChildNamed(random, "PitchRandomDistribution"))
+      value.atom = AstToken(distribution);
+    if (const auto arguments = FirstChildNamed(random, "RandomArguments")) {
+      for (const auto &argument : ChildrenNamed(arguments, "RandomArgument"))
+        value.arguments.push_back(AstToken(argument));
+    }
+    return value;
+  }
   if (const auto chord = FirstChildNamed(pitched, "ChordValue")) {
     if (const auto voicing = FirstChildNamed(chord, "ExplicitVoicing")) {
       value.kind = PatternKind::Voicing;
@@ -387,12 +405,21 @@ Pattern ReadNotePattern(const Ast &node, Diagnostic &diagnostic) {
 
 PatternNode ReadScalarTerm(const Ast &term) {
   PatternNode node;
-  node.kind = PatternKind::Atom;
   node.span = Span(term);
-  if (const auto atom = FirstChildNamed(term, "ScalarAtom"))
+  if (const auto random = FirstChildNamed(term, "RandomScalar")) {
+    node.kind = PatternKind::RandomScalar;
+    node.atom =
+        AstToken(FirstChildNamed(random, "ScalarRandomDistribution"));
+    const auto arguments = FirstChildNamed(random, "RandomArguments");
+    for (const auto &argument : ChildrenNamed(arguments, "RandomArgument"))
+      node.arguments.push_back(AstToken(argument));
+  } else if (const auto atom = FirstChildNamed(term, "ScalarAtom")) {
+    node.kind = PatternKind::Atom;
     node.atom = AstToken(atom);
-  else
+  } else {
+    node.kind = PatternKind::Atom;
     node.atom = AstToken(FirstChildNamed(term, "Default"));
+  }
   if (const auto replication = FirstChildNamed(term, "ReplicationSuffix"))
     node.repeatCount =
         AstToken(FirstDescendantNamed(replication, "RepeatCount"));
