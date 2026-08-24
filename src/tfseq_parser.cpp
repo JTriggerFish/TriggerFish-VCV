@@ -30,11 +30,11 @@ constexpr const char *Grammar = R"PEG(
   CvLane       <- H CvLaneName S ScalarPattern (H Pipeline)* H Comment? LineEnd
   SettingLine  <- H SettingName S SettingValue H Comment? LineEnd
   NotesLaneName  <- < 'notes' >
-  ScalarLaneName <- < 'octave' / 'velocity' / 'vel' / 'accent' /
+  ScalarLaneName <- < 'octave' / 'velocity' / 'vel' /
                       'duration' / 'dur' / 'gate' / 'slide' / 'ratchet' /
                       'offset' >
   CvLaneName     <- < 'cv' PositiveInteger >
-  SettingName    <- < 'cycle' / 'tonic' / 'scale' / 'glide' >
+  SettingName    <- < 'subdiv' / 'tonic' / 'scale' / 'glide' >
   BodyContinuation     <- H Pipeline (H Pipeline)* H Comment? LineEnd
   SequenceContinuation <- H Pipeline (H Pipeline)* H Comment? LineEnd
   AssignmentContinuation <- H Pipeline (H Pipeline)* H Comment? LineEnd
@@ -107,7 +107,7 @@ constexpr const char *Grammar = R"PEG(
   RepeatCount     <- < PositiveInteger >
 
   Attributes      <- '{' H Attribute (H ',' H Attribute)* H '}'
-  Attribute       <- AttributeName H '=' H AttributeValue
+  Attribute       <- AttributeName (H '=' H AttributeValue)?
   AttributeName   <- < Identifier >
   AttributeValue  <- < ScalarValue >
 
@@ -310,9 +310,10 @@ void ReadSuffixes(const Ast &source, PatternNode &node) {
         AstToken(FirstDescendantNamed(replication, "RepeatCount"));
   if (const auto attributes = FirstChildNamed(source, "Attributes")) {
     for (const auto &attribute : ChildrenNamed(attributes, "Attribute")) {
+      const auto value = FirstChildNamed(attribute, "AttributeValue");
       node.attributes.push_back(
           {AstToken(FirstChildNamed(attribute, "AttributeName")),
-           AstToken(FirstChildNamed(attribute, "AttributeValue"))});
+           value ? AstToken(value) : Token{}});
     }
   }
 }

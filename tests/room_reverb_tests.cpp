@@ -8,6 +8,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -61,6 +62,10 @@ RenderResult Render(tfdsp::RoomReverbControls controls,
   reverb.Process(silence, positions, 1, controls);
   Check(reverb.WaitForLatestScene(std::chrono::seconds(3)),
         "background ER scene must build and publish");
+  // Adoption happens on an audio block boundary; allow the matching FIR and
+  // handoff metadata to become the accepted scene before clearing histories.
+  for (std::size_t sample = 0; sample < 256; ++sample)
+    reverb.Process(silence, positions, 1, controls);
   reverb.Reset();
 
   RenderResult result;
@@ -69,7 +74,8 @@ RenderResult Render(tfdsp::RoomReverbControls controls,
   for (std::size_t sample = 0; sample < samples; ++sample) {
     tfdsp::RoomReverb::InputFrame input{};
     input[0] = sample == 0 ? 1.f : 0.f;
-    result.response[sample] = reverb.Process(input, positions, 1, controls);
+    result.response[sample] =
+        reverb.Process(input, positions, 1, controls).wet;
     for (const float value : result.response[sample]) {
       Check(std::isfinite(value), "combined room response must remain finite");
       result.peak = std::max(result.peak, std::abs(value));
@@ -178,8 +184,7 @@ void TestCanonicalFactoryDefaults() {
             room.modulation == tfdsp::reverb_defaults::Modulation &&
             room.shimmer == tfdsp::reverb_defaults::Shimmer &&
             room.width == tfdsp::reverb_defaults::Width &&
-            room.earlyLevelDb == tfdsp::reverb_defaults::EarlyLevelDb &&
-            room.tailLevelDb == tfdsp::reverb_defaults::TailLevelDb &&
+            room.balance == tfdsp::reverb_defaults::Balance &&
             room.lowCut == tfdsp::reverb_defaults::LowCut &&
             room.highCut == tfdsp::reverb_defaults::HighCut,
         "RoomReverbControls must use the canonical module baseline");
@@ -189,7 +194,6 @@ void TestCanonicalFactoryDefaults() {
       late.decay == room.decay && late.damping == room.damping &&
           late.diffusion == room.diffusion &&
           late.modulation == room.modulation && late.shimmer == room.shimmer &&
-          late.listener == room.listener &&
           late.roomDimensionsMetres ==
               tfdsp::reverb_defaults::RoomDimensionsMetres,
       "standalone late-reverb defaults must match the complete room baseline");
@@ -199,6 +203,106 @@ void TestCanonicalFactoryDefaults() {
     Check(std::abs(mapped.dimensionsMetres[axis] -
                    tfdsp::reverb_defaults::RoomDimensionsMetres[axis]) < 1.e-5,
           "canonical late-room dimensions must match MakeRoom");
+}
+
+void TestProgressiveDefaultSourceSpread() {
+  using tfdsp::reverb_defaults::ProgressiveSourceX;
+  Check(ProgressiveSourceX(0, 1) == 0.5f,
+        "one default source must be horizontally centred");
+
+  float previousHalfSpan = 0.f;
+  for (std::size_t sourceCount = 2; sourceCount <= 8; ++sourceCount) {
+    const float left = ProgressiveSourceX(0, sourceCount);
+    const float right = ProgressiveSourceX(sourceCount - 1, sourceCount);
+    Check(std::abs(left + right - 1.f) < 1.e-6f,
+          "default polyphonic source spread must remain symmetric");
+    Check(left < 0.5f && right > 0.5f,
+          "multiple default sources must straddle the room centre");
+    Check(0.5f - left > previousHalfSpan,
+          "each added source must progressively widen the default scene");
+    previousHalfSpan = 0.5f - left;
+    for (std::size_t source = 1; source < sourceCount; ++source)
+      Check(ProgressiveSourceX(source - 1, sourceCount) <
+                ProgressiveSourceX(source, sourceCount),
+            "default source positions must increase from left to right");
+  }
+}
+
+void TestAcousticPresetDefinitions() {
+  using tfdsp::reverb_defaults::MediumHall;
+  using tfdsp::reverb_defaults::SmallRoom;
+  using tfdsp::reverb_defaults::Superlush;
+  const auto makeRoom = [](const tfdsp::reverb_defaults::ReverbPreset &preset) {
+    tfdsp::RoomReverbControls controls;
+    controls.space = preset.space;
+    controls.aspect = preset.aspect;
+    controls.listener = preset.listener;
+    return tfdsp::RoomReverb::MakeRoom(controls);
+  };
+  const auto volume = [](const tfdsp::EarlyReflectionRoom &room) {
+    return room.dimensionsMetres[0] * room.dimensionsMetres[1] *
+           room.dimensionsMetres[2];
+  };
+  const auto small = makeRoom(SmallRoom);
+  const auto medium = makeRoom(MediumHall);
+  const auto lush = makeRoom(Superlush);
+  Check(volume(small) < volume(medium) && volume(medium) < volume(lush),
+        "Small Room, Medium Hall, and Superlush must have increasing volume");
+  Check(SmallRoom.decay < MediumHall.decay &&
+            MediumHall.decay < Superlush.decay,
+        "preset decay times must increase with their intended acoustic scale");
+  Check(SmallRoom.diffusion < MediumHall.diffusion &&
+            MediumHall.diffusion < Superlush.diffusion,
+        "preset diffusion must progress from room ambience to maximum lushness");
+  Check(SmallRoom.modulation < MediumHall.modulation &&
+            MediumHall.modulation < Superlush.modulation &&
+            Superlush.modulation == 1.f &&
+            std::abs(Superlush.shimmer - 0.65f) < 1.e-7f,
+        "Superlush must use maximum modulation and a strong 65% shimmer while "
+        "room presets remain restrained");
+  Check(SmallRoom.mix < MediumHall.mix && Superlush.mix <= 0.35f,
+        "ambience and texture presets must preserve a strong dry signal");
+  Check(SmallRoom.balance < MediumHall.balance && MediumHall.balance == 0.5f &&
+            Superlush.balance > MediumHall.balance,
+        "Small Room must lean toward early reflections, Medium Hall must use "
+        "the inferred centre, and Superlush must lean toward the late tail");
+  const auto lowCutHertz = [](const float value) {
+    return 20.f * std::exp(value * std::log(50.f));
+  };
+  const auto highCutHertz = [](const float value) {
+    return 1'000.f * std::exp(value * std::log(20.f));
+  };
+  Check(std::abs(lowCutHertz(SmallRoom.lowCut) - 40.f) < 0.01f &&
+            std::abs(highCutHertz(SmallRoom.highCut) - 9'000.f) < 1.f &&
+            std::abs(lowCutHertz(Superlush.lowCut) - 120.f) < 0.01f &&
+            std::abs(highCutHertz(Superlush.highCut) - 10'000.f) < 1.f,
+        "room and texture preset filters must retain their documented cutoffs");
+
+  for (const auto &[name, preset] :
+       {std::pair<const char *, tfdsp::reverb_defaults::ReverbPreset>{
+            "Medium Hall", MediumHall},
+        {"Small Room", SmallRoom},
+        {"Superlush", Superlush}}) {
+    tfdsp::RoomReverbControls controls;
+    controls.space = preset.space;
+    controls.aspect = preset.aspect;
+    controls.listener = preset.listener;
+    controls.preDelay = preset.preDelay;
+    controls.decay = preset.decay;
+    controls.damping = preset.damping;
+    controls.diffusion = preset.diffusion;
+    controls.modulation = preset.modulation;
+    controls.shimmer = preset.shimmer;
+    controls.width = preset.width;
+    controls.balance = preset.balance;
+    controls.lowCut = preset.lowCut;
+    controls.highCut = preset.highCut;
+    const auto response = Render(controls, 96'000, preset.source);
+    Check(response.peak > 1.e-5f && response.peak < 4.f &&
+              response.firstHalfEnergy > 0.0 && response.secondHalfEnergy > 0.0,
+          std::string(name) +
+              " preset must produce a useful, bounded, persistent wet response");
+  }
 }
 
 void TestCombinedEarlyAndLateResponse() {
@@ -224,15 +328,24 @@ void TestCombinedEarlyAndLateResponse() {
 
 void TestEarlyTailIsolationAndPreDelay() {
   tfdsp::RoomReverbControls earlyOnly;
-  earlyOnly.tailLevelDb = -60.f;
+  earlyOnly.balance = 0.f;
   const auto early = Render(earlyOnly, 24'000);
   tfdsp::RoomReverbControls tailOnly;
-  tailOnly.earlyLevelDb = -60.f;
+  tailOnly.balance = 1.f;
   const auto tail = Render(tailOnly, 24'000);
+  tfdsp::RoomReverbControls inferred;
+  inferred.balance = 0.5f;
+  const auto centre = Render(inferred, 24'000);
   Check(early.firstHalfEnergy > 1.e-6,
-        "early-level control must expose the geometric response");
+        "the left balance endpoint must expose the geometric response");
   Check(tail.firstHalfEnergy > 1.e-6,
-        "tail-level control must expose the FDN response");
+        "the right balance endpoint must expose the FDN response");
+  for (std::size_t sample = 0; sample < centre.response.size(); ++sample)
+    for (std::size_t channel = 0; channel < 2; ++channel)
+      Check(std::abs(centre.response[sample][channel] -
+                     early.response[sample][channel] -
+                     tail.response[sample][channel]) < 2.e-5f,
+            "the centre balance position must preserve the inferred sum");
 
   tfdsp::RoomReverbControls delayed = tailOnly;
   delayed.preDelay = 0.5f;
@@ -326,56 +439,105 @@ void TestSourceAndListenerPositionSweepsChangeTheResponse() {
   }
 }
 
-double TailToEarlyDb(
-    const tfdsp::RoomReverbControls &controls,
-    const tfdsp::RoomReverb::SourcePosition &source,
-    const std::size_t samples = 36'000) {
-  auto earlyControls = controls;
-  earlyControls.tailLevelDb = -60.f;
-  auto tailControls = controls;
-  tailControls.earlyLevelDb = -60.f;
-  const double early = WindowEnergy(Render(earlyControls, samples, source));
-  const double tail = WindowEnergy(Render(tailControls, samples, source));
-  return 10.0 * std::log10(tail / std::max(early, 1.e-20));
+std::array<float, 2>
+RenderDirectAt(const tfdsp::RoomReverbControls &controls,
+               const tfdsp::RoomReverb::SourcePosition &position) {
+  tfdsp::RoomReverb reverb;
+  reverb.SetSampleRate(SampleRate);
+  tfdsp::RoomReverb::InputFrame input{};
+  input[0] = 1.f;
+  tfdsp::RoomReverb::SourcePositions positions{};
+  positions[0] = position;
+  return reverb.Process(input, positions, 1, controls).direct;
 }
 
-void TestDistanceMonotonicallyBalancesEarlyAndLateFields() {
-  const tfdsp::RoomReverbControls baseline;
-  const auto nearSource =
-      tfdsp::RoomReverb::SourcePosition{0.5f, 0.65f, 0.45f};
-  const auto farSource =
-      tfdsp::RoomReverb::SourcePosition{0.1f, 0.1f, 0.45f};
-  const double nearRatio = TailToEarlyDb(baseline, nearSource);
-  const double defaultRatio =
-      TailToEarlyDb(baseline, tfdsp::reverb_defaults::Source);
-  const double farRatio = TailToEarlyDb(baseline, farSource);
-  Check(nearRatio < defaultRatio && defaultRatio < farRatio,
-        "source-listener distance must monotonically move the automatic "
-        "balance from early definition toward diffuse tail");
-  Check(farRatio - nearRatio > 12.0,
-        "the placement pad must provide a perceptually decisive ER/tail "
-        "distance range; spread=" +
-            std::to_string(farRatio - nearRatio) + " dB");
+void TestPositionedDirectSound() {
+  tfdsp::RoomReverbControls controls;
+  const auto left = RenderDirectAt(controls, {0.15f, 0.35f, 0.45f});
+  const auto right = RenderDirectAt(controls, {0.85f, 0.35f, 0.45f});
+  Check(std::abs(left[0]) > std::abs(left[1]) &&
+            std::abs(right[1]) > std::abs(right[0]),
+        "a source left of the listener favours the left speaker and a source "
+        "right of the listener favours the right speaker on its input sample");
 
-  auto nearListener = baseline;
-  nearListener.listener = {0.5f, 0.38f, 0.45f};
-  auto farListener = baseline;
-  farListener.listener = {0.9f, 0.9f, 0.45f};
-  const double nearListenerRatio =
-      TailToEarlyDb(nearListener, tfdsp::reverb_defaults::Source);
-  const double farListenerRatio =
-      TailToEarlyDb(farListener, tfdsp::reverb_defaults::Source);
-  Check(farListenerRatio - nearListenerRatio > 8.0,
-        "moving the listener away from a fixed source must audibly favor the "
-        "late field; spread=" +
-            std::to_string(farListenerRatio - nearListenerRatio) + " dB");
+  tfdsp::RoomReverb polyphonic;
+  polyphonic.SetSampleRate(SampleRate);
+  tfdsp::RoomReverb::InputFrame polyInput{};
+  polyInput[0] = polyInput[1] = 1.f;
+  tfdsp::RoomReverb::SourcePositions polyPositions{};
+  polyPositions[0] = {0.15f, 0.35f, 0.45f};
+  polyPositions[1] = {0.85f, 0.35f, 0.45f};
+  const auto poly =
+      polyphonic.Process(polyInput, polyPositions, 2, controls).direct;
+  Check(std::abs(poly[0] - (left[0] + right[0])) < 1.e-6f &&
+            std::abs(poly[1] - (left[1] + right[1])) < 1.e-6f,
+        "polyphonic sources are independently positioned before summation");
+
+  const auto near = RenderDirectAt(controls, {0.5f, 0.66f, 0.45f});
+  const auto factory =
+      RenderDirectAt(controls, tfdsp::reverb_defaults::Source);
+  const auto far = RenderDirectAt(controls, {0.05f, 0.05f, 0.45f});
+  const auto power = [](const std::array<float, 2> &frame) {
+    return frame[0] * frame[0] + frame[1] * frame[1];
+  };
+  Check(power(near) > power(factory) && power(factory) > power(far),
+        "bounded positioned-direct gain decreases with normalized distance");
+  Check(std::abs(std::sqrt(power(factory)) - 1.f) < 1.e-5f,
+        "factory positioned-direct distance has unity gain");
+  Check(std::sqrt(power(near)) <= 2.f + 1.e-6f &&
+            std::sqrt(power(far)) >= 0.25f - 1.e-6f,
+        "positioned-direct distance gain stays within +6/-12 dB bounds");
+
+  controls.preDelay = 1.f;
+  const auto factoryWithMaximumPreDelay =
+      RenderDirectAt(controls, tfdsp::reverb_defaults::Source);
+  Check(std::abs(factoryWithMaximumPreDelay[0] - factory[0]) < 1.e-7f &&
+            std::abs(factoryWithMaximumPreDelay[1] - factory[1]) < 1.e-7f,
+        "wet pre-delay must not delay or otherwise alter the direct sample");
+
+}
+
+void TestResetPreservesAcceptedHandoffMetadata() {
+  tfdsp::RoomReverb reverb;
+  reverb.SetSampleRate(SampleRate);
+  tfdsp::RoomReverbControls controls;
+  controls.balance = 1.f;
+  tfdsp::RoomReverb::SourcePositions positions{};
+  positions[0] = {0.18f, 0.22f, 0.45f};
+  tfdsp::RoomReverb::InputFrame silence{};
+  reverb.Process(silence, positions, 1, controls);
+  Check(reverb.WaitForLatestScene(std::chrono::seconds(3)),
+        "reset metadata test must receive its prepared scene");
+
+  // Let the queued FIR become active and the handoff gain finish its normal
+  // scene-change crossfade before comparing two clean resets.
+  for (std::size_t sample = 0; sample < 6'000; ++sample)
+    reverb.Process(silence, positions, 1, controls);
+
+  const auto renderAfterReset = [&] {
+    reverb.Reset();
+    std::vector<tfdsp::RoomReverb::StereoFrame> response(24'000);
+    for (std::size_t sample = 0; sample < response.size(); ++sample) {
+      tfdsp::RoomReverb::InputFrame input{};
+      input[0] = sample == 0 ? 1.f : 0.f;
+      response[sample] = reverb.Process(input, positions, 1, controls).wet;
+    }
+    return response;
+  };
+
+  const auto first = renderAfterReset();
+  const auto second = renderAfterReset();
+  for (std::size_t sample = 0; sample < first.size(); ++sample)
+    for (std::size_t channel = 0; channel < 2; ++channel)
+      Check(std::abs(first[sample][channel] - second[sample][channel]) < 1.e-7f,
+            "Reset must retain the accepted handoff gain and alignment");
 }
 
 void TestPreDelayAutomationCrossfadesWithoutAnEnergyHole() {
   tfdsp::RoomReverb reverb;
   reverb.SetSampleRate(SampleRate);
   tfdsp::RoomReverbControls controls;
-  controls.earlyLevelDb = -60.f;
+  controls.balance = 1.f;
   controls.decay = 0.8f;
   tfdsp::RoomReverb::SourcePositions positions{};
   positions[0] = tfdsp::reverb_defaults::Source;
@@ -402,7 +564,7 @@ void TestPreDelayAutomationCrossfadesWithoutAnEnergyHole() {
                 1.f);
     if (sample >= changeSample)
       controls.preDelay = 1.f;
-    const auto output = reverb.Process(input, positions, 1, controls);
+    const auto output = reverb.Process(input, positions, 1, controls).wet;
     const double energy = static_cast<double>(output[0]) * output[0] +
                           static_cast<double>(output[1]) * output[1];
     if (sample >= changeSample - before.size() * window &&
@@ -426,10 +588,13 @@ void TestPreDelayAutomationCrossfadesWithoutAnEnergyHole() {
 
 void TestPreDelaySweepTranslatesTheWetImpulse() {
   std::array<RenderResult, 3> responses;
-  const std::array<float, 3> values{0.f, 0.25f, 0.5f};
+  const std::array<float, 3> values{
+      0.f,
+      1.f / static_cast<float>(tfdsp::RoomReverb::MaximumPreDelaySeconds *
+                               SampleRate),
+      0.25f};
   for (std::size_t index = 0; index < values.size(); ++index) {
     tfdsp::RoomReverbControls controls;
-    controls.earlyLevelDb = -60.f;
     controls.preDelay = values[index];
     responses[index] = Render(controls, 30'000);
   }
@@ -440,7 +605,8 @@ void TestPreDelaySweepTranslatesTheWetImpulse() {
     const auto expected = static_cast<long long>(
         std::llround(values[index] * tfdsp::RoomReverb::MaximumPreDelaySeconds *
                      SampleRate));
-    Check(std::abs(measured - expected) <= 2,
+    const auto tolerance = index == 1 ? 0ll : 2ll;
+    Check(std::abs(measured - expected) <= tolerance,
           "Pre-delay must translate the wet IR by the requested samples; "
           "measured=" +
               std::to_string(measured) +
@@ -454,7 +620,7 @@ void TestDecayAndDampingSweepsHaveExpectedSpectralEffects() {
                                          0.85f};
   for (std::size_t index = 0; index < decayValues.size(); ++index) {
     tfdsp::RoomReverbControls controls;
-    controls.earlyLevelDb = -60.f;
+    controls.balance = 1.f;
     controls.decay = decayValues[index];
     const auto response = Render(controls, 96'000);
     decayTailEnergy[index] = WindowEnergy(response, 24'000);
@@ -468,7 +634,7 @@ void TestDecayAndDampingSweepsHaveExpectedSpectralEffects() {
                                            1.f};
   for (std::size_t index = 0; index < dampingValues.size(); ++index) {
     tfdsp::RoomReverbControls controls;
-    controls.earlyLevelDb = -60.f;
+    controls.balance = 1.f;
     controls.damping = dampingValues[index];
     const auto response = Render(controls, 96'000);
     highToMid[index] =
@@ -483,7 +649,7 @@ void TestDecayAndDampingSweepsHaveExpectedSpectralEffects() {
 void TestDiffusionModulationAndShimmerSweeps() {
   constexpr std::size_t samples = 48'000;
   tfdsp::RoomReverbControls referenceControls;
-  referenceControls.earlyLevelDb = -60.f;
+  referenceControls.balance = 1.f;
   const auto baseline = Render(referenceControls, samples);
 
   for (const float diffusion : {0.f, 0.5f, 1.f}) {
@@ -536,29 +702,6 @@ void TestWidthLevelAndFilterSweeps() {
         "Width must monotonically increase wet side energy from mono through "
         "native to 150%");
 
-  const auto checkLevelLaw = [](const bool early) {
-    std::array<double, 3> energy{};
-    const std::array<float, 3> levels{-6.f, 0.f, 6.f};
-    for (std::size_t index = 0; index < levels.size(); ++index) {
-      tfdsp::RoomReverbControls controls;
-      if (early) {
-        controls.earlyLevelDb = levels[index];
-        controls.tailLevelDb = -60.f;
-      } else {
-        controls.earlyLevelDb = -60.f;
-        controls.tailLevelDb = levels[index];
-      }
-      energy[index] = WindowEnergy(Render(controls, 24'000));
-    }
-    constexpr double SixDbPower = 3.9810717055;
-    for (std::size_t index = 1; index < energy.size(); ++index)
-      Check(std::abs(energy[index] / energy[index - 1] - SixDbPower) < 0.01,
-            std::string(early ? "Early" : "Tail") +
-                " level must follow its dB gain law");
-  };
-  checkLevelLaw(true);
-  checkLevelLaw(false);
-
   std::array<double, 3> lowBandRatios{};
   const std::array<float, 3> lowCuts{0.f, 0.5f, 1.f};
   for (std::size_t index = 0; index < lowCuts.size(); ++index) {
@@ -590,23 +733,23 @@ void TestWidthLevelAndFilterSweeps() {
 }
 
 void TestMixAndOutputLevelLaws() {
-  constexpr float dry = 2.f;
+  constexpr std::array<float, 2> direct{{2.f, -0.5f}};
   constexpr std::array<float, 2> wet{{3.f, -1.f}};
-  const auto dryOnly = tfdsp::MixReverbOutput(dry, wet, 0.f, 0.f);
-  const auto wetOnly = tfdsp::MixReverbOutput(dry, wet, 1.f, 0.f);
-  Check(std::abs(dryOnly[0] - dry) < 1.e-6f &&
-            std::abs(dryOnly[1] - dry) < 1.e-6f,
+  const auto dryOnly = tfdsp::MixReverbOutput(direct, wet, 0.f, 0.f);
+  const auto wetOnly = tfdsp::MixReverbOutput(direct, wet, 1.f, 0.f);
+  Check(std::abs(dryOnly[0] - direct[0]) < 1.e-6f &&
+            std::abs(dryOnly[1] - direct[1]) < 1.e-6f,
         "Mix at zero must be exactly dry");
   Check(std::abs(wetOnly[0] - wet[0]) < 1.e-6f &&
             std::abs(wetOnly[1] - wet[1]) < 1.e-6f,
         "Mix at maximum must be exactly wet");
 
   const auto baseline =
-      tfdsp::MixReverbOutput(dry, wet, tfdsp::reverb_defaults::Mix, 0.f);
+      tfdsp::MixReverbOutput(direct, wet, tfdsp::reverb_defaults::Mix, 0.f);
   const auto lower =
-      tfdsp::MixReverbOutput(dry, wet, tfdsp::reverb_defaults::Mix, -6.f);
+      tfdsp::MixReverbOutput(direct, wet, tfdsp::reverb_defaults::Mix, -6.f);
   const auto higher =
-      tfdsp::MixReverbOutput(dry, wet, tfdsp::reverb_defaults::Mix, 6.f);
+      tfdsp::MixReverbOutput(direct, wet, tfdsp::reverb_defaults::Mix, 6.f);
   const float sixDb = std::pow(10.f, 6.f / 20.f);
   for (std::size_t channel = 0; channel < 2; ++channel) {
     Check(std::abs(lower[channel] * sixDb - baseline[channel]) < 1.e-5f,
@@ -620,13 +763,16 @@ void TestMixAndOutputLevelLaws() {
 
 int main() {
   TestCanonicalFactoryDefaults();
+  TestProgressiveDefaultSourceSpread();
+  TestAcousticPresetDefinitions();
   TestRoomGeometryDerivesHeightFromSizeAndUsesAspectAndListener();
   TestCombinedEarlyAndLateResponse();
   TestEarlyTailIsolationAndPreDelay();
   TestGeometryControlsChangeTheResponseIndependently();
   TestSizeSweepScalesAllDimensionsWithoutBecomingALevelControl();
   TestSourceAndListenerPositionSweepsChangeTheResponse();
-  TestDistanceMonotonicallyBalancesEarlyAndLateFields();
+  TestPositionedDirectSound();
+  TestResetPreservesAcceptedHandoffMetadata();
   TestPreDelayAutomationCrossfadesWithoutAnEnergyHole();
   TestPreDelaySweepTranslatesTheWetImpulse();
   TestDecayAndDampingSweepsHaveExpectedSpectralEffects();

@@ -46,6 +46,7 @@ MODULE_NAMES = (
     "TfUnisonOscillator",
     "TfScenePack4",
     "TfReverb",
+    "TfProgSequencer",
 )
 
 
@@ -68,6 +69,13 @@ def light_pattern(module_name: str) -> re.Pattern[str]:
         + r"::(?P<id>[A-Z0-9_]+)",
         re.MULTILINE,
     )
+
+
+SCREW_PATTERN = re.compile(
+    r"createWidget<ScrewSilver>\s*\(\s*Vec\(\s*(?P<x>[^,]+?)\s*,\s*"
+    r"(?P<y>[^)]+?)\s*\)\s*\)",
+    re.MULTILINE,
+)
 
 
 SWITCH_DEFAULT_PATTERN = re.compile(
@@ -155,7 +163,96 @@ MODULE_GRAPHICS = {
     "TfUnisonOscillator": (),
     "TfScenePack4": (),
     "TfReverb": (),
+    "TfProgSequencer": (),
 }
+
+MODULE_PANEL_FILES = {
+    # Prog Sequencer is dynamically resizable; document its 30 HP default.
+    "TfProgSequencer": "TfProgSequencer-30.svg",
+}
+
+
+def module_preview_markup(module_name: str) -> str:
+    if module_name == "TfReverb":
+        # TfRoomPlanWidget is drawn by NanoVG at runtime rather than by the
+        # panel SVG. Reproduce its factory appearance here so documentation
+        # previews do not show an empty hole where the interactive plan lives.
+        left, top, width, height = 22.0, 32.0, 196.0, 82.0
+
+        def point(x: float, y: float) -> tuple[float, float]:
+            return left + x * width, top + y * height
+
+        grid = []
+        for division in range(1, 4):
+            fraction = division / 4.0
+            grid.append(
+                f'<path d="M{left + fraction * width:g} {top:g}v{height:g}'
+                f'M{left:g} {top + fraction * height:g}h{width:g}"/>'
+            )
+        sources = []
+        for index, position in enumerate(
+            ((0.30, 0.35), (0.433333, 0.35), (0.566667, 0.35), (0.70, 0.35)),
+            start=1,
+        ):
+            x, y = point(*position)
+            sources.append(
+                f'<circle cx="{x:g}" cy="{y:g}" r="5.2" fill="#ffb032" '
+                'stroke="#181818" stroke-width="1"/>'
+                f'<text x="{x:g}" y="{y + 2:g}" text-anchor="middle" '
+                'font-family="DejaVu Sans, sans-serif" font-size="5.8" '
+                f'fill="#181818">{index}</text>'
+            )
+        listener_x, listener_y = point(0.50, 0.682)
+        return (
+            '<g id="reverb-room-plan-preview" data-preview-source-count="4">'
+            f'<rect x="{left:g}" y="{top:g}" width="{width:g}" '
+            f'height="{height:g}" rx="2" fill="#1b2024" '
+            'stroke="#101010" stroke-width="1.5"/>'
+            '<g fill="none" stroke="#ffffff" stroke-opacity="0.094" '
+            f'stroke-width="0.7">{"".join(grid)}</g>'
+            f'<text x="{left + 5:g}" y="{top + 9:g}" '
+            'font-family="DejaVu Sans, sans-serif" font-size="5.2" '
+            'fill="#ffb032">SOURCES</text>'
+            f'<text x="{left + width - 5:g}" y="{top + 9:g}" '
+            'text-anchor="end" font-family="DejaVu Sans, sans-serif" '
+            'font-size="5.2" fill="#36c8eb">LISTENER</text>'
+            f'{"".join(sources)}'
+            f'<circle cx="{listener_x:g}" cy="{listener_y:g}" r="4.6" '
+            'fill="#36c8eb"/>'
+            f'<circle cx="{listener_x:g}" cy="{listener_y:g}" r="2" '
+            'fill="#1b2024"/>'
+            "</g>\n"
+        )
+    if module_name != "TfProgSequencer":
+        return ""
+    lines = (
+        "riff = sequence {",
+        "  subdiv 8",
+        "  tonic C@4",
+        "  scale minor",
+        "  notes 1 x2 3{quiet} _ [>4 ^5{stacc}] 6*3 ~ 8{ten}",
+        "  offset -6ms 0 +6ms |> rate 1/2",
+        "  cv1 0 5 0 |> interp smooth",
+        "}",
+        "",
+        "play riff",
+    )
+    text = "".join(
+        f'<text x="11" y="{40 + 20 * index}" fill="#fec274">'
+        f'{line.replace(">", "&gt;")}</text>'
+        for index, line in enumerate(lines)
+    )
+    return (
+        '<g id="prog-sequencer-editor-preview" '
+        'font-family="Share Tech Mono, monospace" font-size="12">'
+        '<rect x="5" y="23" width="385" height="334" fill="#000004"/>'
+        '<rect x="5" y="359" width="385" height="16" fill="#000004"/>'
+        f"{text}"
+        '<text x="9" y="371" fill="#fc8c62" font-size="10">PLAY 3.00  ACTIVE</text>'
+        '<circle cx="404" cy="121" r="3.1" fill="#16351f" stroke="#0b160e"/>'
+        '<circle cx="404" cy="121" r="1.9" fill="#54e878"/>'
+        "</g>\n"
+    )
 
 
 def _coordinate_variables(source: str, position: int) -> dict[str, float]:
@@ -171,7 +268,7 @@ def _coordinate_variables(source: str, position: int) -> dict[str, float]:
 
 
 def _evaluate_coordinate(expression: str, variables: dict[str, float]) -> float:
-    expression = re.sub(r"(?<=\d)f\b", "", expression.strip())
+    expression = re.sub(r"(?<=[0-9.])f\b", "", expression.strip())
     tree = ast.parse(expression, mode="eval")
 
     def evaluate(node: ast.AST) -> float:
@@ -199,6 +296,79 @@ def _evaluate_coordinate(expression: str, variables: dict[str, float]) -> float:
         raise ValueError(f"Unsupported widget coordinate: {expression}")
 
     return evaluate(tree)
+
+
+def panel_coordinate(
+    expression: str,
+    panel_width: float,
+    panel_height: float,
+    variables: dict[str, float] | None = None,
+) -> float:
+    expression = expression.replace("box.size.x", str(panel_width))
+    expression = expression.replace("RACK_GRID_WIDTH", "15")
+    expression = expression.replace("RACK_GRID_HEIGHT", str(panel_height))
+    return _evaluate_coordinate(expression, variables or {})
+
+
+def screw_positions(
+    widget_source: str, panel_width: float, panel_height: float
+) -> tuple[tuple[float, float], ...]:
+    return tuple(
+        (
+            panel_coordinate(match.group("x"), panel_width, panel_height),
+            panel_coordinate(match.group("y"), panel_width, panel_height),
+        )
+        for match in SCREW_PATTERN.finditer(widget_source)
+    )
+
+
+def centered_component_specs(
+    module_name: str, widget_source: str, panel_width: float
+) -> tuple[tuple[str, float, float], ...]:
+    if module_name != "TfProgSequencer":
+        return ()
+
+    layout = widget_source.split("void applyPanelWidth", 1)[1].split("if (parent", 1)[0]
+    variables: dict[str, float] = {}
+    assignments = re.compile(
+        r"const float (?P<name>right|leftColumn|rightColumn)\s*=\s*"
+        r"(?P<expression>[^;]+);"
+    )
+    for assignment in assignments.finditer(layout):
+        variables[assignment.group("name")] = panel_coordinate(
+            assignment.group("expression"), panel_width, 380.0, variables
+        )
+
+    positions: list[tuple[str, float, float]] = []
+    for array_name in ("inputPositions", "outputPositions"):
+        array = re.search(
+            rf"const Vec {array_name}\[\]\s*=\s*\{{(?P<body>.*?)\}};",
+            layout,
+            re.DOTALL,
+        )
+        if array is None:
+            raise RuntimeError(f"No {array_name} layout was found in {module_name}.cpp")
+        for item in re.finditer(
+            r"Vec\(\s*(?P<x>[^,]+?)\s*,\s*(?P<y>[^)]+?)\s*\)",
+            array.group("body"),
+        ):
+            positions.append(
+                (
+                    "PJ301MPort",
+                    _evaluate_coordinate(item.group("x"), variables),
+                    _evaluate_coordinate(item.group("y"), variables),
+                )
+            )
+
+    expected = len(
+        re.findall(r"create(?:Input|Output)Centered<PJ301MPort>", widget_source)
+    )
+    if len(positions) != expected:
+        raise RuntimeError(
+            f"{module_name} declares {expected} centred ports but its layout "
+            f"contains {len(positions)} positions"
+        )
+    return tuple(positions)
 
 
 def control_coordinates(
@@ -266,6 +436,22 @@ MODULE_KNOB_ANGLES = {
         "TRACKING": 145.0,
         "SPREAD_CV_AMOUNT": 0.0,
         "WIDTH_CV_AMOUNT": 0.0,
+    },
+    "TfReverb": {
+        "SPACE": 29.0,
+        "ASPECT": 0.0,
+        "PRE_DELAY": -131.1,
+        "DECAY": 40.6,
+        "DAMPING": -63.8,
+        "DIFFUSION": 92.8,
+        "MODULATION": -58.0,
+        "SHIMMER": -145.0,
+        "WIDTH": 32.8,
+        "BALANCE": 0.0,
+        "LOW_CUT": -145.0,
+        "HIGH_CUT": 95.5,
+        "MIX": -43.5,
+        "LEVEL": 118.6,
     },
 }
 
@@ -480,7 +666,9 @@ def render_preview(
 ) -> Path:
     if module_name not in MODULE_GRAPHICS:
         raise ValueError(f"Unsupported panel module: {module_name}")
-    editable_panel = ROOT / "res-src" / f"{module_name}.svg"
+    editable_panel = (
+        ROOT / "res-src" / MODULE_PANEL_FILES.get(module_name, f"{module_name}.svg")
+    )
     panel_source = (
         editable_panel
         if editable_panel.is_file()
@@ -511,24 +699,21 @@ def render_preview(
     widgets = widget_source.read_text(encoding="utf-8")
     controls = list(control_pattern(module_name).finditer(widgets))
     lights = list(light_pattern(module_name).finditer(widgets))
+    static_components = centered_component_specs(module_name, widgets, panel_width)
     switch_values = switch_defaults(widgets)
-    if not controls:
+    if not controls and not static_components:
         raise RuntimeError(f"No panel controls were found in {module_name}.cpp")
 
     overlays = ['\n<g id="module-graphics-preview">\n']
     for graphic in MODULE_GRAPHICS[module_name]:
         overlays.append(graphic_element(graphic))
+    overlays.append(module_preview_markup(module_name))
     overlays.append("</g>\n")
 
     if include_components:
         overlays.append('\n<g id="rack-component-preview">\n')
         screw = component_directory / "ScrewSilver.svg"
-        for x, y in (
-            (15.0, 0.0),
-            (panel_width - 30.0, 0.0),
-            (15.0, panel_height - 15.0),
-            (panel_width - 30.0, panel_height - 15.0),
-        ):
+        for x, y in screw_positions(widgets, panel_width, panel_height):
             overlays.append(image_element(screw, x, y))
 
         for control in controls:
@@ -585,6 +770,16 @@ def render_preview(
                         x,
                         y,
                         angle=angle,
+                    )
+                )
+        for component_type, center_x, center_y in static_components:
+            asset_names = COMPONENTS[component_type]
+            for asset_name in asset_names:
+                asset = component_asset(component_directory, asset_name)
+                width, height = svg_dimensions(asset)
+                overlays.append(
+                    image_element(
+                        asset, center_x - width / 2.0, center_y - height / 2.0
                     )
                 )
         for light in lights:

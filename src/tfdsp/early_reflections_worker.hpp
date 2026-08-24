@@ -21,7 +21,6 @@ struct EarlyReflectionBuildRequest {
   std::array<EarlyReflectionSource, EarlyReflectionMaximumSources> sources{};
   std::size_t sourceCount{};
   EarlyReflectionMaterials materials{};
-  std::size_t convolutionLatencySamples{};
   double transitionSeconds{0.100};
 
   void SetSources(const std::vector<EarlyReflectionSource> &newSources) {
@@ -51,7 +50,8 @@ struct EarlyReflectionBuildResult {
 class EarlyReflectionWorker {
 public:
   using Publisher = std::function<bool(const EarlyReflectionImpulseResponse &,
-                                       double transitionSeconds)>;
+                                       double transitionSeconds,
+                                       std::size_t sceneSequence)>;
 
   explicit EarlyReflectionWorker(double maximumUpdatesPerSecond = 20.0,
                                  Publisher publisher = {});

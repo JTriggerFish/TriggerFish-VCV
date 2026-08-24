@@ -34,17 +34,19 @@ CalculateReverbOutputGains(const float mixControl,
 }
 
 inline std::array<float, 2>
-MixReverbOutput(const float dry, const std::array<float, 2> &wet,
+MixReverbOutput(const std::array<float, 2> &direct,
+                const std::array<float, 2> &wet,
                 const ReverbOutputGains &gains) noexcept {
-  return {gains.dry * dry + gains.wet * wet[0],
-          gains.dry * dry + gains.wet * wet[1]};
+  return {gains.dry * direct[0] + gains.wet * wet[0],
+          gains.dry * direct[1] + gains.wet * wet[1]};
 }
 
 inline std::array<float, 2>
-MixReverbOutput(const float dry, const std::array<float, 2> &wet,
+MixReverbOutput(const std::array<float, 2> &direct,
+                const std::array<float, 2> &wet,
                 const float mixControl, const float outputLevelDb) noexcept {
   return MixReverbOutput(
-      dry, wet, CalculateReverbOutputGains(mixControl, outputLevelDb));
+      direct, wet, CalculateReverbOutputGains(mixControl, outputLevelDb));
 }
 
 } // namespace tfdsp

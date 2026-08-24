@@ -2,6 +2,7 @@
 param(
     [ValidateSet(
         "doctor",
+        "setup",
         "build",
         "panel-preview",
         "clean",
@@ -14,6 +15,7 @@ param(
         "smoke-303",
         "smoke-prog-303",
         "smoke-reverb",
+        "smoke-reverb-two-sources",
         "smoke-4072",
         "smoke-wavefold",
         "smoke-unison",
@@ -156,6 +158,18 @@ function Start-SmokePatch(
 }
 
 switch ($Command) {
+    "setup" {
+        Push-Location $repoRoot
+        try {
+            & uv sync --locked --group dev --python 3.13
+            if ($LASTEXITCODE -ne 0) {
+                throw "Repository Python environment setup failed with exit code $LASTEXITCODE."
+            }
+        }
+        finally {
+            Pop-Location
+        }
+    }
     "doctor" {
         Assert-Path (Join-Path $rackSdk "plugin.mk") "Rack SDK"
         Assert-Path $rackExe "Rack executable"
@@ -240,6 +254,9 @@ switch ($Command) {
     "smoke-303" { Start-SmokePatch "test-303-voice.vcv" }
     "smoke-prog-303" { Start-SmokePatch "test-prog-sequencer-303.vcv" }
     "smoke-reverb" { Start-SmokePatch "test-room-reverb.vcv" }
+    "smoke-reverb-two-sources" {
+        Start-SmokePatch "test-room-reverb-two-sources.vcv"
+    }
     "smoke-4072" { Start-SmokePatch "test-4072-voice.vcv" }
     "smoke-wavefold" { Start-SmokePatch "test-wavefold-oscillator.vcv" }
     "smoke-unison" {

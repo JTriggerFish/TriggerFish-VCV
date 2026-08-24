@@ -7,18 +7,19 @@
     <text x="151" y="14" font-size="10" font-weight="bold" letter-spacing="1.1">TRIGGERFISH</text>
     <text x="245" y="14" font-size="7.4" letter-spacing="1.25">PROG SEQUENCER</text>
     <g font-size="5.7" font-weight="bold">
-      <text x="423" y="48">INPUTS</text>
-      <text x="423" y="54">CLOCK</text>
-      <text x="423" y="102">RESET</text>
-      <text x="423" y="150">RUN</text>
-      <text x="423" y="180">OUTPUTS</text>
-      <text x="423" y="188">V/OCT</text>
-      <text x="423" y="216">GATE</text>
-      <text x="423" y="244">TRIG</text>
-      <text x="423" y="272">VEL</text>
-      <text x="423" y="300">ACC</text>
-      <text x="423" y="328">CV1</text>
-      <text x="423" y="356">CV2</text>
+      <text x="423" y="34">INPUTS</text>
+      <text x="409" y="49">CLOCK</text>
+      <text x="437" y="49">RESET</text>
+      <text x="423" y="105">RUN</text>
+      <text x="423" y="153">OUTPUTS</text>
+      <text x="409" y="172">V/OCT</text>
+      <text x="437" y="172">GATE</text>
+      <text x="409" y="228">TRIG</text>
+      <text x="437" y="228">VEL</text>
+      <text x="409" y="284">ACC</text>
+      <text x="437" y="284">CV1</text>
+      <text x="409" y="340">CV2</text>
+      <text x="437" y="340">CV3</text>
     </g>
   </g>
 </svg>

@@ -328,7 +328,7 @@ void TestAllPathsAndMultipleSources() {
         "each independent source gets a complete image-source response");
 
   const auto response = tfdsp::BuildEarlyReflectionImpulseResponse(
-      config, room, two, materials, 128);
+      config, room, two, materials);
   Check(response.sourceCount == 2 && response.kernels.size() == 4,
         "two mono sources produce a 2x2 source-to-output FIR matrix");
   for (std::size_t output = 0; output < 2; ++output) {
@@ -345,32 +345,30 @@ void TestGeneratedFirMatchesAnalyticTapTrain() {
   const std::vector<tfdsp::EarlyReflectionSource> sources{
       tfdsp::MakeEarlyReflectionSource(room, {0.32, 0.27, 0.43})};
   const auto materials = UniformMaterials(0.73);
-  constexpr std::size_t convolutionLatency = 128;
   const auto paths =
       tfdsp::EnumerateEarlyReflectionPaths(config, room, sources, materials);
   const auto response = tfdsp::BuildEarlyReflectionImpulseResponse(
-      config, room, sources, materials, convolutionLatency);
-  Check(response.appliedLatencyCompensationSamples == convolutionLatency,
-        "normal ER timing fully absorbs the convolution latency");
-  CheckNear(response.ResidualLatencySeconds(), 0.0, 0.0,
-            "fully compensated convolution has no residual timing offset");
+      config, room, sources, materials);
 
   std::vector<std::vector<double>> expected(
       2, std::vector<double>(response.Size()));
   for (const auto &path : paths) {
-    const double delay =
-        path.propagationSeconds * config.sampleRate -
-        static_cast<double>(response.appliedLatencyCompensationSamples);
+    const double delay = path.excessDelaySeconds * config.sampleRate;
     const auto integerDelay = static_cast<std::size_t>(std::floor(delay));
+    const bool causal = integerDelay == 0;
     const auto coefficients =
-        tfdsp::EarlyReflectionLagrange4(
-            delay - static_cast<double>(integerDelay));
+        causal ? tfdsp::EarlyReflectionCausalLagrange4(delay)
+               : tfdsp::EarlyReflectionLagrange4(
+                     delay - static_cast<double>(integerDelay));
     constexpr std::array<int, 4> offsets{-1, 0, 1, 2};
     for (std::size_t output = 0; output < 2; ++output) {
       const double gain = path.outputGains[output] * path.bandGains[0];
       for (std::size_t tap = 0; tap < 4; ++tap) {
-        const auto index = static_cast<std::size_t>(
-            static_cast<std::ptrdiff_t>(integerDelay) + offsets[tap]);
+        const auto index = causal
+                               ? tap
+                               : static_cast<std::size_t>(
+                                     static_cast<std::ptrdiff_t>(integerDelay) +
+                                     offsets[tap]);
         if (index < expected[output].size())
           expected[output][index] += gain * coefficients[tap];
       }
@@ -380,10 +378,7 @@ void TestGeneratedFirMatchesAnalyticTapTrain() {
   for (auto &kernel : expected)
     for (std::size_t sample = 0; sample < kernel.size(); ++sample) {
       const double relativeSeconds =
-          (static_cast<double>(sample) +
-           static_cast<double>(response.appliedLatencyCompensationSamples)) /
-              config.sampleRate -
-          handoff.directPropagationSeconds;
+          static_cast<double>(sample) / config.sampleRate;
       if (relativeSeconds >= handoff.finalEndSeconds)
         kernel[sample] = 0.0;
       else if (relativeSeconds > handoff.finalStartSeconds) {
@@ -431,7 +426,7 @@ void TestUnequalMaterialBandsProduceSpectralTilt() {
     return;
   const std::vector<tfdsp::EarlyReflectionPath> onePath{*sideWall};
   const auto response = tfdsp::BuildEarlyReflectionImpulseResponse(
-      config, room, sources, materials, 128, &onePath);
+      config, room, sources, materials, &onePath);
   const auto &left = response.kernels[response.KernelIndex(0, 0)];
   const auto &right = response.kernels[response.KernelIndex(1, 0)];
   const double low = std::hypot(MagnitudeAt(left, 100.0, config.sampleRate),
@@ -451,8 +446,6 @@ SyntheticResponse(const std::size_t sources, const std::size_t size,
   response.sourceCount = sources;
   response.imagePathCount = 1;
   response.analysisPathCount = 1;
-  response.requestedConvolutionLatencySamples = 16;
-  response.appliedLatencyCompensationSamples = 16;
   response.mixingPrediction.generationHorizonSeconds = 0.001;
   response.sourceHandoffs.resize(sources);
   for (auto &handoff : response.sourceHandoffs) {
@@ -499,8 +492,8 @@ void TestPartitionedConvolutionAndSuperposition() {
     for (std::size_t source = 0; source < 2; ++source)
       for (std::size_t sample = 0; sample < inputLength; ++sample)
         for (std::size_t tap = 0; tap < length; ++tap)
-          if (sample + tap + 16 < renderLength)
-            expected[output][sample + tap + 16] +=
+          if (sample + tap < renderLength)
+            expected[output][sample + tap] +=
                 input[source][sample] * kernels[output * 2 + source][tap];
 
   for (std::size_t sample = 0; sample < renderLength; ++sample) {
@@ -519,7 +512,7 @@ void TestPartitionedConvolutionAndSuperposition() {
   }
 }
 
-void TestPhysicalTimingWithCompensatedLatency() {
+void TestPhysicalTimingWithZeroLatencyHead() {
   const auto config = TestConfig(0.04);
   const auto room = TestRoom();
   const std::vector<tfdsp::EarlyReflectionSource> sources{
@@ -528,7 +521,7 @@ void TestPhysicalTimingWithCompensatedLatency() {
   const auto paths =
       tfdsp::EnumerateEarlyReflectionPaths(config, room, sources, materials);
   const auto response = tfdsp::BuildEarlyReflectionImpulseResponse(
-      config, room, sources, materials, 16);
+      config, room, sources, materials);
   tfdsp::EarlyReflectionConvolver<double, 16, 8> convolver;
   convolver.Prepare(config.sampleRate,
                     tfdsp::MaximumEarlyReflectionImpulseSamples(config, room));
@@ -547,17 +540,15 @@ void TestPhysicalTimingWithCompensatedLatency() {
   for (std::size_t output = 0; output < 2; ++output)
     for (std::size_t tap = 0; tap < response.Size(); ++tap)
       CheckNear(
-          rendered[output][tap + 16],
+          rendered[output][tap],
           response.kernels[response.KernelIndex(output, 0)][tap], 2.0e-10,
-          "the runtime convolution latency equals the compensated FIR shift");
+          "zero-latency head/tail output matches the direct-relative FIR");
 
-  const double firstPhysicalArrival =
-      paths.front().propagationSeconds * config.sampleRate;
-  const double firstRenderedTap =
-      firstPhysicalArrival -
-      static_cast<double>(response.appliedLatencyCompensationSamples) + 16.0;
-  CheckNear(firstRenderedTap, firstPhysicalArrival, 1.0e-12,
-            "physical propagation is preserved after latency compensation");
+  const double firstRelativeArrival =
+      paths.front().excessDelaySeconds * config.sampleRate;
+  Check(firstRelativeArrival < paths.front().propagationSeconds *
+                                   config.sampleRate,
+        "ER taps are measured relative to the immediate direct sound");
 }
 
 void TestRealtimeSafetyAndValidation() {
@@ -590,10 +581,10 @@ void TestRealtimeSafetyAndValidation() {
   Check(std::isfinite(checksum), "realtime output remains finite");
   Check(!convolver.IsTransitioning(), "the scheduled FIR transition completes");
 
-  auto wrongLatency = first;
-  wrongLatency.requestedConvolutionLatencySamples = 128;
-  CheckThrows([&] { convolver.SetImpulseResponse(wrongLatency); },
-              "an FIR generated for the wrong convolution latency is rejected");
+  auto wrongRate = first;
+  wrongRate.sampleRate = 44100.0;
+  CheckThrows([&] { convolver.SetImpulseResponse(wrongRate); },
+              "an FIR generated for the wrong sample rate is rejected");
   CheckThrows(
       [&] {
         auto tooLong = first;
@@ -615,15 +606,17 @@ void TestNumericalImpulseResponseTransition() {
   const auto newResponse = SyntheticResponse(1, partition, newKernels);
   tfdsp::EarlyReflectionConvolver<double, partition, 8> convolver;
   convolver.Prepare(48000.0, partition);
-  convolver.SetImpulseResponse(oldResponse);
+  convolver.SetImpulseResponse(oldResponse, 11);
   for (std::size_t sample = 0; sample < 4 * partition; ++sample) {
     tfdsp::EarlyReflectionConvolver<double, partition, 8>::InputFrame input{};
     input[0] = 1.0;
     convolver.Process(input, 1);
   }
   constexpr std::size_t transitionSamples = 32;
-  convolver.TransitionToImpulseResponse(
-      newResponse, static_cast<double>(transitionSamples) / 48000.0);
+  Check(convolver.PrepareAndQueueImpulseResponse(
+            newResponse,
+            static_cast<double>(transitionSamples) / 48000.0, 22),
+        "the sequenced transition bank must queue");
   for (std::size_t sample = 0; sample < partition + transitionSamples + 8;
        ++sample) {
     tfdsp::EarlyReflectionConvolver<double, partition, 8>::InputFrame input{};
@@ -643,6 +636,9 @@ void TestNumericalImpulseResponseTransition() {
               "the FIR transition follows its expected smooth waveform");
     CheckNear(output[1], expected, 2.0e-10,
               "both FIR outputs use the same transition waveform");
+    Check(convolver.RenderedSceneSequence() ==
+              (sample < partition ? 11u : 22u),
+          "scene metadata changes on the first sample rendered by its FIR");
   }
 }
 
@@ -663,8 +659,8 @@ void TestInactiveSourceTailAndHistoryFlush() {
     tfdsp::EarlyReflectionConvolver<double, partition, 8>::InputFrame input{};
     input[1] = sample == 0 ? 1.0 : 0.0;
     const auto output = convolver.Process(input, sample == 0 ? 2 : 1);
-    const double expectedLeft = sample == partition + 47 ? 0.75 : 0.0;
-    const double expectedRight = sample == partition + 47 ? -0.5 : 0.0;
+    const double expectedLeft = sample == 47 ? 0.75 : 0.0;
+    const double expectedRight = sample == 47 ? -0.5 : 0.0;
     CheckNear(output[0], expectedLeft, 2.0e-10,
               "a removed source retains its remaining left FIR tail");
     CheckNear(output[1], expectedRight, 2.0e-10,
@@ -683,32 +679,38 @@ void TestInactiveSourceTailAndHistoryFlush() {
 
 void TestScenePackCompactionAndChaining() {
   tfdsp::ScenePackInput first;
-  first.localConnected = {true, false, true, false};
-  first.local[0] = {1.0f, 2.0f, 3.0f, 4.0f};
-  first.local[2] = {3.0f, 6.0f, 7.0f, 8.0f};
+  first.channelCounts = {1, 0, 2, 1};
+  first.inputs[0][0] = 1.0f;
+  first.inputs[2][0] = 3.0f;
+  first.inputs[2][1] = 4.0f;
+  first.inputs[3][0] = 5.0f;
   const auto firstOutput = tfdsp::PackSceneSources(first);
-  Check(firstOutput.sourceCount == 2 && firstOutput.sources[0].audio == 1.0f &&
-            firstOutput.sources[1].audio == 3.0f,
-        "Scene Pack compacts connected local lanes in lane order");
+  Check(firstOutput.sourceCount == 4 && firstOutput.audio[0] == 1.0f &&
+            firstOutput.audio[1] == 3.0f && firstOutput.audio[2] == 4.0f &&
+            firstOutput.audio[3] == 5.0f,
+        "Scene Pack compacts connected mono/poly inputs in port order");
 
   tfdsp::ScenePackInput chained;
-  chained.bus = firstOutput.sources;
-  chained.busCount = firstOutput.sourceCount;
-  chained.localConnected.fill(true);
-  for (std::size_t lane = 0; lane < chained.local.size(); ++lane)
-    chained.local[lane] = {static_cast<float>(10 + lane), 5.0f, 5.0f, 5.0f};
+  chained.channelCounts = {firstOutput.sourceCount, 1, 1, 1};
+  for (std::size_t source = 0; source < firstOutput.sourceCount; ++source)
+    chained.inputs[0][source] = firstOutput.audio[source];
+  chained.inputs[1][0] = 10.0f;
+  chained.inputs[2][0] = 11.0f;
+  chained.inputs[3][0] = 12.0f;
   const auto chainedOutput = tfdsp::PackSceneSources(chained);
-  Check(chainedOutput.sourceCount == 6 &&
-            chainedOutput.sources[0].audio == 1.0f &&
-            chainedOutput.sources[2].audio == 10.0f,
-        "a chained Scene Pack preserves bus channels before local lanes");
+  Check(chainedOutput.sourceCount == 7 && chainedOutput.audio[0] == 1.0f &&
+            chainedOutput.audio[4] == 10.0f &&
+            chainedOutput.audio[6] == 12.0f,
+        "a chained Scene Pack preserves the upstream bundle before new inputs");
 
-  chained.busCount = 7;
+  chained.channelCounts = {7, 2, 0, 0};
   for (std::size_t source = 0; source < 7; ++source)
-    chained.bus[source].audio = static_cast<float>(source);
+    chained.inputs[0][source] = static_cast<float>(source);
+  chained.inputs[1][0] = 20.0f;
+  chained.inputs[1][1] = 21.0f;
   const auto limited = tfdsp::PackSceneSources(chained);
-  Check(limited.sourceCount == 8 && limited.sources[7].audio == 10.0f,
-        "Scene Pack appends only enough local lanes to reach eight sources");
+  Check(limited.sourceCount == 8 && limited.audio[7] == 20.0f,
+        "Scene Pack appends only enough channels to reach eight sources");
 }
 
 void TestRateLimitedCoalescingWorkerAndPreparedBankHandoff() {
@@ -719,7 +721,6 @@ void TestRateLimitedCoalescingWorkerAndPreparedBankHandoff() {
   request.SetSources(
       tfdsp::MakeDefaultEarlyReflectionSources(request.room, 1, 0.5));
   request.materials = UniformMaterials();
-  request.convolutionLatencySamples = Convolver::LatencySamples;
   request.transitionSeconds = 0.001;
 
   Convolver convolver;
@@ -729,9 +730,11 @@ void TestRateLimitedCoalescingWorkerAndPreparedBankHandoff() {
   {
     tfdsp::EarlyReflectionWorker worker(
         20.0, [&](const tfdsp::EarlyReflectionImpulseResponse &response,
-                  const double transitionSeconds) {
+                  const double transitionSeconds,
+                  const std::size_t sceneSequence) {
           return convolver.PrepareAndQueueImpulseResponse(response,
-                                                          transitionSeconds);
+                                                          transitionSeconds,
+                                                          sceneSequence);
         });
     const auto sequence = worker.Submit(request);
     auto result = worker.WaitForLatestResult(std::chrono::milliseconds(1000));
@@ -841,7 +844,7 @@ int main() {
   TestGeneratedFirMatchesAnalyticTapTrain();
   TestUnequalMaterialBandsProduceSpectralTilt();
   TestPartitionedConvolutionAndSuperposition();
-  TestPhysicalTimingWithCompensatedLatency();
+  TestPhysicalTimingWithZeroLatencyHead();
   TestRealtimeSafetyAndValidation();
   TestNumericalImpulseResponseTransition();
   TestInactiveSourceTailAndHistoryFlush();

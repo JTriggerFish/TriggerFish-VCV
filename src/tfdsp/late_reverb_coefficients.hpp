@@ -66,6 +66,30 @@ constexpr auto MakeWallProjection() noexcept {
 }
 inline constexpr auto WallProjection = MakeWallProjection();
 
+// Conventional, geometry-independent stereo FDN encoder/decoder. The input,
+// mid and side vectors are distinct orthonormal Walsh modes. Combining the
+// latter two at constant power gives equal-energy, mutually orthogonal stereo
+// output rows without assigning physical directions to individual FDN lines.
+constexpr auto MakeFixedInputVector() noexcept {
+  std::array<float, LineCount> result{};
+  for (std::size_t line = 0; line < LineCount; ++line)
+    result[line] = InverseRootLineCount * WalshSign(line, 0u);
+  return result;
+}
+constexpr auto MakeFixedStereoOutput() noexcept {
+  constexpr float inverseRootTwo = 0.7071067811865475f;
+  std::array<std::array<float, LineCount>, 2> result{};
+  for (std::size_t line = 0; line < LineCount; ++line) {
+    const float mid = InverseRootLineCount * WalshSign(line, 1u);
+    const float side = InverseRootLineCount * WalshSign(line, 2u);
+    result[0][line] = inverseRootTwo * (mid + side);
+    result[1][line] = inverseRootTwo * (mid - side);
+  }
+  return result;
+}
+inline constexpr auto FixedInputVector = MakeFixedInputVector();
+inline constexpr auto FixedStereoOutput = MakeFixedStereoOutput();
+
 inline constexpr std::size_t ShimmerBusCount = 4;
 constexpr auto MakeShimmerProjection() noexcept {
   std::array<std::array<float, LineCount>, ShimmerBusCount> result{};

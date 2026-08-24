@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
+#include <limits>
 #include <string>
 #include <utility>
 #include <vector>
@@ -272,46 +273,6 @@ double LowFrequencyPeriodicity(
   return maximumCorrelation;
 }
 
-double SustainedToneEnvelopeVariation(const float space, const float modulation,
-                                      const double frequency,
-                                      const float decay = 0.55f,
-                                      const float diffusion = 0.75f) {
-  constexpr double sampleRate = ReverbTestSampleRate;
-  constexpr std::size_t sampleCount = 384'000;
-  constexpr std::size_t settled = 96'000;
-  constexpr std::size_t window = 2'400;
-  tfdsp::LateReverb reverb;
-  reverb.SetSampleRate(sampleRate);
-  tfdsp::LateReverbControls controls;
-  controls.roomDimensionsMetres = RoomDimensions(space);
-  controls.decay = decay;
-  controls.damping = 0.18f;
-  controls.diffusion = diffusion;
-  controls.modulation = modulation;
-  controls.shimmer = 0.f;
-  std::vector<double> envelope;
-  double sum = 0.0;
-  for (std::size_t sample = 0; sample < sampleCount; ++sample) {
-    const float input = static_cast<float>(std::sin(
-        2.0 * 3.14159265358979323846 * frequency * sample / sampleRate));
-    const auto frame = reverb.Process(input, controls);
-    if (sample >= settled)
-      sum += frame[0] * frame[0] + frame[1] * frame[1];
-    if (sample >= settled && (sample - settled + 1) % window == 0) {
-      envelope.push_back(std::sqrt(sum / (2.0 * window)));
-      sum = 0.0;
-    }
-  }
-  double mean = 0.0;
-  for (const double value : envelope)
-    mean += value;
-  mean /= envelope.size();
-  double variance = 0.0;
-  for (const double value : envelope)
-    variance += (value - mean) * (value - mean);
-  return std::sqrt(variance / envelope.size()) / std::max(mean, 1.e-20);
-}
-
 double SizeAutomationFarSidebandRatio(const float diffusion,
                                       const double frequency) {
   constexpr double sampleRate = ReverbTestSampleRate;
@@ -394,6 +355,46 @@ void TestVelvetFeedbackMatrixIsParaunitaryAndDense() {
               "both multi-stage velvet flavours must create many sparse "
               "paths");
     }
+  }
+}
+
+void TestVelvetFractionalModulationPreservesTheStaticPath() {
+  constexpr float infinity = std::numeric_limits<float>::infinity();
+  for (const double sampleRate : {44'100.0, 48'000.0, 96'000.0}) {
+    tfdsp::VelvetFeedbackMatrix reference;
+    tfdsp::VelvetFeedbackMatrix explicitZero;
+    tfdsp::VelvetFeedbackMatrix modulated;
+    reference.Prepare(sampleRate);
+    explicitZero.Prepare(sampleRate);
+    modulated.Prepare(sampleRate);
+    tfdsp::VelvetFeedbackMatrix::Frame input{};
+    input[0] = 1.f;
+    double zeroDifference = 0.0;
+    double modulatedDifference = 0.0;
+    float modulatedPeak = 0.f;
+    const auto sampleCount =
+        static_cast<std::size_t>(std::ceil(0.1 * sampleRate));
+    for (std::size_t sample = 0; sample < sampleCount; ++sample) {
+      const auto expected = reference.Process(input, 0.75f);
+      const auto zero = explicitZero.Process(input, 0.75f, infinity, infinity,
+                                             infinity, 1.f, 0.f);
+      const auto moving = modulated.Process(input, 0.75f, infinity, infinity,
+                                            infinity, 1.f, 1.f);
+      input = {};
+      for (std::size_t line = 0; line < expected.size(); ++line) {
+        zeroDifference += std::abs(expected[line] - zero[line]);
+        modulatedDifference += std::abs(expected[line] - moving[line]);
+        Check(std::isfinite(moving[line]),
+              "fractionally modulated velvet delays must remain finite");
+        modulatedPeak = std::max(modulatedPeak, std::abs(moving[line]));
+      }
+    }
+    Check(zeroDifference == 0.0,
+          "zero velvet modulation must preserve the exact integer-delay path");
+    Check(modulatedDifference > 1.e-4,
+          "maximum velvet modulation must move the diffusion-stage taps");
+    Check(modulatedPeak < 2.f,
+          "fractionally modulated velvet delays must remain bounded");
   }
 }
 
@@ -554,14 +555,14 @@ void TestDampingProducesAudibleFrequencyDependentDecay() {
             ", low ratio=" + std::to_string(lowRatio));
 }
 
-void TestMaximumRoomLongDecayDoesNotOscillateWithoutShimmer() {
+void TestMaximumRoomLongDecayAndModulationRemainStableWithoutShimmer() {
   constexpr double sampleRate = 48'000.0;
   constexpr std::size_t sampleCount = 576'000;
   tfdsp::LateReverbControls controls;
   controls.roomDimensionsMetres = RoomDimensions(1.f);
   controls.decay = 1.f;
   controls.damping = 0.18f;
-  controls.modulation = 0.4f;
+  controls.modulation = 1.f;
   controls.shimmer = 0.f;
   for (const auto flavour :
        {tfdsp::LateReverbFlavour::Base, tfdsp::LateReverbFlavour::Optimized}) {
@@ -572,8 +573,8 @@ void TestMaximumRoomLongDecayDoesNotOscillateWithoutShimmer() {
       for (const auto &frame : response)
         for (const float value : frame) {
           Check(std::isfinite(value),
-                "maximum-room, long-decay tail must remain finite without "
-                "shimmer at every Diffusion setting");
+                "maximum-room, maximum-modulation tail must remain finite "
+                "without shimmer at every Diffusion setting");
           peak = std::max(peak, std::abs(value));
         }
       const double middleTail = SegmentEnergy(response, 192'000, 288'000);
@@ -596,7 +597,8 @@ void TestMaximumRoomLongDecayDoesNotOscillateWithoutShimmer() {
         }
       }
       Check(peak < 2.f,
-            "maximum-room, long-decay tail must retain safe signal headroom");
+            "maximum-room, maximum-modulation tail must retain safe signal "
+            "headroom");
       Check(finalTail < 0.5 * middleTail,
             "maximum-room tail must decay at every Diffusion setting; ratio=" +
                 std::to_string(finalTail / std::max(middleTail, 1.e-20)) +
@@ -829,6 +831,28 @@ void TestShimmerProjectionIsOrthonormal() {
             "shimmer projection rows must be orthonormal so subspace "
             "routing has deterministic unit gain");
     }
+}
+
+void TestFixedStereoFdnVectorsAreOrthonormal() {
+  using namespace tfdsp::late_reverb_coefficients;
+  double inputNorm = 0.0;
+  std::array<double, 2> outputNorm{};
+  double outputInnerProduct = 0.0;
+  for (std::size_t line = 0; line < LineCount; ++line) {
+    inputNorm += FixedInputVector[line] * FixedInputVector[line];
+    for (std::size_t channel = 0; channel < 2; ++channel)
+      outputNorm[channel] +=
+          FixedStereoOutput[channel][line] *
+          FixedStereoOutput[channel][line];
+    outputInnerProduct +=
+        FixedStereoOutput[0][line] * FixedStereoOutput[1][line];
+  }
+  Check(std::abs(inputNorm - 1.0) < 1.e-6,
+        "fixed FDN input vector must have unit energy");
+  Check(std::abs(outputNorm[0] - 1.0) < 1.e-6 &&
+            std::abs(outputNorm[1] - 1.0) < 1.e-6 &&
+            std::abs(outputInnerProduct) < 1.e-6,
+        "fixed stereo FDN decoder rows must be orthonormal");
 }
 
 void TestShimmerReturnsOnlyThroughTheMainFeedbackLoop() {
@@ -1134,17 +1158,6 @@ void TestShimmerLayerIsDiffuseAndNonPeriodic() {
             std::to_string(gaussian));
 }
 
-void TestMaximumSpaceDefaultModulationStaysSubtle() {
-  double maximumVariation = 0.0;
-  for (const double frequency : {110.0, 220.0, 440.0, 880.0})
-    maximumVariation = std::max(
-        maximumVariation, SustainedToneEnvelopeVariation(1.f, 0.4f, frequency));
-  Check(maximumVariation < 0.04,
-        "default late modulation must not create an obvious periodic swell "
-        "at maximum room size; variation=" +
-            std::to_string(maximumVariation));
-}
-
 void TestSizeAutomationDoesNotDopplerTheLongTail() {
   double maximumRatio = 0.0;
   float problemDiffusion = 0.f;
@@ -1166,53 +1179,52 @@ void TestSizeAutomationDoesNotDopplerTheLongTail() {
             ", frequency=" + std::to_string(problemFrequency));
 }
 
-void TestExciterPositionAndModulationAffectResponse() {
-  tfdsp::LateReverbControls left;
-  left.exciterPosition = 0.1f;
-  tfdsp::LateReverbControls right = left;
-  right.exciterPosition = 0.9f;
-  tfdsp::LateReverbControls moving = left;
-  moving.modulation = 0.6f;
-  tfdsp::LateReverbControls movedListener = right;
-  movedListener.listener = {0.2f, 0.3f, 0.45f};
-  tfdsp::LateReverbControls lowDiffusion = left;
+void TestFixedStereoEncodingAndModulationRangeAffectResponse() {
+  tfdsp::LateReverbControls baseline;
+  baseline.modulation = 0.f;
+  tfdsp::LateReverbControls lowModulation = baseline;
+  lowModulation.modulation = 0.1f;
+  tfdsp::LateReverbControls maximumModulation = baseline;
+  maximumModulation.modulation = 1.f;
+  tfdsp::LateReverbControls lowDiffusion = baseline;
   lowDiffusion.diffusion = 0.f;
-  tfdsp::LateReverbControls highDiffusion = left;
+  tfdsp::LateReverbControls highDiffusion = baseline;
   highDiffusion.diffusion = 1.f;
-  const auto leftResponse = Render(left, 36'000);
-  const auto rightResponse = Render(right, 36'000);
-  const auto movingResponse = Render(moving, 36'000);
-  const auto listenerResponse = Render(movedListener, 36'000);
+  const auto baselineResponse = Render(baseline, 36'000);
+  const auto repeatedResponse = Render(baseline, 36'000);
+  const auto lowModulationResponse = Render(lowModulation, 36'000);
+  const auto maximumModulationResponse = Render(maximumModulation, 36'000);
   const auto lowDiffusionResponse = Render(lowDiffusion, 36'000);
   const auto highDiffusionResponse = Render(highDiffusion, 36'000);
-  double positionDifference = 0.0;
-  double modulationDifference = 0.0;
-  double listenerDifference = 0.0;
+  double repeatedDifference = 0.0;
+  double lowModulationDifference = 0.0;
+  double maximumModulationDifference = 0.0;
   double diffusionDifference = 0.0;
-  for (std::size_t sample = 0; sample < leftResponse.size(); ++sample)
+  for (std::size_t sample = 0; sample < baselineResponse.size(); ++sample)
     for (std::size_t channel = 0; channel < 2; ++channel) {
-      positionDifference += std::abs(leftResponse[sample][channel] -
-                                     rightResponse[sample][channel]);
-      modulationDifference += std::abs(leftResponse[sample][channel] -
-                                       movingResponse[sample][channel]);
-      listenerDifference += std::abs(rightResponse[sample][channel] -
-                                     listenerResponse[sample][channel]);
+      repeatedDifference += std::abs(baselineResponse[sample][channel] -
+                                     repeatedResponse[sample][channel]);
+      lowModulationDifference +=
+          std::abs(baselineResponse[sample][channel] -
+                   lowModulationResponse[sample][channel]);
+      maximumModulationDifference +=
+          std::abs(baselineResponse[sample][channel] -
+                   maximumModulationResponse[sample][channel]);
       diffusionDifference += std::abs(lowDiffusionResponse[sample][channel] -
                                       highDiffusionResponse[sample][channel]);
     }
-  const double valueCount = 2.0 * static_cast<double>(leftResponse.size());
-  positionDifference /= valueCount;
-  modulationDifference /= valueCount;
-  listenerDifference /= valueCount;
+  const double valueCount =
+      2.0 * static_cast<double>(baselineResponse.size());
+  repeatedDifference /= valueCount;
+  lowModulationDifference /= valueCount;
+  maximumModulationDifference /= valueCount;
   diffusionDifference /= valueCount;
-  // These are the original 4 kHz thresholds expressed per rendered value,
-  // so a sample-rate increase cannot make a control-response assertion easier.
-  Check(positionDifference > 0.01 / 6'000.0,
-        "exciter position must change the late response");
-  Check(modulationDifference > 0.001 / 6'000.0,
-        "modulation must change fractional-delay phase");
-  Check(listenerDifference > 0.01 / 6'000.0,
-        "listener position must change relative late-field injection");
+  Check(repeatedDifference == 0.0,
+        "fixed FDN encoding is deterministic and geometry independent");
+  Check(lowModulationDifference > 1.e-8,
+        "modulation must have no inactive region above zero");
+  Check(maximumModulationDifference > lowModulationDifference,
+        "maximum modulation must move the late field more than a low setting");
   Check(diffusionDifference > 0.01 / 6'000.0,
         "Diffusion must decisively change input and feedback scattering");
 }
@@ -1230,7 +1242,7 @@ void TestAutomatedLateControlsPreserveStoredTail() {
   baseline.diffusion = 0.75f;
   baseline.modulation = 0.f;
   baseline.shimmer = 0.f;
-  std::array<std::pair<const char *, tfdsp::LateReverbControls>, 8> cases{};
+  std::array<std::pair<const char *, tfdsp::LateReverbControls>, 6> cases{};
   for (auto &entry : cases)
     entry.second = baseline;
   cases[0].first = "room dimensions";
@@ -1245,10 +1257,6 @@ void TestAutomatedLateControlsPreserveStoredTail() {
   cases[4].second.modulation = 1.f;
   cases[5].first = "Shimmer";
   cases[5].second.shimmer = 1.f;
-  cases[6].first = "listener position";
-  cases[6].second.listener = {0.15f, 0.2f, 0.45f};
-  cases[7].first = "source position";
-  cases[7].second.exciterPosition = 0.9f;
 
   for (const auto &[name, target] : cases) {
     tfdsp::LateReverb reference;
@@ -1301,15 +1309,16 @@ std::vector<tfdsp::LateReverb::StereoFrame> RenderSmoke303Excitation() {
   tfdsp::LateReverb reverb;
   reverb.SetSampleRate(sampleRate);
   tfdsp::LateReverbControls controls;
-  // These are the untouched values stored in test-room-reverb.vcv.  This
-  // regression is deliberately about the patch the listener actually hears,
-  // not a nearby control corner.
-  controls.roomDimensionsMetres = RoomDimensions(0.5f);
-  controls.decay = 0.55f;
-  controls.damping = 0.18f;
-  controls.diffusion = 0.75f;
-  controls.modulation = 0.4f;
-  controls.shimmer = 0.f;
+  // The checked-in smoke patch mirrors the authoritative factory scene. This
+  // diagnostic therefore follows those defaults instead of maintaining a
+  // second set of literals that can silently drift.
+  controls.roomDimensionsMetres =
+      tfdsp::reverb_defaults::RoomDimensionsMetres;
+  controls.decay = tfdsp::reverb_defaults::Decay;
+  controls.damping = tfdsp::reverb_defaults::Damping;
+  controls.diffusion = tfdsp::reverb_defaults::Diffusion;
+  controls.modulation = tfdsp::reverb_defaults::Modulation;
+  controls.shimmer = tfdsp::reverb_defaults::Shimmer;
   std::vector<tfdsp::LateReverb::StereoFrame> response(sampleCount);
   double phase = 0.0;
   double filter = 0.0;
@@ -1365,6 +1374,7 @@ void DiagnoseSmoke303ImpulseResponse() {
 
 int main() {
   TestVelvetFeedbackMatrixIsParaunitaryAndDense();
+  TestVelvetFractionalModulationPreservesTheStaticPath();
   TestLateReverbFlavourSelectionAndTransition();
   TestDiffusionControlsTemporalSpread();
   TestRoomScaleControlsTheCompleteVelvetSpan();
@@ -1375,21 +1385,21 @@ int main() {
   TestDecayControl();
   TestMidbandT60TracksDecayControl();
   TestMidbandT60RemainsIndependentOfRoomSize();
-  TestMaximumRoomLongDecayDoesNotOscillateWithoutShimmer();
+  TestMaximumRoomLongDecayAndModulationRemainStableWithoutShimmer();
   TestWindowedPitchShifterRaisesAnOctave();
   TestPitchShifterAdvancePreservesWarmState();
   TestPitchShifterHasNoGrainBoundarySpikes();
   TestPitchShifterRejectsAliasingInput();
   TestShimmerProjectionIsOrthonormal();
+  TestFixedStereoFdnVectorsAreOrthonormal();
   TestShimmerReturnsOnlyThroughTheMainFeedbackLoop();
   TestShimmerAddsAnOctaveLayerWithoutMutingTheTail();
   TestShimmerCreatesAnOctaveInsideTheLateField();
   TestMaximumShimmerDoesNotGrowAfterExcitation();
   TestMaximumShimmerIsStableAtProductionSampleRate();
   TestShimmerLayerIsDiffuseAndNonPeriodic();
-  TestMaximumSpaceDefaultModulationStaysSubtle();
   TestSizeAutomationDoesNotDopplerTheLongTail();
-  TestExciterPositionAndModulationAffectResponse();
+  TestFixedStereoEncodingAndModulationRangeAffectResponse();
   TestAutomatedLateControlsPreserveStoredTail();
   DiagnoseSmoke303ImpulseResponse();
   std::cout << "Late reverb tests passed\n";

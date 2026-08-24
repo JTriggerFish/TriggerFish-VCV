@@ -27,9 +27,10 @@ belong on the audio thread. Features that can emit additional notes or control
 events must establish finite preparation bounds before a program can be
 published.
 
-The persisted language is currently version 5. An incompatible grammar or
-semantic change requires an explicit version/migration decision; it must not
-silently accumulate parallel legacy parsers.
+The persisted language remains version 1 throughout beta. Beta grammar and
+semantics may change without migration support. Once the language leaves beta,
+an incompatible change requires an explicit version and migration decision; it
+must not silently accumulate parallel compatibility parsers.
 
 ## MIDI and live performance
 
@@ -83,9 +84,9 @@ A source-first shorthand such as `midi.in |> arp arp1` may also be explored.
 An ordinary sequence will not become implicitly callable through an ambiguous
 form such as `midi.in |> arp1`.
 
-The `input` and `interpret` lanes are intended to cycle independently like
-Velocity or Duration. Explicit parenthesized voicings remain exact and bypass
-interpretation by default.
+The `input` and `interpret` lanes are intended to follow the Notes pass like
+Velocity or Duration and restart at the same boundary. Explicit parenthesized
+voicings remain exact and bypass interpretation by default.
 
 MIDI input will be represented as a timestamped performance state containing
 held notes, velocities, the most recent note, sustain/pedal state, and relevant
@@ -145,7 +146,7 @@ bounded pattern model rather than overload pitch tokens ambiguously.
 The current module has two monophonic sequenced CV outputs. Planned extensions
 include:
 
-- physical CV outputs beyond CV1 and CV2;
+- physical CV outputs beyond CV1, CV2, and CV3;
 - an explicit output safety clamp rather than an undocumented language-level
   voltage ceiling;
 - continuous interpolation on `...`-aligned CV lanes;

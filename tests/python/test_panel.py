@@ -23,11 +23,14 @@ ALIGNMENT_SPEC.loader.exec_module(ALIGNMENT_MODULE)
 COMPONENTS = PREVIEW_MODULE.COMPONENTS
 CONTROL_PATTERN = PREVIEW_MODULE.CONTROL_PATTERN
 MODULE_NAMES = PREVIEW_MODULE.MODULE_NAMES
+MODULE_PANEL_FILES = PREVIEW_MODULE.MODULE_PANEL_FILES
 control_pattern = PREVIEW_MODULE.control_pattern
 control_coordinates = PREVIEW_MODULE.control_coordinates
+centered_component_specs = PREVIEW_MODULE.centered_component_specs
 light_pattern = PREVIEW_MODULE.light_pattern
 PANEL_GRAPHICS = PREVIEW_MODULE.PANEL_GRAPHICS
 render_preview = PREVIEW_MODULE.render_preview
+screw_positions = PREVIEW_MODULE.screw_positions
 switch_defaults = PREVIEW_MODULE.switch_defaults
 svg_dimensions = PREVIEW_MODULE.svg_dimensions
 aligned_source = ALIGNMENT_MODULE.aligned_source
@@ -59,6 +62,10 @@ def test_prog_sequencer_has_three_valid_3u_widths_with_outlined_runtime_text():
     assert "ParseArticulation(" not in compiler_source
     assert "CV1_OUTPUT" in module_source
     assert "CV2_OUTPUT" in module_source
+    assert "CV3_OUTPUT" in module_source
+    assert "static constexpr float MinimumHeight = 16.f" in module_source
+    assert "nvgTextBoxBounds" in module_source
+    assert "status->requiredHeight" in module_source
     assert "stateTransferOrder" in runtime_source
     assert "activationCheckpointBeat" in module_source
     assert "activationNextStepBeat" in module_source
@@ -67,6 +74,20 @@ def test_prog_sequencer_has_three_valid_3u_widths_with_outlined_runtime_text():
     assert "SchedulingLookaheadBeats" in module_source
     assert "guard++ < 64" not in module_source
     assert "delete pendingProgram.exchange(nullptr" in module_source
+    assert screw_positions(module_source, 450.0, 380.0) == ()
+    assert centered_component_specs("TfProgSequencer", module_source, 450.0) == (
+        ("PJ301MPort", 409.0, 65.0),
+        ("PJ301MPort", 437.0, 65.0),
+        ("PJ301MPort", 423.0, 121.0),
+        ("PJ301MPort", 409.0, 188.0),
+        ("PJ301MPort", 437.0, 188.0),
+        ("PJ301MPort", 409.0, 244.0),
+        ("PJ301MPort", 437.0, 244.0),
+        ("PJ301MPort", 409.0, 300.0),
+        ("PJ301MPort", 437.0, 300.0),
+        ("PJ301MPort", 409.0, 356.0),
+        ("PJ301MPort", 437.0, 356.0),
+    )
     for suffix, width in (("", "330"), ("-30", "450"), ("-38", "570")):
         source = ET.parse(ROOT / "res-src" / f"TfProgSequencer{suffix}.svg").getroot()
         runtime = ET.parse(ROOT / "res" / f"TfProgSequencer{suffix}.svg").getroot()
@@ -78,8 +99,40 @@ def test_prog_sequencer_has_three_valid_3u_widths_with_outlined_runtime_text():
         assert not runtime.findall(f".//{SVG}text")
         labels = {node.text: node for node in source.findall(f".//{SVG}text")}
         assert labels["TRIGGERFISH"].attrib["y"] == labels["PROG SEQUENCER"].attrib["y"]
-        assert labels["CV1"].attrib["y"] == "328"
-        assert labels["CV2"].attrib["y"] == "356"
+        center = int(width) - 27
+        left, right = center - 14, center + 14
+        assert (labels["CLOCK"].attrib["x"], labels["RESET"].attrib["x"]) == (
+            str(left),
+            str(right),
+        )
+        assert labels["CLOCK"].attrib["y"] == labels["RESET"].attrib["y"] == "49"
+        assert labels["RUN"].attrib["x"] == str(center)
+        assert labels["RUN"].attrib["y"] == "105"
+        for first, second, y in (
+            ("V/OCT", "GATE", "172"),
+            ("TRIG", "VEL", "228"),
+            ("ACC", "CV1", "284"),
+            ("CV2", "CV3", "340"),
+        ):
+            assert (labels[first].attrib["x"], labels[second].attrib["x"]) == (
+                str(left),
+                str(right),
+            )
+            assert labels[first].attrib["y"] == labels[second].attrib["y"] == y
+
+
+def test_preview_screws_follow_each_module_widget_specification():
+    for module_name in MODULE_NAMES:
+        widget_source = (ROOT / "src" / f"{module_name}.cpp").read_text(
+            encoding="utf-8"
+        )
+        panel_name = MODULE_PANEL_FILES.get(module_name, f"{module_name}.svg")
+        panel = ROOT / "res-src" / panel_name
+        if not panel.is_file():
+            panel = ROOT / "res" / panel_name
+        width, height = svg_dimensions(panel)
+        positions = screw_positions(widget_source, width, height)
+        assert len(positions) == (0 if module_name == "TfProgSequencer" else 4)
 
 
 def test_room_reverb_tooltips_use_physical_units():
@@ -95,11 +148,11 @@ def test_room_reverb_tooltips_use_physical_units():
     assert "configParam<HighCutQuantity>" in source
     assert re.search(r'"Wet high cut",\s*" Hz"', source)
     assert "struct HeightQuantity" not in source
-    assert "TfReverb::LEGACY_HEIGHT" not in source
-    assert '"Legacy room height (unused)"' in source
+    assert "RESERVED_HEIGHT" not in source
+    assert "reverb_defaults::Height" not in source
     assert "configParam<AspectQuantity>" in source
     assert "reverb_defaults::HighCut" in source
-    assert "inline constexpr float HighCut = 0.9039693650f" in defaults
+    assert "inline constexpr float HighCut = MediumHall.highCut;" in defaults
 
 
 def test_room_reverb_uses_a_two_dimensional_room_plan():
@@ -113,15 +166,40 @@ def test_room_reverb_uses_a_two_dimensional_room_plan():
     assert "createWidget<TfRoomPlanWidget>" in source
     assert "move reverb source" in source
     assert "move reverb listener" in source
-    assert "getPolyVoltage(source)" in source
+    assert "SourcePlanDefaults" in source
+    assert "sourceXParamId(source)" in source
+    assert "sourceYParamId(source)" in source
+    assert "createWidget<TfRoomPlanWidget>(Vec(17, 27))" in source
+    assert "roomPlan->box.size = Vec(206, 92)" in source
+    assert panel.attrib["width"] == "240"
+    assert "X_POSITION_INPUT" not in source
+    assert "Y_POSITION_INPUT" not in source
+    assert "Z_POSITION_INPUT" not in source
     draw = source.split("void draw(const DrawArgs &args) override", 1)[1].split(
         "void onButton", 1
     )[0]
     assert "module->inputs" not in draw
-    assert "roomPlanSourcePosition" in draw
+    assert "roomPlanSourceCount" in draw
+    assert "sourceMarkerPosition" in draw
+    assert "listenerMarkerPosition" in draw
+    assert "roomPlanListenerPosition" in source
+    assert "sourceAutoXParamId" in source
+    assert "sourceXAutomatic(source)" in source
+    assert source.index("SOURCE_8_Y") < source.index("SOURCE_1_AUTO_X")
+    drag = source.split("void onDragMove", 1)[1].split("void onDoubleClick", 1)[0]
+    reset = source.split("void onDoubleClick", 1)[1].split("void onDragEnd", 1)[0]
+    assert "sourceAutoXParamId(activeSource)" in drag and "setValue(0.f)" in drag
+    assert "sourceAutoXParamId(activeSource)" in reset and "setValue(1.f)" in reset
+    assert "oldAutomaticX" in source and "history::ParamChange" in source
+    assert '"sourceXPlacementVersion"' in source
+    assert "Module::fromJson(root)" in source
+    assert "std::abs(x - SourcePlanDefaults[source][0])" in source
+    assert "including when that coordinate is exactly 0.5" in (
+        ROOT / "docs" / "TfReverb-technical-report.md"
+    ).read_text(encoding="utf-8")
     assert "reverb_defaults::Listener[0]" in source
     assert "reverb_defaults::Listener[1]" in source
-    assert "Listener{{0.5f, 0.682f, 0.45f}}" in defaults
+    assert "{{0.50f, 0.682f, 0.45f}}" in defaults
     control_labels = {
         label.attrib["data-control"]
         for label in panel.findall(f".//{SVG}text")
@@ -135,9 +213,120 @@ def test_room_reverb_uses_a_two_dimensional_room_plan():
     assert width_label is not None and width_label.text == "STEREO WIDTH"
     shimmer_label = panel.find(f".//{SVG}text[@data-control='SHIMMER']")
     assert shimmer_label is not None and shimmer_label.text == "SHIMMER"
+    assert panel.find(f".//{SVG}text[@data-control='LUSH_INPUT_DIFFUSION']") is None
+    assert "LUSH_INPUT_DIFFUSION" not in source
     assert panel.find(f".//{SVG}text[@data-control='HEIGHT']") is None
     assert '"Stereo width", "%"' in source
     assert '"Octave shimmer", "%"' in source
+
+    preview_markup = PREVIEW_MODULE.module_preview_markup("TfReverb")
+    assert 'id="reverb-room-plan-preview"' in preview_markup
+    assert 'data-preview-source-count="4"' in preview_markup
+    assert preview_markup.count('r="5.2" fill="#ffb032"') == 4
+    assert 'fill="#36c8eb"' in preview_markup
+    assert "SOURCES" in preview_markup
+    assert "LISTENER" in preview_markup
+
+    preview = ET.fromstring(
+        f'<svg xmlns="http://www.w3.org/2000/svg">{preview_markup}</svg>'
+    )
+    source_markers = preview.findall(f".//{SVG}circle[@fill='#ffb032']")
+    listener_marker = preview.find(f".//{SVG}circle[@fill='#36c8eb']")
+    assert listener_marker is not None
+    assert float(listener_marker.attrib["cy"]) > max(
+        float(marker.attrib["cy"]) for marker in source_markers
+    )
+    source_x = [float(marker.attrib["cx"]) for marker in source_markers]
+    assert source_x == sorted(source_x)
+    assert source_x[0] < float(listener_marker.attrib["cx"]) < source_x[-1]
+
+    title_lines = [
+        "".join(label.itertext())
+        for label in panel.findall(f".//{SVG}text")
+        if "ROOM REVERB" in "".join(label.itertext())
+    ]
+    assert title_lines == ["TRIGGERFISH ROOM REVERB"]
+    title = next(
+        label
+        for label in panel.findall(f".//{SVG}text")
+        if "ROOM REVERB" in "".join(label.itertext())
+    )
+    title_parts = title.findall(f"{SVG}tspan")
+    assert [part.text for part in title_parts] == ["TRIGGERFISH", " ROOM REVERB"]
+    assert title_parts[0].attrib.get("font-weight") == "bold"
+    assert title_parts[1].attrib.get("font-weight") is None
+
+    controls = list(control_pattern("TfReverb").finditer(source))
+    by_id = {control.group("id"): control for control in controls}
+    assert [
+        control_coordinates(by_id[name], source)
+        for name in ("SPACE", "ASPECT", "PRE_DELAY", "DECAY", "DAMPING")
+    ] == [(6.0, 130.0), (54.0, 130.0), (102.0, 130.0), (150.0, 130.0), (198.0, 130.0)]
+    assert [
+        control_coordinates(by_id[name], source)
+        for name in ("DIFFUSION", "MODULATION", "SHIMMER", "WIDTH")
+    ] == [(6.0, 184.0), (54.0, 184.0), (102.0, 184.0), (150.0, 184.0)]
+    assert control_coordinates(by_id["BALANCE"], source) == (198.0, 184.0)
+    assert [
+        control_coordinates(by_id[name], source)
+        for name in ("LOW_CUT", "HIGH_CUT", "MIX", "LEVEL")
+    ] == [(33.826, 242.0), (81.826, 242.0), (129.826, 242.0), (177.826, 242.0)]
+    knob_labels = [
+        label
+        for label in panel.findall(f".//{SVG}text")
+        if label.attrib.get("data-control") in by_id
+        and not label.attrib["data-control"].endswith(("INPUT", "OUTPUT"))
+    ]
+    assert sorted(
+        sum(1 for label in knob_labels if label.attrib["y"] == row)
+        for row in ("127", "181", "239")
+    ) == [4, 5, 5]
+    assert {
+        control_coordinates(by_id[name], source)[1]
+        for name in (
+            "AUDIO_INPUT",
+            "LISTENER_X_CV_INPUT",
+            "DECAY_CV_INPUT",
+            "DAMPING_CV_INPUT",
+            "LEFT_OUTPUT",
+        )
+    } == {292.0}
+    assert {
+        control_coordinates(by_id[name], source)[1]
+        for name in (
+            "PRE_DELAY_CV_INPUT",
+            "LISTENER_Y_CV_INPUT",
+            "BALANCE_CV_INPUT",
+            "MIX_CV_INPUT",
+            "RIGHT_OUTPUT",
+        )
+    } == {339.0}
+    assert "SPACE_CV_INPUT" not in source
+    assert "ProgressiveSourceX(source, sourceCount)" in source
+    assert "Margin + normalized.y *" in source
+    assert "1.f - (screen.y - Margin)" not in source
+
+
+def test_room_reverb_context_menu_exposes_complete_acoustic_presets():
+    source = (ROOT / "src" / "TfReverb.cpp").read_text(encoding="utf-8")
+    defaults = (ROOT / "src" / "tfdsp" / "reverb_defaults.hpp").read_text(
+        encoding="utf-8"
+    )
+
+    for label in ("Medium Hall (default)", "Small Room", "Superlush"):
+        assert f'"{label}"' in source
+    assert "Centred dry" not in source
+    assert 'createMenuLabel("Direct sound")' not in source
+    for preset in ("MediumHall", "SmallRoom", "Superlush"):
+        assert f"ReverbPreset {preset}" in defaults
+    apply_body = source.split("void applyPreset", 1)[1].split("private:", 1)[0]
+    assert "setParameter(LOW_CUT" in apply_body
+    assert "setParameter(HIGH_CUT" in apply_body
+    assert "setParameter(LEVEL" not in apply_body
+    assert "source < SourcePlanDefaults.size()" in apply_body
+    assert "setParameter(sourceXParamId(source), SourcePlanDefaults" in apply_body
+    assert "setParameter(sourceYParamId(source), preset.source[1])" in apply_body
+    assert "setParameter(sourceAutoXParamId(source), 1.f)" in apply_body
 
 
 def test_303_oscillator_runtime_panel_outlines_all_editable_text():
@@ -536,6 +725,11 @@ def test_documentation_includes_every_rendered_module_preview_and_technical_repo
     for module_name in documented_modules:
         assert (ROOT / "doc" / f"{module_name}.png").is_file()
         assert f'src="doc/{module_name}.png"' in readme
+    assert '<a href="#prog-sequencer"><img src="doc/TfProgSequencer.png"' in readme
+    assert (
+        "[Complete Prog Sequencer manual and language reference]"
+        "(docs/TfProgSequencer-reference.md)" in readme
+    )
     for report in (
         "Tf303Oscillator-technical-report.md",
         "Tf303VoiceCore-technical-report.md",
@@ -581,18 +775,25 @@ def test_scene_pack_panel_preview_covers_every_control_and_runtime_text_is_outli
     controls = list(control_pattern("TfScenePack4").finditer(widget_source))
     by_id = {control.group("id"): control for control in controls}
 
-    assert len(controls) == 24
-    assert len(by_id) == 24
-    assert control_coordinates(by_id["SOURCE_1_INPUT"], widget_source) == (18.0, 49.0)
-    assert control_coordinates(by_id["Z_4"], widget_source) == (161.0, 162.0)
-    assert control_coordinates(by_id["BUS_AUDIO_INPUT"], widget_source) == (
-        18.0,
-        223.0,
+    assert len(controls) == 5
+    assert len(by_id) == 5
+    assert control_coordinates(by_id["SOURCE_1_INPUT"], widget_source) == (
+        13.15,
+        87.0,
     )
-    assert control_coordinates(by_id["Z_OUTPUT"], widget_source) == (159.0, 306.0)
+    assert control_coordinates(by_id["SOURCE_4_INPUT"], widget_source) == (
+        53.15,
+        149.0,
+    )
+    assert control_coordinates(by_id["AUDIO_OUTPUT"], widget_source) == (
+        33.15,
+        287.0,
+    )
+    assert "std::clamp(input.getChannels(), 0, MaximumSources)" in widget_source
 
     source_panel = ET.parse(ROOT / "res-src" / "TfScenePack4.svg").getroot()
     runtime_panel = ET.parse(ROOT / "res" / "TfScenePack4.svg").getroot()
+    assert source_panel.attrib["width"] == runtime_panel.attrib["width"] == "90"
     assert source_panel.findall(f".//{SVG}text")
     assert not runtime_panel.findall(f".//{SVG}text")
 

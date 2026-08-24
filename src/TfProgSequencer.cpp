@@ -32,11 +32,10 @@ NVGcolor editorColor(float intensity) noexcept {
 }
 
 constexpr const char *DefaultSource = R"(riff = sequence {
-  cycle 8
+  subdiv 8
   tonic C@4
   scale minor
-  notes 1 x2 3 _ [>4 ^5] 6*3 ~ 8
-  duration 1
+  notes 1 x2 3{quiet} _ [>4 ^5{stacc}] 6*3 ~ 8{ten}
   offset -6ms 0 +6ms |> rate 1/2
   cv1 0 5 0 |> interp smooth
 }
@@ -44,7 +43,7 @@ constexpr const char *DefaultSource = R"(riff = sequence {
 play riff
 )";
 
-constexpr int LanguageVersion = 5;
+constexpr int LanguageVersion = 1;
 
 std::uint64_t packSpan(const tfseq::SourceSpan &span) noexcept {
   if (!span.valid())
@@ -80,6 +79,7 @@ struct TfProgSequencer : Module {
     ACCENT_OUTPUT,
     CV1_OUTPUT,
     CV2_OUTPUT,
+    CV3_OUTPUT,
     NUM_OUTPUTS
   };
   enum LightIds { RUN_LIGHT, NUM_LIGHTS };
@@ -144,7 +144,7 @@ struct TfProgSequencer : Module {
     bool initialized = false;
     tfseq::CvInterpolation interpolation = tfseq::CvInterpolation::Step;
   };
-  std::array<CvOutputState, 2> cvOutputs{};
+  std::array<CvOutputState, tfseq::CvLaneCount> cvOutputs{};
   std::size_t outputVoiceCount = 1;
   std::size_t scheduledCount = 0;
   std::uint64_t nextScheduleOrder = 0;
@@ -174,6 +174,7 @@ struct TfProgSequencer : Module {
     configOutput(ACCENT_OUTPUT, "Polyphonic accent");
     configOutput(CV1_OUTPUT, "CV 1");
     configOutput(CV2_OUTPUT, "CV 2");
+    configOutput(CV3_OUTPUT, "CV 3");
     configLight(RUN_LIGHT, "Running");
     publishSource(source);
   }
@@ -798,10 +799,12 @@ struct TfProgSequencer : Module {
       outputs[ACCENT_OUTPUT].setVoltage(voice.gateHigh ? voice.accent : 0.f,
                                         static_cast<int>(index));
     }
-    outputs[CV1_OUTPUT].setChannels(1);
-    outputs[CV2_OUTPUT].setChannels(1);
-    outputs[CV1_OUTPUT].setVoltage(cvOutputs[0].value);
-    outputs[CV2_OUTPUT].setVoltage(cvOutputs[1].value);
+    constexpr std::array<int, tfseq::CvLaneCount> cvOutputIds{
+        CV1_OUTPUT, CV2_OUTPUT, CV3_OUTPUT};
+    for (std::size_t index = 0; index < cvOutputIds.size(); ++index) {
+      outputs[cvOutputIds[index]].setChannels(1);
+      outputs[cvOutputIds[index]].setVoltage(cvOutputs[index].value);
+    }
     lights[RUN_LIGHT].setBrightness(anyGateHigh ? 1.f : 0.f);
     visibleBeat.store(clockSeen ? phase - programStartBeat : 0.0,
                       std::memory_order_relaxed);
@@ -1615,7 +1618,34 @@ struct TfSequenceEditor : app::LedDisplayTextField {
 };
 
 struct TfSequenceStatus : Widget {
+  static constexpr float MinimumHeight = 16.f;
+  static constexpr float MaximumHeight = 120.f;
   TfProgSequencer *module = nullptr;
+  float requiredHeight = MinimumHeight;
+
+  std::string statusText() const {
+    std::string status = module ? module->compileMessage : "PROG SEQUENCER";
+    if (!module)
+      return status;
+    const auto transport =
+        module->transportStatus.load(std::memory_order_relaxed);
+    const char *name =
+        transport == TfProgSequencer::TransportStatus::Playing   ? "PLAY"
+        : transport == TfProgSequencer::TransportStatus::Stopped ? "STOP"
+                                                                 : "WAIT";
+    if (status.rfind("READY", 0) == 0)
+      status = "READY";
+    else if (status.rfind("QUEUED", 0) == 0)
+      status = module->pendingProgram.load(std::memory_order_acquire)
+                   ? "QUEUED"
+                   : "ACTIVE";
+    if (module->workspaceOverflow.load(std::memory_order_relaxed))
+      status = "INTERNAL ERROR - prepared event workspace exhausted";
+    return std::string(name) + " " +
+           rack::string::f(
+               "%.2f", module->visibleBeat.load(std::memory_order_relaxed)) +
+           "  " + status;
+  }
 
   void drawLayer(const DrawArgs &args, int layer) override {
     if (layer == 1) {
@@ -1632,25 +1662,13 @@ struct TfSequenceStatus : Widget {
         nvgTextAlign(args.vg, NVG_ALIGN_LEFT | NVG_ALIGN_TOP);
         nvgTextLineHeight(args.vg, 1.05f);
         nvgFillColor(args.vg, editorColor(EditorIntensity::Status));
-        std::string status = module ? module->compileMessage : "PROG SEQUENCER";
-        if (module) {
-          const auto transport =
-              module->transportStatus.load(std::memory_order_relaxed);
-          const char *name =
-              transport == TfProgSequencer::TransportStatus::Playing   ? "PLAY"
-              : transport == TfProgSequencer::TransportStatus::Stopped ? "STOP"
-                                                                       : "WAIT";
-          if (status.rfind("QUEUED", 0) == 0 &&
-              module->pendingProgram.load(std::memory_order_acquire) == nullptr)
-            status = "ACTIVE";
-          if (module->workspaceOverflow.load(std::memory_order_relaxed))
-            status = "INTERNAL ERROR - prepared event workspace exhausted";
-          status =
-              std::string(name) + " " +
-              rack::string::f("%.2f",
-                        module->visibleBeat.load(std::memory_order_relaxed)) +
-              "  " + status;
-        }
+        const std::string status = statusText();
+        float bounds[4]{};
+        nvgTextBoxBounds(args.vg, 4.f, 3.f, box.size.x - 8.f, status.c_str(),
+                         nullptr, bounds);
+        requiredHeight = std::clamp(
+            std::ceil(std::max(10.f, bounds[3] - bounds[1])) + 6.f,
+            MinimumHeight, MaximumHeight);
         nvgTextBox(args.vg, 4.f, 3.f, box.size.x - 8.f, status.c_str(),
                    nullptr);
       }
@@ -1661,10 +1679,13 @@ struct TfSequenceStatus : Widget {
 };
 
 struct TfProgSequencerWidget : ModuleWidget {
+  static constexpr float EditorTop = 23.f;
+  static constexpr float StatusBottom = 375.f;
+  static constexpr float DisplayGap = 2.f;
   TfSequenceEditor *editor = nullptr;
   TfSequenceStatus *status = nullptr;
   std::array<PortWidget *, 3> inputs{};
-  std::array<PortWidget *, 7> outputs{};
+  std::array<PortWidget *, 8> outputs{};
   Widget *runLight = nullptr;
   int displayedWidthHp = 22;
 
@@ -1673,42 +1694,47 @@ struct TfProgSequencerWidget : ModuleWidget {
     setPanel(APP->window->loadSvg(
         asset::plugin(pluginInstance, "res/TfProgSequencer.svg")));
 
-    editor = createWidget<TfSequenceEditor>(Vec(5, 23));
-    editor->box.size = Vec(242, 292);
+    editor = createWidget<TfSequenceEditor>(Vec(5, EditorTop));
+    editor->box.size =
+        Vec(242, StatusBottom - TfSequenceStatus::MinimumHeight - DisplayGap -
+                     EditorTop);
     editor->module = module;
     addChild(editor);
 
-    status = createWidget<TfSequenceStatus>(Vec(5, 317));
-    status->box.size = Vec(242, 58);
+    status = createWidget<TfSequenceStatus>(
+        Vec(5, StatusBottom - TfSequenceStatus::MinimumHeight));
+    status->box.size = Vec(242, TfSequenceStatus::MinimumHeight);
     status->module = module;
     addChild(status);
 
-    inputs[0] = createInputCentered<PJ301MPort>(Vec(290, 68), module,
+    inputs[0] = createInputCentered<PJ301MPort>(Vec(289, 65), module,
                                                 TfProgSequencer::CLOCK_INPUT);
-    inputs[1] = createInputCentered<PJ301MPort>(Vec(290, 116), module,
+    inputs[1] = createInputCentered<PJ301MPort>(Vec(317, 65), module,
                                                 TfProgSequencer::RESET_INPUT);
-    inputs[2] = createInputCentered<PJ301MPort>(Vec(290, 164), module,
+    inputs[2] = createInputCentered<PJ301MPort>(Vec(303, 121), module,
                                                 TfProgSequencer::RUN_INPUT);
     for (auto *input : inputs)
       addInput(input);
     outputs[0] = createOutputCentered<PJ301MPort>(
-        Vec(290, 196), module, TfProgSequencer::PITCH_OUTPUT);
-    outputs[1] = createOutputCentered<PJ301MPort>(Vec(290, 224), module,
+        Vec(289, 188), module, TfProgSequencer::PITCH_OUTPUT);
+    outputs[1] = createOutputCentered<PJ301MPort>(Vec(317, 188), module,
                                                   TfProgSequencer::GATE_OUTPUT);
     outputs[2] = createOutputCentered<PJ301MPort>(
-        Vec(290, 252), module, TfProgSequencer::TRIGGER_OUTPUT);
+        Vec(289, 244), module, TfProgSequencer::TRIGGER_OUTPUT);
     outputs[3] = createOutputCentered<PJ301MPort>(
-        Vec(290, 280), module, TfProgSequencer::VELOCITY_OUTPUT);
+        Vec(317, 244), module, TfProgSequencer::VELOCITY_OUTPUT);
     outputs[4] = createOutputCentered<PJ301MPort>(
-        Vec(290, 308), module, TfProgSequencer::ACCENT_OUTPUT);
+        Vec(289, 300), module, TfProgSequencer::ACCENT_OUTPUT);
     outputs[5] = createOutputCentered<PJ301MPort>(
-        Vec(290, 336), module, TfProgSequencer::CV1_OUTPUT);
+        Vec(317, 300), module, TfProgSequencer::CV1_OUTPUT);
     outputs[6] = createOutputCentered<PJ301MPort>(
-        Vec(290, 364), module, TfProgSequencer::CV2_OUTPUT);
+        Vec(289, 356), module, TfProgSequencer::CV2_OUTPUT);
+    outputs[7] = createOutputCentered<PJ301MPort>(
+        Vec(317, 356), module, TfProgSequencer::CV3_OUTPUT);
     for (auto *output : outputs)
       addOutput(output);
     runLight = createLightCentered<SmallLight<GreenLight>>(
-        Vec(267, 181), module, TfProgSequencer::RUN_LIGHT);
+        Vec(284, 121), module, TfProgSequencer::RUN_LIGHT);
     addChild(runLight);
     displayedWidthHp = 0;
     applyPanelWidth(
@@ -1727,25 +1753,40 @@ struct TfProgSequencerWidget : ModuleWidget {
         APP->window->loadSvg(asset::plugin(pluginInstance, "res/" + filename)));
     displayedWidthHp = widthHp;
     const float right = box.size.x - 27.f;
+    const float leftColumn = right - 14.f;
+    const float rightColumn = right + 14.f;
     editor->box.size.x = box.size.x - 65.f;
     status->box.size.x = box.size.x - 65.f;
-    const float inputY[] = {68.f, 116.f, 164.f};
+    const Vec inputPositions[] = {Vec(leftColumn, 65.f),
+                                  Vec(rightColumn, 65.f), Vec(right, 121.f)};
     for (std::size_t index = 0; index < inputs.size(); ++index)
       inputs[index]->box.pos =
-          Vec(right, inputY[index]).minus(inputs[index]->box.size.div(2));
-    const float outputY[] = {196.f, 224.f, 252.f, 280.f,
-                             308.f, 336.f, 364.f};
+          inputPositions[index].minus(inputs[index]->box.size.div(2));
+    const Vec outputPositions[] = {
+        Vec(leftColumn, 188.f),  Vec(rightColumn, 188.f),
+        Vec(leftColumn, 244.f),  Vec(rightColumn, 244.f),
+        Vec(leftColumn, 300.f),  Vec(rightColumn, 300.f),
+        Vec(leftColumn, 356.f),  Vec(rightColumn, 356.f)};
     for (std::size_t index = 0; index < outputs.size(); ++index)
       outputs[index]->box.pos =
-          Vec(right, outputY[index]).minus(outputs[index]->box.size.div(2));
+          outputPositions[index].minus(outputs[index]->box.size.div(2));
     runLight->box.pos =
-        Vec(right - 23.f, 181.f).minus(runLight->box.size.div(2));
+        Vec(right - 19.f, 121.f).minus(runLight->box.size.div(2));
     if (parent && APP && APP->scene && APP->scene->rack)
       APP->scene->rack->setModulePosNearest(this, previousPosition);
   }
 
   void step() override {
     ModuleWidget::step();
+    const float statusHeight = status ? status->requiredHeight
+                                      : TfSequenceStatus::MinimumHeight;
+    if (status) {
+      status->box.pos.y = StatusBottom - statusHeight;
+      status->box.size.y = statusHeight;
+    }
+    if (editor)
+      editor->box.size.y =
+          StatusBottom - statusHeight - DisplayGap - EditorTop;
     auto *prog = getModule<TfProgSequencer>();
     if (prog)
       applyPanelWidth(prog->panelWidthHp.load(std::memory_order_relaxed));

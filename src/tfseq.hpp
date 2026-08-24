@@ -18,6 +18,7 @@ struct Document;
 }
 
 constexpr std::size_t MaximumPolyphony = 16;
+constexpr std::size_t CvLaneCount = 3;
 // Millisecond-delayed events are prepared conservatively for clocks up to
 // 1 kHz. Faster clocking remains playable but can report workspace exhaustion
 // rather than allocating from the audio thread.
@@ -43,7 +44,6 @@ enum class CursorLane : std::size_t {
   Notes,
   Octave,
   Velocity,
-  Accent,
   Duration,
   Gate,
   Slide,
@@ -51,12 +51,29 @@ enum class CursorLane : std::size_t {
   Offset,
   Cv1,
   Cv2,
+  Cv3,
   Count
 };
+
+constexpr CursorLane CvCursorLane(const std::size_t index) noexcept {
+  return static_cast<CursorLane>(static_cast<std::size_t>(CursorLane::Cv1) +
+                                 index);
+}
+
+constexpr bool IsCvCursorLane(const CursorLane lane) noexcept {
+  return lane >= CursorLane::Cv1 && lane <= CursorLane::Cv3;
+}
+
+constexpr std::size_t CvCursorIndex(const CursorLane lane) noexcept {
+  return static_cast<std::size_t>(lane) -
+         static_cast<std::size_t>(CursorLane::Cv1);
+}
 
 enum class EventKind { Attack, Slide, Tie, Rest };
 
 enum class ArticulationKind { Attack, Slide, Tie, Rest };
+
+enum class GateArticulation { Normal, Staccato, Tenuto };
 
 struct PitchValue {
   bool absolute = false;
@@ -117,6 +134,8 @@ struct ArticulationAtom {
   double spanFraction = 1.0;
   std::size_t cellOffset = 0;
   bool ghost = false;
+  bool quiet = false;
+  GateArticulation gateArticulation = GateArticulation::Normal;
   bool hasVelocity = false;
   float velocity = 0.f;
   bool hasAccent = false;
@@ -202,23 +221,22 @@ struct Sequence {
   std::uint64_t stableId = 0;
   std::string name;
   SourceSpan nameSpan;
-  double cycleBeats = 8.0;
+  int subdivision = 4;
   float glideBeats = 0.25f;
   Scale scale;
   std::vector<PitchItem> notes;
   std::vector<ScalarItem> octave;
   std::vector<ArticulationStep> articulation;
   std::vector<ScalarItem> velocity;
-  std::vector<ScalarItem> accent;
   std::vector<ScalarItem> duration;
   std::vector<ScalarItem> gate;
   std::vector<ScalarItem> slide;
   std::vector<ScalarItem> ratchet;
   std::vector<ScalarItem> offset;
-  std::array<std::vector<ScalarItem>, 2> cv;
-  std::array<CvInterpolation, 2> cvInterpolation{CvInterpolation::Step,
-                                                 CvInterpolation::Step};
-  std::array<double, 2> cvPower{1.0, 1.0};
+  std::array<std::vector<ScalarItem>, CvLaneCount> cv;
+  std::array<CvInterpolation, CvLaneCount> cvInterpolation{
+      CvInterpolation::Step, CvInterpolation::Step, CvInterpolation::Step};
+  std::array<double, CvLaneCount> cvPower{1.0, 1.0, 1.0};
   std::array<std::vector<Transform>,
              static_cast<std::size_t>(CursorLane::Count)>
       transforms;
@@ -238,15 +256,15 @@ struct SequencePlaybackState {
   std::uint64_t octave = 0;
   std::uint64_t articulation = 0;
   std::uint64_t velocity = 0;
-  std::uint64_t accent = 0;
   std::uint64_t duration = 0;
   std::uint64_t gate = 0;
   std::uint64_t slide = 0;
   std::uint64_t ratchet = 0;
   std::uint64_t offset = 0;
-  std::array<std::uint64_t, 2> cv{};
+  std::array<std::uint64_t, CvLaneCount> cv{};
   std::uint64_t structuralCell = 0;
-  double lastBaseDuration = 1.0;
+  std::uint64_t completedCycles = 0;
+  double lastBaseDuration = 0.0;
   bool hasSoundingPitch = false;
 };
 
@@ -323,12 +341,12 @@ struct RuntimeEvent {
   bool legatoToNext = false;
   double timingOffsetBeats = 0.0;
   double timingOffsetMilliseconds = 0.0;
-  std::array<float, 2> cvValue{};
-  std::array<float, 2> cvTarget{};
-  std::array<CvInterpolation, 2> cvInterpolation{CvInterpolation::Step,
-                                                 CvInterpolation::Step};
-  std::array<float, 2> cvPower{1.f, 1.f};
-  std::array<double, 2> cvTargetBeat{};
+  std::array<float, CvLaneCount> cvValue{};
+  std::array<float, CvLaneCount> cvTarget{};
+  std::array<CvInterpolation, CvLaneCount> cvInterpolation{
+      CvInterpolation::Step, CvInterpolation::Step, CvInterpolation::Step};
+  std::array<float, CvLaneCount> cvPower{1.f, 1.f, 1.f};
+  std::array<double, CvLaneCount> cvTargetBeat{};
   std::array<SourceSpan, static_cast<std::size_t>(CursorLane::Count)> cursors{};
 };
 
@@ -357,7 +375,7 @@ private:
   int arrangementCycle_ = 0;
   double partStartBeat_ = 0.0;
 
-  const Sequence *currentSequence(double beat, SourceSpan &partSpan,
+  const Sequence *currentSequence(SourceSpan &partSpan,
                                   std::uint64_t &cycle) noexcept;
 };
 

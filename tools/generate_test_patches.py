@@ -123,41 +123,40 @@ DEFAULT_PARAMS = {
         0.0,
         0.0,
     ],
-    "TfScenePack4": [
-        3.5,
-        3.5,
-        4.5,
-        4.5,
-        3.5,
-        4.5,
-        5.5,
-        3.5,
-        4.5,
-        6.5,
-        3.5,
-        4.5,
-    ],
+    "TfScenePack4": [],
     "TfReverb": [
+        0.60,
         0.5,
-        0.5,
-        0.28,
-        0.0,
+        0.048,
         0.5,
         0.35,
         0.5,
         0.682,
-        0.55,
-        0.18,
-        0.75,
-        0.4,
+        0.64,
+        0.28,
+        0.82,
+        0.30,
         0.6130368568946039,
+        0.5,
         0.0,
-        0.0,
-        0.0,
-        0.9039693650225663,
+        0.829482217661603,
         0.35,
         0.0,
         0.0,
+        0.50,
+        0.35,
+        0.50,
+        0.35,
+        0.50,
+        0.35,
+        0.50,
+        0.35,
+        0.50,
+        0.35,
+        0.50,
+        0.35,
+        0.50,
+        0.35,
     ],
     "TfProgSequencer": [],
     "LFO": [0.0, 0.0, math.log2(0.07), 0.0, 0.0, 0.5, 0.0],
@@ -691,13 +690,10 @@ def generate_prog_sequencer_303_patch() -> None:
             )
 
     program = """acid = sequence {
-  cycle 16
   tonic D#@2
   scale minor
-  notes 1!4 5 7 1!2 8 1, 1 1, 1
-  articulation x!7 ~ > ~ >!2 ~ >!3
+  notes ^1 1!3 ^5 7 ^1 ~ 1 ~ ^8 >1, ~ 1 >^1, >1
   velocity .5
-  accent + .!3 + . + . + .!2 + .
   gate .5
   glide .8
 }
@@ -713,7 +709,7 @@ play song
             "TriggerFish-Elements",
             "TfProgSequencer",
             (23, 0),
-            data={"source": program, "languageVersion": 4},
+            data={"source": program, "languageVersion": 1},
         )
     )
 
@@ -761,20 +757,21 @@ def generate_room_reverb_patch() -> None:
         "1 and 2 directly. Use the reverb's LEVEL as the output trim.\n\n"
         "This reverb test deliberately removes the smoke-303 filter/FM LFOs "
         "so tail movement can be assessed without external modulation.\n\n"
-        "Start by turning MIX up and use the EARLY and TAIL trims to isolate "
-        "the geometric reflections and two-stage velvet late field. Drag the amber "
+        "Start by turning MIX up and sweep ER / TAIL from the geometric "
+        "reflections through the inferred centre blend to the two-stage "
+        "velvet late field. Drag the amber "
         "source and blue listener dots on the room plan, then try SIZE, "
         "ASPECT, PRE DELAY, DECAY, DAMPING, DIFFUSE, MOD, SHIMMER, "
         "WIDTH, LOW CUT, "
-        "and HIGH CUT. The AUDIO/X/Y/Z inputs also "
-        "accept the aligned polyphonic scene cables from Scene Pack 4."
+        "and HIGH CUT. The AUDIO input accepts Scene Pack 4's polyphonic "
+        "source cable; each connected channel gets its own draggable marker."
     )
     note["pos"] = [-9, 0]
 
     audio_module = next(module for module in patch.modules if module["id"] == 7)
     audio_module["pos"] = [85, 0]
     reverb_values = [*DEFAULT_PARAMS["TfReverb"]]
-    reverb_values[18] = -6.0
+    reverb_values[16] = -6.0
     patch.add(
         module(
             11,
@@ -791,6 +788,67 @@ def generate_room_reverb_patch() -> None:
     patch.cable(11, 0, 7, 0)  # stereo left -> Audio-8 input 1
     patch.cable(11, 1, 7, 1)  # stereo right -> Audio-8 input 2
     patch.write("test-room-reverb.vcv")
+
+
+def generate_two_source_reverb_patch() -> None:
+    patch = Patch(zoom=0.78, grid_offset=(-1.0, -0.1))
+    patch.add(
+        notes(
+            1,
+            "TriggerFish two-source Room Reverb test\n\n"
+            "A low sine and a higher saw pass through separate source-level "
+            "mixers, then Scene Pack 4 combines them into one two-channel "
+            "polyphonic cable. Room Reverb shows exactly two numbered amber "
+            "markers, initially placed symmetrically left and right.\n\n"
+            "Drag source 1 and source 2 independently around the room plan "
+            "and compare the direct position, early-reflection direction, and "
+            "handoff into the fixed late field. Use the two VCMixers to solo "
+            "or balance the sources. Disconnect either Scene Pack input to "
+            "confirm that its marker disappears. The scope shows packed "
+            "source audio plus the stereo reverb output. Start with monitor "
+            "volume low.",
+        )
+    )
+
+    sine_values = DEFAULT_PARAMS["VCO"].copy()
+    sine_values[2] = -2.0
+    saw_values = DEFAULT_PARAMS["VCO"].copy()
+    saw_values[2] = -1.4166666667
+    patch.add(module(2, "Fundamental", "VCO", (16, 0), values=sine_values))
+    patch.add(module(3, "Fundamental", "VCO", (27, 0), values=saw_values))
+    patch.add(mixer(4, (38, 0), (0.2511886432, 0.7, 0.0, 0.0, 0.0)))
+    patch.add(mixer(5, (47, 0), (0.2511886432, 0.7, 0.0, 0.0, 0.0)))
+    patch.add(module(6, "TriggerFish-Elements", "TfScenePack4", (58, 0)))
+
+    reverb_values = [*DEFAULT_PARAMS["TfReverb"]]
+    reverb_values[3] = 0.25
+    reverb_values[4] = 0.35
+    reverb_values[16] = -6.0
+    reverb_values[18] = 0.75
+    reverb_values[19] = 0.35
+    patch.add(
+        module(
+            7,
+            "TriggerFish-Elements",
+            "TfReverb",
+            (65, 0),
+            values=reverb_values,
+        )
+    )
+    patch.add(audio(8, (86, 0)))
+    patch.add(scope(9, (94, 0)))
+
+    patch.cable(2, 0, 4, 1)  # low sine -> source 1 level
+    patch.cable(3, 2, 5, 1)  # higher saw -> source 2 level
+    patch.cable(4, 0, 6, 0)
+    patch.cable(5, 0, 6, 1)
+    patch.cable(6, 0, 7, 0)
+    patch.cable(7, 0, 8, 0)
+    patch.cable(7, 1, 8, 1)
+    patch.cable(6, 0, 9, 0)
+    patch.cable(7, 0, 9, 1)
+    patch.cable(7, 1, 9, 2)
+    patch.write("test-room-reverb-two-sources.vcv")
 
 
 def generate_4072_voice_patch() -> None:
@@ -932,14 +990,14 @@ def generate_scene_pack4_patch() -> None:
         notes(
             1,
             "TriggerFish Scene Pack 4 smoke test\n\n"
-            "Four Fundamental oscillators feed the four local mono inputs. "
-            "Scene Pack compacts them into aligned AUDIO/X/Y/Z polyphonic "
-            "outputs. AUDIO feeds both -6 dB masters; the first packed source "
-            "is therefore audible on outputs 1 and 2.\n\n"
-            "Move each source's X, Y, and Z controls and inspect the packed "
-            "AUDIO and X cables on the scope. Chain a second Scene Pack into "
-            "the four BUS inputs to exercise the eight-source path. Start "
-            "with monitor volume low.",
+            "Four Fundamental oscillators feed the four source inputs. Scene "
+            "Pack compacts every connected mono or polyphonic channel into "
+            "one polyphonic output, which feeds Room Reverb.\n\n"
+            "The reverb room plan shows four numbered amber sources. Drag "
+            "them to place each oscillator independently; disconnect a Scene "
+            "Pack input and its marker disappears. Feed another Scene Pack's "
+            "poly output into one input to exercise the eight-source path. "
+            "Start with monitor volume low.",
         )
     )
     pitches = (-2.0, -1.5, -1.0, -0.5)
@@ -950,20 +1008,28 @@ def generate_scene_pack4_patch() -> None:
             module(2 + lane, "Fundamental", "VCO", (16 + 11 * lane, 0), values=values)
         )
     patch.add(module(6, "TriggerFish-Elements", "TfScenePack4", (60, 0)))
-    patch.add(scope(7, (75, 0)))
-    patch.add(mixer(8, (87, 0), (0.5011872336, 0.7, 0.0, 0.0, 0.0)))
-    patch.add(mixer(9, (96, 0), (0.5011872336, 0.7, 0.0, 0.0, 0.0)))
-    patch.add(audio(10, (105, 0)))
+    reverb_values = [*DEFAULT_PARAMS["TfReverb"]]
+    reverb_values[16] = -6.0
+    patch.add(
+        module(
+            7,
+            "TriggerFish-Elements",
+            "TfReverb",
+            (68, 0),
+            values=reverb_values,
+        )
+    )
+    patch.add(audio(8, (89, 0)))
+    patch.add(scope(9, (97, 0)))
 
     for lane in range(4):
-        patch.cable(2 + lane, 0, 6, 4 + lane)
-    patch.cable(6, 0, 8, 1)
-    patch.cable(6, 0, 9, 1)
-    patch.cable(8, 0, 10, 0)
-    patch.cable(9, 0, 10, 1)
+        patch.cable(2 + lane, 0, 6, lane)
     patch.cable(6, 0, 7, 0)
-    patch.cable(6, 1, 7, 1)
-    patch.cable(2, 0, 7, 2)
+    patch.cable(7, 0, 8, 0)
+    patch.cable(7, 1, 8, 1)
+    patch.cable(6, 0, 9, 0)
+    patch.cable(7, 0, 9, 1)
+    patch.cable(7, 1, 9, 2)
     patch.write("test-scene-pack4.vcv")
 
 
@@ -972,6 +1038,7 @@ if __name__ == "__main__":
     generate_vdpo_patch()
     generate_303_voice_patch()
     generate_room_reverb_patch()
+    generate_two_source_reverb_patch()
     generate_prog_sequencer_303_patch()
     generate_4072_voice_patch()
     generate_wavefold_patch()

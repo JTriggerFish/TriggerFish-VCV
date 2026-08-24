@@ -31,6 +31,7 @@ absolute paths.
 Run the usual tasks from PowerShell:
 
 ```powershell
+.\dev.ps1 setup        # Create/update the repo-local .venv from uv.lock
 .\dev.ps1 doctor       # Verify tools and configured paths
 .\dev.ps1 build        # Build plugin.dll
 .\dev.ps1 panel-preview # Regenerate and render editable module panels
@@ -41,6 +42,7 @@ Run the usual tasks from PowerShell:
 .\dev.ps1 smoke-303    # Install and open the sequenced 303 voice patch
 .\dev.ps1 smoke-prog-303 # Replace Foundry with Prog Sequencer in the 303 patch
 .\dev.ps1 smoke-reverb # Install and open the 303-through-room-reverb patch
+.\dev.ps1 smoke-reverb-two-sources # Open the two-source spatial reverb patch
 .\dev.ps1 smoke-4072   # Install and open the MIDI-playable 4072 voice patch
 .\dev.ps1 smoke-wavefold # Install and open the Wavefold Oscillator patch
 .\dev.ps1 smoke-unison # Install and open the Unison Oscillator patch
@@ -54,7 +56,9 @@ Run the usual tasks from PowerShell:
 ```
 
 The default command is `build`. Use `-Jobs 4`, for example, to change build
-parallelism.
+parallelism. `setup` runs `uv sync --locked --group dev --python 3.13`; all
+Python tools and test dependencies are installed only in this repository's
+`.venv`.
 
 VS Code's tasks call this PowerShell helper. The checked-in editor settings are
 platform-neutral; ensure MinGW64 clangd is available to the editor on Windows.
@@ -159,6 +163,11 @@ Clocked, oscillator, voice, modulation, Room Reverb, and stereo output path but
 replaces Foundry with Prog Sequencer. Its visible 16-line program is both a
 playable test and a compact-syntax regression fixture.
 
+[test-room-reverb-two-sources.vcv](test-room-reverb-two-sources.vcv) feeds a
+low sine and a higher saw through independent level controls and Scene Pack 4.
+Its two packed channels appear as independently draggable Room Reverb sources;
+the scope shows the packed input and stereo result.
+
 [test-4072-voice.vcv](test-4072-voice.vcv) connects a Fundamental saw
 oscillator to 4072 Voice Core, with MIDI pitch tracking both oscillator and
 filter and MIDI gate driving the two internal envelopes.
@@ -170,8 +179,8 @@ Wavefold Oscillator patch exposing the oscillator and folded outputs together.
 Unison Oscillator patch exposing its mono and stereo mixes.
 
 [test-scene-pack4.vcv](test-scene-pack4.vcv) feeds four fixed-pitch Fundamental
-oscillators into Scene Pack 4 and exposes its packed AUDIO and X outputs on a
-scope while monitoring the first packed audio channel in stereo.
+oscillators into Scene Pack 4, sends its single packed polyphonic output through
+Room Reverb, and exposes the packed source bundle plus stereo result on a scope.
 
 The Slop4, VDPO, 4072, Wavefold, Unison, and Scene Pack patches use Rack Core,
 Fundamental, and TriggerFish modules; the 303 patch also uses Impromptu Modular.

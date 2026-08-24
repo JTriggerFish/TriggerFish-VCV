@@ -78,14 +78,13 @@ void AssignRandomIdentities(Sequence &sequence) {
   };
   assignLane(CursorLane::Octave, sequence.octave);
   assignLane(CursorLane::Velocity, sequence.velocity);
-  assignLane(CursorLane::Accent, sequence.accent);
   assignLane(CursorLane::Duration, sequence.duration);
   assignLane(CursorLane::Gate, sequence.gate);
   assignLane(CursorLane::Slide, sequence.slide);
   assignLane(CursorLane::Ratchet, sequence.ratchet);
   assignLane(CursorLane::Offset, sequence.offset);
-  assignLane(CursorLane::Cv1, sequence.cv[0]);
-  assignLane(CursorLane::Cv2, sequence.cv[1]);
+  for (std::size_t cv = 0; cv < CvLaneCount; ++cv)
+    assignLane(CvCursorLane(cv), sequence.cv[cv]);
 }
 
 bool IsReservedCvName(const std::string &name) noexcept {
@@ -896,13 +895,45 @@ bool ApplyEventAttributes(const syntax::PatternNode &node,
                                                    attribute.name.text + "'");
       return false;
     }
+    const auto &name = attribute.name.text;
+    const bool hasValue = !attribute.value.text.empty();
+    if (rest && name != "len") {
+      diagnostic = Error(attribute.name.span,
+                         "a rest accepts only the len attribute");
+      return false;
+    }
+    if (name == "quiet" || name == "stacc" || name == "ten") {
+      if (hasValue) {
+        diagnostic = Error(attribute.value.span,
+                           name + " is a flag and does not take a value");
+        return false;
+      }
+      if (name == "quiet")
+        atom.quiet = true;
+      else if (name == "stacc")
+        atom.gateArticulation = GateArticulation::Staccato;
+      else
+        atom.gateArticulation = GateArticulation::Tenuto;
+      continue;
+    }
+    if (name != "len" && name != "vel" && name != "gate" &&
+        name != "slide") {
+      diagnostic = Error(attribute.name.span,
+                         "unknown event attribute '" + name + "'");
+      return false;
+    }
+    if (!hasValue) {
+      diagnostic = Error(attribute.name.span,
+                         "event attribute '" + name + "' requires a value");
+      return false;
+    }
     double value = 0.0;
     bool milliseconds = false;
     if (!ParseScalarWithUnit(attribute.value, value, milliseconds)) {
       diagnostic = Error(attribute.value.span, "invalid event attribute value");
       return false;
     }
-    if (attribute.name.text == "len") {
+    if (name == "len") {
       if (!node.durationSuffix.text.empty()) {
         diagnostic = Error(attribute.name.span,
                            "len duplicates the event duration suffix");
@@ -914,14 +945,14 @@ bool ApplyEventAttributes(const syntax::PatternNode &node,
         return false;
       }
       durationWeight = value;
-    } else if (attribute.name.text == "vel" && !rest) {
+    } else if (name == "vel" && !rest) {
       if (milliseconds || value < 0.0 || value > 1.0) {
         diagnostic = Error(attribute.value.span, "vel must be from 0 to 1");
         return false;
       }
       atom.hasVelocity = true;
       atom.velocity = static_cast<float>(value);
-    } else if (attribute.name.text == "gate" && !rest) {
+    } else if (name == "gate" && !rest) {
       if (value < 0.0 || (!milliseconds && value > 1.0)) {
         diagnostic = Error(attribute.value.span,
                            "gate must be 0..1 or non-negative ms");
@@ -930,7 +961,7 @@ bool ApplyEventAttributes(const syntax::PatternNode &node,
       atom.hasGate = true;
       atom.gate = static_cast<float>(value);
       atom.gateMilliseconds = milliseconds;
-    } else if (attribute.name.text == "slide" && !rest) {
+    } else if (name == "slide" && !rest) {
       if (node.slidePrefix.text.empty()) {
         diagnostic = Error(attribute.name.span,
                            "slide is only meaningful on a > event");
@@ -944,13 +975,25 @@ bool ApplyEventAttributes(const syntax::PatternNode &node,
       atom.hasSlide = true;
       atom.slide = static_cast<float>(value);
       atom.slideMilliseconds = milliseconds;
-    } else {
-      diagnostic = Error(attribute.name.span,
-                         rest ? "a rest accepts only the len attribute"
-                              : "unknown event attribute '" +
-                                    attribute.name.text + "'");
-      return false;
     }
+  }
+  if (seen.count("stacc") != 0 && seen.count("ten") != 0) {
+    diagnostic = Error(node.span,
+                       "stacc and ten cannot be combined on one event");
+    return false;
+  }
+  if (atom.ghost && atom.quiet) {
+    diagnostic = Error(node.span, "quiet is redundant on a ghost event");
+    return false;
+  }
+  if (atom.ghost &&
+      atom.gateArticulation == GateArticulation::Staccato) {
+    diagnostic = Error(node.span, "stacc is redundant on a ghost event");
+    return false;
+  }
+  if (atom.ghost && atom.gateArticulation == GateArticulation::Tenuto) {
+    diagnostic = Error(node.span, "ten contradicts a ghost event");
+    return false;
   }
   return true;
 }
@@ -1428,13 +1471,13 @@ bool ParseScalars(const syntax::Pattern &pattern,
       item.randomMaximum = maximum;
     };
     if (!item.isDefault &&
-        (lane == "velocity" || lane == "vel" || lane == "accent" ||
+        (lane == "velocity" || lane == "vel" ||
          (lane == "gate" && !item.isMilliseconds)) &&
         (validationLow < 0.0 || validationHigh > 1.0)) {
       diagnostic = Error(source.span, lane + " must be from 0 to 1");
       return false;
     }
-    if (lane == "velocity" || lane == "vel" || lane == "accent" ||
+    if (lane == "velocity" || lane == "vel" ||
         (lane == "gate" && !item.isMilliseconds))
       setRandomDomain(0.0, 1.0);
     if (!item.isDefault && (lane == "duration" || lane == "dur") &&
@@ -1502,7 +1545,7 @@ bool ParseScalars(const syntax::Pattern &pattern,
 enum class LaneValueKind {
   Notes,
   Scalar,
-  Cycle,
+  Subdivision,
   Tonic,
   Scale,
   Glide
@@ -1516,19 +1559,19 @@ struct LaneSpec {
   bool acceptsPipelines;
 };
 
-constexpr std::array<LaneSpec, 15> LaneSpecs{{
+constexpr std::array<LaneSpec, 14> LaneSpecs{{
     {"notes", "notes", LaneValueKind::Notes, CursorLane::Notes, true},
     {"octave", "octave", LaneValueKind::Scalar, CursorLane::Octave, true},
     {"velocity", "velocity", LaneValueKind::Scalar, CursorLane::Velocity, true},
     {"vel", "velocity", LaneValueKind::Scalar, CursorLane::Velocity, true},
-    {"accent", "accent", LaneValueKind::Scalar, CursorLane::Accent, true},
     {"duration", "duration", LaneValueKind::Scalar, CursorLane::Duration, true},
     {"dur", "duration", LaneValueKind::Scalar, CursorLane::Duration, true},
     {"gate", "gate", LaneValueKind::Scalar, CursorLane::Gate, true},
     {"slide", "slide", LaneValueKind::Scalar, CursorLane::Slide, true},
     {"ratchet", "ratchet", LaneValueKind::Scalar, CursorLane::Ratchet, true},
     {"offset", "offset", LaneValueKind::Scalar, CursorLane::Offset, true},
-    {"cycle", "cycle", LaneValueKind::Cycle, CursorLane::Sequence, false},
+    {"subdiv", "subdiv", LaneValueKind::Subdivision, CursorLane::Sequence,
+     false},
     {"tonic", "tonic", LaneValueKind::Tonic, CursorLane::Sequence, false},
     {"scale", "scale", LaneValueKind::Scale, CursorLane::Sequence, false},
     {"glide", "glide", LaneValueKind::Glide, CursorLane::Sequence, false},
@@ -1964,10 +2007,11 @@ bool ApplySequencePipelines(const std::vector<syntax::Pipeline> &pipelines,
           .push_back(transform);
     } else {
       for (auto lane :
-           {CursorLane::Notes, CursorLane::Octave,
-            CursorLane::Velocity, CursorLane::Accent, CursorLane::Duration,
+            {CursorLane::Notes, CursorLane::Octave,
+             CursorLane::Velocity, CursorLane::Duration,
             CursorLane::Gate, CursorLane::Slide, CursorLane::Ratchet,
-            CursorLane::Offset, CursorLane::Cv1, CursorLane::Cv2})
+             CursorLane::Offset, CursorLane::Cv1, CursorLane::Cv2,
+             CursorLane::Cv3})
         sequence.transforms[static_cast<std::size_t>(lane)].push_back(
             transform);
     }
@@ -2138,10 +2182,11 @@ bool PrepareWorkspaces(CompiledProgram &program, Diagnostic &diagnostic) {
     }
     maximumEvents = std::max(maximumEvents, sequenceMaximum);
 
-    double shortestDurationLaneValue = 1.0;
+    const double defaultDuration = 4.0 / sequence.subdivision;
+    double shortestDurationLaneValue = defaultDuration;
     for (const auto &item : sequence.duration) {
       const double value =
-          item.isDefault ? 1.0 : PossibleScalarRange(item).minimum;
+          item.isDefault ? defaultDuration : PossibleScalarRange(item).minimum;
       if (value > 0.0)
         shortestDurationLaneValue =
             std::min(shortestDurationLaneValue, value);
@@ -2305,15 +2350,15 @@ CompileResult CompileDocument(const syntax::Document &document) {
         char *end = nullptr;
         const auto parsed = std::strtoull(laneName.c_str() + 2, &end, 10);
         if (errno == ERANGE || end != laneName.c_str() + laneName.size() ||
-            parsed < 1 || parsed > 2) {
+             parsed < 1 || parsed > CvLaneCount) {
           result.diagnostic =
               Error(lane.name.span,
-                    "this module currently provides only cv1 and cv2");
+                    "this module currently provides only cv1, cv2, and cv3");
           return result;
         }
         cvIndex = static_cast<std::size_t>(parsed - 1);
         cvSpec = {laneName.c_str(), laneName.c_str(), LaneValueKind::Scalar,
-                  cvIndex == 0 ? CursorLane::Cv1 : CursorLane::Cv2, true};
+                  CvCursorLane(cvIndex), true};
         laneSpec = &cvSpec;
       }
       if (!laneSpec) {
@@ -2339,14 +2384,16 @@ CompileResult CompileDocument(const syntax::Document &document) {
       }
       const CursorLane parsedLane = laneSpec->cursorLane;
 
-      if (laneSpec->valueKind == LaneValueKind::Cycle) {
-        double cycle = 0.0;
-        if (!ParseNumber(laneValue, cycle) || cycle <= 0.0) {
+      if (laneSpec->valueKind == LaneValueKind::Subdivision) {
+        double subdivision = 0.0;
+        if (!ParseNumber(laneValue, subdivision) || subdivision <= 0.0 ||
+            std::floor(subdivision) != subdivision ||
+            subdivision > std::numeric_limits<int>::max()) {
           result.diagnostic =
-              Error(valueSpan, "cycle must be a positive beat count");
+              Error(valueSpan, "subdiv must be a positive integer");
           return result;
         }
-        sequence.cycleBeats = cycle;
+        sequence.subdivision = static_cast<int>(subdivision);
         continue;
       }
       if (laneSpec->valueKind == LaneValueKind::Tonic) {
@@ -2384,7 +2431,7 @@ CompileResult CompileDocument(const syntax::Document &document) {
       if (laneSpec->valueKind == LaneValueKind::Notes) {
         ok = ParseNotes(lane.pattern, sequence, result.diagnostic);
       } else {
-        auto *items = &sequence.accent;
+        auto *items = &sequence.velocity;
         if (parsedLane == CursorLane::Octave)
           items = &sequence.octave;
         else if (parsedLane == CursorLane::Velocity)
@@ -2399,10 +2446,8 @@ CompileResult CompileDocument(const syntax::Document &document) {
           items = &sequence.ratchet;
         else if (parsedLane == CursorLane::Offset)
           items = &sequence.offset;
-        else if (parsedLane == CursorLane::Cv1)
-          items = &sequence.cv[0];
-        else if (parsedLane == CursorLane::Cv2)
-          items = &sequence.cv[1];
+        else if (IsCvCursorLane(parsedLane))
+          items = &sequence.cv[CvCursorIndex(parsedLane)];
         ok = ParseScalars(lane.pattern, *items, laneSpec->canonical,
                           result.diagnostic);
         if (lane.pattern.alignment != syntax::Pattern::Alignment::Free) {
@@ -2422,8 +2467,7 @@ CompileResult CompileDocument(const syntax::Document &document) {
                      parsedLane, result.diagnostic);
       if (!ok || !pipelinesOk)
         return result;
-      if ((parsedLane == CursorLane::Offset || parsedLane == CursorLane::Cv1 ||
-           parsedLane == CursorLane::Cv2) &&
+      if ((parsedLane == CursorLane::Offset || IsCvCursorLane(parsedLane)) &&
           lane.pattern.alignment == syntax::Pattern::Alignment::Free) {
         auto &transforms =
             sequence.transforms[static_cast<std::size_t>(parsedLane)];
@@ -2494,24 +2538,25 @@ CompileResult CompileDocument(const syntax::Document &document) {
     };
     if (!alignLane(CursorLane::Octave, sequence.octave) ||
         !alignLane(CursorLane::Velocity, sequence.velocity) ||
-        !alignLane(CursorLane::Accent, sequence.accent) ||
         !alignLane(CursorLane::Duration, sequence.duration) ||
         !alignLane(CursorLane::Gate, sequence.gate) ||
         !alignLane(CursorLane::Slide, sequence.slide) ||
         !alignLane(CursorLane::Ratchet, sequence.ratchet) ||
         !alignLane(CursorLane::Offset, sequence.offset) ||
         !alignLane(CursorLane::Cv1, sequence.cv[0]) ||
-        !alignLane(CursorLane::Cv2, sequence.cv[1]))
+        !alignLane(CursorLane::Cv2, sequence.cv[1]) ||
+        !alignLane(CursorLane::Cv3, sequence.cv[2]))
       return result;
     for (const auto lane : {CursorLane::Octave, CursorLane::Velocity,
-                            CursorLane::Accent, CursorLane::Duration,
+                            CursorLane::Duration,
                             CursorLane::Gate, CursorLane::Slide,
                             CursorLane::Ratchet, CursorLane::Offset,
-                            CursorLane::Cv1, CursorLane::Cv2}) {
+                            CursorLane::Cv1, CursorLane::Cv2,
+                            CursorLane::Cv3}) {
       if (!sequence.aligned[static_cast<std::size_t>(lane)])
         continue;
-      if ((lane == CursorLane::Cv1 || lane == CursorLane::Cv2) &&
-          sequence.cvInterpolation[lane == CursorLane::Cv1 ? 0 : 1] !=
+      if (IsCvCursorLane(lane) &&
+          sequence.cvInterpolation[CvCursorIndex(lane)] !=
               CvInterpolation::Step) {
         result.diagnostic = Error(
             alignmentSpans[static_cast<std::size_t>(lane)],

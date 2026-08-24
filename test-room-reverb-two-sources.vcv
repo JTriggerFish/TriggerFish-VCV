@@ -1,9 +1,9 @@
 {
   "version": "2.6.6",
   "path": "",
-  "zoom": 0.76,
+  "zoom": 0.78,
   "gridOffset": [
-    -1,
+    -1.0,
     -0.1
   ],
   "modules": [
@@ -14,7 +14,7 @@
       "version": "2.6.6",
       "params": [],
       "data": {
-        "text": "TriggerFish Scene Pack 4 smoke test\n\nFour Fundamental oscillators feed the four source inputs. Scene Pack compacts every connected mono or polyphonic channel into one polyphonic output, which feeds Room Reverb.\n\nThe reverb room plan shows four numbered amber sources. Drag them to place each oscillator independently; disconnect a Scene Pack input and its marker disappears. Feed another Scene Pack's poly output into one input to exercise the eight-source path. Start with monitor volume low."
+        "text": "TriggerFish two-source Room Reverb test\n\nA low sine and a higher saw pass through separate source-level mixers, then Scene Pack 4 combines them into one two-channel polyphonic cable. Room Reverb shows exactly two numbered amber markers, initially placed symmetrically left and right.\n\nDrag source 1 and source 2 independently around the room plan and compare the direct position, early-reflection direction, and handoff into the fixed late field. Use the two VCMixers to solo or balance the sources. Disconnect either Scene Pack input to confirm that its marker disappears. The scope shows packed source audio plus the stereo reverb output. Start with monitor volume low."
       },
       "pos": [
         0,
@@ -81,7 +81,7 @@
         },
         {
           "id": 2,
-          "value": -1.5
+          "value": -1.4166666667
         },
         {
           "id": 3,
@@ -112,20 +112,20 @@
     {
       "id": 4,
       "plugin": "Fundamental",
-      "model": "VCO",
+      "model": "VCMixer",
       "version": "2.6.4",
       "params": [
         {
           "id": 0,
-          "value": 1.0
+          "value": 0.2511886432
         },
         {
           "id": 1,
-          "value": 1.0
+          "value": 0.7
         },
         {
           "id": 2,
-          "value": -1.0
+          "value": 0.0
         },
         {
           "id": 3,
@@ -134,20 +134,12 @@
         {
           "id": 4,
           "value": 0.0
-        },
-        {
-          "id": 5,
-          "value": 0.5
-        },
-        {
-          "id": 6,
-          "value": 0.0
-        },
-        {
-          "id": 7,
-          "value": 0.0
         }
       ],
+      "data": {
+        "chExp": false,
+        "mixExp": false
+      },
       "pos": [
         38,
         0
@@ -156,20 +148,20 @@
     {
       "id": 5,
       "plugin": "Fundamental",
-      "model": "VCO",
+      "model": "VCMixer",
       "version": "2.6.4",
       "params": [
         {
           "id": 0,
-          "value": 1.0
+          "value": 0.2511886432
         },
         {
           "id": 1,
-          "value": 1.0
+          "value": 0.7
         },
         {
           "id": 2,
-          "value": -0.5
+          "value": 0.0
         },
         {
           "id": 3,
@@ -178,22 +170,14 @@
         {
           "id": 4,
           "value": 0.0
-        },
-        {
-          "id": 5,
-          "value": 0.5
-        },
-        {
-          "id": 6,
-          "value": 0.0
-        },
-        {
-          "id": 7,
-          "value": 0.0
         }
       ],
+      "data": {
+        "chExp": false,
+        "mixExp": false
+      },
       "pos": [
-        49,
+        47,
         0
       ]
     },
@@ -204,7 +188,7 @@
       "version": "2.4.0",
       "params": [],
       "pos": [
-        60,
+        58,
         0
       ]
     },
@@ -228,7 +212,7 @@
         },
         {
           "id": 3,
-          "value": 0.5
+          "value": 0.25
         },
         {
           "id": 4,
@@ -288,7 +272,7 @@
         },
         {
           "id": 18,
-          "value": 0.5
+          "value": 0.75
         },
         {
           "id": 19,
@@ -344,7 +328,7 @@
         }
       ],
       "pos": [
-        68,
+        65,
         0
       ]
     },
@@ -365,7 +349,7 @@
         "dcFilter": true
       },
       "pos": [
-        89,
+        86,
         0
       ]
     },
@@ -409,7 +393,7 @@
         }
       ],
       "pos": [
-        97,
+        94,
         0
       ]
     }
@@ -419,15 +403,15 @@
       "id": 1000,
       "outputModuleId": 2,
       "outputId": 0,
-      "inputModuleId": 6,
-      "inputId": 0,
+      "inputModuleId": 4,
+      "inputId": 1,
       "color": "#f3374b"
     },
     {
       "id": 1001,
       "outputModuleId": 3,
-      "outputId": 0,
-      "inputModuleId": 6,
+      "outputId": 2,
+      "inputModuleId": 5,
       "inputId": 1,
       "color": "#ffcc00"
     },
@@ -436,7 +420,7 @@
       "outputModuleId": 4,
       "outputId": 0,
       "inputModuleId": 6,
-      "inputId": 2,
+      "inputId": 0,
       "color": "#0c8e15"
     },
     {
@@ -444,7 +428,7 @@
       "outputModuleId": 5,
       "outputId": 0,
       "inputModuleId": 6,
-      "inputId": 3,
+      "inputId": 1,
       "color": "#0986ad"
     },
     {

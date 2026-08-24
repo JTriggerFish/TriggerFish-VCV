@@ -7,25 +7,21 @@
 
 namespace tfdsp {
 
-inline constexpr std::size_t ScenePackLocalSourceCount = 4;
+inline constexpr std::size_t ScenePackInputCount = 4;
 inline constexpr std::size_t ScenePackMaximumSourceCount = 8;
 
-struct ScenePackSource {
-  float audio{};
-  float x{5.0f};
-  float y{5.0f};
-  float z{5.0f};
-};
-
+// Each physical input may itself be polyphonic. Connected channels are
+// concatenated in input order, retaining channel order within each input.
+// This makes the four-jack utility chainable without a separate scene bus.
 struct ScenePackInput {
-  std::array<ScenePackSource, ScenePackMaximumSourceCount> bus{};
-  std::size_t busCount{};
-  std::array<ScenePackSource, ScenePackLocalSourceCount> local{};
-  std::array<bool, ScenePackLocalSourceCount> localConnected{};
+  std::array<std::array<float, ScenePackMaximumSourceCount>,
+             ScenePackInputCount>
+      inputs{};
+  std::array<std::size_t, ScenePackInputCount> channelCounts{};
 };
 
 struct ScenePackOutput {
-  std::array<ScenePackSource, ScenePackMaximumSourceCount> sources{};
+  std::array<float, ScenePackMaximumSourceCount> audio{};
   std::size_t sourceCount{};
 };
 
@@ -33,33 +29,20 @@ inline float SanitizeSceneAudio(const float value) noexcept {
   return std::isfinite(value) ? value : 0.0f;
 }
 
-inline float SanitizeScenePosition(const float value) noexcept {
-  return std::clamp(std::isfinite(value) ? value : 5.0f, 0.0f, 10.0f);
-}
-
-inline ScenePackSource SanitizeSceneSource(ScenePackSource source) noexcept {
-  source.audio = SanitizeSceneAudio(source.audio);
-  source.x = SanitizeScenePosition(source.x);
-  source.y = SanitizeScenePosition(source.y);
-  source.z = SanitizeScenePosition(source.z);
-  return source;
-}
-
 inline ScenePackOutput PackSceneSources(const ScenePackInput &input) noexcept {
   ScenePackOutput output;
-  const std::size_t busCount =
-      std::min(input.busCount, ScenePackMaximumSourceCount);
-  for (; output.sourceCount < busCount; ++output.sourceCount)
-    output.sources[output.sourceCount] =
-        SanitizeSceneSource(input.bus[output.sourceCount]);
-  for (std::size_t lane = 0;
-       lane < ScenePackLocalSourceCount &&
+  for (std::size_t port = 0;
+       port < ScenePackInputCount &&
        output.sourceCount < ScenePackMaximumSourceCount;
-       ++lane) {
-    if (!input.localConnected[lane])
-      continue;
-    output.sources[output.sourceCount++] =
-        SanitizeSceneSource(input.local[lane]);
+       ++port) {
+    const std::size_t channels = std::min(
+        input.channelCounts[port], ScenePackMaximumSourceCount);
+    for (std::size_t channel = 0;
+         channel < channels &&
+         output.sourceCount < ScenePackMaximumSourceCount;
+         ++channel)
+      output.audio[output.sourceCount++] =
+          SanitizeSceneAudio(input.inputs[port][channel]);
   }
   return output;
 }

@@ -15,6 +15,11 @@
 
 namespace tfdsp {
 
+struct RoomReverbFrame {
+  std::array<float, 2> direct{};
+  std::array<float, 2> wet{};
+};
+
 struct RoomReverbControls {
   float space{reverb_defaults::Space};
   float aspect{reverb_defaults::Aspect};
@@ -28,8 +33,7 @@ struct RoomReverbControls {
   float modulation{reverb_defaults::Modulation};
   float shimmer{reverb_defaults::Shimmer};
   float width{reverb_defaults::Width};
-  float earlyLevelDb{reverb_defaults::EarlyLevelDb};
-  float tailLevelDb{reverb_defaults::TailLevelDb};
+  float balance{reverb_defaults::Balance};
   float lowCut{reverb_defaults::LowCut};
   float highCut{reverb_defaults::HighCut};
 };
@@ -48,7 +52,6 @@ public:
 
 private:
   static constexpr float EarlyCalibrationGain = 1.f;
-  static constexpr float PositionBalanceLimitDb = 9.f;
   static constexpr float PreDelayTransitionSeconds = 0.050f;
   static constexpr std::size_t ControlUpdateInterval = 64;
   class FractionalDelay {
@@ -65,9 +68,21 @@ private:
       writeIndex_ = 0;
     }
 
-    float Read(float delaySamples) const noexcept {
+    float Read(float delaySamples, const float liveSample) const noexcept {
       if (buffer_.empty())
         return 0.f;
+      delaySamples = std::max(0.f, delaySamples);
+      if (delaySamples < 2.f) {
+        const auto history = [&](const std::size_t distance) {
+          const auto index =
+              (writeIndex_ + buffer_.size() - distance) % buffer_.size();
+          return buffer_[index];
+        };
+        if (delaySamples < 1.f)
+          return liveSample + delaySamples * (history(1) - liveSample);
+        const float fraction = delaySamples - 1.f;
+        return history(1) + fraction * (history(2) - history(1));
+      }
       delaySamples =
           std::clamp(delaySamples, 2.f, static_cast<float>(buffer_.size() - 3));
       const auto integer = static_cast<std::size_t>(std::floor(delaySamples));
@@ -112,15 +127,17 @@ private:
 
   struct AutomaticBalance {
     InputFrame tailSend{};
+    InputFrame handoffStartSeconds{};
     std::size_t sourceCount{};
+    std::size_t sceneSequence{};
   };
 
   // Fixed-capacity single-producer/single-consumer mailbox. The worker owns a
   // slot only while it is Writing and the audio thread owns it only while it
   // is Reading, so the POD payload is never accessed concurrently. This keeps
   // allocation, reference-count destruction, and library locks off the audio
-  // thread while still allowing the newest completed scene to supersede older
-  // ones.
+  // thread. Future-scene metadata remains queued until the convolver adopts
+  // the FIR bank carrying the same scene sequence.
   class AutomaticBalanceMailbox {
   public:
     bool Publish(const AutomaticBalance &value) noexcept {
@@ -131,15 +148,14 @@ private:
                 std::memory_order_relaxed))
           continue;
         slot.value = value;
-        slot.sequence = nextSequence_.fetch_add(1, std::memory_order_relaxed);
         slot.state.store(SlotState::Ready, std::memory_order_release);
         return true;
       }
       return false;
     }
 
-    bool ConsumeLatest(AutomaticBalance &value,
-                       std::uint64_t &sequence) noexcept {
+    bool ConsumeForScene(AutomaticBalance &value,
+                         const std::size_t sceneSequence) noexcept {
       bool found = false;
       for (auto &slot : slots_) {
         auto expected = SlotState::Ready;
@@ -147,9 +163,12 @@ private:
                 expected, SlotState::Reading, std::memory_order_acquire,
                 std::memory_order_relaxed))
           continue;
-        if (!found || slot.sequence > sequence) {
+        if (slot.value.sceneSequence > sceneSequence) {
+          slot.state.store(SlotState::Ready, std::memory_order_release);
+          continue;
+        }
+        if (slot.value.sceneSequence == sceneSequence) {
           value = slot.value;
-          sequence = slot.sequence;
           found = true;
         }
         slot.state.store(SlotState::Free, std::memory_order_release);
@@ -161,7 +180,6 @@ private:
     void Reset() noexcept {
       for (auto &slot : slots_)
         slot.state.store(SlotState::Free, std::memory_order_relaxed);
-      nextSequence_.store(1, std::memory_order_relaxed);
     }
 
   private:
@@ -169,10 +187,8 @@ private:
     struct Slot {
       std::atomic<SlotState> state{SlotState::Free};
       AutomaticBalance value{};
-      std::uint64_t sequence{};
     };
-    std::array<Slot, 4> slots_{};
-    std::atomic<std::uint64_t> nextSequence_{1};
+    std::array<Slot, 8> slots_{};
   };
 
   double sampleRate_{48'000.0};
@@ -180,6 +196,7 @@ private:
   Convolver convolver_{};
   LateReverb late_{};
   std::array<FractionalDelay, MaximumSources> preDelays_{};
+  std::array<FractionalDelay, MaximumSources> lateAlignmentDelays_{};
   std::array<float, 2> highCutState_{};
   std::array<float, 2> lowCutState_{};
   std::unique_ptr<EarlyReflectionWorker> worker_{};
@@ -188,22 +205,23 @@ private:
   std::size_t requestCountdown_{};
   std::size_t requestIntervalSamples_{2'400};
   AutomaticBalanceMailbox balanceMailbox_{};
-  std::uint64_t appliedBalanceSequence_{};
+  std::size_t appliedBalanceSequence_{};
   InputFrame currentTailSend_{};
   InputFrame fromTailSend_{};
   InputFrame targetTailSend_{};
+  InputFrame handoffStartSeconds_{};
+  InputFrame currentLateAlignmentSamples_{};
+  InputFrame fromLateAlignmentSamples_{};
+  InputFrame toLateAlignmentSamples_{};
+  InputFrame pendingLateAlignmentSamples_{};
+  InputFrame lateAlignmentTransitionPhase_{};
+  std::array<bool, MaximumSources> lateAlignmentInitialized_{};
+  float lateAlignmentTransitionIncrement_{1.f};
   float balanceTransitionPhase_{1.f};
   float balanceTransitionIncrement_{1.f};
-  std::size_t balancePollCountdown_{};
   float wetSizeGain_{1.f};
   float targetWetSizeGain_{1.f};
   bool wetSizeGainInitialized_{};
-  InputFrame currentEarlyPositionGain_{};
-  InputFrame currentTailPositionGain_{};
-  InputFrame targetEarlyPositionGain_{};
-  InputFrame targetTailPositionGain_{};
-  bool positionGainInitialized_{};
-  float positionGainSmoothingCoefficient_{1.f};
   EarlyReflectionRoom controlRoom_{};
   float earlyGain_{1.f};
   float tailGain_{1.f};
@@ -227,54 +245,66 @@ private:
     return limited * limited * (3.f - 2.f * limited);
   }
 
-  static float DecibelsToGain(const float decibels) noexcept {
-    if (!std::isfinite(decibels) || decibels <= -60.f)
-      return 0.f;
-    return std::pow(10.f, std::clamp(decibels, -60.f, 6.f) / 20.f);
-  }
-
-  static float UnclampedDecibelsToGain(const float decibels) noexcept {
-    return std::pow(10.f, decibels / 20.f);
-  }
-
-  static double ReferenceSourceListenerDistanceMetres() noexcept {
-    double squared = 0.0;
-    for (std::size_t axis = 0; axis < 3; ++axis) {
-      const double difference =
-          static_cast<double>(reverb_defaults::Source[axis] -
-                              reverb_defaults::Listener[axis]) *
-          static_cast<double>(reverb_defaults::RoomDimensionsMetres[axis]);
-      squared += difference * difference;
+  static StereoFrame RenderDirect(const InputFrame &input,
+                                  const SourcePositions &positions,
+                                  const std::size_t sourceCount,
+                                  const EarlyReflectionRoom &room) noexcept {
+    StereoFrame direct{};
+    const std::size_t active = std::min(sourceCount, MaximumSources);
+    const double roomScale = std::cbrt(
+        room.dimensionsMetres[0] * room.dimensionsMetres[1] *
+        room.dimensionsMetres[2]);
+    // Factory source/listener distance divided by the cube-root factory room
+    // volume. Derive it from the authoritative scene so changing the factory
+    // room cannot silently invalidate positioned-direct unity calibration.
+    static const double referenceRho = [] {
+      double distanceSquared = 0.0;
+      double volume = 1.0;
+      for (std::size_t axis = 0; axis < 3; ++axis) {
+        const double dimension =
+            static_cast<double>(reverb_defaults::RoomDimensionsMetres[axis]);
+        const double difference =
+            (static_cast<double>(reverb_defaults::Source[axis]) -
+             static_cast<double>(reverb_defaults::Listener[axis])) *
+            dimension;
+        distanceSquared += difference * difference;
+        volume *= dimension;
+      }
+      return std::sqrt(distanceSquared) / std::cbrt(volume);
+    }();
+    for (std::size_t source = 0; source < active; ++source) {
+      if (!std::isfinite(input[source]))
+        continue;
+      std::array<double, 3> difference{};
+      for (std::size_t axis = 0; axis < difference.size(); ++axis) {
+        constexpr double sourceMargin = 0.001;
+        const double normalizedSource = std::clamp(
+            static_cast<double>(ClampControl(positions[source][axis])),
+            sourceMargin, 1.0 - sourceMargin);
+        const double sourceMetres =
+            normalizedSource * room.dimensionsMetres[axis];
+        difference[axis] = sourceMetres - room.listenerPositionMetres[axis];
+      }
+      const double horizontal = std::hypot(difference[0], difference[1]);
+      const double lateral = horizontal > 1.0e-12
+                                 ? std::clamp(difference[0] / horizontal,
+                                              -1.0, 1.0)
+                                 : 0.0;
+      const double pan = 0.5 * (lateral + 1.0);
+      const double distance =
+          std::sqrt(difference[0] * difference[0] +
+                    difference[1] * difference[1] +
+                    difference[2] * difference[2]);
+      const double rho = distance / std::max(roomScale, 1.0e-12);
+      const float distanceGain = static_cast<float>(std::clamp(
+          referenceRho / std::max(rho, 0.05), 0.25, 2.0));
+      const float sample = input[source] * distanceGain;
+      direct[0] += sample * static_cast<float>(
+                                std::cos(0.5 * EarlyReflectionPi * pan));
+      direct[1] += sample * static_cast<float>(
+                                std::sin(0.5 * EarlyReflectionPi * pan));
     }
-    return std::sqrt(squared);
-  }
-
-  static std::array<float, 2>
-  PositionBalanceGains(const EarlyReflectionRoom &room,
-                       const SourcePosition &normalizedSource) noexcept {
-    double squared = 0.0;
-    for (std::size_t axis = 0; axis < 3; ++axis) {
-      const double source =
-          static_cast<double>(ClampControl(normalizedSource[axis])) *
-          room.dimensionsMetres[axis];
-      const double difference = source - room.listenerPositionMetres[axis];
-      squared += difference * difference;
-    }
-    // In a diffuse-field model late energy varies much less with receiver
-    // distance than the direct and discrete-reflection fields. Since this
-    // module deliberately leaves the dry path untouched, encode that distance
-    // cue as a bounded, equal-and-opposite ER/tail balance around the factory
-    // placement. One metre of ratio change follows the usual 20 log10 law;
-    // the clamp avoids singular behaviour when the two markers coincide.
-    const double distance = std::max(0.25, std::sqrt(squared));
-    const double reference =
-        std::max(0.25, ReferenceSourceListenerDistanceMetres());
-    const float balanceDb = static_cast<float>(std::clamp(
-        20.0 * std::log10(distance / reference),
-        -static_cast<double>(PositionBalanceLimitDb),
-        static_cast<double>(PositionBalanceLimitDb)));
-    return {UnclampedDecibelsToGain(-0.5f * balanceDb),
-            UnclampedDecibelsToGain(0.5f * balanceDb)};
+    return direct;
   }
 
   void UpdatePreDelayTarget(const float targetSamples) noexcept {
@@ -296,8 +326,7 @@ private:
 
   float ReadPreDelay(const std::size_t source, const float liveSample,
                      const float delaySamples) const noexcept {
-    return delaySamples < 0.5f ? liveSample
-                              : preDelays_[source].Read(delaySamples);
+    return preDelays_[source].Read(delaySamples, liveSample);
   }
 
   void AdvancePreDelayTransition() noexcept {
@@ -332,7 +361,9 @@ private:
   static AutomaticBalance
   MakeAutomaticBalance(const EarlyReflectionImpulseResponse &response) {
     AutomaticBalance balance;
-    balance.tailSend.fill(1.f);
+    // A source not present in this scene has no accepted handoff yet. Keep its
+    // late send closed until a matching FIR/metadata scene is adopted.
+    balance.tailSend.fill(0.f);
     balance.sourceCount = response.sourceCount;
     // The absolute reference belongs to the exported late topology. Geometry
     // changes only the pre-loop source send; it never changes feedback poles.
@@ -352,24 +383,97 @@ private:
                                      epsilon));
       balance.tailSend[source] =
           static_cast<float>(std::clamp(matched, 0.35, 3.0));
+      balance.handoffStartSeconds[source] =
+          static_cast<float>(handoff.finalStartSeconds);
     }
     return balance;
   }
 
+  void SetLateAlignmentTarget(const std::size_t source,
+                              const float samples) noexcept {
+    const float target = std::max(0.f, samples);
+    if (!lateAlignmentInitialized_[source]) {
+      currentLateAlignmentSamples_[source] =
+          fromLateAlignmentSamples_[source] =
+              toLateAlignmentSamples_[source] =
+                  pendingLateAlignmentSamples_[source] = target;
+      lateAlignmentTransitionPhase_[source] = 1.f;
+      lateAlignmentInitialized_[source] = true;
+      return;
+    }
+    pendingLateAlignmentSamples_[source] = target;
+    if (lateAlignmentTransitionPhase_[source] < 1.f ||
+        std::abs(target - currentLateAlignmentSamples_[source]) < 0.25f)
+      return;
+    fromLateAlignmentSamples_[source] = currentLateAlignmentSamples_[source];
+    toLateAlignmentSamples_[source] = target;
+    lateAlignmentTransitionPhase_[source] = 0.f;
+  }
+
+  void UpdateLateAlignmentTargets() noexcept {
+    std::array<float, 3> dimensions{};
+    for (std::size_t axis = 0; axis < dimensions.size(); ++axis)
+      dimensions[axis] =
+          static_cast<float>(controlRoom_.dimensionsMetres[axis]);
+    const float intrinsic = late_.IntrinsicFirstOutputSeconds(dimensions);
+    for (std::size_t source = 0; source < MaximumSources; ++source) {
+      if (handoffStartSeconds_[source] <= 0.f &&
+          !lateAlignmentInitialized_[source])
+        continue;
+      SetLateAlignmentTarget(
+          source, std::max(0.f, handoffStartSeconds_[source] - intrinsic) *
+                      static_cast<float>(sampleRate_));
+    }
+  }
+
+  float ProcessLateAlignment(const std::size_t source,
+                             const float input) noexcept {
+    const auto read = [&](const float delay) {
+      return lateAlignmentDelays_[source].Read(delay, input);
+    };
+    float output = read(currentLateAlignmentSamples_[source]);
+    auto &phase = lateAlignmentTransitionPhase_[source];
+    if (phase < 1.f) {
+      const float fade = phase * phase * (3.f - 2.f * phase);
+      output = read(fromLateAlignmentSamples_[source]) +
+               fade * (read(toLateAlignmentSamples_[source]) -
+                       read(fromLateAlignmentSamples_[source]));
+      phase = std::min(1.f, phase + lateAlignmentTransitionIncrement_);
+      if (phase >= 1.f) {
+        currentLateAlignmentSamples_[source] =
+            toLateAlignmentSamples_[source];
+        if (std::abs(pendingLateAlignmentSamples_[source] -
+                     currentLateAlignmentSamples_[source]) >= 0.25f) {
+          fromLateAlignmentSamples_[source] =
+              currentLateAlignmentSamples_[source];
+          toLateAlignmentSamples_[source] =
+              pendingLateAlignmentSamples_[source];
+          phase = 0.f;
+        }
+      }
+    }
+    lateAlignmentDelays_[source].Push(input);
+    return output;
+  }
+
   void UpdateAutomaticBalance() noexcept {
-    if (balancePollCountdown_ == 0) {
-      AutomaticBalance latest;
-      auto sequence = appliedBalanceSequence_;
-      if (balanceMailbox_.ConsumeLatest(latest, sequence) &&
-          sequence != appliedBalanceSequence_) {
-        appliedBalanceSequence_ = sequence;
+    AutomaticBalance latest;
+    const auto activeScene = convolver_.RenderedSceneSequence();
+    if (activeScene > appliedBalanceSequence_ &&
+        balanceMailbox_.ConsumeForScene(latest, activeScene)) {
+      const bool firstAcceptedScene = appliedBalanceSequence_ == 0;
+      appliedBalanceSequence_ = activeScene;
+      targetTailSend_ = latest.tailSend;
+      handoffStartSeconds_ = latest.handoffStartSeconds;
+      UpdateLateAlignmentTargets();
+      if (firstAcceptedScene) {
+        currentTailSend_ = fromTailSend_ = targetTailSend_;
+        balanceTransitionPhase_ = 1.f;
+      } else {
         fromTailSend_ = currentTailSend_;
-        targetTailSend_ = latest.tailSend;
         balanceTransitionPhase_ = 0.f;
       }
-      balancePollCountdown_ = 64;
     }
-    --balancePollCountdown_;
     if (balanceTransitionPhase_ >= 1.f)
       return;
     const float fade = balanceTransitionPhase_ * balanceTransitionPhase_ *
@@ -418,31 +522,19 @@ private:
   }
 
   void UpdateControlTargets(const RoomReverbControls &controls,
-                            const SourcePositions &positions,
-                            const std::size_t sourceCount) noexcept {
+                            const SourcePositions &,
+                            const std::size_t) noexcept {
     controlRoom_ = MakeRoom(controls);
-    for (std::size_t source = 0; source < MaximumSources; ++source) {
-      const auto target = source < sourceCount
-                              ? PositionBalanceGains(controlRoom_,
-                                                     positions[source])
-                              : std::array<float, 2>{1.f, 1.f};
-      targetEarlyPositionGain_[source] = target[0];
-      targetTailPositionGain_[source] = target[1];
-      if (!positionGainInitialized_) {
-        currentEarlyPositionGain_[source] = target[0];
-        currentTailPositionGain_[source] = target[1];
-      }
-    }
-    positionGainInitialized_ = true;
-
+    UpdateLateAlignmentTargets();
     targetWetSizeGain_ = WetSizeCalibration(controlRoom_);
     if (!wetSizeGainInitialized_) {
       wetSizeGain_ = targetWetSizeGain_;
       wetSizeGainInitialized_ = true;
     }
+    const float balance = ClampControl(controls.balance);
     earlyGain_ =
-        EarlyCalibrationGain * DecibelsToGain(controls.earlyLevelDb);
-    tailGain_ = DecibelsToGain(controls.tailLevelDb);
+        EarlyCalibrationGain * std::min(1.f, 2.f * (1.f - balance));
+    tailGain_ = std::min(1.f, 2.f * balance);
 
     const float highControl = ClampControl(controls.highCut);
     const float lowControl = ClampControl(controls.lowCut);
@@ -477,7 +569,6 @@ private:
     }
     request.materials =
         MakeEarlyReflectionMaterials(ClampControl(controls.damping));
-    request.convolutionLatencySamples = Convolver::LatencySamples;
     request.transitionSeconds = 0.100;
     if (worker_->Submit(request) == 0)
       return;
@@ -540,6 +631,9 @@ public:
       worker_.reset();
     }
     balanceMailbox_.Reset();
+    targetTailSend_.fill(0.f);
+    handoffStartSeconds_.fill(0.f);
+    appliedBalanceSequence_ = 0;
     sampleRate_ = sampleRate;
     earlyConfig_ = {};
     earlyConfig_.sampleRate = sampleRate_;
@@ -555,12 +649,17 @@ public:
                                   8;
     for (auto &delay : preDelays_)
       delay.Prepare(preDelayCapacity);
+    const auto alignmentCapacity = static_cast<std::size_t>(std::ceil(
+                                       earlyConfig_.responseTimeSeconds *
+                                       sampleRate_)) +
+                                   8;
+    for (auto &delay : lateAlignmentDelays_)
+      delay.Prepare(alignmentCapacity);
     requestIntervalSamples_ = std::max<std::size_t>(
         1, static_cast<std::size_t>(std::llround(sampleRate_ / 20.0)));
     balanceTransitionIncrement_ =
         1.f / std::max(1.f, 0.100f * static_cast<float>(sampleRate_));
-    positionGainSmoothingCoefficient_ =
-        1.f - std::exp(-1.f / (0.050f * static_cast<float>(sampleRate_)));
+    lateAlignmentTransitionIncrement_ = balanceTransitionIncrement_;
     preDelayTransitionIncrement_ =
         1.f / std::max(1.f, PreDelayTransitionSeconds *
                                static_cast<float>(sampleRate_));
@@ -568,12 +667,15 @@ public:
     hasSubmittedScene_ = false;
     worker_ = std::make_unique<EarlyReflectionWorker>(
         20.0, [this](const EarlyReflectionImpulseResponse &response,
-                     const double transitionSeconds) {
+                     const double transitionSeconds,
+                     const std::size_t sceneSequence) {
           if (!convolver_.PrepareAndQueueImpulseResponse(response,
-                                                         transitionSeconds))
+                                                         transitionSeconds,
+                                                         sceneSequence))
             return false;
-          balanceMailbox_.Publish(MakeAutomaticBalance(response));
-          return true;
+          auto balance = MakeAutomaticBalance(response);
+          balance.sceneSequence = sceneSequence;
+          return balanceMailbox_.Publish(balance);
         });
     Reset();
   }
@@ -583,25 +685,30 @@ public:
     late_.Reset();
     for (auto &delay : preDelays_)
       delay.Reset();
+    for (auto &delay : lateAlignmentDelays_)
+      delay.Reset();
     highCutState_.fill(0.f);
     lowCutState_.fill(0.f);
-    currentTailSend_.fill(1.f);
-    fromTailSend_.fill(1.f);
-    targetTailSend_.fill(1.f);
+    // Keep the accepted scene's non-audio metadata paired with the active ER
+    // bank. Reset clears delay/filter history, but it must not silently revert
+    // handoff gain and onset until some future geometry build happens.
+    currentTailSend_ = targetTailSend_;
+    fromTailSend_ = targetTailSend_;
+    currentLateAlignmentSamples_.fill(0.f);
+    fromLateAlignmentSamples_.fill(0.f);
+    toLateAlignmentSamples_.fill(0.f);
+    pendingLateAlignmentSamples_.fill(0.f);
+    lateAlignmentTransitionPhase_.fill(1.f);
+    lateAlignmentInitialized_.fill(false);
+    UpdateLateAlignmentTargets();
     balanceTransitionPhase_ = 1.f;
-    balancePollCountdown_ = 0;
-    appliedBalanceSequence_ = 0;
     wetSizeGain_ = 1.f;
     wetSizeGainInitialized_ = false;
-    currentEarlyPositionGain_.fill(1.f);
-    currentTailPositionGain_.fill(1.f);
-    targetEarlyPositionGain_.fill(1.f);
-    targetTailPositionGain_.fill(1.f);
-    positionGainInitialized_ = false;
     targetWetSizeGain_ = 1.f;
     earlyGain_ = tailGain_ = 1.f;
     highCutAlpha_ = lowCutAlpha_ = 1.f;
     controlCountdown_ = 0;
+    requestCountdown_ = 0;
     currentPreDelaySamples_ = fromPreDelaySamples_ = toPreDelaySamples_ =
         pendingPreDelaySamples_ = 0.f;
     preDelayTransitionPhase_ = 1.f;
@@ -626,9 +733,10 @@ public:
     return result && result->Succeeded() && result->publishedToConvolver;
   }
 
-  StereoFrame Process(const InputFrame &input, const SourcePositions &positions,
-                      const std::size_t sourceCount,
-                      const RoomReverbControls &controls) noexcept {
+  RoomReverbFrame Process(const InputFrame &input,
+                          const SourcePositions &positions,
+                          const std::size_t sourceCount,
+                          const RoomReverbControls &controls) noexcept {
     const std::size_t activeSources = std::min(sourceCount, MaximumSources);
     if (controlCountdown_ == 0) {
       UpdateControlTargets(controls, positions, activeSources);
@@ -640,6 +748,9 @@ public:
       requestCountdown_ = requestIntervalSamples_;
     }
     --requestCountdown_;
+
+    const StereoFrame direct =
+        RenderDirect(input, positions, activeSources, controlRoom_);
 
     const float preDelaySamples = MaximumPreDelaySeconds *
                                   ClampControl(controls.preDelay) *
@@ -665,44 +776,30 @@ public:
     }
     AdvancePreDelayTransition();
 
-    InputFrame earlyInput{};
-    InputFrame lateInputGain{};
-    for (std::size_t source = 0; source < MaximumSources; ++source) {
-      currentEarlyPositionGain_[source] +=
-          positionGainSmoothingCoefficient_ *
-          (targetEarlyPositionGain_[source] -
-           currentEarlyPositionGain_[source]);
-      currentTailPositionGain_[source] +=
-          positionGainSmoothingCoefficient_ *
-          (targetTailPositionGain_[source] -
-           currentTailPositionGain_[source]);
-      earlyInput[source] = delayed[source] * currentEarlyPositionGain_[source];
-    }
-
-    const auto early = convolver_.Process(earlyInput, activeSources);
+    const auto early = convolver_.Process(delayed, activeSources);
     UpdateAutomaticBalance();
-    for (std::size_t source = 0; source < MaximumSources; ++source)
-      lateInputGain[source] =
-          currentTailSend_[source] * currentTailPositionGain_[source];
+    float lateInput = 0.f;
+    for (std::size_t source = 0; source < MaximumSources; ++source) {
+      const float aligned = ProcessLateAlignment(source, delayed[source]);
+      lateInput += aligned * currentTailSend_[source];
+    }
     LateReverbControls lateControls;
     lateControls.decay = controls.decay;
     lateControls.damping = controls.damping;
     lateControls.diffusion = controls.diffusion;
     lateControls.modulation = controls.modulation;
     lateControls.shimmer = controls.shimmer;
-    lateControls.listener = controls.listener;
     for (std::size_t axis = 0; axis < 3; ++axis)
       lateControls.roomDimensionsMetres[axis] =
           static_cast<float>(controlRoom_.dimensionsMetres[axis]);
-    const auto tail = late_.Process(delayed, positions, activeSources,
-                                    lateControls, lateInputGain);
+    const auto tail = late_.Process(lateInput, lateControls);
     wetSizeGain_ += balanceTransitionIncrement_ *
                     (targetWetSizeGain_ - wetSizeGain_);
     const auto wet = ApplyWidth(
         {wetSizeGain_ * (earlyGain_ * early[0] + tailGain_ * tail[0]),
          wetSizeGain_ * (earlyGain_ * early[1] + tailGain_ * tail[1])},
         controls.width);
-    return FilterWet(wet);
+    return {direct, FilterWet(wet)};
   }
 };
 

@@ -1,54 +1,43 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="300" height="380" viewBox="0 0 300 380">
-  <rect width="300" height="380" fill="#d2d2d2"/>
-  <path id="section-dividers" d="M18 31h264M18 99h264M18 164h264M18 226h264M18 280h264M18 326h264" fill="none" stroke="#252525" stroke-width="1"/>
-  <text x="150" y="13" text-anchor="middle" font-family="DejaVu Sans" font-size="9" font-weight="bold" fill="#151515">TRIGGERFISH</text>
-  <text x="150" y="25" text-anchor="middle" font-family="DejaVu Sans" font-size="7" font-weight="bold" fill="#151515">ROOM REVERB</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="380" viewBox="0 0 240 380">
+  <rect width="240" height="380" fill="#d2d2d2"/>
 
-  <g font-family="DejaVu Sans" font-size="6.2" text-anchor="middle" fill="#151515">
-    <text data-control="SPACE" x="50" y="40">SIZE</text>
-    <text data-control="ASPECT" x="150" y="40">ASPECT</text>
-    <text data-control="PRE_DELAY" x="250" y="40">PRE DELAY</text>
+  <text x="120" y="18" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="9" letter-spacing="1" fill="#1f1f1f"><tspan font-weight="bold">TRIGGERFISH</tspan><tspan> ROOM REVERB</tspan></text>
 
-    <text x="27" y="115" fill="#9a5d00">SOURCE</text>
-    <text x="273" y="115" fill="#087b94">LISTENER</text>
-    <text x="27" y="124" font-size="5">DRAG DOTS</text>
-    <text x="273" y="124" font-size="5">TOP VIEW</text>
+  <g font-family="DejaVu Sans, sans-serif" font-size="6.1" font-weight="bold" text-anchor="middle" fill="#1f1f1f">
+    <text data-control="SPACE" x="23.9883" y="127">SIZE</text>
+    <text data-control="ASPECT" x="71.9355" y="127">ASPECT</text>
+    <text data-control="PRE_DELAY" x="119.3994" y="127">PRE DELAY</text>
+    <text data-control="DECAY" x="167.3994" y="127">DECAY</text>
+    <text data-control="DAMPING" x="215.9033" y="127">DAMPING</text>
 
-    <text data-control="DECAY" x="19" y="171">DECAY</text>
-    <text data-control="DAMPING" x="69" y="171">DAMPING</text>
-    <text data-control="DIFFUSION" x="119" y="171">DIFFUSE</text>
-    <text data-control="MODULATION" x="169" y="171">MOD</text>
-    <text data-control="SHIMMER" x="219" y="171">SHIMMER</text>
-    <text data-control="WIDTH" x="269" y="171" font-size="5.2">STEREO WIDTH</text>
+    <text data-control="DIFFUSION" x="23.7949" y="181">DIFFUSE</text>
+    <text data-control="MODULATION" x="71.7656" y="181">MOD</text>
+    <text data-control="SHIMMER" x="119.7773" y="181">SHIMMER</text>
+    <text data-control="WIDTH" x="168.0838" y="181" font-size="5.2">STEREO WIDTH</text>
+    <text data-control="BALANCE" x="215.7588" y="181" font-size="5.2">ER / TAIL</text>
 
-    <text data-control="EARLY_LEVEL" x="19" y="233">EARLY</text>
-    <text data-control="TAIL_LEVEL" x="69" y="233">TAIL</text>
-    <text data-control="LOW_CUT" x="119" y="233">LOW CUT</text>
-    <text data-control="HIGH_CUT" x="169" y="233">HIGH CUT</text>
-    <text data-control="MIX" x="219" y="233">MIX</text>
-    <text data-control="LEVEL" x="269" y="233">LEVEL</text>
+    <text data-control="LOW_CUT" x="47.3933" y="239">LOW CUT</text>
+    <text data-control="HIGH_CUT" x="95.3933" y="239">HIGH CUT</text>
+    <text data-control="MIX" x="143.5984" y="239">MIX</text>
+    <text data-control="LEVEL" x="191.4432" y="239">LEVEL</text>
   </g>
 
-  <g font-family="DejaVu Sans" font-size="5.1" text-anchor="middle" fill="#151515">
-    <text data-control="AUDIO_INPUT" x="17" y="283">AUDIO</text>
-    <text data-control="X_POSITION_INPUT" x="50" y="283">X</text>
-    <text data-control="Y_POSITION_INPUT" x="83" y="283">Y</text>
-    <text data-control="Z_POSITION_INPUT" x="116" y="283">Z</text>
-    <text data-control="SPACE_CV_INPUT" x="149" y="283">SIZE</text>
-    <text data-control="PRE_DELAY_CV_INPUT" x="182" y="283">PRE</text>
-    <text data-control="DECAY_CV_INPUT" x="215" y="283">DECAY</text>
-    <text data-control="DAMPING_CV_INPUT" x="248" y="283">DAMP</text>
-    <text data-control="MIX_CV_INPUT" x="281" y="283">MIX</text>
+  <g id="output-jack-blocks" fill="#555555">
+    <rect x="196" y="283" width="40" height="42" rx="5"/>
+    <rect x="196" y="330" width="40" height="42" rx="5"/>
   </g>
 
-  <g id="output-jack-blocks" fill="#efefef" stroke="#252525" stroke-width="0.8">
-    <rect x="93" y="327" width="40" height="38" rx="3"/>
-    <rect x="147" y="327" width="40" height="38" rx="3"/>
-  </g>
-  <g font-family="DejaVu Sans" font-size="6" text-anchor="middle" fill="#151515">
-    <text data-control="LEFT_OUTPUT" x="114" y="326">LEFT</text>
-    <text data-control="RIGHT_OUTPUT" x="168" y="326">RIGHT</text>
-    <text x="150" y="374" font-size="5">GEOMETRIC EARLY FIELD + OPTIMIZED 16-LINE TAIL</text>
+  <g font-family="DejaVu Sans, sans-serif" font-size="4.8" font-weight="bold" text-anchor="middle" fill="#1f1f1f">
+    <text data-control="AUDIO_INPUT" x="24.1987" y="289" font-size="4.4">AUDIO IN</text>
+    <text data-control="LISTENER_X_CV_INPUT" x="71.8595" y="289" font-size="4.2">LISTENER X</text>
+    <text data-control="DECAY_CV_INPUT" x="119.3994" y="289">DECAY</text>
+    <text data-control="DAMPING_CV_INPUT" x="167.9646" y="289" font-size="4.4">DAMPING</text>
+    <text data-control="LEFT_OUTPUT" x="215.3936" y="289" fill="#f2f2f2">LEFT</text>
+    <text data-control="PRE_DELAY_CV_INPUT" x="23.7798" y="336" font-size="4.4">PRE DELAY</text>
+    <text data-control="LISTENER_Y_CV_INPUT" x="71.7898" y="336" font-size="4.2">LISTENER Y</text>
+    <text data-control="BALANCE_CV_INPUT" x="119.8052" y="336" font-size="4.2">ER / TAIL</text>
+    <text data-control="MIX_CV_INPUT" x="167.5986" y="336">MIX</text>
+    <text data-control="RIGHT_OUTPUT" x="215.3936" y="336" fill="#f2f2f2">RIGHT</text>
   </g>
 </svg>

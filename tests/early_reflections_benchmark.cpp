@@ -20,7 +20,7 @@ void Run(const std::size_t sourceCount) {
 
   const auto buildStart = Clock::now();
   const auto response = tfdsp::BuildEarlyReflectionImpulseResponse(
-      config, room, sources, materials, Convolver::LatencySamples);
+      config, room, sources, materials);
   const double buildMilliseconds =
       std::chrono::duration<double, std::milli>(Clock::now() - buildStart)
           .count();

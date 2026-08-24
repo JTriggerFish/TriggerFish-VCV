@@ -14,7 +14,7 @@
       "version": "2.6.6",
       "params": [],
       "data": {
-        "text": "TriggerFish Room Reverb smoke test\n\nSETUP\nSelect an output device in Audio-8 and start with monitor volume low. The programmed 303 line feeds Room Reverb as a mono source; its independent LEFT and RIGHT outputs feed Audio-8 inputs 1 and 2 directly. Use the reverb's LEVEL as the output trim.\n\nThis reverb test deliberately removes the smoke-303 filter/FM LFOs so tail movement can be assessed without external modulation.\n\nStart by turning MIX up and use the EARLY and TAIL trims to isolate the geometric reflections and two-stage velvet late field. Drag the amber source and blue listener dots on the room plan, then try SIZE, ASPECT, PRE DELAY, DECAY, DAMPING, DIFFUSE, MOD, SHIMMER, WIDTH, LOW CUT, and HIGH CUT. The AUDIO/X/Y/Z inputs also accept the aligned polyphonic scene cables from Scene Pack 4."
+        "text": "TriggerFish Room Reverb smoke test\n\nSETUP\nSelect an output device in Audio-8 and start with monitor volume low. The programmed 303 line feeds Room Reverb as a mono source; its independent LEFT and RIGHT outputs feed Audio-8 inputs 1 and 2 directly. Use the reverb's LEVEL as the output trim.\n\nThis reverb test deliberately removes the smoke-303 filter/FM LFOs so tail movement can be assessed without external modulation.\n\nStart by turning MIX up and sweep ER / TAIL from the geometric reflections through the inferred centre blend to the two-stage velvet late field. Drag the amber source and blue listener dots on the room plan, then try SIZE, ASPECT, PRE DELAY, DECAY, DAMPING, DIFFUSE, MOD, SHIMMER, WIDTH, LOW CUT, and HIGH CUT. The AUDIO input accepts Scene Pack 4's polyphonic source cable; each connected channel gets its own draggable marker."
       },
       "pos": [
         -9,
@@ -1161,7 +1161,7 @@
       "params": [
         {
           "id": 0,
-          "value": 0.5
+          "value": 0.6
         },
         {
           "id": 1,
@@ -1169,47 +1169,47 @@
         },
         {
           "id": 2,
-          "value": 0.28
+          "value": 0.048
         },
         {
           "id": 3,
-          "value": 0.0
+          "value": 0.5
         },
         {
           "id": 4,
-          "value": 0.5
-        },
-        {
-          "id": 5,
           "value": 0.35
         },
         {
-          "id": 6,
+          "id": 5,
           "value": 0.5
         },
         {
-          "id": 7,
+          "id": 6,
           "value": 0.682
         },
         {
+          "id": 7,
+          "value": 0.64
+        },
+        {
           "id": 8,
-          "value": 0.55
+          "value": 0.28
         },
         {
           "id": 9,
-          "value": 0.18
+          "value": 0.82
         },
         {
           "id": 10,
-          "value": 0.75
+          "value": 0.3
         },
         {
           "id": 11,
-          "value": 0.4
+          "value": 0.6130368568946039
         },
         {
           "id": 12,
-          "value": 0.6130368568946039
+          "value": 0.5
         },
         {
           "id": 13,
@@ -1217,27 +1217,75 @@
         },
         {
           "id": 14,
-          "value": 0.0
+          "value": 0.829482217661603
         },
         {
           "id": 15,
-          "value": 0.0
-        },
-        {
-          "id": 16,
-          "value": 0.9039693650225663
-        },
-        {
-          "id": 17,
           "value": 0.35
         },
         {
-          "id": 18,
+          "id": 16,
           "value": -6.0
         },
         {
-          "id": 19,
+          "id": 17,
           "value": 0.0
+        },
+        {
+          "id": 18,
+          "value": 0.5
+        },
+        {
+          "id": 19,
+          "value": 0.35
+        },
+        {
+          "id": 20,
+          "value": 0.5
+        },
+        {
+          "id": 21,
+          "value": 0.35
+        },
+        {
+          "id": 22,
+          "value": 0.5
+        },
+        {
+          "id": 23,
+          "value": 0.35
+        },
+        {
+          "id": 24,
+          "value": 0.5
+        },
+        {
+          "id": 25,
+          "value": 0.35
+        },
+        {
+          "id": 26,
+          "value": 0.5
+        },
+        {
+          "id": 27,
+          "value": 0.35
+        },
+        {
+          "id": 28,
+          "value": 0.5
+        },
+        {
+          "id": 29,
+          "value": 0.35
+        },
+        {
+          "id": 30,
+          "value": 0.5
+        },
+        {
+          "id": 31,
+          "value": 0.35
         }
       ],
       "pos": [

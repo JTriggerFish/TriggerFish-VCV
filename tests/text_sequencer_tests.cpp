@@ -389,12 +389,10 @@ play song
 
 void compileAndCycleIndependentLanes() {
   const std::string source = R"(riff = sequence {
-  cycle 8
   tonic C@4
   scale minor
   notes 1 2 b3 4 5 6 b7 8 |> rotate 1
-  velocity .61
-  accent .88 . .
+  velocity .88 .61 .61
   duration 1
 }
 play riff
@@ -417,7 +415,7 @@ play riff
     check(close(events.events[0].pitchVolts, expectedPitch[beat]),
           "note lane rotates independently");
     check(close(events.events[0].velocity, expectedVelocity[beat]),
-          "three-item accent lane displaces against notes");
+          "three-item velocity lane displaces against notes");
     check(events.events[0]
               .cursors[static_cast<std::size_t>(tfseq::CursorLane::Notes)]
               .valid(),
@@ -437,8 +435,7 @@ play voice
   if (!compiled)
     return;
   const auto &art = compiled.program->semantic().sequences[0].articulation;
-  check(art.size() == 17,
-        "note events expand replication and Euclidean cells");
+  check(art.size() == 17, "note events expand replication and Euclidean cells");
   check(art[0].atoms[0].kind == tfseq::ArticulationKind::Attack,
         "a plain note is an attack");
   check(art[1].atoms[0].kind == tfseq::ArticulationKind::Tie,
@@ -499,8 +496,7 @@ play a
     tfseq::Runtime ghostRuntime;
     ghostRuntime.setProgram(ghostMilliseconds.program.get());
     const auto ghost = ghostRuntime.next(0.0);
-    check(ghost.count == 1 &&
-              close(ghost.events[0].gateMilliseconds, 12.f) &&
+    check(ghost.count == 1 && close(ghost.events[0].gateMilliseconds, 12.f) &&
               close(ghost.events[0].gateFraction, .1f) &&
               close(ghost.events[0].gateCapMilliseconds, 20.f),
           "ghost caps preserve millisecond gate units and a short fallback");
@@ -518,10 +514,113 @@ play a
     slideRuntime.setProgram(slideMilliseconds.program.get());
     slideRuntime.next(0.0);
     const auto slide = slideRuntime.next(1.0);
-    check(slide.count == 1 &&
-              close(slide.events[0].slideMilliseconds, 80.f),
+    check(slide.count == 1 && close(slide.events[0].slideMilliseconds, 80.f),
           "exact millisecond slide values override the numerical lane");
   }
+}
+
+void namedGateAndDynamicsArticulations() {
+  const auto compiled = tfseq::Compile(R"(a = sequence {
+  notes 1{quiet} ^2{stacc} ^3{quiet,ten} 4{ten} 5{stacc,gate=.4}
+}
+play a
+)");
+  check(static_cast<bool>(compiled), compiled.diagnostic.message);
+  if (!compiled)
+    return;
+
+  const auto &steps = compiled.program->semantic().sequences[0].articulation;
+  check(steps.size() == 5 && steps[0].atoms[0].quiet &&
+            steps[1].atoms[0].gateArticulation ==
+                tfseq::GateArticulation::Staccato &&
+            steps[2].atoms[0].quiet &&
+            steps[2].atoms[0].gateArticulation ==
+                tfseq::GateArticulation::Tenuto,
+        "quiet, stacc, and ten are typed note-owned articulations");
+
+  tfseq::Runtime runtime;
+  runtime.setProgram(compiled.program.get());
+  const auto quiet = runtime.next(0.0).events[0];
+  const auto accentedStaccato = runtime.next(1.0).events[0];
+  const auto quietAccentedTenuto = runtime.next(2.0).events[0];
+  const auto tenuto = runtime.next(3.0).events[0];
+  const auto exactGate = runtime.next(4.0).events[0];
+  check(close(quiet.velocity, .36f) && close(quiet.gateFraction, .8f),
+        "quiet halves Velocity without shortening Gate");
+  check(close(accentedStaccato.velocity, .88f) &&
+            close(accentedStaccato.accent, .88f) &&
+            close(accentedStaccato.gateFraction, .25f),
+        "staccato is orthogonal to accent and Velocity");
+  check(close(quietAccentedTenuto.velocity, .44f) &&
+            close(quietAccentedTenuto.accent, .88f) &&
+            close(quietAccentedTenuto.gateFraction, .95f),
+        "quiet can retain a timbral accent while tenuto controls Gate");
+  check(close(tenuto.velocity, .72f) && close(tenuto.gateFraction, .95f),
+        "tenuto changes Gate without changing Velocity");
+  check(close(exactGate.gateFraction, .4f),
+        "an inline gate value overrides named gate articulation");
+
+  const auto laneOverride = tfseq::Compile(R"(a = sequence {
+  notes 1{stacc} 2{ten}
+  gate . .6
+}
+play a
+)");
+  check(static_cast<bool>(laneOverride), laneOverride.diagnostic.message);
+  if (laneOverride) {
+    tfseq::Runtime laneRuntime;
+    laneRuntime.setProgram(laneOverride.program.get());
+    const auto inherited = laneRuntime.next(0.0).events[0];
+    const auto overridden = laneRuntime.next(1.0).events[0];
+    check(close(inherited.gateFraction, .25f) &&
+              close(overridden.gateFraction, .6f),
+          "a lane no-op retains articulation while a value overrides it");
+  }
+
+  const auto ratcheted = tfseq::Compile(R"(a = sequence {
+  notes 1*2{stacc}
+}
+play a
+)");
+  check(static_cast<bool>(ratcheted), ratcheted.diagnostic.message);
+  if (ratcheted) {
+    tfseq::Runtime ratchetRuntime;
+    ratchetRuntime.setProgram(ratcheted.program.get());
+    const auto events = ratchetRuntime.next(0.0);
+    check(events.count == 2 && close(events.events[0].gateFraction, .25f) &&
+              close(events.events[1].gateFraction, .25f),
+          "named gate articulation applies to every ratchet subspan");
+  }
+
+  const auto slide = tfseq::Compile(R"(a = sequence {
+  notes 1 >2{stacc}
+}
+play a
+)");
+  check(static_cast<bool>(slide), slide.diagnostic.message);
+  if (slide) {
+    tfseq::Runtime slideRuntime;
+    slideRuntime.setProgram(slide.program.get());
+    const bool sourceLegato = slideRuntime.next(0.0).events[0].legatoToNext;
+    const auto target = slideRuntime.next(1.0);
+    check(sourceLegato && target.count == 1 &&
+              target.events[0].kind == tfseq::EventKind::Slide &&
+              close(target.events[0].gateFraction, .25f),
+          "a slide stays connected at onset and uses the target release");
+  }
+
+  check(!tfseq::Compile("a = sequence {\n notes x1{quiet}\n}\nplay a\n"),
+        "quiet is rejected when ghost already supplies it");
+  check(!tfseq::Compile("a = sequence {\n notes x1{stacc}\n}\nplay a\n"),
+        "stacc is rejected when ghost already supplies it");
+  check(!tfseq::Compile("a = sequence {\n notes x1{ten}\n}\nplay a\n"),
+        "tenuto is rejected as contradictory to ghost");
+  check(!tfseq::Compile("a = sequence {\n notes 1{stacc,ten}\n}\nplay a\n"),
+        "staccato and tenuto are mutually exclusive");
+  check(!tfseq::Compile("a = sequence {\n notes 1{quiet=.5}\n}\nplay a\n"),
+        "articulation flags reject numerical values");
+  check(!tfseq::Compile("a = sequence {\n notes 1{gate}\n}\nplay a\n"),
+        "numerical event attributes still require values");
 }
 
 void articulationModifiersComposeInEitherOrder() {
@@ -539,8 +638,7 @@ play a
   check(first.count == 3,
         "ratchet and probability suffixes compose in either order");
   const auto second = runtime.next(1.0);
-  check(second.count == 2,
-        "canonical ratchet/probability suffixes compose");
+  check(second.count == 2, "canonical ratchet/probability suffixes compose");
   check(!tfseq::Compile(R"(a = sequence {
   notes 1?1*2
 }
@@ -562,8 +660,8 @@ play a
     const bool firstWasRest =
         silent.count == 1 && silent.events[0].kind == tfseq::EventKind::Rest;
     const auto sounded = missedRuntime.next(1.0);
-    check(firstWasRest &&
-              sounded.count == 1 && close(sounded.events[0].velocity, .9f),
+    check(firstWasRest && sounded.count == 1 &&
+              close(sounded.events[0].velocity, .9f),
           "a probability miss still advances pitched numerical lanes");
   }
 
@@ -598,10 +696,8 @@ play a
           "nested group replication emits consecutive copies");
     check(step.atoms.size() < 6 ||
               (close(static_cast<float>(step.atoms[0].offsetFraction), 0.f) &&
-               close(static_cast<float>(step.atoms[2].offsetFraction),
-                     .25f) &&
-               close(static_cast<float>(step.atoms[4].offsetFraction),
-                     .5f)),
+               close(static_cast<float>(step.atoms[2].offsetFraction), .25f) &&
+               close(static_cast<float>(step.atoms[4].offsetFraction), .5f)),
           "nested replicas retain their own event positions");
   }
 
@@ -634,11 +730,10 @@ play a
 
 void transformByCycleAndArrange() {
   const std::string source = R"(a = sequence {
-  cycle 2
+  subdiv 8
   notes 1 2 |> every 2 rev
 }
 b = sequence {
-  cycle 1
   notes 5
 }
 song = a * 2 + b
@@ -655,12 +750,16 @@ play song
 
   tfseq::Runtime runtime;
   runtime.setProgram(compiled.program.get());
-  check(close(runtime.next(0).events[0].pitchVolts, 0.f),
-        "first cycle starts in source order");
+  const auto first = runtime.next(0);
+  check(close(first.events[0].pitchVolts, 0.f) &&
+            close(static_cast<float>(first.durationBeats), .5f),
+        "subdiv sets the default note value without setting pass length");
   check(close(runtime.next(1).events[0].pitchVolts, 2.f / 12.f),
         "first cycle continues in source order");
   check(close(runtime.next(2).events[0].pitchVolts, 2.f / 12.f),
         "every 2 reverses the second cycle");
+  check(close(runtime.next(3).events[0].pitchVolts, 0.f),
+        "the complete Notes pass defines the second cycle boundary");
   check(close(runtime.next(4).events[0].pitchVolts, 7.f / 12.f),
         "arrangement advances to the stitched section");
 }
@@ -671,6 +770,13 @@ void rejectInvalidInput() {
   check(!compiled, "invalid degree is rejected");
   check(compiled.diagnostic.line == 2 && compiled.diagnostic.column > 1,
         "diagnostic includes a useful source location");
+  check(!tfseq::Compile(R"(bad = sequence {
+  notes 1
+  accent .88
+}
+play bad
+)"),
+        "accent is note articulation, not a numerical lane");
 }
 
 void deterministicRandomPitchAndScalarValues() {
@@ -693,15 +799,14 @@ play randoms
     return;
 
   const auto &sequence = compiled.program->semantic().sequences[0];
-  check(sequence.notes.size() == 5 &&
-            sequence.notes[0].randomDefaultRange &&
+  check(sequence.notes.size() == 5 && sequence.notes[0].randomDefaultRange &&
             sequence.notes[1].randomDomain ==
                 tfseq::PitchItem::RandomDomain::ScaleDegree &&
             sequence.notes[3].randomDomain ==
                 tfseq::PitchItem::RandomDomain::ChromaticSemitone,
         "random pitch forms lower to typed semantic values");
   check(sequence.velocity[0].randomDistribution ==
-            tfseq::ScalarItem::RandomDistribution::Uniform &&
+                tfseq::ScalarItem::RandomDistribution::Uniform &&
             sequence.gate[0].randomDistribution ==
                 tfseq::ScalarItem::RandomDistribution::Normal,
         "random scalar forms retain their distributions");
@@ -723,8 +828,7 @@ play randoms
               close(one.events[0].gateFraction, two.events[0].gateFraction) &&
               close(one.events[0].cvValue[0], two.events[0].cvValue[0]),
           "the seed and event path reproduce every random draw");
-    check(one.events[0].velocity >= .2f &&
-              one.events[0].velocity <= .4f &&
+    check(one.events[0].velocity >= .2f && one.events[0].velocity <= .4f &&
               one.events[0].gateFraction >= 0.f &&
               one.events[0].gateFraction <= 1.f &&
               one.events[0].cvValue[0] >= -2.f &&
@@ -732,13 +836,13 @@ play randoms
           "random scalar draws remain within lane domains");
 
     const int patternPosition = step % 5;
-    const int semitone = static_cast<int>(
-        std::lround(one.events[0].pitchVolts * 12.f)) - 2;
+    const int semitone =
+        static_cast<int>(std::lround(one.events[0].pitchVolts * 12.f)) - 2;
     if (patternPosition == 0 || patternPosition == 2) {
       const int pitchClass = ((semitone % 12) + 12) % 12;
       check(std::find(std::begin(pentatonicSemitones),
-                      std::end(pentatonicSemitones), pitchClass) !=
-                std::end(pentatonicSemitones),
+                      std::end(pentatonicSemitones),
+                      pitchClass) != std::end(pentatonicSemitones),
             "scale-domain random notes are quantized to the active scale");
     } else if (patternPosition == 1) {
       check(semitone == 3 || semitone == 5 || semitone == 7,
@@ -776,9 +880,9 @@ play a
   check(!tfseq::Compile(
             "a = sequence {\n notes 1\n velocity $u{.8,.2}\n}\nplay a\n"),
         "uniform scalar bounds must be ordered");
-  check(!tfseq::Compile(
-            "a = sequence {\n notes 1\n cv1 $u{1ms,2}\n}\nplay a\n"),
-        "random scalar units must match and suit the lane");
+  check(
+      !tfseq::Compile("a = sequence {\n notes 1\n cv1 $u{1ms,2}\n}\nplay a\n"),
+      "random scalar units must match and suit the lane");
 }
 
 void randomPreparationUsesBoundedRanges() {
@@ -857,8 +961,8 @@ play b
       evaluatedDocument.document, evaluated, draftDocument.document, draft,
       selectionBegin, selectionBegin + 7);
   const auto original = tfseq::Compile(evaluatedDocument.document);
-  const auto selected = merged ? tfseq::Compile(merged.document)
-                               : tfseq::Compile("");
+  const auto selected =
+      merged ? tfseq::Compile(merged.document) : tfseq::Compile("");
   check(merged && original && selected,
         "random selective-evaluation programs compile");
   if (!merged || !original || !selected)
@@ -871,16 +975,16 @@ play b
   for (int stepIndex = 0; stepIndex < 64; ++stepIndex) {
     const auto expected = before.next(static_cast<double>(stepIndex));
     const auto actual = after.next(static_cast<double>(stepIndex));
-    check(expected.count == 1 && actual.count == 1 &&
-              close(expected.events[0].pitchVolts,
-                    actual.events[0].pitchVolts),
-          "an inactive random edit does not change the evaluated random stream");
+    check(
+        expected.count == 1 && actual.count == 1 &&
+            close(expected.events[0].pitchVolts, actual.events[0].pitchVolts),
+        "an inactive random edit does not change the evaluated random stream");
   }
 }
 
 void documentedMusicalExamplesCompile() {
   const auto generative = tfseq::Compile(R"(melody = sequence {
-  cycle 16
+  subdiv 16
   tonic A@3
   scale minor_pentatonic
   notes $u{1,10}(5,8) $n{5,1.25}(3,8,2)
@@ -896,7 +1000,7 @@ play melody
         "generative reference example: " + generative.diagnostic.message);
 
   const auto harmony = tfseq::Compile(R"(changes = sequence {
-  cycle 16
+  subdiv 16
   tonic C@3
   scale major
   notes iim7 V7 Imaj7 VI7
@@ -913,7 +1017,7 @@ play song
         "harmony reference example: " + harmony.diagnostic.message);
 
   const auto groove = tfseq::Compile(R"(groove = sequence {
-  cycle 8
+  subdiv 8
   notes [1 5] 3 [4 6 8] 5
   duration 1 1 2
   offset -7ms 4ms 0 |> rate 1/2
@@ -951,14 +1055,12 @@ play range
 
 void scaleCardinalityAndExplicitOctaves() {
   auto compiled = tfseq::Compile(R"(p = sequence {
-  cycle 3
   tonic C@4
   scale major_pentatonic
   notes 1 6 1'
 }
 
 o = sequence {
-  cycle 3
   tonic C@4
   scale octatonic_half_whole
   notes 1 9 1'
@@ -1084,7 +1186,6 @@ play harmony
         "apostrophe shifts relative to the independently cycling octave lane");
 
   const auto choices = tfseq::Compile(R"(choices = sequence {
-  cycle 1
   notes <(1 3 5) (2 4 6)> [(1 b3 5)|(2 4 6)]
 }
 play choices
@@ -1163,7 +1264,6 @@ play named
 
 void distinguishInKeyShiftsFromModulation() {
   auto compiled = tfseq::Compile(R"(base = sequence {
-  cycle 1
   tonic C@4
   scale major
   notes 7
@@ -1239,7 +1339,6 @@ play reduced
 
 void scaleAndModulationPipelinesComposeLeftToRight() {
   const auto compiled = tfseq::Compile(R"(base = sequence {
-  cycle 1
   tonic C@4
   scale minor
   notes 1
@@ -1279,26 +1378,24 @@ play same
 
 void settingLanePipelinesAreNeverIgnored() {
   const auto cycle = tfseq::Compile(R"(a = sequence {
-  cycle 8 |> fast 2
+  subdiv 8 |> fast 2
   notes 1
 }
 play a
 )");
   check(!cycle,
-        "a pipeline attached to cycle is rejected instead of discarded");
+        "a pipeline attached to subdiv is rejected instead of discarded");
   const auto scale = tfseq::Compile(R"(a = sequence {
   scale minor |> rev
   notes 1
 }
 play a
 )");
-  check(!scale,
-        "setting diagnostics explain where sequence transforms belong");
+  check(!scale, "setting diagnostics explain where sequence transforms belong");
 }
 
 void harmonicMinorBuildsMajorDominantInKey() {
   auto compiled = tfseq::Compile(R"(tonic_triad = sequence {
-  cycle 3
   tonic C@4
   scale harmonic_minor
   notes 1 3 5
@@ -1342,12 +1439,10 @@ stop
 
 void conciseAcidSyntax() {
   const std::string source = R"(acid = sequence {
-  cycle 16
   tonic D#@2
   scale minor
-  notes 1!4 5 7 1 ~ 1 ~ 8 >1, ~ 1 >1, >1
+  notes ^1 1!3 ^5 7 ^1 ~ 1 ~ ^8 >1, ~ 1 >^1, >1
   velocity .5
-  accent .88 .!3 .88 . .88 . .88 .!2 .88 .
   gate .5
   glide .8
 }
@@ -1366,8 +1461,13 @@ play song
         "acid sections form a three-part song");
   check(compiled.program->semantic().sequences[0].notes.size() == 13,
         "note repetition expands only the pitched events");
-  check(compiled.program->semantic().sequences[0].accent.size() == 13,
-        "sparse scalar repetition follows pitched events");
+  std::size_t accented = 0;
+  for (const auto &step :
+       compiled.program->semantic().sequences[0].articulation) {
+    for (const auto &atom : step.atoms)
+      accented += atom.hasAccent ? 1u : 0u;
+  }
+  check(accented == 5, "acid accents are attached to their note events");
 
   tfseq::Runtime runtime;
   runtime.setProgram(compiled.program.get());
@@ -1376,7 +1476,7 @@ play song
         "acid starts on D-sharp 2");
   check(close(first.events[0].velocity, .88f), "first acid step is accented");
   check(close(first.events[0].accent, .88f),
-        "accent remains independently available from velocity");
+        "note articulation drives the dedicated accent output");
   for (int beat = 1; beat < 7; ++beat)
     runtime.next(beat);
   check(runtime.next(7).events[0].kind == tfseq::EventKind::Rest,
@@ -1429,13 +1529,11 @@ play song
 
 void hotSwapPreservesNamedSequencePhase() {
   auto original = tfseq::Compile(R"(riff = sequence {
-  cycle 4
   notes 1 2 3 4
 }
 play riff
 )");
   auto edited = tfseq::Compile(R"(riff = sequence {
-  cycle 4
   notes 1 2 7 4
 }
 play riff
@@ -1455,14 +1553,55 @@ play riff
         "hot swap continues at the current named-sequence cursor");
 }
 
+void hotSwapPreservesActiveArrangementTermIdentity() {
+  auto original = tfseq::Compile(R"(a = sequence {
+  notes 1
+}
+b = sequence {
+  notes 5
+}
+c = sequence {
+  notes 7
+}
+song = a + b + c
+play song
+)");
+  auto edited = tfseq::Compile(R"(a = sequence {
+  notes 1
+}
+b = sequence {
+  notes 5
+}
+c = sequence {
+  notes 7
+}
+d = sequence {
+  notes 2
+}
+song = b + d + a + c
+play song
+)");
+  check(static_cast<bool>(original), original.diagnostic.message);
+  check(static_cast<bool>(edited), edited.diagnostic.message);
+  if (!original || !edited)
+    return;
+
+  tfseq::Runtime runtime;
+  runtime.setProgram(original.program.get());
+  runtime.next(0.0); // Complete a; b is now the active arrangement term.
+  runtime.replaceProgram(edited.program.get(), 1.0);
+  const auto next = runtime.next(1.0);
+  check(next.count == 1 && close(next.events[0].pitchVolts, 7.f / 12.f),
+        "hot swap follows the active named arrangement term across reordering");
+}
+
 void preparedWorkspaceHasNoSmallEventCeiling() {
   std::string subdivisions = "[";
   for (int index = 0; index < 40; ++index)
     subdivisions += index == 0 ? "1" : " 1";
   subdivisions += "]";
-  const auto compiled =
-      tfseq::Compile("dense = sequence {\n  notes " + subdivisions +
-                     "\n}\nplay dense\n");
+  const auto compiled = tfseq::Compile("dense = sequence {\n  notes " +
+                                       subdivisions + "\n}\nplay dense\n");
   check(static_cast<bool>(compiled), compiled.diagnostic.message);
   if (!compiled)
     return;
@@ -1494,7 +1633,6 @@ void playbackStateHasNoFixedSequenceCeiling() {
   std::string source;
   for (int index = 0; index < 40; ++index) {
     source += "s" + std::to_string(index) + " = sequence {\n";
-    source += "  cycle 1\n";
     source += "  notes " + std::to_string(index + 1) + "\n}\n";
   }
   source += "song = ";
@@ -1555,11 +1693,9 @@ play legato
 
 void nestedArrangementsAndCompositeTransformsAreTyped() {
   const auto compiled = tfseq::Compile(R"(a = sequence {
-  cycle 1
   notes 1
 }
 b = sequence {
-  cycle 1
   notes 3
 }
 phrase = a + b
@@ -1592,7 +1728,7 @@ play a
         "typed transform parsing rejects ignored trailing arguments");
   const auto wrongLane = tfseq::Compile(R"(a = sequence {
   notes 1
-  accent + . |> transpose_semitone 2
+  velocity .5 |> transpose_semitone 2
 }
 play a
 )");
@@ -1602,7 +1738,6 @@ play a
 
 void sequenceConditionsStayCoherentAcrossLanes() {
   const auto compiled = tfseq::Compile(R"(coherent = sequence {
-  cycle 1
   notes 1 3
   velocity .1 .9
 }
@@ -1838,8 +1973,7 @@ play a
 )");
   check(static_cast<bool>(euclidean), euclidean.diagnostic.message);
   if (euclidean) {
-    const auto &steps =
-        euclidean.program->semantic().sequences[0].articulation;
+    const auto &steps = euclidean.program->semantic().sequences[0].articulation;
     check(steps.size() == 8, "Euclidean syntax creates its stated cell count");
     std::string rhythm;
     for (const auto &step : steps)
@@ -1855,6 +1989,7 @@ play a
   offset -1/8!2 1/8 |> rate 1/2
   cv1 0 . . 6 |> interp linear
   cv2 0 4 |> interp power 2
+  cv3 -1 1 |> interp smooth
 }
 play a
 )");
@@ -1867,23 +2002,23 @@ play a
               close(static_cast<float>(first.events[0].beat), -.125f) &&
               close(static_cast<float>(first.events[1].beat), .375f),
           "subdivisions sample one score-time offset without accelerating it");
-    check(close(first.events[0].cvValue[0], 0.f) &&
-              close(first.events[0].cvTarget[0], 6.f) &&
-              close(static_cast<float>(first.events[0].cvTargetBeat[0]),
-                    2.875f),
-          "linear CV skips no-op cells and targets the next explicit knot");
+    check(
+        close(first.events[0].cvValue[0], 0.f) &&
+            close(first.events[0].cvTarget[0], 6.f) &&
+            close(static_cast<float>(first.events[0].cvTargetBeat[0]), 2.875f),
+        "linear CV skips no-op cells and targets the next explicit knot");
 
     const auto halfBeat = runtime.next(.5);
-    check(halfBeat.count == 1 &&
-              close(halfBeat.events[0].cvValue[0], 1.f) &&
-              close(halfBeat.events[0].cvValue[1], 1.f),
-          "CV interpolation is evaluated from absolute score phase");
+    check(halfBeat.count == 1 && close(halfBeat.events[0].cvValue[0], 1.f) &&
+              close(halfBeat.events[0].cvValue[1], 1.f) &&
+              close(halfBeat.events[0].cvValue[2], 0.f),
+          "all three CV lanes interpolate within Notes-pass score time");
     runtime.next(2.0);
     runtime.next(3.0);
     const auto later = runtime.next(4.0);
     check(later.count > 0 &&
-              close(static_cast<float>(later.events[0].beat), 4.125f),
-          "a numeric lane rate changes phase without changing note time");
+              close(static_cast<float>(later.events[0].beat), 3.875f),
+          "a rate-controlled lane restarts with each Notes pass");
   }
 
   check(!tfseq::Compile(R"(a = sequence {
@@ -1902,7 +2037,7 @@ play a
         "continuous aligned CV waits for exact structural knot timing");
   check(!tfseq::Compile(R"(a = sequence {
   notes 1
-  cv3 1
+  cv4 1
 }
 play a
  )"),
@@ -1925,6 +2060,12 @@ play a
 }
 
 void unsafeNumericInputsAreDiagnostics() {
+  check(!tfseq::Compile("a = sequence {\n subdiv 0\n notes 1\n}\nplay a\n"),
+        "zero subdivision is rejected");
+  check(!tfseq::Compile("a = sequence {\n subdiv 7/2\n notes 1\n}\nplay a\n"),
+        "fractional subdivision denominators are rejected");
+  check(!tfseq::Compile("a = sequence {\n cycle 8\n notes 1\n}\nplay a\n"),
+        "the fixed wall-clock cycle setting is not part of the language");
   check(!tfseq::Compile("seed .5\nstop\n"),
         "fractional seeds are rejected rather than narrowed");
   check(!tfseq::Compile("a = sequence {\n notes 1\n duration 0\n}\nplay a\n"),
@@ -1950,6 +2091,7 @@ int main() {
   explicitSingleRepeatRemainsAnArrangement();
   compileAndCycleIndependentLanes();
   parseFirstClassArticulation();
+  namedGateAndDynamicsArticulations();
   articulationModifiersComposeInEitherOrder();
   nestedGroupReplicationAndProbabilityKeepPreparedIdentity();
   transformByCycleAndArrange();
@@ -1971,6 +2113,7 @@ int main() {
   stopIsAFirstClassTransportCommand();
   conciseAcidSyntax();
   hotSwapPreservesNamedSequencePhase();
+  hotSwapPreservesActiveArrangementTermIdentity();
   hotSwapCheckpointSurvivesLookahead();
   preparedWorkspaceHasNoSmallEventCeiling();
   playbackStateHasNoFixedSequenceCeiling();

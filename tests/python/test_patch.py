@@ -16,6 +16,7 @@ PATCH_PATHS = {
     "303_voice": ROOT / "test-303-voice.vcv",
     "prog_303": ROOT / "test-prog-sequencer-303.vcv",
     "room_reverb": ROOT / "test-room-reverb.vcv",
+    "reverb_two_sources": ROOT / "test-room-reverb-two-sources.vcv",
     "4072_voice": ROOT / "test-4072-voice.vcv",
     "wavefold": ROOT / "test-wavefold-oscillator.vcv",
     "unison": ROOT / "test-unison-oscillator.vcv",
@@ -186,41 +187,40 @@ EXPECTED_DEFAULTS = {
         17: 0.0,
         18: 0.0,
     },
-    "TfScenePack4": {
-        0: 3.5,
-        1: 3.5,
-        2: 4.5,
-        3: 4.5,
-        4: 3.5,
-        5: 4.5,
-        6: 5.5,
-        7: 3.5,
-        8: 4.5,
-        9: 6.5,
-        10: 3.5,
-        11: 4.5,
-    },
+    "TfScenePack4": {},
     "TfReverb": {
-        0: 0.5,
+        0: 0.60,
         1: 0.5,
-        2: 0.28,
-        3: 0.0,
-        4: 0.5,
-        5: 0.35,
-        6: 0.5,
-        7: 0.682,
-        8: 0.55,
-        9: 0.18,
-        10: 0.75,
-        11: 0.4,
-        12: 0.6130368568946039,
+        2: 0.048,
+        3: 0.5,
+        4: 0.35,
+        5: 0.5,
+        6: 0.682,
+        7: 0.64,
+        8: 0.28,
+        9: 0.82,
+        10: 0.30,
+        11: 0.6130368568946039,
+        12: 0.5,
         13: 0.0,
-        14: 0.0,
-        15: 0.0,
-        16: 0.9039693650225663,
-        17: 0.35,
-        18: 0.0,
-        19: 0.0,
+        14: 0.829482217661603,
+        15: 0.35,
+        16: 0.0,
+        17: 0.0,
+        18: 0.50,
+        19: 0.35,
+        20: 0.50,
+        21: 0.35,
+        22: 0.50,
+        23: 0.35,
+        24: 0.50,
+        25: 0.35,
+        26: 0.50,
+        27: 0.35,
+        28: 0.50,
+        29: 0.35,
+        30: 0.50,
+        31: 0.35,
     },
 }
 
@@ -344,13 +344,21 @@ def test_smoke_patches_use_triggerfish_parameter_defaults(name):
         actual = param_values(triggerfish_module)
         expected = EXPECTED_DEFAULTS[triggerfish_module["model"]]
         musical_overrides = set()
-        if name in {"303_voice", "prog_303", "room_reverb"}:
+        if name in {
+            "303_voice",
+            "prog_303",
+            "room_reverb",
+            "reverb_two_sources",
+            "scene_pack",
+        }:
             if triggerfish_module["model"] == "Tf303VoiceCore":
                 musical_overrides = {0, 1, 2, 4, 5, 6, 7, 8, 9, 11, 12}
             elif triggerfish_module["model"] == "Tf303Oscillator":
                 musical_overrides = {2, 4}
             elif triggerfish_module["model"] == "TfReverb":
-                musical_overrides = {18}
+                musical_overrides = (
+                    {3, 4, 16, 18, 19} if name == "reverb_two_sources" else {16}
+                )
         assert {
             param_id: value
             for param_id, value in actual.items()
@@ -385,13 +393,16 @@ def test_smoke_patch_has_playable_control_and_stereo_audio_paths(name):
     audio = modules(patch, "AudioInterface")[0]
     adsrs = modules(patch, "ADSR")
 
-    if name in {"wavefold", "unison", "scene_pack"}:
+    if name in {"wavefold", "unison", "scene_pack", "reverb_two_sources"}:
         assert len(modules(patch, "Scope")) == 1
     else:
         assert "Scope" not in {module["model"] for module in patch["modules"]}
     assert "Plateau" not in {module["model"] for module in patch["modules"]}
     if name == "scene_pack":
         assert len(modules(patch, "VCO")) == 4
+    elif name == "reverb_two_sources":
+        assert len(modules(patch, "VCO")) == 2
+        assert len(modules(patch, "VCMixer")) == 2
     elif modules(patch, "MIDIToCVInterface"):
         midi = modules(patch, "MIDIToCVInterface")[0]
         assert all(has_cable(patch, midi["id"], 1, adsr["id"], 4) for adsr in adsrs)
@@ -584,20 +595,20 @@ def test_prog_303_replaces_foundry_with_the_concise_program():
     assert has_cable(patch, voice["id"], 1, reverb["id"], 0)
     assert has_cable(patch, reverb["id"], 0, audio["id"], 0)
     assert has_cable(patch, reverb["id"], 1, audio["id"], 1)
-    assert param_values(reverb)[18] == -6.0
+    assert param_values(reverb)[16] == -6.0
     assert modules(patch, "VCMixer") == []
 
     source = sequencer["data"]["source"]
-    assert "notes 1!4 5 7 1 ~ 1 ~ 8 >1, ~ 1 >1, >1" in source
-    assert sequencer["data"]["languageVersion"] == 5
+    assert "notes ^1 1!3 ^5 7 ^1 ~ 1 ~ ^8 >1, ~ 1 >^1, >1" in source
+    assert sequencer["data"]["languageVersion"] == 1
     assert "articulation" not in source
-    assert "accent .88 .!3 .88 . .88 . .88 .!2 .88 ." in source
+    assert "\n  accent " not in source
     assert "gate .5" in source
     assert "velocity .5" in source
     assert "iv = acid |> modulate_degree 4 |> octave -1" in source
     assert "v  = acid |> modulate_degree 5 |> octave -1 |> scale major" in source
     assert "song = acid * 8 + iv * 4 + v * 4" in source
-    assert len(source.splitlines()) == 15
+    assert len(source.splitlines()) == 13
 
 
 def test_room_reverb_patch_routes_programmed_303_mono_to_stereo():
@@ -621,8 +632,8 @@ def test_room_reverb_patch_routes_programmed_303_mono_to_stereo():
     assert has_cable(patch, reverb["id"], 0, audio["id"], 0)
     assert has_cable(patch, reverb["id"], 1, audio["id"], 1)
     reverb_values = param_values(reverb)
-    assert {**reverb_values, 18: 0.0} == EXPECTED_DEFAULTS["TfReverb"]
-    assert reverb_values[18] == -6.0
+    assert {**reverb_values, 16: 0.0} == EXPECTED_DEFAULTS["TfReverb"]
+    assert reverb_values[16] == -6.0
 
 
 def test_4072_voice_patch_connects_midi_oscillator_filter_envelopes_and_vca():
@@ -690,19 +701,45 @@ def test_scene_pack_patch_connects_four_sources_and_packed_outputs():
     patch = load_patch("scene_pack")
     oscillators = modules(patch, "VCO")
     scene_pack = modules(patch, "TfScenePack4")[0]
+    reverb = modules(patch, "TfReverb")[0]
     scope = modules(patch, "Scope")[0]
-    masters = modules(patch, "VCMixer")
     audio = modules(patch, "AudioInterface")[0]
 
     assert len(oscillators) == 4
     for lane, oscillator in enumerate(oscillators):
-        assert has_cable(patch, oscillator["id"], 0, scene_pack["id"], 4 + lane)
-    assert has_cable(patch, scene_pack["id"], 0, masters[0]["id"], 1)
-    assert has_cable(patch, scene_pack["id"], 0, masters[1]["id"], 1)
-    assert has_cable(patch, masters[0]["id"], 0, audio["id"], 0)
-    assert has_cable(patch, masters[1]["id"], 0, audio["id"], 1)
+        assert has_cable(patch, oscillator["id"], 0, scene_pack["id"], lane)
+    assert has_cable(patch, scene_pack["id"], 0, reverb["id"], 0)
+    assert has_cable(patch, reverb["id"], 0, audio["id"], 0)
+    assert has_cable(patch, reverb["id"], 1, audio["id"], 1)
     assert has_cable(patch, scene_pack["id"], 0, scope["id"], 0)
-    assert has_cable(patch, scene_pack["id"], 1, scope["id"], 1)
+    assert has_cable(patch, reverb["id"], 0, scope["id"], 1)
+    assert has_cable(patch, reverb["id"], 1, scope["id"], 2)
+    assert modules(patch, "VCMixer") == []
+
+
+def test_two_source_reverb_patch_exposes_independent_packed_sources():
+    patch = load_patch("reverb_two_sources")
+    oscillators = modules(patch, "VCO")
+    source_levels = modules(patch, "VCMixer")
+    scene_pack = modules(patch, "TfScenePack4")[0]
+    reverb = modules(patch, "TfReverb")[0]
+    scope = modules(patch, "Scope")[0]
+    audio = modules(patch, "AudioInterface")[0]
+
+    assert len(oscillators) == len(source_levels) == 2
+    assert has_cable(patch, oscillators[0]["id"], 0, source_levels[0]["id"], 1)
+    assert has_cable(patch, oscillators[1]["id"], 2, source_levels[1]["id"], 1)
+    for source, source_level in enumerate(source_levels):
+        assert has_cable(patch, source_level["id"], 0, scene_pack["id"], source)
+    assert has_cable(patch, scene_pack["id"], 0, reverb["id"], 0)
+    assert has_cable(patch, reverb["id"], 0, audio["id"], 0)
+    assert has_cable(patch, reverb["id"], 1, audio["id"], 1)
+    assert has_cable(patch, scene_pack["id"], 0, scope["id"], 0)
+    assert has_cable(patch, reverb["id"], 0, scope["id"], 1)
+    assert has_cable(patch, reverb["id"], 1, scope["id"], 2)
+    positions = param_values(reverb)
+    assert (positions[3], positions[4]) == (0.25, 0.35)
+    assert (positions[18], positions[19]) == (0.75, 0.35)
 
 
 def test_diode_ladder_default_cutoff_cv_range_reaches_fully_open():
@@ -789,9 +826,14 @@ def test_303_voice_foundry_song_reproduces_gibber_pattern_and_transpositions():
 def test_smoke_patch_has_quiet_master(name):
     patch = load_patch(name)
     audio = modules(patch, "AudioInterface")[0]
-    if name in {"room_reverb", "prog_303"}:
+    if name in {
+        "room_reverb",
+        "reverb_two_sources",
+        "prog_303",
+        "scene_pack",
+    }:
         reverb = modules(patch, "TfReverb")[0]
-        assert param_values(reverb)[18] == -6.0
+        assert param_values(reverb)[16] == -6.0
         routed_inputs = {
             cable["inputId"]
             for cable in patch["cables"]

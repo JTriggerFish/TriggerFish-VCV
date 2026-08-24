@@ -8,6 +8,7 @@
 #include <array>
 #include <atomic>
 #include <cmath>
+#include <string>
 
 namespace {
 float Smoothstep(const float value) {
@@ -98,7 +99,6 @@ struct TfReverb : Module {
   enum ParamIds {
     SPACE,
     ASPECT,
-    LEGACY_HEIGHT,
     PRE_DELAY,
     SOURCE_X,
     SOURCE_Y,
@@ -109,43 +109,79 @@ struct TfReverb : Module {
     DIFFUSION,
     MODULATION,
     WIDTH,
-    EARLY_LEVEL,
-    TAIL_LEVEL,
+    BALANCE,
     LOW_CUT,
     HIGH_CUT,
     MIX,
     LEVEL,
     SHIMMER,
+    SOURCE_2_X,
+    SOURCE_2_Y,
+    SOURCE_3_X,
+    SOURCE_3_Y,
+    SOURCE_4_X,
+    SOURCE_4_Y,
+    SOURCE_5_X,
+    SOURCE_5_Y,
+    SOURCE_6_X,
+    SOURCE_6_Y,
+    SOURCE_7_X,
+    SOURCE_7_Y,
+    SOURCE_8_X,
+    SOURCE_8_Y,
+    SOURCE_1_AUTO_X,
+    SOURCE_2_AUTO_X,
+    SOURCE_3_AUTO_X,
+    SOURCE_4_AUTO_X,
+    SOURCE_5_AUTO_X,
+    SOURCE_6_AUTO_X,
+    SOURCE_7_AUTO_X,
+    SOURCE_8_AUTO_X,
     NUM_PARAMS
   };
   enum InputIds {
     AUDIO_INPUT,
-    X_POSITION_INPUT,
-    Y_POSITION_INPUT,
-    Z_POSITION_INPUT,
-    SPACE_CV_INPUT,
-    PRE_DELAY_CV_INPUT,
+    LISTENER_X_CV_INPUT,
     DECAY_CV_INPUT,
     DAMPING_CV_INPUT,
+    PRE_DELAY_CV_INPUT,
+    LISTENER_Y_CV_INPUT,
+    BALANCE_CV_INPUT,
     MIX_CV_INPUT,
     NUM_INPUTS
   };
   enum OutputIds { LEFT_OUTPUT, RIGHT_OUTPUT, NUM_OUTPUTS };
   enum LightIds { NUM_LIGHTS };
 
+  inline static constexpr auto SourcePlanDefaults = [] {
+    std::array<std::array<float, 2>, tfdsp::RoomReverb::MaximumSources>
+        defaults{};
+    for (auto &position : defaults)
+      position = {tfdsp::reverb_defaults::Source[0],
+                  tfdsp::reverb_defaults::Source[1]};
+    return defaults;
+  }();
+
+  static int sourceXParamId(const std::size_t source) noexcept {
+    return source == 0 ? SOURCE_X
+                       : SOURCE_2_X + 2 * static_cast<int>(source - 1);
+  }
+
+  static int sourceYParamId(const std::size_t source) noexcept {
+    return sourceXParamId(source) + 1;
+  }
+
+  static int sourceAutoXParamId(const std::size_t source) noexcept {
+    return SOURCE_1_AUTO_X + static_cast<int>(source);
+  }
+
   TfReverb() {
     config(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS);
-    configParam<RoomSizeQuantity>(SPACE, 0.f, 1.f,
-                                  tfdsp::reverb_defaults::Space,
-                                  "Room size", " m");
+    configParam<RoomSizeQuantity>(
+        SPACE, 0.f, 1.f, tfdsp::reverb_defaults::Space, "Room size", " m");
     configParam<AspectQuantity>(ASPECT, 0.f, 1.f,
                                 tfdsp::reverb_defaults::Aspect,
                                 "Room width/depth ratio", " W/D");
-    // Preserve parameter slot 2 so existing patches keep every subsequent
-    // control at the same serialized ID. The value is intentionally ignored:
-    // Size now derives a coherent ceiling height for the complete room.
-    configParam(LEGACY_HEIGHT, 0.f, 1.f, tfdsp::reverb_defaults::Height,
-                "Legacy room height (unused)");
     configParam(PRE_DELAY, 0.f, 1.f, tfdsp::reverb_defaults::PreDelay,
                 "Wet pre-delay", " ms", 0.f, 250.f);
     configParam(SOURCE_X, 0.f, 1.f, tfdsp::reverb_defaults::Source[0],
@@ -166,10 +202,8 @@ struct TfReverb : Module {
                 "Late modulation", "%", 0.f, 100.f);
     configParam<WidthQuantity>(WIDTH, 0.f, 1.f, tfdsp::reverb_defaults::Width,
                                "Stereo width", "%");
-    configParam(EARLY_LEVEL, -60.f, 6.f, tfdsp::reverb_defaults::EarlyLevelDb,
-                "Early-reflection trim", " dB");
-    configParam(TAIL_LEVEL, -60.f, 6.f, tfdsp::reverb_defaults::TailLevelDb,
-                "Late-tail trim", " dB");
+    configParam(BALANCE, 0.f, 1.f, tfdsp::reverb_defaults::Balance,
+                "Early / late balance", "%", 0.f, 200.f, -100.f);
     configParam<LowCutQuantity>(LOW_CUT, 0.f, 1.f,
                                 tfdsp::reverb_defaults::LowCut, "Wet low cut",
                                 " Hz");
@@ -182,6 +216,22 @@ struct TfReverb : Module {
                 "Output level", " dB");
     configParam(SHIMMER, 0.f, 1.f, tfdsp::reverb_defaults::Shimmer,
                 "Octave shimmer", "%", 0.f, 100.f);
+    for (std::size_t source = 1; source < SourcePlanDefaults.size(); ++source) {
+      const std::string name = "Source " + std::to_string(source + 1);
+      configParam(sourceXParamId(source), 0.f, 1.f,
+                  SourcePlanDefaults[source][0], name + " X", "%", 0.f, 100.f);
+      configParam(sourceYParamId(source), 0.f, 1.f,
+                  SourcePlanDefaults[source][1], name + " Y", "%", 0.f, 100.f);
+      getParamQuantity(sourceXParamId(source))->description =
+          "Horizontal room-plan position for this polyphonic audio channel.";
+      getParamQuantity(sourceYParamId(source))->description =
+          "Front/back room-plan position for this polyphonic audio channel.";
+    }
+    for (std::size_t source = 0; source < SourcePlanDefaults.size(); ++source) {
+      const std::string name = "Source " + std::to_string(source + 1);
+      configSwitch(sourceAutoXParamId(source), 0.f, 1.f, 1.f,
+                   name + " horizontal placement", {"Manual", "Automatic"});
+    }
     getParamQuantity(ASPECT)->description =
         "Reshapes the floor without changing its area. Below centre is "
         "narrower and deeper; above centre is wider and shallower, changing "
@@ -196,19 +246,19 @@ struct TfReverb : Module {
         "rhythmic gap before the reflections begin.";
     getParamQuantity(SOURCE_X)->description =
         "Moves the default source from the left wall to the right wall. Source "
-        "position changes early-reflection timing and its relationship to the "
-        "listener.";
+        "position pans the positioned direct sound and changes "
+        "early-reflection timing and direction.";
     getParamQuantity(SOURCE_Y)->description =
         "Moves the default source from the front wall to the back wall. Its "
-        "distance from the listener also influences the automatic early/tail "
-        "balance.";
+        "distance from the listener changes positioned-direct level and the "
+        "early-reflection geometry.";
     getParamQuantity(LISTENER_X)->description =
         "Moves the listening point from the left wall to the right wall, "
         "changing reflection timing and the stereo perspective.";
     getParamQuantity(LISTENER_Y)->description =
         "Moves the listening point from the front wall to the back wall. "
-        "Moving it relative to the source changes perceived distance and the "
-        "early/tail balance.";
+        "Moving it relative to the source changes direct level and the early "
+        "reflection pattern; the diffuse late FDN remains fixed.";
     getParamQuantity(DECAY)->description =
         "Sets how long the midrange late tail takes to fall by 60 dB. Use "
         "Damping to make low and high frequencies decay at different rates.";
@@ -217,8 +267,8 @@ struct TfReverb : Module {
         "room image, and 150% exaggerates the stereo width.";
     getParamQuantity(MODULATION)->description =
         "Adds slow random movement to the late tail, reducing stationary "
-        "ringing and adding animation. The first 35% is static; higher values "
-        "progress from subtle motion to audible chorusing.";
+        "ringing and adding animation. The quadratic range progresses "
+        "continuously from subtle motion to audible chorusing.";
     getParamQuantity(DIFFUSION)->description =
         "Controls how quickly individual echoes merge into a smooth tail. Low "
         "values keep more separated, textured reflections; high values create "
@@ -227,14 +277,11 @@ struct TfReverb : Module {
         "Makes low and high frequencies die away sooner than the midrange. "
         "Increase it for a darker, tighter and more absorbent room; reduce it "
         "for a brighter, more persistent tail.";
-    getParamQuantity(EARLY_LEVEL)->description =
-        "Adjusts the first discrete wall reflections around their automatic "
-        "position-based level. Raise it for more room shape and definition; "
-        "lower it for a smoother onset.";
-    getParamQuantity(TAIL_LEVEL)->description =
-        "Adjusts the diffuse sustain around its automatic position-based "
-        "level. Raise it for a larger wash or lower it for a shorter, more "
-        "reflection-focused impression.";
+    getParamQuantity(BALANCE)->description =
+        "Balances the geometry-derived wet response without changing its "
+        "centre calibration. Turn left for early reflections only, centre "
+        "for the inferred early/late handoff, or right for the late tail "
+        "only.";
     getParamQuantity(SHIMMER)->description =
         "Feeds octave-up energy back through the late tail. Higher values "
         "create a stronger rising harmonic bloom; increase Damping or lower "
@@ -256,25 +303,22 @@ struct TfReverb : Module {
     getParamQuantity(HIGH_CUT)->displayPrecision = 5;
     getParamQuantity(DECAY)->displayPrecision = 4;
 
-    configInput(AUDIO_INPUT, "Mono or positioned polyphonic audio");
-    configInput(X_POSITION_INPUT, "Source X positions");
-    configInput(Y_POSITION_INPUT, "Source Y positions");
-    configInput(Z_POSITION_INPUT, "Source Z positions");
-    configInput(SPACE_CV_INPUT, "Room size CV");
-    configInput(PRE_DELAY_CV_INPUT, "Pre-delay CV");
+    configInput(AUDIO_INPUT, "Mono or polyphonic source audio");
+    configInput(LISTENER_X_CV_INPUT, "Listener X slow CV");
     configInput(DECAY_CV_INPUT, "Decay CV");
     configInput(DAMPING_CV_INPUT, "Damping CV");
+    configInput(PRE_DELAY_CV_INPUT, "Pre-delay CV");
+    configInput(LISTENER_Y_CV_INPUT, "Listener Y slow CV");
+    configInput(BALANCE_CV_INPUT, "Early / late balance CV");
     configInput(MIX_CV_INPUT, "Dry / wet mix CV");
     configOutput(LEFT_OUTPUT, "Left audio");
     configOutput(RIGHT_OUTPUT, "Right audio");
     configBypass(AUDIO_INPUT, LEFT_OUTPUT);
     configBypass(AUDIO_INPUT, RIGHT_OUTPUT);
-    for (auto &position : roomPlanPositions_) {
-      position[0].store(tfdsp::reverb_defaults::Source[0],
-                        std::memory_order_relaxed);
-      position[1].store(tfdsp::reverb_defaults::Source[1],
-                        std::memory_order_relaxed);
-    }
+    roomPlanListenerPosition_[0].store(tfdsp::reverb_defaults::Listener[0],
+                                       std::memory_order_relaxed);
+    roomPlanListenerPosition_[1].store(tfdsp::reverb_defaults::Listener[1],
+                                       std::memory_order_relaxed);
   }
 
   void onSampleRateChange(const SampleRateChangeEvent &event) override {
@@ -306,14 +350,38 @@ struct TfReverb : Module {
     if (smoothingCoefficient_ <= 0.f)
       smoothingCoefficient_ = 1.f - std::exp(-args.sampleTime / 0.020f);
 
+    const std::size_t sourceCount =
+        inputs[AUDIO_INPUT].isConnected()
+            ? std::min<std::size_t>(tfdsp::RoomReverb::MaximumSources,
+                                    inputs[AUDIO_INPUT].getChannels())
+            : 0;
+
     std::array<float, NUM_PARAMS> targets{};
     for (int param = 0; param < NUM_PARAMS; ++param)
       targets[static_cast<std::size_t>(param)] = params[param].getValue();
-    targets[SPACE] = controlWithCv(SPACE, SPACE_CV_INPUT);
+    targets[LISTENER_X] = controlWithCv(LISTENER_X, LISTENER_X_CV_INPUT);
+    targets[LISTENER_Y] = controlWithCv(LISTENER_Y, LISTENER_Y_CV_INPUT);
+    for (std::size_t axis = 0; axis < 2; ++axis) {
+      const int paramId = axis == 0 ? LISTENER_X : LISTENER_Y;
+      roomPlanListenerPosition_[axis].store(
+          targets[static_cast<std::size_t>(paramId)],
+          std::memory_order_relaxed);
+      roomPlanListenerCvOffset_[axis].store(
+          targets[static_cast<std::size_t>(paramId)] -
+              params[paramId].getValue(),
+          std::memory_order_relaxed);
+    }
     targets[PRE_DELAY] = controlWithCv(PRE_DELAY, PRE_DELAY_CV_INPUT);
     targets[DECAY] = controlWithCv(DECAY, DECAY_CV_INPUT);
     targets[DAMPING] = controlWithCv(DAMPING, DAMPING_CV_INPUT);
+    targets[BALANCE] = controlWithCv(BALANCE, BALANCE_CV_INPUT);
     targets[MIX] = controlWithCv(MIX, MIX_CV_INPUT);
+    for (std::size_t source = 0; source < sourceCount; ++source) {
+      const auto xParam = static_cast<std::size_t>(sourceXParamId(source));
+      if (sourceXAutomatic(source))
+        targets[xParam] =
+            tfdsp::reverb_defaults::ProgressiveSourceX(source, sourceCount);
+    }
     if (!smoothInitialized_) {
       smoothed_ = targets;
       smoothInitialized_ = true;
@@ -323,32 +391,16 @@ struct TfReverb : Module {
             smoothingCoefficient_ * (targets[index] - smoothed_[index]);
     }
 
-    const std::size_t sourceCount =
-        inputs[AUDIO_INPUT].isConnected()
-            ? std::min<std::size_t>(tfdsp::RoomReverb::MaximumSources,
-                                    inputs[AUDIO_INPUT].getChannels())
-            : 0;
     tfdsp::RoomReverb::InputFrame sourceAudio{};
     tfdsp::RoomReverb::SourcePositions positions{};
-    float dry = 0.f;
     for (std::size_t source = 0; source < sourceCount; ++source) {
       sourceAudio[source] = inputs[AUDIO_INPUT].getVoltage(source);
-      dry += sourceAudio[source];
-      positions[source][0] = sourcePosition(
-          X_POSITION_INPUT, source, spreadDefaultX(source, sourceCount));
+      positions[source][0] =
+          smoothed_[static_cast<std::size_t>(sourceXParamId(source))];
       positions[source][1] =
-          sourcePosition(Y_POSITION_INPUT, source, smoothed_[SOURCE_Y]);
-      positions[source][2] = sourcePosition(Z_POSITION_INPUT, source,
-                                            tfdsp::reverb_defaults::Source[2]);
-      roomPlanPositions_[source][0].store(positions[source][0],
-                                          std::memory_order_relaxed);
-      roomPlanPositions_[source][1].store(positions[source][1],
-                                          std::memory_order_relaxed);
+          smoothed_[static_cast<std::size_t>(sourceYParamId(source))];
+      positions[source][2] = tfdsp::reverb_defaults::Source[2];
     }
-    const bool positioned = inputs[X_POSITION_INPUT].isConnected() ||
-                            inputs[Y_POSITION_INPUT].isConnected() ||
-                            sourceCount > 1;
-    roomPlanPositioned_.store(positioned, std::memory_order_relaxed);
     roomPlanSourceCount_.store(sourceCount, std::memory_order_release);
 
     tfdsp::RoomReverbControls controls;
@@ -363,11 +415,10 @@ struct TfReverb : Module {
     controls.modulation = smoothed_[MODULATION];
     controls.shimmer = smoothed_[SHIMMER];
     controls.width = smoothed_[WIDTH];
-    controls.earlyLevelDb = smoothed_[EARLY_LEVEL];
-    controls.tailLevelDb = smoothed_[TAIL_LEVEL];
+    controls.balance = smoothed_[BALANCE];
     controls.lowCut = smoothed_[LOW_CUT];
     controls.highCut = smoothed_[HIGH_CUT];
-    const auto wet =
+    const auto frame =
         reverb_.Process(sourceAudio, positions, sourceCount, controls);
 
     if (outputGainCountdown_ == 0) {
@@ -385,7 +436,8 @@ struct TfReverb : Module {
       }
       outputGainCountdown_ = OutputGainUpdateInterval;
     }
-    const auto mixed = tfdsp::MixReverbOutput(dry, wet, outputGains_);
+    const auto mixed =
+        tfdsp::MixReverbOutput(frame.direct, frame.wet, outputGains_);
     outputGains_.dry += outputGainStep_.dry;
     outputGains_.wet += outputGainStep_.wet;
     --outputGainCountdown_;
@@ -395,9 +447,9 @@ struct TfReverb : Module {
 
   json_t *dataToJson() override {
     json_t *root = json_object();
-    json_object_set_new(
-        root, "lateReverbFlavour",
-        json_integer(static_cast<int>(lateReverbFlavour())));
+    json_object_set_new(root, "lateReverbFlavour",
+                        json_integer(static_cast<int>(lateReverbFlavour())));
+    json_object_set_new(root, "sourceXPlacementVersion", json_integer(1));
     return root;
   }
 
@@ -413,38 +465,117 @@ struct TfReverb : Module {
     }
   }
 
+  void fromJson(json_t *root) override {
+    Module::fromJson(root);
+    const json_t *data = json_object_get(root, "data");
+    const json_t *placementVersion =
+        json_is_object(data) ? json_object_get(data, "sourceXPlacementVersion")
+                             : nullptr;
+    if (!json_is_integer(placementVersion) ||
+        json_integer_value(placementVersion) < 1) {
+      // Patches saved before placement mode became explicit used X=0.5 as the
+      // automatic-spread sentinel. Preserve their effective positions once.
+      for (std::size_t source = 0; source < SourcePlanDefaults.size();
+           ++source) {
+        const float x = params[sourceXParamId(source)].getValue();
+        params[sourceAutoXParamId(source)].setValue(
+            std::abs(x - SourcePlanDefaults[source][0]) < 1.e-6f ? 1.f : 0.f);
+      }
+    }
+  }
+
   tfdsp::LateReverbFlavour lateReverbFlavour() const noexcept {
     return static_cast<tfdsp::LateReverbFlavour>(
         reverbFlavour_.load(std::memory_order_relaxed));
   }
 
   void setLateReverbFlavour(const tfdsp::LateReverbFlavour flavour) noexcept {
-    reverbFlavour_.store(static_cast<int>(flavour),
-                         std::memory_order_relaxed);
+    reverbFlavour_.store(static_cast<int>(flavour), std::memory_order_relaxed);
   }
 
   std::size_t roomPlanSourceCount() const noexcept {
     return roomPlanSourceCount_.load(std::memory_order_acquire);
   }
 
-  bool roomPlanPositioned() const noexcept {
-    return roomPlanPositioned_.load(std::memory_order_relaxed);
+  std::array<float, 2>
+  roomPlanSourcePosition(const std::size_t source) noexcept {
+    const float configuredX = params[sourceXParamId(source)].getValue();
+    const float x = sourceXAutomatic(source)
+                        ? tfdsp::reverb_defaults::ProgressiveSourceX(
+                              source, roomPlanSourceCount())
+                        : configuredX;
+    return {x, params[sourceYParamId(source)].getValue()};
   }
 
-  std::array<float, 2>
-  roomPlanSourcePosition(const std::size_t source) const noexcept {
-    return {roomPlanPositions_[source][0].load(std::memory_order_relaxed),
-            roomPlanPositions_[source][1].load(std::memory_order_relaxed)};
+  bool sourceXAutomatic(const std::size_t source) noexcept {
+    return params[sourceAutoXParamId(source)].getValue() >= 0.5f;
+  }
+
+  std::array<float, 2> roomPlanListenerPosition() const noexcept {
+    return {roomPlanListenerPosition_[0].load(std::memory_order_relaxed),
+            roomPlanListenerPosition_[1].load(std::memory_order_relaxed)};
+  }
+
+  float roomPlanListenerCvOffset(const std::size_t axis) const noexcept {
+    return roomPlanListenerCvOffset_[axis].load(std::memory_order_relaxed);
+  }
+
+  void applyPreset(const tfdsp::reverb_defaults::ReverbPreset &preset,
+                   const char *presetName) {
+    auto *changes = new history::ComplexAction;
+    changes->name = std::string("set reverb preset: ") + presetName;
+    const auto setParameter = [&](const int id, const float value) {
+      const float oldValue = params[id].getValue();
+      getParamQuantity(id)->setValue(value);
+      const float newValue = params[id].getValue();
+      if (oldValue == newValue)
+        return;
+      auto *change = new history::ParamChange;
+      change->name = changes->name;
+      change->moduleId = this->id;
+      change->paramId = id;
+      change->oldValue = oldValue;
+      change->newValue = newValue;
+      changes->push(change);
+    };
+    setParameter(SPACE, preset.space);
+    setParameter(ASPECT, preset.aspect);
+    setParameter(PRE_DELAY, preset.preDelay);
+    setParameter(SOURCE_X, preset.source[0]);
+    setParameter(SOURCE_Y, preset.source[1]);
+    // A preset is a complete room placement, not only a set of visible knob
+    // values. Return every channel to automatic horizontal spreading and give
+    // every source the preset's calibrated depth.
+    for (std::size_t source = 1; source < SourcePlanDefaults.size(); ++source) {
+      setParameter(sourceXParamId(source), SourcePlanDefaults[source][0]);
+      setParameter(sourceYParamId(source), preset.source[1]);
+    }
+    for (std::size_t source = 0; source < SourcePlanDefaults.size(); ++source)
+      setParameter(sourceAutoXParamId(source), 1.f);
+    setParameter(LISTENER_X, preset.listener[0]);
+    setParameter(LISTENER_Y, preset.listener[1]);
+    setParameter(DECAY, preset.decay);
+    setParameter(DAMPING, preset.damping);
+    setParameter(DIFFUSION, preset.diffusion);
+    setParameter(MODULATION, preset.modulation);
+    setParameter(SHIMMER, preset.shimmer);
+    setParameter(WIDTH, preset.width);
+    setParameter(BALANCE, preset.balance);
+    setParameter(LOW_CUT, preset.lowCut);
+    setParameter(HIGH_CUT, preset.highCut);
+    setParameter(MIX, preset.mix);
+    if (changes->isEmpty())
+      delete changes;
+    else
+      APP->history->push(changes);
   }
 
 private:
   static constexpr std::size_t OutputGainUpdateInterval = 64;
   tfdsp::RoomReverb reverb_{};
-  std::array<std::array<std::atomic<float>, 2>,
-             tfdsp::RoomReverb::MaximumSources>
-      roomPlanPositions_{};
   std::atomic<std::size_t> roomPlanSourceCount_{0};
-  std::atomic<bool> roomPlanPositioned_{false};
+  std::array<std::atomic<float>, 2> roomPlanListenerPosition_{};
+  std::array<std::atomic<float>, 2> roomPlanListenerCvOffset_{};
   std::atomic<int> reverbFlavour_{
       static_cast<int>(tfdsp::DefaultLateReverbFlavour)};
   std::array<float, NUM_PARAMS> smoothed_{};
@@ -462,23 +593,6 @@ private:
                          : 0.f;
     return std::clamp(params[paramId].getValue() + cv, 0.f, 1.f);
   }
-
-  float sourcePosition(const int inputId, const std::size_t source,
-                       const float fallback) noexcept {
-    if (!inputs[inputId].isConnected())
-      return std::clamp(fallback, 0.f, 1.f);
-    return std::clamp(0.1f * inputs[inputId].getPolyVoltage(source), 0.f, 1.f);
-  }
-
-  float spreadDefaultX(const std::size_t source,
-                       const std::size_t sourceCount) const noexcept {
-    if (sourceCount <= 1)
-      return smoothed_[SOURCE_X];
-    const float coordinate =
-        static_cast<float>(source) / static_cast<float>(sourceCount - 1);
-    return std::clamp(smoothed_[SOURCE_X] + 0.4f * (coordinate - 0.5f), 0.f,
-                      1.f);
-  }
 };
 
 struct TfRoomPlanWidget : widget::OpaqueWidget {
@@ -488,18 +602,17 @@ struct TfRoomPlanWidget : widget::OpaqueWidget {
     TfRoomPlanWidget *plan{};
     void step() override {
       if (plan && plan->module) {
-        auto &params = plan->module->params;
         text = rack::string::f(
-            "Room plan\nSource: %.1f%%, %.1f%%\nListener: %.1f%%, %.1f%%\n"
-            "Distance automatically balances early reflections against the "
-            "tail; off-centre placement changes reflection timing and stereo "
-            "perspective.\nDrag amber or blue marker; double-click to reset.",
-            100.f * params[TfReverb::SOURCE_X].getValue(),
-            100.f * params[TfReverb::SOURCE_Y].getValue(),
-            100.f * params[TfReverb::LISTENER_X].getValue(),
-            100.f * params[TfReverb::LISTENER_Y].getValue());
+            "Room plan\n%zu connected source%s\n"
+            "Placement changes positioned-direct level and pan, reflection "
+            "timing and direction, and the ER-to-tail handoff; it does not "
+            "steer the late stereo field.\nDrag a numbered amber source or "
+            "the blue listener; "
+            "double-click to reset.",
+            plan->module->roomPlanSourceCount(),
+            plan->module->roomPlanSourceCount() == 1 ? "" : "s");
       } else {
-        text = "Room plan\nDrag amber source or blue listener marker.";
+        text = "Room plan\nDrag a source or the listener marker.";
       }
       Tooltip::step();
       box.pos = plan->getAbsoluteOffset(Vec(plan->box.size.x, 0.f)).round();
@@ -510,32 +623,42 @@ struct TfRoomPlanWidget : widget::OpaqueWidget {
 
   TfReverb *module{};
   Marker activeMarker{Marker::None};
+  std::size_t activeSource{};
   Vec dragPosition{};
   std::array<float, 2> oldValues{};
+  float oldAutomaticX{1.f};
   ui::Tooltip *tooltip{};
 
   static constexpr float Margin = 5.f;
 
   ~TfRoomPlanWidget() override { destroyTooltip(); }
 
-  Vec markerPosition(const int xParam, const int yParam,
-                     const Vec fallback) const {
+  Vec listenerMarkerPosition() const {
     if (!module)
-      return normalizedToScreen(fallback);
-    return normalizedToScreen(Vec(module->params[xParam].getValue(),
-                                  module->params[yParam].getValue()));
+      return normalizedToScreen(Vec(tfdsp::reverb_defaults::Listener[0],
+                                    tfdsp::reverb_defaults::Listener[1]));
+    const auto position = module->roomPlanListenerPosition();
+    return normalizedToScreen(Vec(position[0], position[1]));
   }
 
   Vec normalizedToScreen(const Vec normalized) const {
     return Vec(Margin + normalized.x * (box.size.x - 2.f * Margin),
-               Margin + (1.f - normalized.y) * (box.size.y - 2.f * Margin));
+               Margin + normalized.y * (box.size.y - 2.f * Margin));
   }
 
   Vec screenToNormalized(const Vec screen) const {
     return Vec(
         std::clamp((screen.x - Margin) / (box.size.x - 2.f * Margin), 0.f, 1.f),
-        std::clamp(1.f - (screen.y - Margin) / (box.size.y - 2.f * Margin), 0.f,
+        std::clamp((screen.y - Margin) / (box.size.y - 2.f * Margin), 0.f,
                    1.f));
+  }
+
+  Vec sourceMarkerPosition(const std::size_t source) const {
+    if (!module)
+      return normalizedToScreen(Vec(TfReverb::SourcePlanDefaults[source][0],
+                                    TfReverb::SourcePlanDefaults[source][1]));
+    const auto position = module->roomPlanSourcePosition(source);
+    return normalizedToScreen(Vec(position[0], position[1]));
   }
 
   void draw(const DrawArgs &args) override {
@@ -564,46 +687,54 @@ struct TfRoomPlanWidget : widget::OpaqueWidget {
     nvgStrokeWidth(args.vg, 0.7f);
     nvgStroke(args.vg);
 
-    // Show live bus/polyphonic positions as smaller, read-only source dots.
-    if (module && module->roomPlanPositioned()) {
+    nvgFontFaceId(args.vg, APP->window->uiFont->handle);
+    nvgFontSize(args.vg, 5.2f);
+    nvgTextAlign(args.vg, NVG_ALIGN_LEFT | NVG_ALIGN_TOP);
+    nvgFillColor(args.vg, nvgRGBA(0xff, 0xb0, 0x32, 0xff));
+    nvgText(args.vg, left + 5.f, top + 4.f, "SOURCES", nullptr);
+    nvgTextAlign(args.vg, NVG_ALIGN_RIGHT | NVG_ALIGN_TOP);
+    nvgFillColor(args.vg, nvgRGBA(0x36, 0xc8, 0xeb, 0xff));
+    nvgText(args.vg, left + width - 5.f, top + 4.f, "LISTENER", nullptr);
+
+    if (module) {
       const std::size_t sourceCount = module->roomPlanSourceCount();
       for (std::size_t source = 0; source < sourceCount; ++source) {
-        const auto position = module->roomPlanSourcePosition(source);
-        drawSource(args.vg,
-                   normalizedToScreen(Vec(position[0], position[1])), 2.2f,
-                   0x78);
+        drawSource(args.vg, sourceMarkerPosition(source), source);
       }
     }
-
-    drawSource(args.vg,
-               markerPosition(TfReverb::SOURCE_X, TfReverb::SOURCE_Y,
-                              Vec(tfdsp::reverb_defaults::Source[0],
-                                  tfdsp::reverb_defaults::Source[1])),
-               4.f, 0xff);
-    drawListener(args.vg,
-                 markerPosition(TfReverb::LISTENER_X, TfReverb::LISTENER_Y,
-                                Vec(tfdsp::reverb_defaults::Listener[0],
-                                    tfdsp::reverb_defaults::Listener[1])));
+    drawListener(args.vg, listenerMarkerPosition());
   }
 
   void onButton(const ButtonEvent &event) override {
     if (event.action != GLFW_PRESS || event.button != GLFW_MOUSE_BUTTON_LEFT ||
         (event.mods & RACK_MOD_MASK) != 0 || !module)
       return;
-    const Vec source =
-        markerPosition(TfReverb::SOURCE_X, TfReverb::SOURCE_Y, {});
-    const Vec listener =
-        markerPosition(TfReverb::LISTENER_X, TfReverb::LISTENER_Y, {});
-    const float sourceDistance = event.pos.minus(source).norm();
-    const float listenerDistance = event.pos.minus(listener).norm();
-    if (std::min(sourceDistance, listenerDistance) > 9.f)
+    const Vec listener = listenerMarkerPosition();
+    float nearestDistance = event.pos.minus(listener).norm();
+    activeMarker = Marker::Listener;
+    dragPosition = listener;
+    const std::size_t sourceCount = module->roomPlanSourceCount();
+    for (std::size_t source = 0; source < sourceCount; ++source) {
+      const Vec position = sourceMarkerPosition(source);
+      const float distance = event.pos.minus(position).norm();
+      if (distance >= nearestDistance)
+        continue;
+      nearestDistance = distance;
+      activeMarker = Marker::Source;
+      activeSource = source;
+      dragPosition = position;
+    }
+    if (nearestDistance > 9.f) {
+      activeMarker = Marker::None;
       return;
-    activeMarker =
-        sourceDistance <= listenerDistance ? Marker::Source : Marker::Listener;
-    dragPosition = activeMarker == Marker::Source ? source : listener;
+    }
     const auto ids = activeParamIds();
     oldValues = {module->params[ids[0]].getValue(),
                  module->params[ids[1]].getValue()};
+    if (activeMarker == Marker::Source) {
+      oldAutomaticX =
+          module->params[TfReverb::sourceAutoXParamId(activeSource)].getValue();
+    }
     event.consume(this);
   }
 
@@ -614,8 +745,18 @@ struct TfRoomPlanWidget : widget::OpaqueWidget {
     dragPosition = dragPosition.plus(event.mouseDelta.div(getAbsoluteZoom()));
     const Vec position = screenToNormalized(dragPosition);
     const auto ids = activeParamIds();
-    module->getParamQuantity(ids[0])->setValue(position.x);
-    module->getParamQuantity(ids[1])->setValue(position.y);
+    if (activeMarker == Marker::Source) {
+      module->getParamQuantity(TfReverb::sourceAutoXParamId(activeSource))
+          ->setValue(0.f);
+    }
+    const std::array<float, 2> coordinates{position.x, position.y};
+    for (std::size_t axis = 0; axis < ids.size(); ++axis) {
+      const float cvOffset = activeMarker == Marker::Listener
+                                 ? module->roomPlanListenerCvOffset(axis)
+                                 : 0.f;
+      module->getParamQuantity(ids[axis])->setValue(coordinates[axis] -
+                                                    cvOffset);
+    }
   }
 
   void onDoubleClick(const DoubleClickEvent &event) override {
@@ -624,38 +765,24 @@ struct TfRoomPlanWidget : widget::OpaqueWidget {
     const auto ids = activeParamIds();
     const std::array<float, 2> defaults =
         activeMarker == Marker::Source
-            ? std::array<float, 2>{tfdsp::reverb_defaults::Source[0],
-                                   tfdsp::reverb_defaults::Source[1]}
+            ? TfReverb::SourcePlanDefaults[activeSource]
             : std::array<float, 2>{tfdsp::reverb_defaults::Listener[0],
                                    tfdsp::reverb_defaults::Listener[1]};
     module->getParamQuantity(ids[0])->setValue(defaults[0]);
     module->getParamQuantity(ids[1])->setValue(defaults[1]);
+    if (activeMarker == Marker::Source) {
+      module->getParamQuantity(TfReverb::sourceAutoXParamId(activeSource))
+          ->setValue(1.f);
+    }
+    commitPositionHistory();
+    activeMarker = Marker::None;
   }
 
   void onDragEnd(const DragEndEvent &event) override {
     if (event.button != GLFW_MOUSE_BUTTON_LEFT || !module ||
         activeMarker == Marker::None)
       return;
-    const auto ids = activeParamIds();
-    auto *changes = new history::ComplexAction;
-    changes->name = activeMarker == Marker::Source ? "move reverb source"
-                                                   : "move reverb listener";
-    for (std::size_t axis = 0; axis < ids.size(); ++axis) {
-      const float newValue = module->params[ids[axis]].getValue();
-      if (newValue == oldValues[axis])
-        continue;
-      auto *change = new history::ParamChange;
-      change->name = changes->name;
-      change->moduleId = module->id;
-      change->paramId = ids[axis];
-      change->oldValue = oldValues[axis];
-      change->newValue = newValue;
-      changes->push(change);
-    }
-    if (changes->isEmpty())
-      delete changes;
-    else
-      APP->history->push(changes);
+    commitPositionHistory();
     activeMarker = Marker::None;
   }
 
@@ -671,6 +798,46 @@ struct TfRoomPlanWidget : widget::OpaqueWidget {
   void onLeave(const LeaveEvent &event) override { destroyTooltip(); }
 
 private:
+  void commitPositionHistory() {
+    if (!module || activeMarker == Marker::None)
+      return;
+    const auto ids = activeParamIds();
+    auto *changes = new history::ComplexAction;
+    changes->name =
+        activeMarker == Marker::Source
+            ? rack::string::f("move reverb source %zu", activeSource + 1)
+            : "move reverb listener";
+    for (std::size_t axis = 0; axis < ids.size(); ++axis) {
+      const float newValue = module->params[ids[axis]].getValue();
+      if (newValue == oldValues[axis])
+        continue;
+      auto *change = new history::ParamChange;
+      change->name = changes->name;
+      change->moduleId = module->id;
+      change->paramId = ids[axis];
+      change->oldValue = oldValues[axis];
+      change->newValue = newValue;
+      changes->push(change);
+    }
+    if (activeMarker == Marker::Source) {
+      const int automaticId = TfReverb::sourceAutoXParamId(activeSource);
+      const float newAutomaticX = module->params[automaticId].getValue();
+      if (newAutomaticX != oldAutomaticX) {
+        auto *change = new history::ParamChange;
+        change->name = changes->name;
+        change->moduleId = module->id;
+        change->paramId = automaticId;
+        change->oldValue = oldAutomaticX;
+        change->newValue = newAutomaticX;
+        changes->push(change);
+      }
+    }
+    if (changes->isEmpty())
+      delete changes;
+    else
+      APP->history->push(changes);
+  }
+
   void destroyTooltip() {
     if (!tooltip)
       return;
@@ -681,19 +848,26 @@ private:
 
   std::array<int, 2> activeParamIds() const {
     return activeMarker == Marker::Source
-               ? std::array<int, 2>{TfReverb::SOURCE_X, TfReverb::SOURCE_Y}
+               ? std::array<int, 2>{TfReverb::sourceXParamId(activeSource),
+                                    TfReverb::sourceYParamId(activeSource)}
                : std::array<int, 2>{TfReverb::LISTENER_X, TfReverb::LISTENER_Y};
   }
 
-  static void drawSource(NVGcontext *vg, const Vec position, const float radius,
-                         const unsigned char alpha) {
+  static void drawSource(NVGcontext *vg, const Vec position,
+                         const std::size_t source) {
     nvgBeginPath(vg);
-    nvgCircle(vg, position.x, position.y, radius);
-    nvgFillColor(vg, nvgRGBA(0xff, 0xb0, 0x32, alpha));
+    nvgCircle(vg, position.x, position.y, 5.2f);
+    nvgFillColor(vg, nvgRGBA(0xff, 0xb0, 0x32, 0xff));
     nvgFill(vg);
-    nvgStrokeColor(vg, nvgRGBA(0x18, 0x18, 0x18, alpha));
+    nvgStrokeColor(vg, nvgRGBA(0x18, 0x18, 0x18, 0xff));
     nvgStrokeWidth(vg, 1.f);
     nvgStroke(vg);
+    nvgFontFaceId(vg, APP->window->uiFont->handle);
+    nvgFontSize(vg, 5.8f);
+    nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+    nvgFillColor(vg, nvgRGBA(0x18, 0x18, 0x18, 0xff));
+    const std::string label = std::to_string(source + 1);
+    nvgText(vg, position.x, position.y + 0.2f, label.c_str(), nullptr);
   }
 
   static void drawListener(NVGcontext *vg, const Vec position) {
@@ -720,54 +894,52 @@ struct TfReverbWidget : ModuleWidget {
     addChild(
         createWidget<ScrewSilver>(Vec(box.size.x - 30, RACK_GRID_HEIGHT - 15)));
 
-    addParam(createParam<TfAudioKob>(Vec(32, 43), module, TfReverb::SPACE));
-    addParam(createParam<TfAudioKob>(Vec(132, 43), module, TfReverb::ASPECT));
-    addParam(
-        createParam<TfAudioKob>(Vec(232, 43), module, TfReverb::PRE_DELAY));
-
-    auto *roomPlan = createWidget<TfRoomPlanWidget>(Vec(54, 101));
-    roomPlan->box.size = Vec(192, 61);
+    auto *roomPlan = createWidget<TfRoomPlanWidget>(Vec(17, 27));
+    roomPlan->box.size = Vec(206, 92);
     roomPlan->module = module;
     addChild(roomPlan);
 
-    addParam(createParam<TfAudioKob>(Vec(1, 174), module, TfReverb::DECAY));
-    addParam(createParam<TfAudioKob>(Vec(51, 174), module, TfReverb::DAMPING));
+    addParam(createParam<TfAudioKob>(Vec(6, 130), module, TfReverb::SPACE));
+    addParam(createParam<TfAudioKob>(Vec(54, 130), module, TfReverb::ASPECT));
     addParam(
-        createParam<TfAudioKob>(Vec(101, 174), module, TfReverb::DIFFUSION));
+        createParam<TfAudioKob>(Vec(102, 130), module, TfReverb::PRE_DELAY));
+    addParam(createParam<TfAudioKob>(Vec(150, 130), module, TfReverb::DECAY));
+    addParam(createParam<TfAudioKob>(Vec(198, 130), module, TfReverb::DAMPING));
+
+    addParam(createParam<TfAudioKob>(Vec(6, 184), module, TfReverb::DIFFUSION));
     addParam(
-        createParam<TfAudioKob>(Vec(151, 174), module, TfReverb::MODULATION));
-    addParam(createParam<TfAudioKob>(Vec(201, 174), module, TfReverb::SHIMMER));
-    addParam(createParam<TfAudioKob>(Vec(251, 174), module, TfReverb::WIDTH));
+        createParam<TfAudioKob>(Vec(54, 184), module, TfReverb::MODULATION));
+    addParam(createParam<TfAudioKob>(Vec(102, 184), module, TfReverb::SHIMMER));
+    addParam(createParam<TfAudioKob>(Vec(150, 184), module, TfReverb::WIDTH));
+    addParam(createParam<TfAudioKob>(Vec(198, 184), module, TfReverb::BALANCE));
 
-    addParam(createParam<TfCvKnob>(Vec(6, 236), module, TfReverb::EARLY_LEVEL));
-    addParam(createParam<TfCvKnob>(Vec(56, 236), module, TfReverb::TAIL_LEVEL));
-    addParam(createParam<TfCvKnob>(Vec(106, 236), module, TfReverb::LOW_CUT));
-    addParam(createParam<TfCvKnob>(Vec(156, 236), module, TfReverb::HIGH_CUT));
-    addParam(createParam<TfCvKnob>(Vec(206, 236), module, TfReverb::MIX));
-    addParam(createParam<TfCvKnob>(Vec(256, 236), module, TfReverb::LEVEL));
+    addParam(
+        createParam<TfCvKnob>(Vec(33.826, 242), module, TfReverb::LOW_CUT));
+    addParam(
+        createParam<TfCvKnob>(Vec(81.826, 242), module, TfReverb::HIGH_CUT));
+    addParam(createParam<TfCvKnob>(Vec(129.826, 242), module, TfReverb::MIX));
+    addParam(createParam<TfCvKnob>(Vec(177.826, 242), module, TfReverb::LEVEL));
 
-    addInput(
-        createInput<PJ301MPort>(Vec(4, 286), module, TfReverb::AUDIO_INPUT));
-    addInput(createInput<PJ301MPort>(Vec(37, 286), module,
-                                     TfReverb::X_POSITION_INPUT));
-    addInput(createInput<PJ301MPort>(Vec(70, 286), module,
-                                     TfReverb::Y_POSITION_INPUT));
-    addInput(createInput<PJ301MPort>(Vec(103, 286), module,
-                                     TfReverb::Z_POSITION_INPUT));
-    addInput(createInput<PJ301MPort>(Vec(136, 286), module,
-                                     TfReverb::SPACE_CV_INPUT));
-    addInput(createInput<PJ301MPort>(Vec(169, 286), module,
-                                     TfReverb::PRE_DELAY_CV_INPUT));
-    addInput(createInput<PJ301MPort>(Vec(202, 286), module,
+    addInput(createInput<PJ301MPort>(Vec(12.15, 292), module,
+                                     TfReverb::AUDIO_INPUT));
+    addInput(createInput<PJ301MPort>(Vec(60.15, 292), module,
+                                     TfReverb::LISTENER_X_CV_INPUT));
+    addInput(createInput<PJ301MPort>(Vec(108.15, 292), module,
                                      TfReverb::DECAY_CV_INPUT));
-    addInput(createInput<PJ301MPort>(Vec(235, 286), module,
+    addInput(createInput<PJ301MPort>(Vec(156.15, 292), module,
                                      TfReverb::DAMPING_CV_INPUT));
-    addInput(
-        createInput<PJ301MPort>(Vec(268, 286), module, TfReverb::MIX_CV_INPUT));
+    addInput(createInput<PJ301MPort>(Vec(12.15, 339), module,
+                                     TfReverb::PRE_DELAY_CV_INPUT));
+    addInput(createInput<PJ301MPort>(Vec(60.15, 339), module,
+                                     TfReverb::LISTENER_Y_CV_INPUT));
+    addInput(createInput<PJ301MPort>(Vec(108.15, 339), module,
+                                     TfReverb::BALANCE_CV_INPUT));
+    addInput(createInput<PJ301MPort>(Vec(156.15, 339), module,
+                                     TfReverb::MIX_CV_INPUT));
 
-    addOutput(
-        createOutput<PJ301MPort>(Vec(101, 335), module, TfReverb::LEFT_OUTPUT));
-    addOutput(createOutput<PJ301MPort>(Vec(155, 335), module,
+    addOutput(createOutput<PJ301MPort>(Vec(204.15, 292), module,
+                                       TfReverb::LEFT_OUTPUT));
+    addOutput(createOutput<PJ301MPort>(Vec(204.15, 339), module,
                                        TfReverb::RIGHT_OUTPUT));
   }
 
@@ -776,6 +948,17 @@ struct TfReverbWidget : ModuleWidget {
     if (!reverb)
       return;
     menu->addChild(new MenuSeparator);
+    menu->addChild(createMenuLabel("Presets"));
+    const auto addPreset =
+        [=](const char *label,
+            const tfdsp::reverb_defaults::ReverbPreset &preset) {
+          menu->addChild(createMenuItem(
+              label, "", [=]() { reverb->applyPreset(preset, label); }));
+        };
+    addPreset("Medium Hall (default)", tfdsp::reverb_defaults::MediumHall);
+    addPreset("Small Room", tfdsp::reverb_defaults::SmallRoom);
+    addPreset("Superlush", tfdsp::reverb_defaults::Superlush);
+    menu->addChild(new MenuSeparator);
     menu->addChild(createMenuLabel("Late-tail FDN"));
     for (const auto flavour : {tfdsp::LateReverbFlavour::Base,
                                tfdsp::LateReverbFlavour::Optimized}) {
@@ -783,8 +966,7 @@ struct TfReverbWidget : ModuleWidget {
                               ? "Base FDN"
                               : "Optimized FDN";
       menu->addChild(createCheckMenuItem(
-          label, "",
-          [=]() { return reverb->lateReverbFlavour() == flavour; },
+          label, "", [=]() { return reverb->lateReverbFlavour() == flavour; },
           [=]() { reverb->setLateReverbFlavour(flavour); }));
     }
   }

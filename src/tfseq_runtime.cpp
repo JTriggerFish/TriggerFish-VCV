@@ -183,18 +183,17 @@ std::uint64_t MixRandom(std::uint64_t value) noexcept {
   return value;
 }
 
-double RandomUnit(std::uint64_t seed, std::uint64_t key,
-                   std::uint64_t identity, std::uint64_t salt,
-                   std::uint64_t draw = 0) noexcept {
+double RandomUnit(std::uint64_t seed, std::uint64_t key, std::uint64_t identity,
+                  std::uint64_t salt, std::uint64_t draw = 0) noexcept {
   const auto bits = MixRandom(seed ^ MixRandom(key + 0x9e3779b97f4a7c15ULL) ^
-                               MixRandom(identity + 0xa0761d6478bd642fULL) ^ salt ^
-                               MixRandom(draw + 0xd1b54a32d192ed03ULL));
+                              MixRandom(identity + 0xa0761d6478bd642fULL) ^
+                              salt ^ MixRandom(draw + 0xd1b54a32d192ed03ULL));
   // The half-step keeps both logarithm inputs away from zero and one.
   return (static_cast<double>(bits >> 11) + 0.5) / 9007199254740992.0;
 }
 
 double RandomNormal(std::uint64_t seed, std::uint64_t key,
-                     std::uint64_t identity, std::uint64_t salt) noexcept {
+                    std::uint64_t identity, std::uint64_t salt) noexcept {
   constexpr double TwoPi = 6.283185307179586476925286766559;
   const double radius =
       std::sqrt(-2.0 * std::log(RandomUnit(seed, key, identity, salt, 0)));
@@ -204,14 +203,14 @@ double RandomNormal(std::uint64_t seed, std::uint64_t key,
 }
 
 double RandomInclusiveInteger(double low, double high, std::uint64_t seed,
-                               std::uint64_t key, std::uint64_t identity,
-                               std::uint64_t salt) noexcept {
+                              std::uint64_t key, std::uint64_t identity,
+                              std::uint64_t salt) noexcept {
   const long double first = low;
   const long double count = static_cast<long double>(high) - first + 1.0L;
   const long double offset = std::floor(
       static_cast<long double>(RandomUnit(seed, key, identity, salt)) * count);
-  return static_cast<double>(std::min(first + offset,
-                                      static_cast<long double>(high)));
+  return static_cast<double>(
+      std::min(first + offset, static_cast<long double>(high)));
 }
 
 double SampleScalarItem(const ScalarItem &item, std::uint64_t seed,
@@ -220,15 +219,15 @@ double SampleScalarItem(const ScalarItem &item, std::uint64_t seed,
   if (item.randomDistribution == ScalarItem::RandomDistribution::Uniform) {
     value = item.randomInteger
                 ? RandomInclusiveInteger(item.randomFirst, item.randomSecond,
-                                          seed, key, item.randomIdentity, salt)
+                                         seed, key, item.randomIdentity, salt)
                 : item.randomFirst +
                       (item.randomSecond - item.randomFirst) *
                           RandomUnit(seed, key, item.randomIdentity, salt);
   } else if (item.randomDistribution ==
              ScalarItem::RandomDistribution::Normal) {
-    value = item.randomFirst + item.randomSecond *
-                                    RandomNormal(seed, key, item.randomIdentity,
-                                                 salt);
+    value =
+        item.randomFirst +
+        item.randomSecond * RandomNormal(seed, key, item.randomIdentity, salt);
     if (item.randomInteger)
       value = std::round(value);
   }
@@ -246,15 +245,15 @@ PitchValue SampleRandomPitch(const PitchItem &item, const Sequence &sequence,
   } else if (item.randomDistribution ==
              PitchItem::RandomDistribution::Uniform) {
     sampled = RandomInclusiveInteger(item.randomFirst, item.randomSecond, seed,
-                                      key, item.randomIdentity, salt);
+                                     key, item.randomIdentity, salt);
   } else {
-    sampled = std::round(item.randomFirst +
-                         item.randomSecond *
-                             RandomNormal(seed, key, item.randomIdentity, salt));
+    sampled = std::round(
+        item.randomFirst +
+        item.randomSecond * RandomNormal(seed, key, item.randomIdentity, salt));
   }
-  sampled = std::clamp(
-      sampled, static_cast<double>(std::numeric_limits<int>::min() + 1),
-      static_cast<double>(std::numeric_limits<int>::max()));
+  sampled = std::clamp(sampled,
+                       static_cast<double>(std::numeric_limits<int>::min() + 1),
+                       static_cast<double>(std::numeric_limits<int>::max()));
   const auto integer = static_cast<int>(sampled);
   PitchValue pitch;
   pitch.span = item.span;
@@ -273,9 +272,9 @@ PitchValue SampleRandomPitch(const PitchItem &item, const Sequence &sequence,
   }
   pitch.absolute = true;
   pitch.pitchClass = static_cast<int>(pitchClass);
-  pitch.octaveOffset = static_cast<int>(std::clamp<std::int64_t>(
-      octave, std::numeric_limits<int>::min(),
-      std::numeric_limits<int>::max()));
+  pitch.octaveOffset = static_cast<int>(
+      std::clamp<std::int64_t>(octave, std::numeric_limits<int>::min(),
+                               std::numeric_limits<int>::max()));
   return pitch;
 }
 
@@ -349,8 +348,7 @@ double Scalar(const std::vector<ScalarItem> &items, std::uint64_t &cursor,
               const std::vector<Transform> &transforms, std::uint64_t cycle,
               std::uint64_t seed, double fallback, SourceSpan &span,
               std::uint64_t salt, bool aligned = false,
-              std::uint64_t structuralCell = 0,
-              bool *milliseconds = nullptr,
+              std::uint64_t structuralCell = 0, bool *milliseconds = nullptr,
               double scoreBeat = 0.0) noexcept {
   if (milliseconds)
     *milliseconds = false;
@@ -366,9 +364,8 @@ double Scalar(const std::vector<ScalarItem> &items, std::uint64_t &cursor,
     position = structuralCell;
     randomKey = structuralCell;
   } else if (phaseRate) {
-    const double whole =
-        std::max(0.0,
-                 std::floor(scoreBeat * LaneRate(transforms, cycle, seed)));
+    const double whole = std::max(
+        0.0, std::floor(scoreBeat * LaneRate(transforms, cycle, seed)));
     position = static_cast<std::uint64_t>(
         std::fmod(whole, static_cast<double>(items.size())));
     randomKey = static_cast<std::uint64_t>(whole);
@@ -376,6 +373,7 @@ double Scalar(const std::vector<ScalarItem> &items, std::uint64_t &cursor,
     randomKey = cursor;
     position = cursor++;
   }
+  randomKey ^= MixRandom(cycle);
   const auto &item = Cycled(items, position, transforms, cycle, seed, salt);
   span = item.span;
   if (milliseconds)
@@ -394,7 +392,8 @@ struct CvSample {
 CvSample SampleCv(const std::vector<ScalarItem> &items,
                   const std::vector<Transform> &transforms, bool aligned,
                   std::uint64_t structuralCell, double scoreBeat,
-                  double cellSpan, CvInterpolation interpolation, double power,
+                  double cycleBeat, double cellSpan,
+                  CvInterpolation interpolation, double power,
                   std::uint64_t cycle, std::uint64_t seed,
                   std::uint64_t salt) noexcept {
   CvSample sample;
@@ -403,7 +402,7 @@ CvSample SampleCv(const std::vector<ScalarItem> &items,
     return sample;
   const double rate = aligned ? 1.0 : LaneRate(transforms, cycle, seed);
   const double phase = aligned ? static_cast<double>(structuralCell)
-                               : std::max(0.0, scoreBeat * rate);
+                               : std::max(0.0, cycleBeat * rate);
   const auto base = static_cast<std::size_t>(
       std::fmod(std::floor(phase), static_cast<double>(items.size())));
   auto at = [&](std::size_t distance, bool backward) -> const ScalarItem & {
@@ -411,8 +410,7 @@ CvSample SampleCv(const std::vector<ScalarItem> &items,
     const auto origin = base;
     const auto shift = distance % size;
     const auto position =
-        backward ? (origin >= shift ? origin - shift
-                                    : size - (shift - origin))
+        backward ? (origin >= shift ? origin - shift : size - (shift - origin))
                  : (shift < size - origin ? origin + shift
                                           : shift - (size - origin));
     return Cycled(items, position, transforms, cycle, seed, salt);
@@ -429,16 +427,17 @@ CvSample SampleCv(const std::vector<ScalarItem> &items,
   if (previousDistance == items.size())
     return sample;
   const auto &previous = at(previousDistance, true);
-  auto randomKey = [](double knot) {
+  auto randomKey = [cycle](double knot) {
     const auto bounded = std::clamp(
         knot, static_cast<double>(std::numeric_limits<std::int64_t>::min()),
         static_cast<double>(std::numeric_limits<std::int64_t>::max()));
-    return static_cast<std::uint64_t>(static_cast<std::int64_t>(bounded));
+    return static_cast<std::uint64_t>(static_cast<std::int64_t>(bounded)) ^
+           MixRandom(cycle);
   };
   const double previousPhase =
       std::floor(phase) - static_cast<double>(previousDistance);
-  const double previousValue = SampleScalarItem(
-      previous, seed, randomKey(previousPhase), salt);
+  const double previousValue =
+      SampleScalarItem(previous, seed, randomKey(previousPhase), salt);
   sample.value = static_cast<float>(previousValue);
   sample.target = sample.value;
   if (interpolation == CvInterpolation::Step)
@@ -465,8 +464,8 @@ CvSample SampleCv(const std::vector<ScalarItem> &items,
     amount = amount * amount * (3.0 - 2.0 * amount);
   else if (interpolation == CvInterpolation::Power)
     amount = std::pow(amount, power);
-  sample.value = static_cast<float>(previousValue +
-                                    (nextValue - previousValue) * amount);
+  sample.value =
+      static_cast<float>(previousValue + (nextValue - previousValue) * amount);
   sample.targetBeat =
       aligned ? scoreBeat + cellSpan * static_cast<double>(nextDistance)
               : scoreBeat + (nextPhase - phase) / rate;
@@ -524,6 +523,9 @@ void Runtime::setProgram(const CompiledProgram *program) noexcept {
 
 void Runtime::replaceProgram(const CompiledProgram *program,
                              double beat) noexcept {
+  const auto previousArrangementPart = arrangementPart_;
+  const auto previousArrangementCycle = arrangementCycle_;
+  const auto previousPartStartBeat = partStartBeat_;
   const auto *previousStates = states_;
   const auto previousStateCount = stateCount_;
   const auto *previousProgram = program_;
@@ -571,42 +573,72 @@ void Runtime::replaceProgram(const CompiledProgram *program,
   program_ = program;
   states_ = nextStates;
   stateCount_ = nextStateCount;
-  arrangementPart_ = 0;
-  arrangementCycle_ = 0;
-  partStartBeat_ = 0.0;
-  if (!program_ || program_->semantic().arrangement.empty())
+  const auto arrangementSize =
+      program_ ? program_->semantic().arrangement.size() : 0;
+  if (arrangementSize == 0) {
+    arrangementPart_ = 0;
+    arrangementCycle_ = 0;
+    partStartBeat_ = beat;
     return;
-  const auto &semantic = program_->semantic();
+  }
 
-  beat = std::max(0.0, beat);
-  double arrangementDuration = 0.0;
-  bool finite = true;
-  for (const auto &part : semantic.arrangement) {
-    if (part.cycles < 0) {
-      finite = false;
-      break;
+  // Arrangement indices are not identities: inserting or reordering a term
+  // before the current one must not jump playback to an unrelated section.
+  // Match the active named sequence and its occurrence among duplicate terms.
+  bool transferredPart = false;
+  if (previousProgram) {
+    const auto &previousSemantic = previousProgram->semantic();
+    const auto &previousArrangement = previousSemantic.arrangement;
+    if (previousArrangementPart < previousArrangement.size()) {
+      const auto previousSequenceIndex =
+          previousArrangement[previousArrangementPart].sequence;
+      if (previousSequenceIndex < previousSemantic.sequences.size()) {
+        const auto &previousSequence =
+            previousSemantic.sequences[previousSequenceIndex];
+        const auto sameSequence = [&](const SemanticProgram &semantic,
+                                      const ArrangementPart &part) {
+          if (part.sequence >= semantic.sequences.size())
+            return false;
+          const auto &candidate = semantic.sequences[part.sequence];
+          return candidate.stableId == previousSequence.stableId &&
+                 candidate.name == previousSequence.name;
+        };
+
+        std::size_t previousOccurrence = 0;
+        for (std::size_t part = 0; part < previousArrangementPart; ++part) {
+          if (sameSequence(previousSemantic, previousArrangement[part]))
+            ++previousOccurrence;
+        }
+
+        const auto &nextSemantic = program_->semantic();
+        std::size_t nextOccurrence = 0;
+        for (std::size_t part = 0; part < arrangementSize; ++part) {
+          if (!sameSequence(nextSemantic, nextSemantic.arrangement[part]))
+            continue;
+          if (nextOccurrence++ != previousOccurrence)
+            continue;
+          arrangementPart_ = part;
+          transferredPart = true;
+          break;
+        }
+      }
     }
-    arrangementDuration +=
-        semantic.sequences[part.sequence].cycleBeats * part.cycles;
-  }
-  if (finite && arrangementDuration > 0.0) {
-    const double passes = std::floor(beat / arrangementDuration);
-    partStartBeat_ = passes * arrangementDuration;
-    arrangementCycle_ = static_cast<int>(
-        std::min(passes, static_cast<double>(std::numeric_limits<int>::max())));
   }
 
-  for (std::size_t guard = 0; guard < semantic.arrangement.size(); ++guard) {
-    const auto &part = semantic.arrangement[arrangementPart_];
-    if (part.cycles < 0)
-      return;
-    const double duration =
-        semantic.sequences[part.sequence].cycleBeats * part.cycles;
-    if (beat < partStartBeat_ + duration)
-      return;
-    partStartBeat_ += duration;
-    arrangementPart_ = (arrangementPart_ + 1) % semantic.arrangement.size();
+  if (!transferredPart) {
+    // The active term was removed. Keep the nearest structural location, but
+    // start that replacement term cleanly at the activation beat.
+    arrangementPart_ = std::min(previousArrangementPart, arrangementSize - 1);
+    arrangementCycle_ = 0;
+    partStartBeat_ = beat;
+    return;
   }
+
+  const int cycles = program_->semantic().arrangement[arrangementPart_].cycles;
+  arrangementCycle_ = cycles < 0
+                          ? std::max(0, previousArrangementCycle)
+                          : std::clamp(previousArrangementCycle, 0, cycles - 1);
+  partStartBeat_ = previousPartStartBeat;
 }
 
 void Runtime::reset() noexcept {
@@ -632,27 +664,21 @@ void Runtime::snapshot(Runtime &destination) const noexcept {
   destination.stateCount_ = count;
 }
 
-const Sequence *Runtime::currentSequence(double beat, SourceSpan &partSpan,
+const Sequence *Runtime::currentSequence(SourceSpan &partSpan,
                                          std::uint64_t &cycle) noexcept {
   if (!program_ || program_->semantic().arrangement.empty())
     return nullptr;
   const auto &semantic = program_->semantic();
-
-  for (std::size_t guard = 0; guard <= semantic.arrangement.size(); ++guard) {
-    const auto &part = semantic.arrangement[arrangementPart_];
-    const auto &sequence = semantic.sequences[part.sequence];
-    const double elapsed = beat - partStartBeat_;
-    if (part.cycles < 0 || elapsed < sequence.cycleBeats * part.cycles) {
-      cycle = static_cast<std::uint64_t>(
-          std::max(0.0, std::floor(elapsed / sequence.cycleBeats)));
-      partSpan = part.span.valid() ? part.span : sequence.nameSpan;
-      return &sequence;
-    }
-    partStartBeat_ += sequence.cycleBeats * part.cycles;
-    arrangementPart_ = (arrangementPart_ + 1) % semantic.arrangement.size();
-    ++arrangementCycle_;
-  }
-  return nullptr;
+  if (arrangementPart_ >= semantic.arrangement.size())
+    arrangementPart_ = 0;
+  const auto &part = semantic.arrangement[arrangementPart_];
+  if (part.sequence >= semantic.sequences.size())
+    return nullptr;
+  const auto &sequence = semantic.sequences[part.sequence];
+  cycle =
+      part.sequence < stateCount_ ? states_[part.sequence].completedCycles : 0;
+  partSpan = part.span.valid() ? part.span : sequence.nameSpan;
+  return &sequence;
 }
 
 StepEvents Runtime::next(double beat) noexcept {
@@ -663,7 +689,7 @@ StepEvents Runtime::next(double beat) noexcept {
   }
   SourceSpan partSpan;
   std::uint64_t cycle = 0;
-  const Sequence *sequence = currentSequence(beat, partSpan, cycle);
+  const Sequence *sequence = currentSequence(partSpan, cycle);
   if (!sequence)
     return output;
   const auto &semantic = program_->semantic();
@@ -693,39 +719,55 @@ StepEvents Runtime::next(double beat) noexcept {
                                    [](const ArticulationAtom &atom) {
                                      return atom.kind == ArticulationKind::Tie;
                                    });
-  double baseDuration = state.lastBaseDuration;
+  const double defaultDuration = 4.0 / sequence->subdivision;
+  double baseDuration =
+      state.lastBaseDuration > 0.0 ? state.lastBaseDuration : defaultDuration;
   if (!tieOnly) {
     baseDuration = static_cast<double>(Scalar(
         sequence->duration, state.duration,
         sequence->transforms[static_cast<std::size_t>(CursorLane::Duration)],
-        cycle, seed, 1.f, durationSpan, 0x2000,
+        cycle, seed, defaultDuration, durationSpan, 0x2000,
         sequence->aligned[static_cast<std::size_t>(CursorLane::Duration)],
-        state.structuralCell, nullptr, beat));
+        state.structuralCell, nullptr, beat - partStartBeat_));
     state.lastBaseDuration = baseDuration;
   }
-  const double duration =
-      baseDuration * (step ? step->durationMultiplier : 1.0) *
-      TimeScale(timingTransforms, cycle, seed);
+  const double duration = baseDuration *
+                          (step ? step->durationMultiplier : 1.0) *
+                          TimeScale(timingTransforms, cycle, seed);
   output.durationBeats = duration;
+
+  const bool completesNotesPass =
+      !sequence->articulation.empty() &&
+      state.articulation % sequence->articulation.size() == 0;
+  const auto &arrangementPart = semantic.arrangement[arrangementPart_];
+  bool continuesSameSequence = !completesNotesPass;
+  if (completesNotesPass) {
+    if (arrangementPart.cycles < 0 ||
+        arrangementCycle_ + 1 < arrangementPart.cycles) {
+      continuesSameSequence = true;
+    } else {
+      const auto nextPart =
+          (arrangementPart_ + 1) % semantic.arrangement.size();
+      continuesSameSequence =
+          semantic.arrangement[nextPart].sequence == sequenceIndex;
+    }
+  }
 
   const std::size_t atomCount = step ? step->atoms.size() : 1;
   bool legatoToNext = false;
   if (step && !sequence->articulation.empty()) {
-    const auto &part = semantic.arrangement[arrangementPart_];
-    const double nextElapsed = beat + duration - partStartBeat_;
-    const bool samePart =
-        part.cycles < 0 ||
-        nextElapsed < sequence->cycleBeats * part.cycles - 1e-9;
-    if (samePart) {
-      const auto nextCycle = static_cast<std::uint64_t>(
-          std::max(0.0, std::floor(nextElapsed / sequence->cycleBeats)));
+    if (continuesSameSequence) {
+      const auto nextCycle = cycle + (completesNotesPass ? 1 : 0);
       const auto &nextStep = Cycled(
           sequence->articulation, state.articulation,
           sequence->transforms[static_cast<std::size_t>(CursorLane::Notes)],
           nextCycle, seed, 0x3000);
       if (!nextStep.atoms.empty()) {
+        const auto nextArticulationCursor =
+            completesNotesPass ? std::uint64_t{1} : state.articulation + 1;
         const auto nextKind = EffectiveArticulation(
-            nextStep.atoms.front(), state.articulation + 1, 0, seed);
+            nextStep.atoms.front(),
+            nextArticulationCursor ^ MixRandom(nextCycle), 0, seed);
         legatoToNext = nextKind == ArticulationKind::Tie ||
                        nextKind == ArticulationKind::Slide;
       }
@@ -734,8 +776,9 @@ StepEvents Runtime::next(double beat) noexcept {
 
   for (std::size_t atomIndex = 0; atomIndex < atomCount; ++atomIndex) {
     const auto &atom = step ? step->atoms[atomIndex] : implicit;
+    const auto articulationRandomKey = state.articulation ^ MixRandom(cycle);
     ArticulationKind kind =
-        EffectiveArticulation(atom, state.articulation, atomIndex, seed);
+        EffectiveArticulation(atom, articulationRandomKey, atomIndex, seed);
     // Probability is resolved at runtime, so predecessor validity must be
     // resolved here too. A missed source cannot feed a later tie; a slide with
     // no sounding source becomes a normal attack rather than an orphaned
@@ -746,13 +789,12 @@ StepEvents Runtime::next(double beat) noexcept {
       kind = ArticulationKind::Attack;
 
     bool legatoFromAtom = false;
-    if ((kind == ArticulationKind::Attack ||
-         kind == ArticulationKind::Slide) &&
+    if ((kind == ArticulationKind::Attack || kind == ArticulationKind::Slide) &&
         !atom.ghost) {
       if (atomIndex + 1 < atomCount && step) {
-        const auto nextKind = EffectiveArticulation(
-            step->atoms[atomIndex + 1], state.articulation, atomIndex + 1,
-            seed);
+        const auto nextKind =
+            EffectiveArticulation(step->atoms[atomIndex + 1],
+                                  articulationRandomKey, atomIndex + 1, seed);
         legatoFromAtom = nextKind == ArticulationKind::Tie ||
                          nextKind == ArticulationKind::Slide;
       } else {
@@ -761,6 +803,7 @@ StepEvents Runtime::next(double beat) noexcept {
     }
 
     const double atomBeat = beat + duration * atom.offsetFraction;
+    const double cycleBeat = atomBeat - partStartBeat_;
     const double atomSpan = duration * atom.spanFraction;
     const auto structuralCell = state.structuralCell + atom.cellOffset;
     SourceSpan offsetSpan;
@@ -770,15 +813,15 @@ StepEvents Runtime::next(double beat) noexcept {
         sequence->transforms[static_cast<std::size_t>(CursorLane::Offset)],
         cycle, seed, 0.0, offsetSpan, 0x8800,
         sequence->aligned[static_cast<std::size_t>(CursorLane::Offset)],
-        structuralCell, &offsetMilliseconds, atomBeat);
-    std::array<CvSample, 2> cv{};
+        structuralCell, &offsetMilliseconds, cycleBeat);
+    std::array<CvSample, CvLaneCount> cv{};
     for (std::size_t cvIndex = 0; cvIndex < cv.size(); ++cvIndex) {
-      const auto lane = cvIndex == 0 ? CursorLane::Cv1 : CursorLane::Cv2;
+      const auto lane = CvCursorLane(cvIndex);
       cv[cvIndex] = SampleCv(
           sequence->cv[cvIndex],
           sequence->transforms[static_cast<std::size_t>(lane)],
           sequence->aligned[static_cast<std::size_t>(lane)], structuralCell,
-          atomBeat, atomSpan, sequence->cvInterpolation[cvIndex],
+          atomBeat, cycleBeat, atomSpan, sequence->cvInterpolation[cvIndex],
           sequence->cvPower[cvIndex], cycle, seed, 0x9000 + cvIndex * 0x100);
     }
     auto applyControls = [&](RuntimeEvent &event) {
@@ -792,13 +835,12 @@ StepEvents Runtime::next(double beat) noexcept {
         event.cvTarget[cvIndex] = cv[cvIndex].target;
         event.cvTargetBeat[cvIndex] = cv[cvIndex].targetBeat;
         event.cvInterpolation[cvIndex] = sequence->cvInterpolation[cvIndex];
-        event.cvPower[cvIndex] =
-            static_cast<float>(sequence->cvPower[cvIndex]);
-        const auto lane = cvIndex == 0 ? CursorLane::Cv1 : CursorLane::Cv2;
+        event.cvPower[cvIndex] = static_cast<float>(sequence->cvPower[cvIndex]);
+        const auto lane = CvCursorLane(cvIndex);
         event.cursors[static_cast<std::size_t>(lane)] = cv[cvIndex].span;
       }
     };
-    std::array<SourceSpan, 6> suppressedLaneSpans{};
+    std::array<SourceSpan, 5> suppressedLaneSpans{};
     const bool suppressedPitchedEvent =
         kind == ArticulationKind::Rest && atom.hasPitch &&
         (atom.kind == ArticulationKind::Attack ||
@@ -806,16 +848,18 @@ StepEvents Runtime::next(double beat) noexcept {
     if (suppressedPitchedEvent) {
       ++state.notes;
       const std::array<std::pair<const std::vector<ScalarItem> *, CursorLane>,
-                       6>
+                       5>
           lanes{{{&sequence->octave, CursorLane::Octave},
                  {&sequence->velocity, CursorLane::Velocity},
-                 {&sequence->accent, CursorLane::Accent},
                  {&sequence->gate, CursorLane::Gate},
                  {&sequence->slide, CursorLane::Slide},
                  {&sequence->ratchet, CursorLane::Ratchet}}};
-      std::array<std::uint64_t *, 6> cursors{{
-          &state.octave, &state.velocity, &state.accent,
-          &state.gate,   &state.slide,    &state.ratchet,
+      std::array<std::uint64_t *, 5> cursors{{
+          &state.octave,
+          &state.velocity,
+          &state.gate,
+          &state.slide,
+          &state.ratchet,
       }};
       for (std::size_t laneIndex = 0; laneIndex < lanes.size(); ++laneIndex) {
         const auto lane = lanes[laneIndex].second;
@@ -824,7 +868,7 @@ StepEvents Runtime::next(double beat) noexcept {
                seed, 0.0, suppressedLaneSpans[laneIndex],
                0xa000 + laneIndex * 0x100,
                sequence->aligned[static_cast<std::size_t>(lane)],
-               structuralCell, nullptr, atomBeat);
+               structuralCell, nullptr, cycleBeat);
       }
     }
     if (kind == ArticulationKind::Tie || kind == ArticulationKind::Rest) {
@@ -845,9 +889,9 @@ StepEvents Runtime::next(double beat) noexcept {
       if (suppressedPitchedEvent) {
         for (std::size_t laneIndex = 0; laneIndex < suppressedLaneSpans.size();
              ++laneIndex) {
-          constexpr std::array<CursorLane, 6> lanes{
-              CursorLane::Octave, CursorLane::Velocity, CursorLane::Accent,
-              CursorLane::Gate, CursorLane::Slide, CursorLane::Ratchet};
+          constexpr std::array<CursorLane, 5> lanes{
+              CursorLane::Octave, CursorLane::Velocity, CursorLane::Gate,
+              CursorLane::Slide, CursorLane::Ratchet};
           event.cursors[static_cast<std::size_t>(lanes[laneIndex])] =
               suppressedLaneSpans[laneIndex];
         }
@@ -877,7 +921,8 @@ StepEvents Runtime::next(double beat) noexcept {
     PitchValue randomPitch;
     const ChordValue *chord = nullptr;
     if (note.randomDomain != PitchItem::RandomDomain::None) {
-      randomPitch = SampleRandomPitch(note, *sequence, seed, noteKey, 0x4050);
+      randomPitch = SampleRandomPitch(note, *sequence, seed,
+                                      noteKey ^ MixRandom(cycle), 0x4050);
     } else {
       chord = &note.values[choice];
     }
@@ -892,7 +937,6 @@ StepEvents Runtime::next(double beat) noexcept {
 
     SourceSpan velocitySpan;
     SourceSpan octaveSpan;
-    SourceSpan accentSpan;
     SourceSpan gateSpan;
     SourceSpan slideSpan;
     SourceSpan ratchetSpan;
@@ -903,42 +947,43 @@ StepEvents Runtime::next(double beat) noexcept {
           sequence->transforms[static_cast<std::size_t>(CursorLane::Octave)],
           cycle, seed, 0.f, octaveSpan, 0x4400,
           sequence->aligned[static_cast<std::size_t>(CursorLane::Octave)],
-          structuralCell, nullptr, atomBeat)));
+          structuralCell, nullptr, cycleBeat)));
     }
     const float baseVelocity = static_cast<float>(Scalar(
         sequence->velocity, state.velocity,
         sequence->transforms[static_cast<std::size_t>(CursorLane::Velocity)],
         cycle, seed, 0.72, velocitySpan, 0x4800,
         sequence->aligned[static_cast<std::size_t>(CursorLane::Velocity)],
-        structuralCell, nullptr, atomBeat));
-    const float accent = static_cast<float>(Scalar(
-        sequence->accent, state.accent,
-        sequence->transforms[static_cast<std::size_t>(CursorLane::Accent)],
-        cycle, seed, 0.0, accentSpan, 0x5000,
-        sequence->aligned[static_cast<std::size_t>(CursorLane::Accent)],
-        structuralCell, nullptr, atomBeat));
-    float velocity = std::max(baseVelocity, accent);
+        structuralCell, nullptr, cycleBeat));
+    float velocity = baseVelocity;
+    float gateDefault = 0.8f;
+    if (atom.gateArticulation == GateArticulation::Staccato)
+      gateDefault = 0.25f;
+    else if (atom.gateArticulation == GateArticulation::Tenuto)
+      gateDefault = 0.95f;
     bool gateMilliseconds = false;
-    float gate = static_cast<float>(Scalar(
-        sequence->gate, state.gate,
-        sequence->transforms[static_cast<std::size_t>(CursorLane::Gate)], cycle,
-        seed, 0.8, gateSpan, 0x6000,
-        sequence->aligned[static_cast<std::size_t>(CursorLane::Gate)],
-        structuralCell, &gateMilliseconds, atomBeat));
+    float gate = static_cast<float>(
+        Scalar(sequence->gate, state.gate,
+               sequence->transforms[static_cast<std::size_t>(CursorLane::Gate)],
+               cycle, seed, gateDefault, gateSpan, 0x6000,
+               sequence->aligned[static_cast<std::size_t>(CursorLane::Gate)],
+               structuralCell, &gateMilliseconds, cycleBeat));
     bool slideMilliseconds = false;
     float slide = static_cast<float>(Scalar(
         sequence->slide, state.slide,
         sequence->transforms[static_cast<std::size_t>(CursorLane::Slide)],
         cycle, seed, 0.0, slideSpan, 0x7000,
         sequence->aligned[static_cast<std::size_t>(CursorLane::Slide)],
-        structuralCell, &slideMilliseconds, atomBeat));
-    float effectiveAccent = accent;
+        structuralCell, &slideMilliseconds, cycleBeat));
+    float effectiveAccent = 0.f;
     if (atom.hasVelocity)
       velocity = atom.velocity;
     if (atom.hasAccent) {
       effectiveAccent = atom.accent;
       velocity = std::max(velocity, effectiveAccent);
     }
+    if (atom.quiet)
+      velocity *= 0.5f;
     if (atom.hasGate) {
       gate = atom.gate;
       gateMilliseconds = atom.gateMilliseconds;
@@ -958,7 +1003,7 @@ StepEvents Runtime::next(double beat) noexcept {
         sequence->transforms[static_cast<std::size_t>(CursorLane::Ratchet)],
         cycle, seed, 1.0, ratchetSpan, 0x8000,
         sequence->aligned[static_cast<std::size_t>(CursorLane::Ratchet)],
-        structuralCell, nullptr, atomBeat);
+        structuralCell, nullptr, cycleBeat);
     const std::size_t ratchets =
         atom.ratchets > 1
             ? atom.ratchets
@@ -974,9 +1019,9 @@ StepEvents Runtime::next(double beat) noexcept {
       pitchSpans[voiceCount] = randomPitch.span;
       ++voiceCount;
     } else if (chord->meaning == ChordValue::Meaning::RomanSymbol) {
-      const float root = PitchVolts(
-          chord->romanRoot, *sequence, sequenceOctave, degreeShift,
-          degreeTranspose, semitoneTranspose, octaveTranspose);
+      const float root =
+          PitchVolts(chord->romanRoot, *sequence, sequenceOctave, degreeShift,
+                     degreeTranspose, semitoneTranspose, octaveTranspose);
       for (const int interval : chord->intervals) {
         if (voiceCount >= MaximumPolyphony)
           break;
@@ -1044,7 +1089,7 @@ StepEvents Runtime::next(double beat) noexcept {
         auto &event = output.events[output.count++];
         event = {};
         event.kind = kind == ArticulationKind::Slide ? EventKind::Slide
-                                                      : EventKind::Attack;
+                                                     : EventKind::Attack;
         event.beat = atomBeat + atomSpan * static_cast<double>(ratchet) /
                                     static_cast<double>(ratchets);
         event.spanBeats = atomSpan / static_cast<double>(ratchets);
@@ -1069,8 +1114,6 @@ StepEvents Runtime::next(double beat) noexcept {
             octaveSpan;
         event.cursors[static_cast<std::size_t>(CursorLane::Velocity)] =
             velocitySpan;
-        event.cursors[static_cast<std::size_t>(CursorLane::Accent)] =
-            accentSpan;
         event.cursors[static_cast<std::size_t>(CursorLane::Duration)] =
             durationSpan;
         event.cursors[static_cast<std::size_t>(CursorLane::Gate)] = gateSpan;
@@ -1097,8 +1140,7 @@ StepEvents Runtime::next(double beat) noexcept {
   state.structuralCell += step ? step->cellCount : 1;
   const auto swing = Swing(timingTransforms, cycle, seed);
   if (swing.ratio != 0.5) {
-    const double origin =
-        partStartBeat_ + static_cast<double>(cycle) * sequence->cycleBeats;
+    const double origin = partStartBeat_;
     for (std::size_t groupBegin = 0; groupBegin < output.count;) {
       std::size_t groupEnd = groupBegin + 1;
       while (groupEnd < output.count &&
@@ -1154,6 +1196,23 @@ StepEvents Runtime::next(double beat) noexcept {
     const double beatShift = output.events[index].beat - originalBeat;
     for (auto &targetBeat : output.events[index].cvTargetBeat)
       targetBeat += beatShift;
+  }
+  if (completesNotesPass) {
+    const auto completedCycles = state.completedCycles + 1;
+    const auto lastBaseDuration = state.lastBaseDuration;
+    const bool hasSoundingPitch = state.hasSoundingPitch;
+    state = {};
+    state.completedCycles = completedCycles;
+    state.lastBaseDuration = lastBaseDuration;
+    state.hasSoundingPitch = continuesSameSequence && hasSoundingPitch;
+    partStartBeat_ = beat + duration;
+    if (arrangementPart.cycles >= 0) {
+      ++arrangementCycle_;
+      if (arrangementCycle_ >= arrangementPart.cycles) {
+        arrangementCycle_ = 0;
+        arrangementPart_ = (arrangementPart_ + 1) % semantic.arrangement.size();
+      }
+    }
   }
   return output;
 }

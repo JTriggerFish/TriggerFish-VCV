@@ -25,6 +25,7 @@ Circuit-modelled sound generators and processors, plus pitch utilities for VCV R
   <tr>
     <td align="center"><a href="#scene-pack-4"><img src="doc/TfScenePack4.png" height="260" alt="Scene Pack 4 module"><br><strong>Scene Pack 4</strong></a></td>
     <td align="center"><a href="#room-reverb"><img src="doc/TfReverb.png" height="260" alt="Room Reverb module"><br><strong>Room Reverb</strong></a></td>
+    <td align="center"><a href="#prog-sequencer"><img src="doc/TfProgSequencer.png" height="260" alt="Prog Sequencer module"><br><strong>Prog Sequencer</strong></a></td>
   </tr>
 </table>
 
@@ -41,9 +42,9 @@ Circuit-modelled sound generators and processors, plus pitch utilities for VCV R
 | 4072 Voice Core | Fully polyphonic, with independent filter, dual-envelope, and VCA state; mono controls are broadcast | Widest connected input, up to 16 |
 | Wavefold Oscillator | Fully polyphonic, with independent oscillator, folder, and resampling state; mono controls are broadcast | Widest connected input, up to 16 |
 | Unison Oscillator | Fully polyphonic, with an independent oscillator stack and drift state per channel; mono controls are broadcast | Widest connected input, up to 16 |
-| Scene Pack 4 | Compacts four connected mono sources and appends an optional incoming scene bus | Matching AUDIO/X/Y/Z outputs, up to 8 channels |
-| Room Reverb | Mono by default; accepts up to eight aligned positioned sources | Independent stereo left/right outputs |
-| Prog Sequencer | Polyphonic chord-capable program with independently cycling control lanes | Up to 16 aligned pitch/gate/trigger/velocity/accent channels |
+| Scene Pack 4 | Concatenates four mono/poly source bundles in jack order | One polyphonic audio output, up to 8 channels |
+| Room Reverb | Mono by default; accepts and places up to eight source channels | Independent stereo left/right outputs |
+| Prog Sequencer | Polyphonic chord-capable program with control lanes synchronized to each Notes pass | Up to 16 aligned pitch/gate/trigger/velocity/accent channels plus CV1-CV3 |
 
 ## Modules
 
@@ -278,21 +279,20 @@ Circuit analysis, equations, calibration, and numerical validation are in the
 
 ### Scene Pack 4
 
-Scene Pack 4 prepares positioned sources for TfReverb. Patch up
-to four mono sources and set an X, Y, and Z position for each. The four outputs
-carry aligned polyphonic AUDIO/X/Y/Z channels; 0–10 V on a position cable maps
-across the corresponding room axis.
+Scene Pack 4 combines four mono or polyphonic source bundles into one
+polyphonic audio cable. Connected channels are concatenated in jack order,
+preserving channel order within each input, and the result is capped at Room
+Reverb's eight-source maximum. The polyphonic output of another Scene Pack can
+feed any input to chain bundles without separate position cables.
 
-The optional scene-bus inputs append already-packed channels before the local
-sources. Chaining two modules supports the reverb's maximum of eight independent
-sources. Connected local inputs are compacted into consecutive channels, and a
-polyphonic signal patched into one local input is summed into that lane's single
-positioned source.
+Source placement belongs to Room Reverb: every channel present on its AUDIO
+input appears as a numbered draggable marker in the room plan. Disconnected or
+zero-channel Scene Pack inputs consume no output channel and therefore create
+no marker.
 
-The single production architecture and its invariants are described in the
-[TfReverb current design](docs/TfReverb-current-design.md). Its late-field
-coefficients are deterministic heuristics; no fitted artifact or alternate late
-topology is embedded in the module.
+The topology, signal model, equations, design rationale, latency semantics, and
+implementation invariants are described in the
+[TfReverb technical report](docs/TfReverb-technical-report.md).
 
 ### Room Reverb
 
@@ -306,35 +306,56 @@ outputs. FIR construction and room movement run on a rate-limited background wor
 while the audio thread uses allocation-free prepared convolution banks.
 
 SIZE defines the room's floor scale and derives a plausible ceiling height;
-ASPECT reshapes the floor at constant area. The top-view placement pad moves the
-amber default source and blue listener in two dimensions. Its asymmetric listener
+ASPECT reshapes the floor at constant area. The top-view placement pad moves up
+to eight numbered amber sources and the blue listener in two dimensions. Its asymmetric listener
 default avoids the coincident reflection paths produced by the exact room centre;
 it remains draggable because no one receiver position is optimal for every source
-and room shape. Aligned AUDIO/X/Y/Z polyphonic cables from Scene Pack 4 override
-source coordinates for up to eight sources, whose live positions appear as smaller
-amber dots. PRE DELAY is shared by the complete wet response. The engine measures
+and room shape. Only channels present on the polyphonic AUDIO input are shown;
+one unedited source is centred, while additional unedited channels spread
+progressively across the room width. Manually placed positions remain stored
+when disconnected. Source and listener heights use
+the calibrated factory values. PRE DELAY is shared by the complete wet response. The engine measures
 each source's four-band ER handoff and automatically chooses its late send. It
-also uses physical source-listener distance to favor defined early reflections
-nearby and the diffuse tail farther away; EARLY and TAIL are dB trims around
-that baseline. LOW CUT and HIGH CUT filter the wet output, and DECAY,
+renders every source's immediate direct sound with constant-power azimuth
+panning and a bounded room-normalized distance gain. ER / TAIL balances from
+the geometric response through the automatically inferred handoff to the late
+field; its centre preserves the inferred blend. Direct sound is always positioned. LOW CUT and
+HIGH CUT filter the wet output, and DECAY,
 DAMPING, DIFFUSE, MOD, SHIMMER, STEREO WIDTH, MIX, and LEVEL control the
-remaining response. Source and listener positions also drive six crossfaded wall
-connections outside the feedback loop. MOD applies slow, sample-rate-invariant
-random delay motion; its subtle default leaves the static tail intact while the upper range reaches an
-audible, lush movement. SHIMMER sends four orthogonal late-field buses through
-an eight-grain octave shifter and a separate two-stage velvet diffuser. A
-strictly bounded auxiliary feedback path creates successive octave bloom while
-leaving the passive main room loop, early reflections, and dry signal untouched.
-The wet filters default to 20 Hz and 15 kHz. STEREO WIDTH is an output-image control—0%
+remaining response. The late tail sums handoff-aligned sources into one fixed
+normalized 16-line FDN input vector and uses a fixed orthonormal stereo decoder;
+source/listener geometry may set handoff gain and onset but never steers the
+late stereo field. MOD applies slow, sample-rate-invariant random motion to the
+main and velvet delays; its subtle default prevents a completely static tail,
+while the upper range reaches audible, lush movement. SHIMMER sends four
+orthogonal late-field buses through independently seeded eight-grain octave
+shifters and returns them at a bounded gain inside the production velvet loop.
+This creates successive octave bloom without adding a direct shifted layer or
+touching the early reflections and dry signal.
+The CV inputs cover PRE DELAY, DECAY, DAMPING, ER / TAIL, MIX, and LISTENER
+X/Y. Listener CV is intended for gestures or slow LFOs: direct placement follows
+the smoothed control while the background worker transitions the corresponding
+early-reflection scene.
+The factory scene is a medium hall with a 2.30 second decay and 12 ms wet
+pre-delay. Its wet filters default to 20 Hz and 12 kHz. STEREO WIDTH is an output-image control—0%
 collapses the complete wet field to mono, 100% preserves its native stereo image,
 and values up to 150% exaggerate the side component—whereas ASPECT changes the
 actual room width/depth geometry and therefore its reflection times.
+The right-click **Presets** menu provides the default Medium Hall, a restrained
+Small Room ambience, and a filtered Superlush synth texture. Applying a preset
+preserves the module's output LEVEL.
+
+The [two-source Room Reverb test patch](test-room-reverb-two-sources.vcv) uses
+distinct sine and saw sources with independent levels and left/right room-plan
+placements for quickly auditioning the spatial direct and early fields.
 
 ### Prog Sequencer
 
+[Complete Prog Sequencer manual and language reference](docs/TfProgSequencer-reference.md)
+
 Prog Sequencer is an externally clocked live-coding sequencer with
 up to 16 polyphonic V/OCT, Gate, Trigger, Velocity, and Accent channels, plus
-monophonic CV1 and CV2. Edit the program
+three monophonic CV lanes. Edit the program
 directly on the module. Ctrl+`.` compiles the complete document; Ctrl+Enter
 evaluates the top-level statement containing the selection or current line.
 Other edited statements remain inactive until separately evaluated; unrelated
@@ -356,21 +377,19 @@ compact right-side I/O strip at every width.
 
 ```text
 riff = sequence {
-  cycle 8
+  subdiv 8
   tonic D@4
   scale dorian
-  notes 1 2 ^3 4 x5 6 _ >7 [8 9] 10*3 ~ 11(3,8,1)
+  notes 1 2 ^3{stacc} 4 x5 6{quiet} _ >7{ten} [8 9] 10*3 ~ 11(3,8,1)
         |> rotate 2
         |> every 4 rev
   velocity .72 .63
   duration 1 1/2 1/2 1 2
-  gate .8
   offset -8ms!2 6ms |> rate 1/2
   cv1 0 . . 5 |> interp smooth
 }
 
 fill = sequence {
-  cycle 4
   notes 5 6 7*3 8
 }
 
@@ -378,15 +397,20 @@ song = riff * 2 + fill
 play song
 ```
 
-Articulation normally lives on the note itself: `^3` and `^^3` are the two
-accent strengths, `x3` is a short quiet ghost, `_` ties the preceding pitch,
-`~` rests, and `>3` slides from its predecessor. `[8 9]` subdivides one parent
-span, `7*3` ratchets within a span, `7!3` repeats across three cells, and
+Articulation normally lives on the note itself. `^3` and `^^3` assert Accent
+and raise Velocity to their two built-in emphasis levels. Velocity is a
+continuous performance value; Accent remains separate so voices such as the
+303 can change timbre and envelope behaviour rather than merely loudness.
+`x3` is a short quiet ghost, while `{quiet}` only halves Velocity. `{stacc}`
+and `{ten}` select quarter-span and 95-percent Gate without changing the event
+span. `_` ties the preceding pitch, `~` rests, and `>3` slides from its
+predecessor. `[8 9]` subdivides one parent span, `7*3` ratchets within a span,
+`7!3` repeats across three cells, and
 `7(3,8,1)` distributes that event over a rotated eight-cell Euclidean rhythm.
 Inactive Euclidean cells are rests. `7_`, `7_3`, and `7.` make a note doubled,
 three times as long, and dotted respectively. Sparse numerical lanes use `.`
-as a typed no-op. A velocity such as `.5` means 5 V; an accent prefix raises
-Velocity to at least its accent value.
+as a typed no-op. A velocity such as `.5` means 5 V; there is no separate
+numerical Accent lane.
 
 `$` produces a seeded random note from the active scale. `${1,8}` selects an
 inclusive scale-degree range, `$n{4,1.5}` uses a normal distribution in degree
@@ -472,7 +496,7 @@ and independently sequenced `duration` values. A patternable `offset` lane
 accepts signed beat fractions or `ms`; negative values are early and positive
 values late. Its optional numeric `rate`, as in
 `offset -10ms!2 8ms |> rate 1/2`, changes only that lane's score-time phase.
-CV1/CV2 use the same rate and sparse-lane rules and support `step`, `linear`,
+CV1-CV3 use the same rate and sparse-lane rules and support `step`, `linear`,
 `smooth`, and `power P` interpolation. Ellipsis-aligned CV is stepped in this
 version; continuous modes use free score-time lanes.
 

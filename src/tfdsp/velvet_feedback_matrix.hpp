@@ -2,21 +2,25 @@
 
 #include "late_reverb_coefficient_sets.hpp"
 #include "multiband_decay_filter.hpp"
+#include "smooth_random_modulator.hpp"
 
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <limits>
 #include <stdexcept>
 #include <vector>
 
 namespace tfdsp {
 
-// Factorized velvet feedback matrix U2 D2(z) U1 D1(z) U0. All transforms are
-// fixed, fully mixed Hadamard butterflies with signed permutations. Diffusion
-// changes the temporal span of the pure-delay banks, not the scattering
-// matrices. At any static setting the complete operator is paraunitary.
+// Factorized velvet feedback matrix U2 D2(z) U1 D1(z) U0. Every transform uses
+// orthogonal variable-angle butterflies followed by signed permutations.
+// Diffusion controls both the butterfly angle and the temporal span of the
+// pure-delay banks. With modulation at zero the complete operator is
+// paraunitary; bounded fractional modulation deliberately makes it time
+// varying to decorrelate the late field.
 class VelvetFeedbackMatrix {
 public:
   static constexpr std::size_t LineCount =
@@ -24,10 +28,10 @@ public:
   using Frame = std::array<float, LineCount>;
 
 private:
-  class TransitionIntegerDelay {
+  class TransitionFractionalDelay {
   public:
     void Prepare(const std::size_t capacity, const float transitionIncrement) {
-      if (capacity < 3)
+      if (capacity < 8)
         throw std::invalid_argument("VFM delay capacity is too small");
       buffer_.assign(capacity, 0.f);
       transitionIncrement_ = transitionIncrement;
@@ -55,11 +59,18 @@ private:
       to_ = pending_;
       phase_ = 0.f;
     }
-    float Process(const float input) noexcept {
-      float output = Read(current_);
+    float Process(const float input, const float normalizedModulation,
+                  const float relativeDepth,
+                  const float maximumDepthSamples) noexcept {
+      float output = ReadModulated(current_, normalizedModulation,
+                                   relativeDepth, maximumDepthSamples);
       if (phase_ < 1.f) {
         const float fade = phase_ * phase_ * (3.f - 2.f * phase_);
-        output = Read(from_) + fade * (Read(to_) - Read(from_));
+        const float from = ReadModulated(from_, normalizedModulation,
+                                         relativeDepth, maximumDepthSamples);
+        const float to = ReadModulated(to_, normalizedModulation,
+                                       relativeDepth, maximumDepthSamples);
+        output = from + fade * (to - from);
         phase_ = std::min(1.f, phase_ + transitionIncrement_);
         if (phase_ >= 1.f) {
           current_ = to_;
@@ -80,10 +91,52 @@ private:
     }
 
   private:
-    float Read(const std::size_t samples) const noexcept {
+    float ReadInteger(const std::size_t samples) const noexcept {
+      const std::size_t distance =
+          std::clamp(samples, std::size_t{1}, buffer_.size() - 1);
       const std::size_t index =
-          (writeIndex_ + buffer_.size() - samples) % buffer_.size();
+          (writeIndex_ + buffer_.size() - distance) % buffer_.size();
       return buffer_[index];
+    }
+
+    float Read(float delaySamples) const noexcept {
+      const float nearest = std::round(delaySamples);
+      if (std::abs(delaySamples - nearest) < 1.e-6f)
+        return ReadInteger(static_cast<std::size_t>(std::max(1.f, nearest)));
+
+      // A centred four-point Lagrange read needs one older and one newer
+      // neighbour around the integer tap. Modulation is disabled for base taps
+      // too short to maintain this causal two-sample lower bound.
+      delaySamples =
+          std::clamp(delaySamples, 2.f, static_cast<float>(buffer_.size() - 3));
+      const auto integer = static_cast<std::size_t>(std::floor(delaySamples));
+      const float mu = delaySamples - static_cast<float>(integer);
+      const std::array<float, 4> coefficients{
+          -mu * (mu - 1.f) * (mu - 2.f) / 6.f,
+          (mu + 1.f) * (mu - 1.f) * (mu - 2.f) / 2.f,
+          -(mu + 1.f) * mu * (mu - 2.f) / 2.f,
+          (mu + 1.f) * mu * (mu - 1.f) / 6.f};
+      constexpr std::array<int, 4> offsets{-1, 0, 1, 2};
+      float value = 0.f;
+      for (std::size_t tap = 0; tap < coefficients.size(); ++tap) {
+        const auto distance = static_cast<std::size_t>(
+            static_cast<int>(integer) + offsets[tap]);
+        const auto index =
+            (writeIndex_ + buffer_.size() - distance) % buffer_.size();
+        value += coefficients[tap] * buffer_[index];
+      }
+      return value;
+    }
+
+    float ReadModulated(const std::size_t baseSamples,
+                        const float normalizedModulation,
+                        const float relativeDepth,
+                        const float maximumDepthSamples) const noexcept {
+      const float base = static_cast<float>(baseSamples);
+      const float causalDepth = std::max(0.f, base - 2.f);
+      const float depth = std::min(
+          {relativeDepth * base, maximumDepthSamples, causalDepth});
+      return Read(base + std::clamp(normalizedModulation, -1.f, 1.f) * depth);
     }
 
     std::vector<float> buffer_{};
@@ -97,19 +150,38 @@ private:
     bool initialized_{};
   };
 
-  std::array<std::array<TransitionIntegerDelay, LineCount>,
+  std::array<std::array<TransitionFractionalDelay, LineCount>,
              late_reverb_coefficients::VelvetStageCount>
       delays_{};
+  std::array<std::array<SmoothRandomModulator, LineCount>,
+             late_reverb_coefficients::VelvetStageCount>
+      modulators_{};
   std::array<std::array<MultibandDecayFilter, LineCount>,
              late_reverb_coefficients::VelvetStageCount>
       decayFilters_{};
   float sampleRate_{48'000.f};
   float lastDiffusion_{-1.f};
   float lastRoomScale_{-1.f};
+  float currentMixAngle_{0.7853981633974483f};
+  float targetMixAngle_{0.7853981633974483f};
+  float mixCosine_{0.7071067811865475f};
+  float mixSine_{0.7071067811865475f};
+  float mixAngleSmoothingCoefficient_{1.f};
+  bool mixAngleInitialized_{};
   LateReverbFlavour transitionFrom_{DefaultLateReverbFlavour};
   LateReverbFlavour transitionTarget_{DefaultLateReverbFlavour};
   float flavourTransitionPhase_{1.f};
   float flavourTransitionIncrement_{1.f};
+
+  // The short first bank gets the smaller relative and absolute excursion.
+  // Both limits are applied per base tap; the fractional reader also reserves
+  // a causal two-sample margin for exceptionally short low-Diffusion taps.
+  static constexpr std::array<float,
+                              late_reverb_coefficients::VelvetStageCount>
+      ModulationDepthRatio{0.08f, 0.12f};
+  static constexpr std::array<float,
+                              late_reverb_coefficients::VelvetStageCount>
+      MaximumModulationSeconds{0.00035f, 0.00065f};
 
   static void ButterflyLayer(Frame &frame, const std::size_t stride,
                              const float cosine, const float sine) noexcept {
@@ -125,10 +197,11 @@ private:
   }
 
   static Frame TransformFor(Frame frame, const std::size_t transform,
-                            const LateReverbFlavour flavour) noexcept {
-    constexpr float InverseRootTwo = 0.7071067811865475f;
+                            const LateReverbFlavour flavour,
+                            const float cosine,
+                            const float sine) noexcept {
     for (std::size_t stride = 1; stride < LineCount; stride *= 2)
-      ButterflyLayer(frame, stride, InverseRootTwo, InverseRootTwo);
+      ButterflyLayer(frame, stride, cosine, sine);
     const auto &signs = LateSigns(flavour);
     const auto &permutations = LatePermutations(flavour);
     Frame permuted{};
@@ -142,11 +215,14 @@ private:
       noexcept {
     if (flavourTransitionPhase_ >= 1.f ||
         transitionFrom_ == transitionTarget_)
-      return TransformFor(frame, transform, transitionTarget_);
+      return TransformFor(frame, transform, transitionTarget_,
+                          mixCosine_, mixSine_);
     const float phase = flavourTransitionPhase_;
     const float fade = phase * phase * (3.f - 2.f * phase);
-    const auto from = TransformFor(frame, transform, transitionFrom_);
-    const auto to = TransformFor(frame, transform, transitionTarget_);
+    const auto from = TransformFor(frame, transform, transitionFrom_,
+                                   mixCosine_, mixSine_);
+    const auto to = TransformFor(frame, transform, transitionTarget_,
+                                 mixCosine_, mixSine_);
     Frame result{};
     for (std::size_t line = 0; line < LineCount; ++line)
       result[line] = from[line] + fade * (to[line] - from[line]);
@@ -165,6 +241,16 @@ private:
     lastDiffusion_ = x;
     lastRoomScale_ = roomScale;
     const float smooth = x * x * (3.f - 2.f * x);
+    constexpr float MinimumMixAngle = 0.1963495408493621f; // pi / 16
+    constexpr float MaximumMixAngle = 0.7853981633974483f; // pi / 4
+    targetMixAngle_ =
+        MinimumMixAngle + smooth * (MaximumMixAngle - MinimumMixAngle);
+    if (!mixAngleInitialized_) {
+      currentMixAngle_ = targetMixAngle_;
+      mixCosine_ = std::cos(currentMixAngle_);
+      mixSine_ = std::sin(currentMixAngle_);
+      mixAngleInitialized_ = true;
+    }
     const float scale = (0.20f + 1.30f * smooth) * roomScale;
     const auto &velvetDelays =
         LateVelvetDelayMilliseconds(transitionTarget_);
@@ -190,6 +276,8 @@ public:
     const float transitionIncrement =
         1.f / std::max(1.f, TransitionSeconds * sampleRate_);
     flavourTransitionIncrement_ = transitionIncrement;
+    mixAngleSmoothingCoefficient_ =
+        1.f - std::exp(-1.f / (TransitionSeconds * sampleRate_));
     const auto &baseDelays =
         LateVelvetDelayMilliseconds(LateReverbFlavour::Base);
     const auto &optimizedDelays =
@@ -200,11 +288,21 @@ public:
             std::max(baseDelays[stage][line], optimizedDelays[stage][line]);
         const auto capacity = static_cast<std::size_t>(std::ceil(
                                   maximumDelay * MaximumDiffusionScale *
-                                      MaximumRoomScale * 0.001f *
+                                      MaximumRoomScale * 0.001f * sampleRate_ +
+                                  MaximumModulationSeconds[stage] *
                                       sampleRate_)) +
-                              3;
+                              4;
         delays_[stage][line].Prepare(capacity, transitionIncrement);
         decayFilters_[stage][line].Prepare(sampleRate);
+        const std::size_t rateIndex =
+            (5 * line + 7 * stage) % late_reverb_coefficients::LineCount;
+        const float rateMultiplier = stage == 0 ? 1.37f : 1.11f;
+        modulators_[stage][line].Prepare(
+            sampleRate,
+            rateMultiplier *
+                late_reverb_coefficients::ModulationRateHz[rateIndex],
+            0xa511e9b3u + static_cast<std::uint32_t>(stage) * 0x63d83595u +
+                static_cast<std::uint32_t>(line) * 0x9e3779b9u);
       }
     Reset();
   }
@@ -215,8 +313,14 @@ public:
     for (auto &stage : decayFilters_)
       for (auto &filter : stage)
         filter.Reset();
+    for (auto &stage : modulators_)
+      for (auto &modulator : stage)
+        modulator.Reset();
     lastDiffusion_ = -1.f;
     lastRoomScale_ = -1.f;
+    currentMixAngle_ = targetMixAngle_ = 0.7853981633974483f;
+    mixCosine_ = mixSine_ = 0.7071067811865475f;
+    mixAngleInitialized_ = false;
     transitionFrom_ = transitionTarget_;
     flavourTransitionPhase_ = 1.f;
   }
@@ -260,12 +364,45 @@ public:
   // attenuation only, never the feedback topology.
   Frame Process(Frame frame, const float diffusion, const float midT60,
                 const float highT60, const float lowT60,
-                const float roomScale = 1.f) noexcept {
+                const float roomScale = 1.f,
+                const float modulationAmount = 0.f) noexcept {
     UpdateDelayTargets(diffusion, roomScale);
+    const float safeModulationAmount =
+        std::clamp(std::isfinite(modulationAmount) ? modulationAmount : 0.f,
+                   0.f, 1.f);
+    const float previousMixAngle = currentMixAngle_;
+    currentMixAngle_ += mixAngleSmoothingCoefficient_ *
+                        (targetMixAngle_ - currentMixAngle_);
+    if (currentMixAngle_ != previousMixAngle) {
+      mixCosine_ = std::cos(currentMixAngle_);
+      mixSine_ = std::sin(currentMixAngle_);
+    }
+    std::array<Frame, late_reverb_coefficients::VelvetStageCount>
+        modulation{};
+    for (std::size_t stage = 0; stage < modulation.size(); ++stage) {
+      // Remove coherent delay motion across a complete bank. Rescaling only
+      // when needed retains that zero mean while keeping every offset bounded.
+      float mean = 0.f;
+      for (std::size_t line = 0; line < LineCount; ++line) {
+        modulation[stage][line] = modulators_[stage][line].Next();
+        mean += modulation[stage][line];
+      }
+      mean /= static_cast<float>(LineCount);
+      float maximum = 1.f;
+      for (float &value : modulation[stage]) {
+        value -= mean;
+        maximum = std::max(maximum, std::abs(value));
+      }
+      for (float &value : modulation[stage])
+        value = safeModulationAmount * value / maximum;
+    }
     frame = Transform(frame, 0);
     for (std::size_t stage = 0; stage < delays_.size(); ++stage) {
       for (std::size_t line = 0; line < LineCount; ++line) {
-        frame[line] = delays_[stage][line].Process(frame[line]);
+        frame[line] = delays_[stage][line].Process(
+            frame[line], modulation[stage][line],
+            ModulationDepthRatio[stage],
+            MaximumModulationSeconds[stage] * sampleRate_);
         const float seconds =
             static_cast<float>(delays_[stage][line].EffectiveSamples()) /
             sampleRate_;

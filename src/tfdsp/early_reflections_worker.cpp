@@ -226,8 +226,7 @@ void EarlyReflectionWorker::Run() noexcept {
       }
       result.response = BuildEarlyReflectionImpulseResponse(
           work.second.config, work.second.room, sources,
-          work.second.materials, work.second.convolutionLatencySamples,
-          &cachedGeometry_);
+          work.second.materials, &cachedGeometry_);
       result.buildSeconds =
           std::chrono::duration<double>(Clock::now() - started).count();
 
@@ -235,7 +234,8 @@ void EarlyReflectionWorker::Run() noexcept {
         continue;
 
       if (publisher_) {
-        if (!publisher_(result.response, work.second.transitionSeconds))
+        if (!publisher_(result.response, work.second.transitionSeconds,
+                        work.first))
           throw std::runtime_error(
               "no free ER convolution bank was available to the worker");
         result.publishedToConvolver = true;

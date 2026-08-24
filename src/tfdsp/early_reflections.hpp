@@ -172,8 +172,6 @@ struct EarlyReflectionImpulseResponse {
   std::size_t sourceCount{};
   std::size_t imagePathCount{};
   std::size_t analysisPathCount{};
-  std::size_t requestedConvolutionLatencySamples{};
-  std::size_t appliedLatencyCompensationSamples{};
   EarlyReflectionMixingPrediction mixingPrediction{};
   std::vector<EarlyReflectionSourceHandoff> sourceHandoffs{};
   // Output-major layout: kernel(output, source) = output * sourceCount +
@@ -187,15 +185,6 @@ struct EarlyReflectionImpulseResponse {
   std::size_t KernelIndex(const std::size_t output,
                           const std::size_t source) const noexcept {
     return output * sourceCount + source;
-  }
-
-  double ResidualLatencySeconds() const noexcept {
-    if (sampleRate <= 0.0 ||
-        requestedConvolutionLatencySamples < appliedLatencyCompensationSamples)
-      return 0.0;
-    return static_cast<double>(requestedConvolutionLatencySamples -
-                               appliedLatencyCompensationSamples) /
-           sampleRate;
   }
 
   void Validate() const {
@@ -588,8 +577,13 @@ inline std::vector<EarlyReflectionPath> EnumerateEarlyReflectionPaths(
               static_cast<std::uint16_t>(xCounts.first + xCounts.second),
               static_cast<std::uint16_t>(yCounts.first + yCounts.second)};
 
-          const double lateral =
-              std::clamp(path.arrivalDirection[0], -1.0, 1.0);
+          const double horizontalLength =
+              std::hypot(pathVector[0], pathVector[1]);
+          const double lateral = horizontalLength > 1.0e-12
+                                     ? std::clamp(pathVector[0] /
+                                                      horizontalLength,
+                                                  -1.0, 1.0)
+                                     : 0.0;
           const double pan = 0.5 * (lateral + 1.0);
           path.outputGains = {std::cos(0.5 * EarlyReflectionPi * pan),
                               std::sin(0.5 * EarlyReflectionPi * pan)};
@@ -627,19 +621,8 @@ MaximumEarlyReflectionImpulseSamples(const EarlyReflectionConfig &config,
                                      const EarlyReflectionRoom &room) {
   config.Validate();
   room.Validate();
-  double maximumDirectDistanceSquared = 0.0;
-  for (std::size_t axis = 0; axis < 3; ++axis) {
-    const double distanceToFarthestWall = std::max(
-        room.listenerPositionMetres[axis],
-        room.dimensionsMetres[axis] - room.listenerPositionMetres[axis]);
-    maximumDirectDistanceSquared +=
-        distanceToFarthestWall * distanceToFarthestWall;
-  }
-  const double maximumDirectSeconds =
-      std::sqrt(maximumDirectDistanceSquared) / config.speedOfSound;
   return static_cast<std::size_t>(
-             std::ceil((maximumDirectSeconds + config.responseTimeSeconds) *
-                       config.sampleRate)) +
+             std::ceil(config.responseTimeSeconds * config.sampleRate)) +
          4;
 }
 
@@ -720,15 +703,10 @@ inline void RefineEarlyReflectionHandoffs(
     const double upperRelative =
         std::min(response.mixingPrediction.generationHorizonSeconds,
                  1.25 * handoff.predictedEndSeconds);
-    const double directStoredSamples =
-        handoff.directPropagationSeconds * config.sampleRate -
-        static_cast<double>(response.appliedLatencyCompensationSamples);
     const auto firstCentre = static_cast<std::size_t>(std::max(
-        0.0,
-        std::ceil(directStoredSamples + lowerRelative * config.sampleRate)));
+        0.0, std::ceil(lowerRelative * config.sampleRate)));
     const auto lastCentre = static_cast<std::size_t>(std::max(
-        0.0,
-        std::floor(directStoredSamples + upperRelative * config.sampleRate)));
+        0.0, std::floor(upperRelative * config.sampleRate)));
 
     std::size_t consecutive = 0;
     double firstStableRelative = 0.0;
@@ -750,9 +728,7 @@ inline void RefineEarlyReflectionHandoffs(
         continue;
       }
       if (consecutive == 0)
-        firstStableRelative =
-            (static_cast<double>(centre) - directStoredSamples) /
-            config.sampleRate;
+        firstStableRelative = static_cast<double>(centre) / config.sampleRate;
       ++consecutive;
       if (consecutive < stableWindows)
         continue;
@@ -776,7 +752,6 @@ inline EarlyReflectionImpulseResponse BuildEarlyReflectionImpulseResponse(
     const EarlyReflectionConfig &config, const EarlyReflectionRoom &room,
     const std::vector<EarlyReflectionSource> &sources,
     const EarlyReflectionMaterials &materials,
-    const std::size_t convolutionLatencySamples = 0,
     const std::vector<EarlyReflectionPath> *cachedGeometry = nullptr) {
   const auto mixing = PredictEarlyReflectionMixing(config, room);
   materials.Validate();
@@ -807,24 +782,13 @@ inline EarlyReflectionImpulseResponse BuildEarlyReflectionImpulseResponse(
     }
   }
 
-  double minimumDesiredDelaySamples = std::numeric_limits<double>::infinity();
   double maximumDesiredDelaySamples = 0.0;
   for (const auto &path : paths) {
-    const double delay = path.propagationSeconds * config.sampleRate;
-    minimumDesiredDelaySamples = std::min(minimumDesiredDelaySamples, delay);
+    const double delay = path.excessDelaySeconds * config.sampleRate;
     maximumDesiredDelaySamples = std::max(maximumDesiredDelaySamples, delay);
   }
-  const std::size_t maximumCausalCompensation =
-      minimumDesiredDelaySamples >= 1.0 ? static_cast<std::size_t>(std::floor(
-                                              minimumDesiredDelaySamples - 1.0))
-                                        : 0;
-  const std::size_t appliedCompensation =
-      std::min(convolutionLatencySamples, maximumCausalCompensation);
   const std::size_t tapTrainSize =
-      static_cast<std::size_t>(
-          std::ceil(maximumDesiredDelaySamples -
-                    static_cast<double>(appliedCompensation))) +
-      3;
+      static_cast<std::size_t>(std::ceil(maximumDesiredDelaySamples)) + 3;
   const std::size_t filterTailSamples = std::max<std::size_t>(
       1, static_cast<std::size_t>(
              std::ceil(config.materialFilterTailSeconds * config.sampleRate)));
@@ -835,9 +799,7 @@ inline EarlyReflectionImpulseResponse BuildEarlyReflectionImpulseResponse(
       std::vector<double>(responseSize, 0.0));
 
   for (const auto &path : paths) {
-    const double delaySamples =
-        path.propagationSeconds * config.sampleRate -
-        static_cast<double>(appliedCompensation);
+    const double delaySamples = path.excessDelaySeconds * config.sampleRate;
     const auto integerDelay =
         static_cast<std::size_t>(std::floor(delaySamples));
     const bool needsCausalInterpolator = integerDelay == 0;
@@ -871,8 +833,6 @@ inline EarlyReflectionImpulseResponse BuildEarlyReflectionImpulseResponse(
   response.sampleRate = config.sampleRate;
   response.sourceCount = sources.size();
   response.analysisPathCount = paths.size();
-  response.requestedConvolutionLatencySamples = convolutionLatencySamples;
-  response.appliedLatencyCompensationSamples = appliedCompensation;
   response.mixingPrediction = mixing;
   response.sourceHandoffs.resize(sources.size());
   for (std::size_t source = 0; source < sources.size(); ++source) {
@@ -910,12 +870,8 @@ inline EarlyReflectionImpulseResponse BuildEarlyReflectionImpulseResponse(
               std::llround(config.analysisWindowSeconds * config.sampleRate)));
   for (std::size_t source = 0; source < sources.size(); ++source) {
     auto &handoff = response.sourceHandoffs[source];
-    const double directStored =
-        handoff.directPropagationSeconds * config.sampleRate -
-        static_cast<double>(appliedCompensation);
     const auto handoffCentre = static_cast<std::size_t>(std::clamp(
-        std::llround(directStored +
-                     handoff.finalStartSeconds * config.sampleRate),
+        std::llround(handoff.finalStartSeconds * config.sampleRate),
         0LL, static_cast<long long>(responseSize - 1)));
     const std::size_t windowFirst =
         handoffCentre > handoffWindowSamples / 2
@@ -923,9 +879,7 @@ inline EarlyReflectionImpulseResponse BuildEarlyReflectionImpulseResponse(
             : 0;
     const std::size_t windowLast =
         std::min(responseSize, windowFirst + handoffWindowSamples);
-    const std::size_t earlyFirst = static_cast<std::size_t>(
-        std::clamp(std::llround(std::max(0.0, directStored)), 0LL,
-                   static_cast<long long>(responseSize - 1)));
+    constexpr std::size_t earlyFirst = 0;
 
     for (std::size_t output = 0; output < EarlyReflectionOutputCount;
          ++output) {
@@ -978,12 +932,8 @@ inline EarlyReflectionImpulseResponse BuildEarlyReflectionImpulseResponse(
          ++output) {
       auto &kernel = response.kernels[response.KernelIndex(output, source)];
       for (std::size_t sample = 0; sample < kernel.size(); ++sample) {
-        const double physicalSeconds =
-            (static_cast<double>(sample) +
-             static_cast<double>(appliedCompensation)) /
-            config.sampleRate;
         const double relativeSeconds =
-            physicalSeconds - handoff.directPropagationSeconds;
+            static_cast<double>(sample) / config.sampleRate;
         double gain = 1.0;
         if (relativeSeconds >= handoff.finalEndSeconds)
           gain = 0.0;
@@ -995,9 +945,7 @@ inline EarlyReflectionImpulseResponse BuildEarlyReflectionImpulseResponse(
       }
     }
     const double finalStoredSample =
-        (handoff.directPropagationSeconds + handoff.finalEndSeconds) *
-            config.sampleRate -
-        static_cast<double>(appliedCompensation);
+        handoff.finalEndSeconds * config.sampleRate;
     finalResponseSize = std::max(finalResponseSize,
                                  static_cast<std::size_t>(std::max(
                                      1.0, std::ceil(finalStoredSample) + 1.0)));
@@ -1029,7 +977,11 @@ class EarlyReflectionConvolver {
 public:
   using InputFrame = std::array<Sample, MaximumSources>;
   using OutputFrame = std::array<Sample, EarlyReflectionOutputCount>;
-  static constexpr std::size_t LatencySamples = PartitionSize;
+  // The direct-form head is sample synchronous. The partitioned tail retains
+  // an internal PartitionSize latency and stores coefficients shifted left by
+  // that amount, so the complete convolver has zero implementation latency.
+  static constexpr std::size_t LatencySamples = 0;
+  static constexpr std::size_t HeadSize = PartitionSize;
 
 private:
   using Spectrum = std::array<std::complex<Sample>, FftSize>;
@@ -1038,6 +990,9 @@ private:
     std::size_t sourceCount{};
     std::size_t partitionCount{};
     std::size_t transitionSamples{};
+    std::size_t sceneSequence{};
+    std::array<std::array<Sample, HeadSize>, MaximumKernelCount> head{};
+    std::array<std::size_t, MaximumKernelCount> headTapCount{};
     std::array<std::vector<Spectrum>, MaximumKernelCount> spectra{};
   };
 
@@ -1053,6 +1008,8 @@ private:
   std::size_t previousBankIndex_{InvalidBank};
   std::size_t transitionSamples_{};
   std::size_t transitionRemaining_{};
+  std::size_t activeSceneSequence_{};
+  std::size_t renderedSceneSequence_{};
   bool prepared_{};
   std::array<std::complex<Sample>, FftSize / 2> roots_{};
   std::array<std::size_t, FftSize> bitReversed_{};
@@ -1060,6 +1017,8 @@ private:
   std::array<std::atomic<BankState>, BankCount> bankStates_{};
   std::atomic<int> readyBankIndex_{-1};
   std::array<std::vector<Spectrum>, MaximumSources> inputHistory_{};
+  std::array<std::array<Sample, HeadSize>, MaximumSources> headHistory_{};
+  std::size_t headWriteIndex_{};
   std::array<std::size_t, MaximumSources> sourceFlushBlocks_{};
   std::array<std::array<Sample, PartitionSize>, MaximumSources>
       previousInputBlock_{};
@@ -1124,30 +1083,57 @@ private:
     if (response.Size() > maximumImpulseSamples_)
       throw std::invalid_argument(
           "ER FIR exceeds the prepared convolution capacity");
-    if (response.requestedConvolutionLatencySamples != LatencySamples)
-      throw std::invalid_argument(
-          "ER FIR was not generated for this convolution latency");
-
     auto &bank = banks_[bankIndex];
     bank.sourceCount = response.sourceCount;
-    bank.partitionCount = (response.Size() + PartitionSize - 1) / PartitionSize;
+    bank.partitionCount =
+        response.Size() > HeadSize
+            ? (response.Size() - HeadSize + PartitionSize - 1) / PartitionSize
+            : 0;
+    for (auto &head : bank.head)
+      head.fill(Sample{});
+    bank.headTapCount.fill(0);
     for (std::size_t output = 0; output < EarlyReflectionOutputCount; ++output)
       for (std::size_t source = 0; source < response.sourceCount; ++source) {
         const std::size_t kernelIndex = output * MaximumSources + source;
         const auto &impulse =
             response.kernels[response.KernelIndex(output, source)];
+        for (std::size_t sample = 0;
+             sample < std::min(HeadSize, impulse.size()); ++sample) {
+          bank.head[kernelIndex][sample] =
+              static_cast<Sample>(impulse[sample]);
+          if (std::abs(impulse[sample]) > 1.0e-20)
+            bank.headTapCount[kernelIndex] = sample + 1;
+        }
         for (std::size_t partition = 0; partition < bank.partitionCount;
              ++partition) {
           auto &spectrum = bank.spectra[kernelIndex][partition];
           spectrum.fill({});
           for (std::size_t sample = 0; sample < PartitionSize; ++sample) {
-            const std::size_t impulseIndex = partition * PartitionSize + sample;
+            const std::size_t impulseIndex =
+                HeadSize + partition * PartitionSize + sample;
             if (impulseIndex < impulse.size())
               spectrum[sample] = static_cast<Sample>(impulse[impulseIndex]);
           }
           Transform(spectrum, false);
         }
       }
+  }
+
+  OutputFrame RenderHead(const KernelBank &bank) const noexcept {
+    OutputFrame output{};
+    for (std::size_t channel = 0; channel < EarlyReflectionOutputCount;
+         ++channel)
+      for (std::size_t source = 0; source < bank.sourceCount; ++source) {
+        const auto &kernel = bank.head[channel * MaximumSources + source];
+        const std::size_t tapCount =
+            bank.headTapCount[channel * MaximumSources + source];
+        for (std::size_t tap = 0; tap < tapCount; ++tap) {
+          const std::size_t historyIndex =
+              (headWriteIndex_ + HeadSize - tap) % HeadSize;
+          output[channel] += kernel[tap] * headHistory_[source][historyIndex];
+        }
+      }
+    return output;
   }
 
   void RenderBank(const KernelBank &bank,
@@ -1201,10 +1187,12 @@ private:
 
     if (currentBankIndex_ == InvalidBank) {
       currentBankIndex_ = candidateIndex;
+      activeSceneSequence_ = banks_[candidateIndex].sceneSequence;
       return;
     }
     previousBankIndex_ = currentBankIndex_;
     currentBankIndex_ = candidateIndex;
+    activeSceneSequence_ = banks_[candidateIndex].sceneSequence;
     transitionSamples_ = banks_[candidateIndex].transitionSamples;
     transitionRemaining_ = transitionSamples_;
   }
@@ -1256,8 +1244,11 @@ public:
       throw std::invalid_argument("convolver FIR capacity must be non-zero");
     sampleRate_ = sampleRate;
     maximumImpulseSamples_ = maximumImpulseSamples;
-    maximumPartitions_ =
-        (maximumImpulseSamples + PartitionSize - 1) / PartitionSize;
+    maximumPartitions_ = std::max<std::size_t>(
+        1, maximumImpulseSamples > HeadSize
+               ? (maximumImpulseSamples - HeadSize + PartitionSize - 1) /
+                     PartitionSize
+               : 1);
     PrepareFft();
     for (auto &bank : banks_)
       for (auto &kernel : bank.spectra)
@@ -1269,6 +1260,8 @@ public:
     readyBankIndex_.store(-1, std::memory_order_relaxed);
     currentBankIndex_ = InvalidBank;
     previousBankIndex_ = InvalidBank;
+    activeSceneSequence_ = 0;
+    renderedSceneSequence_ = 0;
     prepared_ = true;
     Reset();
   }
@@ -1279,6 +1272,8 @@ public:
         spectrum.fill({});
     for (auto &block : previousInputBlock_)
       block.fill(Sample{});
+    for (auto &history : headHistory_)
+      history.fill(Sample{});
     for (auto &block : inputBlock_)
       block.fill(Sample{});
     for (auto &block : currentOutputBlock_)
@@ -1288,12 +1283,15 @@ public:
     blockPosition_ = 0;
     blockSourceCount_ = 0;
     historyWriteIndex_ = 0;
+    headWriteIndex_ = 0;
     sourceFlushBlocks_.fill(0);
     transitionSamples_ = 0;
     transitionRemaining_ = 0;
+    renderedSceneSequence_ = activeSceneSequence_;
   }
 
-  void SetImpulseResponse(const EarlyReflectionImpulseResponse &response) {
+  void SetImpulseResponse(const EarlyReflectionImpulseResponse &response,
+                          const std::size_t sceneSequence = 0) {
     if (!prepared_)
       throw std::logic_error("prepare the ER convolver before loading an FIR");
     readyBankIndex_.store(-1, std::memory_order_relaxed);
@@ -1304,6 +1302,8 @@ public:
     bankStates_[currentBankIndex_].store(BankState::Preparing,
                                          std::memory_order_relaxed);
     LoadBank(response, currentBankIndex_);
+    banks_[currentBankIndex_].sceneSequence = sceneSequence;
+    activeSceneSequence_ = sceneSequence;
     bankStates_[currentBankIndex_].store(BankState::Active,
                                          std::memory_order_release);
     Reset();
@@ -1311,7 +1311,8 @@ public:
 
   bool
   PrepareAndQueueImpulseResponse(const EarlyReflectionImpulseResponse &response,
-                                 const double transitionSeconds = 0.100) {
+                                 const double transitionSeconds = 0.100,
+                                 const std::size_t sceneSequence = 0) {
     if (!std::isfinite(transitionSeconds) || transitionSeconds < 0.0)
       throw std::invalid_argument(
           "ER transition time must be finite and non-negative");
@@ -1333,6 +1334,7 @@ public:
 
     try {
       LoadBank(response, bankIndex);
+      banks_[bankIndex].sceneSequence = sceneSequence;
       banks_[bankIndex].transitionSamples =
           std::max<std::size_t>(2, static_cast<std::size_t>(std::llround(
                                        transitionSeconds * sampleRate_)));
@@ -1352,14 +1354,21 @@ public:
     return true;
   }
 
+  // Scene identity used for the most recently returned audio sample.
+  std::size_t RenderedSceneSequence() const noexcept {
+    return renderedSceneSequence_;
+  }
+
   void
   TransitionToImpulseResponse(const EarlyReflectionImpulseResponse &response,
-                              const double transitionSeconds = 0.100) {
+                              const double transitionSeconds = 0.100,
+                              const std::size_t sceneSequence = 0) {
     if (currentBankIndex_ == InvalidBank) {
-      SetImpulseResponse(response);
+      SetImpulseResponse(response, sceneSequence);
       return;
     }
-    if (!PrepareAndQueueImpulseResponse(response, transitionSeconds))
+    if (!PrepareAndQueueImpulseResponse(response, transitionSeconds,
+                                        sceneSequence))
       throw std::runtime_error("no free ER convolution bank is available");
   }
 
@@ -1367,10 +1376,30 @@ public:
                       const std::size_t sourceCount) noexcept {
     if (!prepared_)
       return {};
+    renderedSceneSequence_ = activeSceneSequence_;
+    const std::size_t activeSources = std::min(sourceCount, MaximumSources);
+    for (std::size_t source = 0; source < MaximumSources; ++source) {
+      const Sample sample =
+          source < activeSources && std::isfinite(input[source])
+              ? input[source]
+              : Sample{};
+      inputBlock_[source][blockPosition_] = sample;
+      headHistory_[source][headWriteIndex_] = sample;
+    }
+    blockSourceCount_ = std::max(blockSourceCount_, activeSources);
+
+    const OutputFrame currentHead =
+        currentBankIndex_ != InvalidBank ? RenderHead(banks_[currentBankIndex_])
+                                         : OutputFrame{};
+    const OutputFrame previousHead =
+        previousBankIndex_ != InvalidBank
+            ? RenderHead(banks_[previousBankIndex_])
+            : OutputFrame{};
     OutputFrame output{};
     for (std::size_t channel = 0; channel < EarlyReflectionOutputCount;
          ++channel) {
-      output[channel] = currentOutputBlock_[channel][blockPosition_];
+      output[channel] =
+          currentHead[channel] + currentOutputBlock_[channel][blockPosition_];
       if (transitionRemaining_ > 0) {
         const std::size_t completed = transitionSamples_ - transitionRemaining_;
         const double linear =
@@ -1380,21 +1409,18 @@ public:
                       static_cast<double>(transitionSamples_ - 1);
         const Sample amount =
             static_cast<Sample>(EarlyReflectionSmoothstep(linear));
-        output[channel] =
-            previousOutputBlock_[channel][blockPosition_] +
+        const Sample previous = previousHead[channel] +
+                                previousOutputBlock_[channel][blockPosition_];
+        output[channel] = previous +
             amount * (output[channel] -
-                      previousOutputBlock_[channel][blockPosition_]);
+                      previous);
       }
     }
-    for (std::size_t source = 0; source < MaximumSources; ++source)
-      inputBlock_[source][blockPosition_] =
-          source < sourceCount && std::isfinite(input[source]) ? input[source]
-                                                               : Sample{};
-    blockSourceCount_ =
-        std::max(blockSourceCount_, std::min(sourceCount, MaximumSources));
 
     if (transitionRemaining_ > 0)
       --transitionRemaining_;
+    if (++headWriteIndex_ == HeadSize)
+      headWriteIndex_ = 0;
     ++blockPosition_;
     if (blockPosition_ == PartitionSize) {
       blockPosition_ = 0;
