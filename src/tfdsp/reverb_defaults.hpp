@@ -94,8 +94,8 @@ inline constexpr ReverbPreset Superlush{
     0.75f, // approximately 127% displayed width
     0.75f,
     0.4580135308f, // 120 Hz
-    0.7686217868f, // 10 kHz
-    0.35f};
+    0.6941346395f, // 8 kHz
+    0.40f};
 
 // The single authoritative factory baseline shared by the Rack module, DSP
 // engines, native response tests, and generated smoke patches.

@@ -1,4 +1,5 @@
 #include "tfseq.hpp"
+#include "tfseq_editor.hpp"
 #include "tfseq_parser.hpp"
 #include "tfui_animation.hpp"
 #include "tfui_colormap.hpp"
@@ -25,6 +26,59 @@ void checkImpl(bool condition, const std::string &message) {
 
 bool close(float left, float right, float tolerance = 1e-5f) {
   return std::fabs(left - right) <= tolerance;
+}
+
+void editorShortcutTextOperationsAreStructural() {
+  const std::string lanes = "  notes 1\n  gate .5\n";
+  const auto commented = tfseq::editor::ToggleLineComments(
+      lanes, 0, static_cast<int>(lanes.size()));
+  check(commented.changed && commented.text == "  // notes 1\n  // gate .5\n",
+        "comment toggle preserves indentation across selected lines");
+  const auto restored = tfseq::editor::ToggleLineComments(
+      commented.text, commented.cursor, commented.selection);
+  check(restored.changed && restored.text == lanes,
+        "a second comment toggle restores the selected lines");
+
+  const std::string windowsLines = "notes 1\r\n\r\ngate .5\r\n";
+  const auto windowsCommented = tfseq::editor::ToggleLineComments(
+      windowsLines, 0, static_cast<int>(windowsLines.size()));
+  check(windowsCommented.changed &&
+            windowsCommented.text == "// notes 1\r\n\r\n// gate .5\r\n",
+        "comment toggle preserves CRLF and leaves blank rows blank");
+  const auto windowsRestored = tfseq::editor::ToggleLineComments(
+      windowsCommented.text, windowsCommented.cursor,
+      windowsCommented.selection);
+  check(windowsRestored.changed && windowsRestored.text == windowsLines,
+        "comment toggle restores CRLF source exactly");
+
+  const std::string carriageReturnLines = "notes 1\rgate .5";
+  const auto carriageReturnCommented = tfseq::editor::ToggleLineComments(
+      carriageReturnLines, 0, static_cast<int>(carriageReturnLines.size()));
+  check(carriageReturnCommented.changed &&
+            carriageReturnCommented.text == "// notes 1\r// gate .5",
+        "comment toggle recognizes lone carriage-return line endings");
+
+  const std::string program = "notes 1\nplay a\n";
+  const auto duplicatedLine = tfseq::editor::Duplicate(program, 3, 3);
+  check(duplicatedLine.changed &&
+            duplicatedLine.text == "notes 1\nnotes 1\nplay a\n",
+        "duplicate repeats the complete current line");
+  const auto duplicatedSelection = tfseq::editor::Duplicate("abc", 0, 2);
+  check(duplicatedSelection.changed && duplicatedSelection.text == "ababc" &&
+            duplicatedSelection.selection == 2 &&
+            duplicatedSelection.cursor == 4,
+        "duplicate repeats and selects the explicit selection");
+  const auto duplicatedWindowsLine =
+      tfseq::editor::Duplicate("notes 1\r\nplay a", 12, 12);
+  check(duplicatedWindowsLine.changed &&
+            duplicatedWindowsLine.text == "notes 1\r\nplay a\r\nplay a",
+        "duplicate preserves CRLF when the final line has no terminator");
+  const auto duplicatedCarriageReturnLine =
+      tfseq::editor::Duplicate("notes 1\rplay a", 2, 2);
+  check(duplicatedCarriageReturnLine.changed &&
+            duplicatedCarriageReturnLine.text ==
+                "notes 1\rnotes 1\rplay a",
+        "duplicate preserves lone carriage-return line endings");
 }
 
 void heatmapMapsScalarIntensity() {
@@ -623,6 +677,44 @@ play a
         "numerical event attributes still require values");
 }
 
+void zeroSlideOverridesGlideFallback() {
+  const auto compiled = tfseq::Compile(R"(a = sequence {
+  notes 1 >2 >3 >4{slide=0} >5{slide=40ms}
+  glide 3/4
+  slide . 0 . . .
+}
+play a
+)");
+  check(static_cast<bool>(compiled), compiled.diagnostic.message);
+  if (!compiled)
+    return;
+
+  tfseq::Runtime runtime;
+  runtime.setProgram(compiled.program.get());
+  runtime.next(0.0);
+  const auto zeroFromLane = runtime.next(1.0);
+  check(zeroFromLane.count == 1 &&
+            close(zeroFromLane.events[0].slideBeats, 0.f) &&
+            zeroFromLane.events[0].slideMilliseconds < 0.f,
+        "an explicit zero-beat Slide lane value overrides Glide");
+
+  const auto glideFallback = runtime.next(2.0);
+  check(glideFallback.count == 1 &&
+            close(glideFallback.events[0].slideBeats, .75f),
+        "a Slide lane default marker inherits Glide");
+
+  const auto zeroFromAttribute = runtime.next(3.0);
+  check(zeroFromAttribute.count == 1 &&
+            close(zeroFromAttribute.events[0].slideBeats, 0.f) &&
+            zeroFromAttribute.events[0].slideMilliseconds < 0.f,
+        "an explicit zero-beat slide attribute overrides Glide");
+
+  const auto milliseconds = runtime.next(4.0);
+  check(milliseconds.count == 1 &&
+            close(milliseconds.events[0].slideMilliseconds, 40.f),
+        "a millisecond slide attribute remains an exact override");
+}
+
 void articulationModifiersComposeInEitherOrder() {
   const auto compiled = tfseq::Compile(R"(a = sequence {
   notes 1*3?1 1*2?1
@@ -680,6 +772,247 @@ play a
               target.events[0].kind == tfseq::EventKind::Attack,
           "a slide after a probability miss degrades to an attack");
   }
+}
+
+void structuralPresenceShortensRealizedPasses() {
+  const auto independent = tfseq::Compile(R"(a = sequence {
+  notes    1 2??0 3
+  velocity 0.9 0.4
+  duration 0.5 1
+}
+play a
+)");
+  check(static_cast<bool>(independent), independent.diagnostic.message);
+  if (independent) {
+    tfseq::Runtime runtime;
+    runtime.setProgram(independent.program.get());
+    const auto first = runtime.next(0.0);
+    const auto firstCount = first.count;
+    const auto firstVelocity = first.count ? first.events[0].velocity : 0.f;
+    const auto firstDuration = first.durationBeats;
+    const auto third = runtime.next(0.5);
+    const auto thirdCount = third.count;
+    const auto thirdPitch = third.count ? third.events[0].pitchVolts : 0.f;
+    const auto thirdVelocity = third.count ? third.events[0].velocity : 0.f;
+    const auto thirdDuration = third.durationBeats;
+    const auto wrapped = runtime.next(1.5);
+    check(firstCount == 1 && close(firstVelocity, 0.9f) &&
+              close(static_cast<float>(firstDuration), 0.5f) &&
+              thirdCount == 1 && close(thirdPitch, 4.f / 12.f) &&
+              close(thirdVelocity, 0.4f) &&
+              close(static_cast<float>(thirdDuration), 1.f),
+          "an omitted event consumes neither time nor independent lane values");
+    check(wrapped.count == 1 && close(wrapped.events[0].pitchVolts, 0.f) &&
+              close(wrapped.events[0].velocity, 0.9f),
+          "independent lanes restart at the shortened Notes boundary");
+  }
+
+  const auto rightAligned = tfseq::Compile(R"(a = sequence {
+  notes    1 2??0 3
+  velocity ... 0.1 0.2 0.3
+  cv1      ... 2 4
+}
+play a
+)");
+  check(static_cast<bool>(rightAligned), rightAligned.diagnostic.message);
+  if (rightAligned) {
+    tfseq::Runtime runtime;
+    runtime.setProgram(rightAligned.program.get());
+    const auto first = runtime.next(0.0);
+    const auto firstVelocity = first.count ? first.events[0].velocity : 0.f;
+    const auto firstCv = first.count ? first.events[0].cvValue[0] : 0.f;
+    const auto third = runtime.next(1.0);
+    check(first.count == 1 && close(firstVelocity, 0.2f) &&
+              close(firstCv, 2.f) && third.count == 1 &&
+              close(third.events[0].velocity, 0.3f) &&
+              close(third.events[0].cvValue[0], 4.f),
+          "right alignment is recalculated against the surviving Notes pass");
+  }
+
+  const auto alignmentBeforeEdit = tfseq::Compile(R"(a = sequence {
+  notes 1 2 3
+  velocity ... 0.2 0.4
+}
+play a
+)");
+  const auto alignmentAfterEdit = tfseq::Compile(R"(a = sequence {
+  notes 1 2??0 3
+  velocity ... 0.2 0.4
+}
+play a
+)");
+  check(static_cast<bool>(alignmentBeforeEdit) &&
+            static_cast<bool>(alignmentAfterEdit),
+        alignmentBeforeEdit ? alignmentAfterEdit.diagnostic.message
+                            : alignmentBeforeEdit.diagnostic.message);
+  if (alignmentBeforeEdit && alignmentAfterEdit) {
+    tfseq::Runtime runtime;
+    runtime.setProgram(alignmentBeforeEdit.program.get());
+    runtime.next(0.0);
+    runtime.replaceProgram(alignmentAfterEdit.program.get(), 1.0);
+    const auto next = runtime.next(1.0);
+    check(next.count == 1 && close(next.events[0].pitchVolts, 4.f / 12.f) &&
+              close(next.events[0].velocity, 0.4f),
+          "hot replacement recalculates realized alignment for the new program");
+  }
+
+  const auto leftAligned = tfseq::Compile(R"(a = sequence {
+  notes    1 2??0 3
+  velocity .1 .2!2 ...
+}
+play a
+)");
+  check(static_cast<bool>(leftAligned), leftAligned.diagnostic.message);
+  if (leftAligned) {
+    tfseq::Runtime runtime;
+    runtime.setProgram(leftAligned.program.get());
+    const auto first = runtime.next(0.0);
+    const auto firstVelocity = first.count ? first.events[0].velocity : 0.f;
+    const auto third = runtime.next(1.0);
+    check(first.count == 1 && close(firstVelocity, 0.1f) &&
+              third.count == 1 && close(third.events[0].velocity, 0.2f),
+          "left alignment retains the first values of the surviving pass");
+  }
+
+  const auto omittedStructures = tfseq::Compile(R"(a = sequence {
+  notes 1 [2 3]??0 ~??0 4
+}
+play a
+)");
+  check(static_cast<bool>(omittedStructures),
+        omittedStructures.diagnostic.message);
+  if (omittedStructures) {
+    tfseq::Runtime runtime;
+    runtime.setProgram(omittedStructures.program.get());
+    const auto first = runtime.next(0.0);
+    const auto last = runtime.next(1.0);
+    check(first.count == 1 && last.count == 1 &&
+              close(last.events[0].pitchVolts, 5.f / 12.f),
+          "complete groups and rests can be omitted as top-level spans");
+  }
+
+  const auto slideAcrossOmission = tfseq::Compile(R"(a = sequence {
+  notes 1 ~??0 >2
+}
+play a
+)");
+  check(static_cast<bool>(slideAcrossOmission),
+        slideAcrossOmission.diagnostic.message);
+  if (slideAcrossOmission) {
+    tfseq::Runtime runtime;
+    runtime.setProgram(slideAcrossOmission.program.get());
+    const auto source = runtime.next(0.0);
+    const bool sourceLegato =
+        source.count == 1 && source.events[0].legatoToNext;
+    const auto target = runtime.next(1.0);
+    check(sourceLegato && target.count == 1 &&
+              target.events[0].kind == tfseq::EventKind::Slide,
+          "an omitted span preserves the sounding predecessor for a slide");
+  }
+
+  const auto changedVoiceCount = tfseq::Compile(R"(a = sequence {
+  notes (1 3 5) [1]??0 >2
+}
+play a
+)");
+  check(static_cast<bool>(changedVoiceCount),
+        changedVoiceCount.diagnostic.message);
+  if (changedVoiceCount) {
+    tfseq::Runtime runtime;
+    runtime.setProgram(changedVoiceCount.program.get());
+    const auto source = runtime.next(0.0);
+    const bool sourceLegato =
+        source.count > 0 && source.events[0].legatoToNext;
+    const auto target = runtime.next(1.0);
+    check(!sourceLegato && target.count == 1 &&
+              target.events[0].kind == tfseq::EventKind::Attack,
+          "voice-count changes neither hold the source nor emit an invalid "
+          "slide");
+  }
+
+  const auto arrangement = tfseq::Compile(R"(a = sequence {
+  notes 1 2??0
+}
+b = sequence {
+  notes 5
+}
+song = a + b
+play song
+)");
+  check(static_cast<bool>(arrangement), arrangement.diagnostic.message);
+  if (arrangement) {
+    tfseq::Runtime runtime;
+    runtime.setProgram(arrangement.program.get());
+    const auto first = runtime.next(0.0);
+    const auto nextPart = runtime.next(1.0);
+    check(first.count == 1 && nextPart.count == 1 &&
+              close(nextPart.events[0].pitchVolts, 7.f / 12.f),
+          "an omitted final event advances the arrangement at the earlier "
+          "boundary");
+  }
+
+  const auto replicated = tfseq::Compile(R"(a = sequence {
+  notes 1 2??0.5!2 3
+}
+play a
+)");
+  check(static_cast<bool>(replicated), replicated.diagnostic.message);
+  if (replicated) {
+    const auto &steps =
+        replicated.program->semantic().sequences.front().articulation;
+    check(steps.size() == 4 && steps[1].presenceProbability == 0.5f &&
+              steps[1].presenceIdentity != steps[2].presenceIdentity,
+          "replicated optional events receive independent stable decisions");
+  }
+
+  const auto omissionBeforeRandom = tfseq::Compile(R"(a = sequence {
+  notes 1??0 $
+}
+seed 17
+play a
+)");
+  const auto silenceBeforeRandom = tfseq::Compile(R"(a = sequence {
+  notes 1?0 $
+}
+seed 17
+play a
+)");
+  check(static_cast<bool>(omissionBeforeRandom) &&
+            static_cast<bool>(silenceBeforeRandom),
+        omissionBeforeRandom ? silenceBeforeRandom.diagnostic.message
+                             : omissionBeforeRandom.diagnostic.message);
+  if (omissionBeforeRandom && silenceBeforeRandom) {
+    tfseq::Runtime omissionRuntime;
+    tfseq::Runtime silenceRuntime;
+    omissionRuntime.setProgram(omissionBeforeRandom.program.get());
+    silenceRuntime.setProgram(silenceBeforeRandom.program.get());
+    const auto omittedResult = omissionRuntime.next(0.0);
+    silenceRuntime.next(0.0);
+    const auto silentResult = silenceRuntime.next(1.0);
+    check(omittedResult.count == 1 && silentResult.count == 1 &&
+              close(omittedResult.events[0].pitchVolts,
+                    silentResult.events[0].pitchVolts),
+          "an earlier omission does not perturb a later written random pitch");
+  }
+
+  check(!tfseq::Compile(R"(a = sequence {
+  notes 1??0.5
+}
+play a
+)"),
+        "a Notes pass cannot consist entirely of optional-presence events");
+  check(!tfseq::Compile(R"(a = sequence {
+  notes 1 [2 3??0.5]
+}
+play a
+)"),
+        "presence probability inside a subdividing group is rejected");
+  check(!tfseq::Compile(R"(a = sequence {
+  notes 1 2(3,8)??0.5
+}
+play a
+)"),
+        "presence probability combined with Euclidean expansion is rejected");
 }
 
 void nestedGroupReplicationAndProbabilityKeepPreparedIdentity() {
@@ -983,45 +1316,115 @@ play b
 }
 
 void documentedMusicalExamplesCompile() {
+  const auto rhythmForms = tfseq::Compile(R"(forms = sequence {
+  notes 1 _!3 ~_ ~{len=2} ~!3 1_ 1__ 1_3 1. 1.. 1_. 3?0.35 [1|3|5]?0.5 $?0.5
+}
+play forms
+)");
+  check(static_cast<bool>(rhythmForms),
+        "documented rhythm forms: " + rhythmForms.diagnostic.message);
+
+  const auto quickStart = tfseq::Compile(R"(riff = sequence {
+  subdiv 8
+  tonic D@3
+  scale dorian
+  notes 1 2 ^3{stacc} 4 5{quiet} >6 7{ten} _
+}
+answer = riff |> shift_degree 3 |> octave 1
+song = riff * 2 + answer
+seed 42
+play song
+)");
+  check(static_cast<bool>(quickStart),
+        "quick-start reference example: " + quickStart.diagnostic.message);
+
+  const auto readme = tfseq::Compile(R"(riff = sequence {
+  subdiv 16
+  tonic D@3
+  scale dorian
+  glide 1/8
+  notes ^1 1!2 x1 [3 4] >5{stacc} ~ 6{quiet} 7{ten}
+}
+fill = sequence {
+  subdiv 16
+  tonic D@3
+  scale harmonic_minor
+  notes [5 6 7] ^8*2 ~ V7
+}
+song = riff * 3 + fill
+seed 42
+play song
+)");
+  check(static_cast<bool>(readme),
+        "README reference example: " + readme.diagnostic.message);
+
+  const auto bass = tfseq::Compile(R"(bass = sequence {
+  subdiv 16
+  tonic E@2
+  scale minor
+  glide 1/8
+  notes ^1 1!2 x1 [5 6] >b7{stacc} ~ 1{ten} 3?0.35
+}
+fill = bass |> rotate 2 |> every 2 rev
+song = bass * 3 + fill
+seed 73
+play song
+)");
+  check(static_cast<bool>(bass),
+        "bass reference example: " + bass.diagnostic.message);
+
+  const auto sections = tfseq::Compile(R"(verse = sequence {
+  subdiv 8
+  tonic D@3
+  scale minor
+  notes 1 3 4 ^5{stacc} 1' 7 5 4
+}
+chorus = sequence {
+  subdiv 4
+  tonic Bb@3
+  scale major
+  notes I_2{ten} V_2{ten} vi_2{ten} IV_2{ten}
+}
+fill = sequence {
+  subdiv 16
+  tonic D@3
+  scale harmonic_minor
+  notes [5 6 7] ^8*2 ~ V7
+}
+song = verse * 2 + chorus + verse + fill + chorus * 2
+play song
+)");
+  check(static_cast<bool>(sections),
+        "multi-section reference example: " + sections.diagnostic.message);
+
   const auto generative = tfseq::Compile(R"(melody = sequence {
   subdiv 16
   tonic A@3
   scale minor_pentatonic
   notes $u{1,10}(5,8) $n{5,1.25}(3,8,2)
-  octave 0 1 0
-  velocity $n{.72,.12}
-  gate $u{.35,.8}
-  cv1 0 2 5 3 |> interp smooth
 }
+|> every 4 (rotate 1)
 seed 2026
 play melody
 )");
   check(static_cast<bool>(generative),
         "generative reference example: " + generative.diagnostic.message);
 
-  const auto harmony = tfseq::Compile(R"(changes = sequence {
-  subdiv 16
-  tonic C@3
-  scale major
-  notes iim7 V7 Imaj7 VI7
-  duration 2
-  velocity .62 .78 .7
-  gate .9
-  cv1 0 3 5 2 |> interp power 2
+  const auto cv = tfseq::Compile(R"(texture = sequence {
+  subdiv 8
+  tonic D@3
+  scale dorian
+  notes 1{ten} [3 5] 7{quiet} <8 6>
+  cv1 0 . 5 . |> interp smooth
 }
-lift = changes |> modulate_degree 4
-song = changes * 2 + lift * 2
-play song
+play texture
 )");
-  check(static_cast<bool>(harmony),
-        "harmony reference example: " + harmony.diagnostic.message);
+  check(static_cast<bool>(cv),
+        "CV reference example: " + cv.diagnostic.message);
 
   const auto groove = tfseq::Compile(R"(groove = sequence {
-  subdiv 8
   notes [1 5] 3 [4 6 8] 5
-  duration 1 1 2
   offset -7ms 4ms 0 |> rate 1/2
-  ratchet 1 1 2
 }
 |> swing .58 1/8
 |> early random 3ms
@@ -1054,6 +1457,14 @@ play range
 }
 
 void scaleCardinalityAndExplicitOctaves() {
+  check(!tfseq::Compile(R"(ambiguous = sequence {
+  scale pentatonic
+  notes 1
+}
+play ambiguous
+)"),
+        "bare pentatonic is rejected instead of silently selecting major");
+
   auto compiled = tfseq::Compile(R"(p = sequence {
   tonic C@4
   scale major_pentatonic
@@ -1121,6 +1532,29 @@ play registers
   check(spread.count == 3 && close(spread.events[0].pitchVolts, -2.f) &&
             close(spread.events[1].pitchVolts, -1.f + 4.f / 12.f),
         "relative marks compose with absolute registers in a spread voicing");
+}
+
+void octaveLaneUsesAbsoluteValuesAndTonicFallback() {
+  const auto compiled = tfseq::Compile(R"(octaves = sequence {
+  tonic D@4
+  scale major
+  notes 1 1 1
+  octave . 3 .
+}
+play octaves
+)");
+  check(static_cast<bool>(compiled), compiled.diagnostic.message);
+  if (!compiled)
+    return;
+
+  tfseq::Runtime runtime;
+  runtime.setProgram(compiled.program.get());
+  check(close(runtime.next(0.0).events[0].pitchVolts, 2.f / 12.f),
+        "an Octave lane default marker inherits the tonic octave");
+  check(close(runtime.next(1.0).events[0].pitchVolts, -10.f / 12.f),
+        "an Octave lane number selects an absolute octave");
+  check(close(runtime.next(2.0).events[0].pitchVolts, 2.f / 12.f),
+        "the inherited tonic octave remains cyclically available");
 }
 
 void octaveSuffixesAndChordsAreUnambiguous() {
@@ -2080,6 +2514,7 @@ void unsafeNumericInputsAreDiagnostics() {
 } // namespace
 
 int main() {
+  editorShortcutTextOperationsAreStructural();
   heatmapMapsScalarIntensity();
   cursorAnimationIsFrameIndependentAndTempoBounded();
   pegFrontendBuildsTypedSyntax();
@@ -2092,7 +2527,9 @@ int main() {
   compileAndCycleIndependentLanes();
   parseFirstClassArticulation();
   namedGateAndDynamicsArticulations();
+  zeroSlideOverridesGlideFallback();
   articulationModifiersComposeInEitherOrder();
+  structuralPresenceShortensRealizedPasses();
   nestedGroupReplicationAndProbabilityKeepPreparedIdentity();
   transformByCycleAndArrange();
   rejectInvalidInput();
@@ -2103,6 +2540,7 @@ int main() {
   degreesContinueAcrossOctaves();
   scaleCardinalityAndExplicitOctaves();
   absoluteAndRelativeRegistersRemainDistinct();
+  octaveLaneUsesAbsoluteValuesAndTonicFallback();
   octaveSuffixesAndChordsAreUnambiguous();
   distinguishInKeyShiftsFromModulation();
   romanChordsRetainDegreeAndQualitySemantics();

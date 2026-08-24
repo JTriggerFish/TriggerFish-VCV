@@ -57,6 +57,11 @@ std::uint64_t StableRandomIdentity(std::uint64_t definition,
 }
 
 void AssignRandomIdentities(Sequence &sequence) {
+  for (std::size_t position = 0; position < sequence.articulation.size();
+       ++position) {
+    sequence.articulation[position].presenceIdentity = StableRandomIdentity(
+        sequence.stableId, CursorLane::Notes, position);
+  }
   for (std::size_t position = 0; position < sequence.notes.size(); ++position)
     sequence.notes[position].randomIdentity = StableRandomIdentity(
         sequence.stableId, CursorLane::Notes, position);
@@ -1085,6 +1090,30 @@ bool ParseAtomicEvent(const syntax::PatternNode &node, Sequence &sequence,
   return ApplyEventAttributes(node, atom, weight, false, diagnostic);
 }
 
+bool ParsePresenceProbability(const syntax::PatternNode &node, float &value,
+                              Diagnostic &diagnostic) {
+  value = node.defaultPresenceProbability ? 0.5f : 1.f;
+  if (node.presenceProbability.text.empty())
+    return true;
+  double parsed = 0.0;
+  if (!ParseNumber(node.presenceProbability.text, parsed) || parsed < 0.0 ||
+      parsed > 1.0) {
+    diagnostic = Error(node.presenceProbability.span,
+                       "presence probability must be from 0 to 1");
+    return false;
+  }
+  value = static_cast<float>(parsed);
+  return true;
+}
+
+bool HasPresenceProbability(const syntax::PatternNode &node) {
+  if (!node.presenceProbability.text.empty() ||
+      node.defaultPresenceProbability)
+    return true;
+  return std::any_of(node.children.begin(), node.children.end(),
+                     HasPresenceProbability);
+}
+
 bool AppendFlatGroup(const syntax::PatternNode &node, Sequence &sequence,
                      std::vector<ArticulationAtom> &atoms, double offset,
                      double span, std::uint64_t &nextProbabilityGroup,
@@ -1243,8 +1272,8 @@ bool ParseNotes(const syntax::Pattern &pattern, Sequence &sequence,
                                : "a slide requires a preceding pitched event");
         return false;
       }
-      if (atom.kind == ArticulationKind::Rest)
-      {
+      if (atom.kind == ArticulationKind::Rest &&
+          step.presenceProbability >= 1.f) {
         hasPitchedPredecessor = false;
         predecessorVoices = 0;
       } else if (atom.kind == ArticulationKind::Attack ||
@@ -1267,6 +1296,8 @@ bool ParseNotes(const syntax::Pattern &pattern, Sequence &sequence,
   auto compileStep = [&](const syntax::PatternNode &body,
                          ArticulationStep &step) {
     step.span = body.span;
+    if (!ParsePresenceProbability(body, step.presenceProbability, diagnostic))
+      return false;
     if (!ParseDurationWeight(body.durationSuffix, step.durationMultiplier,
                              diagnostic))
       return false;
@@ -1298,6 +1329,8 @@ bool ParseNotes(const syntax::Pattern &pattern, Sequence &sequence,
             !event->durationSuffix.text.empty() || !event->arguments.empty() ||
             !event->ratchetCount.text.empty() ||
             !event->probability.text.empty() || event->defaultProbability ||
+            !event->presenceProbability.text.empty() ||
+            event->defaultPresenceProbability ||
             !event->repeatCount.text.empty() || !event->attributes.empty()) {
           diagnostic = Error(
               event->span,
@@ -1338,6 +1371,18 @@ bool ParseNotes(const syntax::Pattern &pattern, Sequence &sequence,
   };
 
   for (const auto &source : pattern.steps) {
+    const auto nestedPresence = std::any_of(
+        source.children.begin(), source.children.end(),
+        [](const syntax::PatternNode &child) {
+          return HasPresenceProbability(child);
+        });
+    if (nestedPresence) {
+      diagnostic = Error(
+          source.span,
+          "presence probability is only supported on top-level events and "
+          "complete top-level groups");
+      return false;
+    }
     std::size_t copies = 1;
     if (!ParsePositiveCount(source.repeatCount, "event replication", copies,
                             diagnostic))
@@ -1349,6 +1394,13 @@ bool ParseNotes(const syntax::Pattern &pattern, Sequence &sequence,
         source, pulses, euclideanSteps, rotation, diagnostic);
     if (!diagnostic.message.empty())
       return false;
+    if (euclidean && (!source.presenceProbability.text.empty() ||
+                      source.defaultPresenceProbability)) {
+      diagnostic = Error(source.span,
+                         "presence probability cannot be combined with a "
+                         "Euclidean suffix");
+      return false;
+    }
     auto body = source;
     body.repeatCount = {};
     body.arguments.clear();
@@ -1370,6 +1422,15 @@ bool ParseNotes(const syntax::Pattern &pattern, Sequence &sequence,
           return false;
       }
     }
+  }
+  if (std::none_of(sequence.articulation.begin(), sequence.articulation.end(),
+                   [](const ArticulationStep &step) {
+                     return step.presenceProbability >= 1.f;
+                   })) {
+    diagnostic = Error(pattern.span,
+                       "a sequence needs at least one event without optional "
+                       "presence");
+    return false;
   }
   return true;
 }
@@ -1803,7 +1864,7 @@ std::vector<int> ScaleIntervals(const std::string &name) {
     return {0, 1, 3, 5, 6, 8, 10};
   if (name == "minor_pentatonic")
     return {0, 3, 5, 7, 10};
-  if (name == "pentatonic" || name == "major_pentatonic")
+  if (name == "major_pentatonic")
     return {0, 2, 4, 7, 9};
   if (name == "octatonic_whole_half" || name == "whole_half")
     return {0, 2, 3, 5, 6, 8, 9, 11};
@@ -2333,9 +2394,6 @@ CompileResult CompileDocument(const syntax::Document &document) {
     sequence.nameSpan = definition->name.span;
     std::array<SourceSpan, static_cast<std::size_t>(CursorLane::Count)>
         alignmentSpans{};
-    std::array<syntax::Pattern::Alignment,
-               static_cast<std::size_t>(CursorLane::Count)>
-        alignmentModes{};
     std::unordered_set<std::string> seenLanes;
     for (const auto &lane : definition->lanes) {
       const std::string laneName = lane.name.text;
@@ -2451,11 +2509,14 @@ CompileResult CompileDocument(const syntax::Document &document) {
         ok = ParseScalars(lane.pattern, *items, laneSpec->canonical,
                           result.diagnostic);
         if (lane.pattern.alignment != syntax::Pattern::Alignment::Free) {
-          sequence.aligned[static_cast<std::size_t>(parsedLane)] = true;
+          sequence.alignment[static_cast<std::size_t>(parsedLane)] =
+              lane.pattern.alignment == syntax::Pattern::Alignment::Left
+                  ? LaneAlignment::Left
+                  : LaneAlignment::Right;
+          sequence.alignmentSpans[static_cast<std::size_t>(parsedLane)] =
+              lane.pattern.span;
           alignmentSpans[static_cast<std::size_t>(parsedLane)] =
               lane.pattern.span;
-          alignmentModes[static_cast<std::size_t>(parsedLane)] =
-              lane.pattern.alignment;
         }
       }
       const bool pipelinesOk =
@@ -2517,23 +2578,13 @@ CompileResult CompileDocument(const syntax::Document &document) {
     }
     auto alignLane = [&](CursorLane lane, std::vector<ScalarItem> &items) {
       const auto index = static_cast<std::size_t>(lane);
-      if (!sequence.aligned[index])
+      if (sequence.alignment[index] == LaneAlignment::Free)
         return true;
       if (items.size() > structuralCells) {
         result.diagnostic = Error(alignmentSpans[index],
                                   "aligned lane has more values than notes");
         return false;
       }
-      ScalarItem inherited;
-      inherited.isDefault = true;
-      inherited.span = alignmentSpans[index];
-      const auto padding = structuralCells - items.size();
-      const bool right = alignmentModes[index] ==
-                         syntax::Pattern::Alignment::Right;
-      if (right)
-        items.insert(items.begin(), padding, inherited);
-      else
-        items.insert(items.end(), padding, inherited);
       return true;
     };
     if (!alignLane(CursorLane::Octave, sequence.octave) ||
@@ -2553,7 +2604,8 @@ CompileResult CompileDocument(const syntax::Document &document) {
                             CursorLane::Ratchet, CursorLane::Offset,
                             CursorLane::Cv1, CursorLane::Cv2,
                             CursorLane::Cv3}) {
-      if (!sequence.aligned[static_cast<std::size_t>(lane)])
+      if (sequence.alignment[static_cast<std::size_t>(lane)] ==
+          LaneAlignment::Free)
         continue;
       if (IsCvCursorLane(lane) &&
           sequence.cvInterpolation[CvCursorIndex(lane)] !=
@@ -2618,6 +2670,7 @@ CompileResult CompileDocument(const syntax::Document &document) {
     sequence.nameSpan = nameSpan;
     if (!ApplySequencePipelines(pipelines, sequence, result.diagnostic))
       return false;
+    AssignRandomIdentities(sequence);
     index = program->sequences.size();
     program->sequences.push_back(std::move(sequence));
     return true;

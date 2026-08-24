@@ -1009,10 +1009,10 @@ master Output Level.
 | Diffusion | 82% | 62% | 100% |
 | Modulation | 30% | 15% | 100% |
 | Shimmer | 0% | 0% | 65% |
-| Wet low/high cut | 20 Hz / 12 kHz | 40 Hz / 9 kHz | 120 Hz / 10 kHz |
+| Wet low/high cut | 20 Hz / 12 kHz | 40 Hz / 9 kHz | 120 Hz / 8 kHz |
 | ER / tail balance | Centre (50%) | 40%, early-leaning | 75%, tail-leaning |
 | Stereo width | 100% | 86% | 127% |
-| Mix | 35% | 22% | 35% |
+| Mix | 35% | 22% | 40% |
 
 Medium Hall is the neutral reference: a clear onset, dense tail, and modulation
 set below chorus-like audibility. Small Room emphasizes geometric

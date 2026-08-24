@@ -160,7 +160,7 @@ the Rack Library before opening it.
 
 [test-prog-sequencer-303.vcv](test-prog-sequencer-303.vcv) keeps the tuned
 Clocked, oscillator, voice, modulation, Room Reverb, and stereo output path but
-replaces Foundry with Prog Sequencer. Its visible 16-line program is both a
+replaces Foundry with Prog Sequencer. Its visible program is both a
 playable test and a compact-syntax regression fixture.
 
 [test-room-reverb-two-sources.vcv](test-room-reverb-two-sources.vcv) feeds a

@@ -143,7 +143,7 @@ bounded pattern model rather than overload pitch tokens ambiguously.
 
 ## CV and signal expressions
 
-The current module has two monophonic sequenced CV outputs. Planned extensions
+The current module has three monophonic sequenced CV outputs. Planned extensions
 include:
 
 - physical CV outputs beyond CV1, CV2, and CV3;

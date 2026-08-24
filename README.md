@@ -358,6 +358,9 @@ up to 16 polyphonic V/OCT, Gate, Trigger, Velocity, and Accent channels, plus
 three monophonic CV lanes. Edit the program
 directly on the module. Ctrl+`.` compiles the complete document; Ctrl+Enter
 evaluates the top-level statement containing the selection or current line.
+Ctrl+Shift+`.` compiles the document and restarts it on the next Clock;
+Ctrl+Space toggles local transport. Ctrl+`/` toggles line comments and Ctrl+D
+duplicates the current line or selection without evaluating the draft.
 Other edited statements remain inactive until separately evaluated; unrelated
 malformed draft text does not block a complete valid selected statement. A
 successful edit swaps in on the next Clock edge while preserving the arrangement phase and the
@@ -365,6 +368,10 @@ lane cursors of sequences whose names still exist. Successfully executed code
 flashes in the editor. `stop` is a valid transport command and an executed
 `play` or `stop` line overrides other transport lines. Diagnostics wrap in the
 status strip, and the last valid program keeps playing after an error.
+
+Its language is inspired by TidalCycles, Gibber, and other live-coding and
+pattern-sequencing systems. It is intended to make musical ideas quick to type,
+combine, and reshape during live coding or conventional sequencing.
 
 Prog Sequencer is currently in beta. Its language and feature set may change
 as musical workflows are refined.
@@ -377,25 +384,28 @@ compact right-side I/O strip at every width.
 
 ```text
 riff = sequence {
-  subdiv 8
-  tonic D@4
+  subdiv 16
+  tonic D@3
   scale dorian
-  notes 1 2 ^3{stacc} 4 x5 6{quiet} _ >7{ten} [8 9] 10*3 ~ 11(3,8,1)
-        |> rotate 2
-        |> every 4 rev
-  velocity .72 .63
-  duration 1 1/2 1/2 1 2
-  offset -8ms!2 6ms |> rate 1/2
-  cv1 0 . . 5 |> interp smooth
+  glide 1/8
+  notes ^1 1!2 x1 [3 4] >5{stacc} ~ 6{quiet} 7{ten}
 }
 
 fill = sequence {
-  notes 5 6 7*3 8
+  subdiv 16
+  tonic D@3
+  scale harmonic_minor
+  notes [5 6 7] ^8*2 ~ V7
 }
 
-song = riff * 2 + fill
+song = riff * 3 + fill
+seed 42
 play song
 ```
+
+`riff` and `fill` are independently defined sequences with their own musical
+settings and lengths. The `song` assignment arranges complete passes of both;
+an arrangement can freely mix independent sections with derived variations.
 
 Articulation normally lives on the note itself. `^3` and `^^3` assert Accent
 and raise Velocity to their two built-in emphasis levels. Velocity is a
@@ -412,6 +422,12 @@ three times as long, and dotted respectively. Sparse numerical lanes use `.`
 as a typed no-op. A velocity such as `.5` means 5 V; there is no separate
 numerical Accent lane.
 
+`3?0.35` plays degree 3 with 35 percent probability and otherwise produces a
+rest for the same span. `3??0.35` instead omits the event and its span on a
+miss, shortening that Notes pass. Free numerical lanes advance only for
+surviving events; lanes using `...` align to the surviving pass, and every lane
+restarts when Notes wraps.
+
 `$` produces a seeded random note from the active scale. `${1,8}` selects an
 inclusive scale-degree range, `$n{4,1.5}` uses a normal distribution in degree
 space, and `$c{0,11}` selects unquantized chromatic semitone offsets. Numerical
@@ -426,19 +442,22 @@ individual note D4, while `D7` is a dominant-seventh chord and `D7@3` roots
 that chord in octave 3. A trailing apostrophe raises a pitch or chord by one
 relative octave and a comma lowers it: `1'`, `1''`, `1,`, and `Cm7'`. The
 marks compose, while signed forms such as `C@-1` still name absolute octaves.
-An optional `octave` lane loops independently like every other control lane,
-so `octave 3 3 4` can displace against an eight-note melody. Named sections
+An optional `octave` lane selects absolute octaves and loops independently like
+every other control lane, so `octave 3 3 4` can displace against an eight-note
+melody. Named sections
 concatenate with `+` and repeat with `*`. `1!4` repeats a note in its lane, and
 `.!3` repeats a sparse default.
 `gate .5` holds Gate for half the event; only `_` is a semantic tie.
 `glide .8` slews a `>` target for .8 incoming-clock beats, capped by that
-target event's span. Existing sequences can be varied without copying lanes:
+target event's span.
 
 `//` begins a line comment and can quickly shorten a lane while retaining the
 unused material: `notes 1 2 3 // 4 5 6 7 8` compiles as the three-note pattern
 `1 2 3`. Whole comment lines and trailing comments on commands are also valid.
 Comment text is shown in a dimmer shade of the display's existing colour
 scheme. `#` remains available for sharp degrees such as `#4`.
+
+Existing sequences can be varied without copying lanes:
 
 ```text
 iv = acid |> modulate_degree 4 |> octave -1
@@ -491,10 +510,10 @@ the event subdivision supplies the grid; an explicit `1/8`, `1/16`, or other
 positive incoming-clock fraction selects it directly. `early` and `late`
 accept beat fractions or `ms`, and `random AMOUNT` chooses a deterministic
 amount from zero to the stated maximum. Subdivision density can already vary
-with note groups such as `[1 2] [3 4 5]`, an independent `ratchet 1 2 3` lane,
-and independently sequenced `duration` values. A patternable `offset` lane
-accepts signed beat fractions or `ms`; negative values are early and positive
-values late. Its optional numeric `rate`, as in
+with note groups such as `[1 2] [3 4 5]`. When a separate rhythmic cycle is
+deliberate, independent `ratchet` and `duration` lanes are also available. A
+patternable `offset` lane accepts signed beat fractions or `ms`; negative
+values are early and positive values late. Its optional numeric `rate`, as in
 `offset -10ms!2 8ms |> rate 1/2`, changes only that lane's score-time phase.
 CV1-CV3 use the same rate and sparse-lane rules and support `step`, `linear`,
 `smooth`, and `power P` interpolation. Ellipsis-aligned CV is stepped in this

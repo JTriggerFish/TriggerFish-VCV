@@ -55,6 +55,8 @@ struct PatternNode {
   Token ratchetCount;
   Token probability;
   bool defaultProbability = false;
+  Token presenceProbability;
+  bool defaultPresenceProbability = false;
   struct Attribute {
     Token name;
     Token value;

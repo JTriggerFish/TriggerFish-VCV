@@ -42,7 +42,7 @@ constexpr const char *Grammar = R"PEG(
   NotePattern     <- NoteElement (S NoteElement)*
   NoteElement     <- GroupElement / NoteEvent / RestEvent / TieExtension
   GroupElement    <- GroupPrimary DurationSuffix? EuclideanSuffix?
-                     ProbabilitySuffix? ReplicationSuffix?
+                     EventProbabilitySuffix? ReplicationSuffix?
   GroupPrimary    <- BracketGroup / Alternate
   BracketGroup    <- '[' H (RandomChoice / NotePattern) H ']'
   RandomChoice    <- NotePattern H '|' H NotePattern
@@ -50,9 +50,10 @@ constexpr const char *Grammar = R"PEG(
   Alternate       <- '<' H NoteElement (S NoteElement)* H '>'
 
   NoteEvent       <- OnsetPrefix? PitchedValue DurationSuffix?
-                     EuclideanSuffix? RatchetSuffix? ProbabilitySuffix?
+                     EuclideanSuffix? RatchetSuffix? EventProbabilitySuffix?
                      ReplicationSuffix? Attributes?
-  RestEvent       <- RestMark DurationSuffix? ReplicationSuffix? Attributes?
+  RestEvent       <- RestMark DurationSuffix? PresenceProbabilitySuffix?
+                     ReplicationSuffix? Attributes?
   TieExtension    <- TieMark ReplicationSuffix?
   RestMark        <- < '~' >
   TieMark         <- < '_' >
@@ -101,6 +102,8 @@ constexpr const char *Grammar = R"PEG(
   EuclideanRotation <- < SignedInteger >
   RatchetSuffix   <- '*' RatchetCount
   RatchetCount    <- < PositiveInteger >
+  EventProbabilitySuffix <- PresenceProbabilitySuffix / ProbabilitySuffix
+  PresenceProbabilitySuffix <- '??' Probability?
   ProbabilitySuffix <- '?' Probability?
   Probability     <- < Number >
   ReplicationSuffix <- '!' RepeatCount
@@ -122,7 +125,7 @@ constexpr const char *Grammar = R"PEG(
   RandomArgument  <- < ScalarValue >
   ScalarAtom      <- < ScalarValue >
   Ellipsis        <- '...'
-  Default         <- < '.' >
+  Default         <- < '.' !'.' >
 
   SettingValue    <- < ScalarValue / PitchValue / Identifier >
   ScalarValue     <- Number Unit?
@@ -297,12 +300,27 @@ void ReadSuffixes(const Ast &source, PatternNode &node) {
   if (const auto ratchet = FirstChildNamed(source, "RatchetSuffix"))
     node.ratchetCount =
         AstToken(FirstDescendantNamed(ratchet, "RatchetCount"));
-  if (const auto probability =
-          FirstChildNamed(source, "ProbabilitySuffix")) {
+  const auto eventProbability =
+      FirstChildNamed(source, "EventProbabilitySuffix");
+  const auto soundProbability =
+      eventProbability
+          ? FirstChildNamed(eventProbability, "ProbabilitySuffix")
+          : FirstChildNamed(source, "ProbabilitySuffix");
+  if (const auto probability = soundProbability) {
     if (const auto amount = FirstChildNamed(probability, "Probability"))
       node.probability = AstToken(amount);
     else
       node.defaultProbability = true;
+  }
+  const auto presenceProbability =
+      eventProbability
+          ? FirstChildNamed(eventProbability, "PresenceProbabilitySuffix")
+          : FirstChildNamed(source, "PresenceProbabilitySuffix");
+  if (const auto probability = presenceProbability) {
+    if (const auto amount = FirstChildNamed(probability, "Probability"))
+      node.presenceProbability = AstToken(amount);
+    else
+      node.defaultPresenceProbability = true;
   }
   if (const auto replication =
           FirstChildNamed(source, "ReplicationSuffix"))
@@ -782,6 +800,7 @@ void Invalidate(PatternNode &node) {
   Invalidate(node.durationSuffix);
   Invalidate(node.ratchetCount);
   Invalidate(node.probability);
+  Invalidate(node.presenceProbability);
   for (auto &attribute : node.attributes) {
     Invalidate(attribute.name);
     Invalidate(attribute.value);

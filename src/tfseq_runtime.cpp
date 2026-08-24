@@ -344,12 +344,40 @@ const T &Cycled(const std::vector<T> &items, std::uint64_t cursor,
   return items[index];
 }
 
+bool AlignedItemIndex(std::size_t itemCount, LaneAlignment alignment,
+                      std::uint64_t structuralCell,
+                      std::uint64_t structuralCellCount,
+                      std::size_t &index) noexcept {
+  if (alignment == LaneAlignment::Free || itemCount == 0 ||
+      structuralCellCount == 0 || structuralCell >= structuralCellCount)
+    return false;
+  if (alignment == LaneAlignment::Left) {
+    if (structuralCell >= itemCount)
+      return false;
+    index = static_cast<std::size_t>(structuralCell);
+    return true;
+  }
+  if (structuralCellCount >= itemCount) {
+    const auto padding = structuralCellCount - itemCount;
+    if (structuralCell < padding)
+      return false;
+    index = static_cast<std::size_t>(structuralCell - padding);
+    return true;
+  }
+  index = itemCount - static_cast<std::size_t>(structuralCellCount) +
+          static_cast<std::size_t>(structuralCell);
+  return true;
+}
+
 double Scalar(const std::vector<ScalarItem> &items, std::uint64_t &cursor,
-              const std::vector<Transform> &transforms, std::uint64_t cycle,
-              std::uint64_t seed, double fallback, SourceSpan &span,
-              std::uint64_t salt, bool aligned = false,
-              std::uint64_t structuralCell = 0, bool *milliseconds = nullptr,
-              double scoreBeat = 0.0) noexcept {
+               const std::vector<Transform> &transforms, std::uint64_t cycle,
+               std::uint64_t seed, double fallback, SourceSpan &span,
+               std::uint64_t salt,
+               LaneAlignment alignment = LaneAlignment::Free,
+               std::uint64_t structuralCell = 0,
+               std::uint64_t structuralCellCount = 0,
+               SourceSpan alignmentSpan = {}, bool *milliseconds = nullptr,
+               double scoreBeat = 0.0) noexcept {
   if (milliseconds)
     *milliseconds = false;
   if (items.empty())
@@ -360,9 +388,25 @@ double Scalar(const std::vector<ScalarItem> &items, std::uint64_t &cursor,
       });
   std::uint64_t position = 0;
   std::uint64_t randomKey = 0;
-  if (aligned) {
-    position = structuralCell;
+  if (alignment != LaneAlignment::Free) {
+    const auto mappedCell = TransformIndex(
+        static_cast<std::size_t>(structuralCell),
+        static_cast<std::size_t>(structuralCellCount), transforms, cycle, seed,
+        salt);
+    std::size_t alignedIndex = 0;
+    if (!AlignedItemIndex(items.size(), alignment, mappedCell,
+                          structuralCellCount, alignedIndex)) {
+      span = alignmentSpan;
+      return fallback;
+    }
     randomKey = structuralCell;
+    const auto &item = items[alignedIndex];
+    span = item.span;
+    if (milliseconds)
+      *milliseconds = item.isMilliseconds;
+    randomKey ^= MixRandom(cycle);
+    return item.isDefault ? fallback
+                          : SampleScalarItem(item, seed, randomKey, salt);
   } else if (phaseRate) {
     const double whole = std::max(
         0.0, std::floor(scoreBeat * LaneRate(transforms, cycle, seed)));
@@ -390,9 +434,10 @@ struct CvSample {
 };
 
 CvSample SampleCv(const std::vector<ScalarItem> &items,
-                  const std::vector<Transform> &transforms, bool aligned,
-                  std::uint64_t structuralCell, double scoreBeat,
-                  double cycleBeat, double cellSpan,
+                  const std::vector<Transform> &transforms,
+                  LaneAlignment alignment, std::uint64_t structuralCell,
+                  std::uint64_t structuralCellCount, SourceSpan alignmentSpan,
+                  double scoreBeat, double cycleBeat, double cellSpan,
                   CvInterpolation interpolation, double power,
                   std::uint64_t cycle, std::uint64_t seed,
                   std::uint64_t salt) noexcept {
@@ -400,9 +445,42 @@ CvSample SampleCv(const std::vector<ScalarItem> &items,
   sample.targetBeat = scoreBeat + cellSpan;
   if (items.empty())
     return sample;
-  const double rate = aligned ? 1.0 : LaneRate(transforms, cycle, seed);
-  const double phase = aligned ? static_cast<double>(structuralCell)
-                               : std::max(0.0, cycleBeat * rate);
+  if (alignment != LaneAlignment::Free) {
+    sample.span = alignmentSpan;
+    if (structuralCellCount == 0)
+      return sample;
+    const auto virtualCount = structuralCellCount;
+    const auto base = structuralCell % virtualCount;
+    const ScalarItem *previous = nullptr;
+    std::uint64_t previousCell = base;
+    for (std::uint64_t distance = 0; distance < virtualCount; ++distance) {
+      const auto cell = (base + virtualCount - distance) % virtualCount;
+      const auto mappedCell = TransformIndex(
+          static_cast<std::size_t>(cell),
+          static_cast<std::size_t>(virtualCount), transforms, cycle, seed, salt);
+      std::size_t itemIndex = 0;
+      if (!AlignedItemIndex(items.size(), alignment, mappedCell, virtualCount,
+                            itemIndex))
+        continue;
+      const auto &candidate = items[itemIndex];
+      if (distance == 0)
+        sample.span = candidate.span;
+      if (!candidate.isDefault) {
+        previous = &candidate;
+        previousCell = cell;
+        break;
+      }
+    }
+    if (!previous)
+      return sample;
+    const auto key = previousCell ^ MixRandom(cycle);
+    sample.value = static_cast<float>(
+        SampleScalarItem(*previous, seed, key, salt));
+    sample.target = sample.value;
+    return sample;
+  }
+  const double rate = LaneRate(transforms, cycle, seed);
+  const double phase = std::max(0.0, cycleBeat * rate);
   const auto base = static_cast<std::size_t>(
       std::fmod(std::floor(phase), static_cast<double>(items.size())));
   auto at = [&](std::size_t distance, bool backward) -> const ScalarItem & {
@@ -466,9 +544,7 @@ CvSample SampleCv(const std::vector<ScalarItem> &items,
     amount = std::pow(amount, power);
   sample.value =
       static_cast<float>(previousValue + (nextValue - previousValue) * amount);
-  sample.targetBeat =
-      aligned ? scoreBeat + cellSpan * static_cast<double>(nextDistance)
-              : scoreBeat + (nextPhase - phase) / rate;
+  sample.targetBeat = scoreBeat + (nextPhase - phase) / rate;
   return sample;
 }
 
@@ -497,6 +573,41 @@ ArticulationKind EffectiveArticulation(const ArticulationAtom &atom,
       return ArticulationKind::Rest;
   }
   return atom.kind;
+}
+
+bool StepIsPresent(const ArticulationStep &step, std::uint64_t cycle,
+                   std::uint64_t seed) noexcept {
+  return step.presenceProbability >= 1.f ||
+         RandomUnit(seed, cycle, step.presenceIdentity, 0xb170U) <
+             step.presenceProbability;
+}
+
+std::uint64_t SurvivingStructuralCellCount(const Sequence &sequence,
+                                           std::uint64_t cycle,
+                                           std::uint64_t seed) noexcept {
+  std::uint64_t result = 0;
+  for (const auto &step : sequence.articulation) {
+    if (StepIsPresent(step, cycle, seed))
+      result += static_cast<std::uint64_t>(step.cellCount);
+  }
+  return result;
+}
+
+std::size_t PreparedVoiceCount(const PitchItem &item) noexcept {
+  if (item.randomDomain != PitchItem::RandomDomain::None)
+    return 1;
+  std::size_t result = 0;
+  for (const auto &choice : item.values) {
+    const auto voices =
+        (choice.meaning == ChordValue::Meaning::RomanSymbol
+             ? choice.intervals.size()
+             : choice.voices.size()) +
+        (choice.hasBass ? 1u : 0u);
+    if (voices == 0 || (result != 0 && result != voices))
+      return 0;
+    result = voices;
+  }
+  return result;
 }
 
 } // namespace
@@ -564,6 +675,10 @@ void Runtime::replaceProgram(const CompiledProgram *program,
         ++previousPosition;
       } else {
         nextStates[nextIndex] = previousStates[previousIndex];
+        // Presence decisions and the realized aligned-lane length belong to
+        // the newly compiled structure. Recompute the cached count on its
+        // first event after activation.
+        nextStates[nextIndex].structuralCellCount = 0;
         ++nextPosition;
         ++previousPosition;
       }
@@ -687,31 +802,82 @@ StepEvents Runtime::next(double beat) noexcept {
     output.events = program_->stepWorkspace.data();
     output.capacity = program_->stepWorkspace.size();
   }
+  const auto &semantic = program_->semantic();
+  const auto seed = semantic.seed;
   SourceSpan partSpan;
   std::uint64_t cycle = 0;
-  const Sequence *sequence = currentSequence(partSpan, cycle);
-  if (!sequence)
-    return output;
-  const auto &semantic = program_->semantic();
-  const auto sequenceIndex =
-      static_cast<std::size_t>(sequence - semantic.sequences.data());
-  if (sequenceIndex >= stateCount_)
-    return output;
-  auto &state = states_[sequenceIndex];
-  const auto seed = semantic.seed;
+  const Sequence *sequence = nullptr;
+  SequencePlaybackState *statePointer = nullptr;
+  const ArticulationStep *step = nullptr;
+  std::size_t sequenceIndex = 0;
+
+  // Presence probability removes a top-level step before Duration or any
+  // event-indexed lane is sampled. Walk across zero-time omissions here so the
+  // caller always receives a positive-duration step.
+  for (;;) {
+    sequence = currentSequence(partSpan, cycle);
+    if (!sequence || sequence->articulation.empty())
+      return output;
+    sequenceIndex =
+        static_cast<std::size_t>(sequence - semantic.sequences.data());
+    if (sequenceIndex >= stateCount_)
+      return output;
+    statePointer = &states_[sequenceIndex];
+    auto &candidateState = *statePointer;
+    step = &Cycled(
+        sequence->articulation, candidateState.articulation++,
+        sequence->transforms[static_cast<std::size_t>(CursorLane::Notes)],
+        cycle, seed, 0x3000);
+    const bool completesPass =
+        candidateState.articulation % sequence->articulation.size() == 0;
+    if (StepIsPresent(*step, cycle, seed)) {
+      if (candidateState.structuralCellCount == 0) {
+        candidateState.structuralCellCount =
+            SurvivingStructuralCellCount(*sequence, cycle, seed);
+      }
+      break;
+    }
+    if (!completesPass)
+      continue;
+
+    const auto &part = semantic.arrangement[arrangementPart_];
+    bool continuesSameSequence = false;
+    if (part.cycles < 0 || arrangementCycle_ + 1 < part.cycles) {
+      continuesSameSequence = true;
+    } else {
+      const auto nextPart =
+          (arrangementPart_ + 1) % semantic.arrangement.size();
+      continuesSameSequence =
+          semantic.arrangement[nextPart].sequence == sequenceIndex;
+    }
+    const auto completedCycles = candidateState.completedCycles + 1;
+    const auto lastBaseDuration = candidateState.lastBaseDuration;
+    const bool hasSoundingPitch = candidateState.hasSoundingPitch;
+    const auto soundingVoiceCount = candidateState.soundingVoiceCount;
+    candidateState = {};
+    candidateState.completedCycles = completedCycles;
+    candidateState.lastBaseDuration = lastBaseDuration;
+    candidateState.hasSoundingPitch =
+        continuesSameSequence && hasSoundingPitch;
+    candidateState.soundingVoiceCount =
+        continuesSameSequence ? soundingVoiceCount : 0;
+    partStartBeat_ = beat;
+    if (part.cycles >= 0) {
+      ++arrangementCycle_;
+      if (arrangementCycle_ >= part.cycles) {
+        arrangementCycle_ = 0;
+        arrangementPart_ = (arrangementPart_ + 1) % semantic.arrangement.size();
+      }
+    }
+  }
+
+  auto &state = *statePointer;
   const auto &timingTransforms =
       sequence->transforms[static_cast<std::size_t>(CursorLane::Sequence)];
 
   ArticulationAtom implicit;
   implicit.kind = ArticulationKind::Attack;
   implicit.span = sequence->nameSpan;
-  const ArticulationStep *step = nullptr;
-  if (!sequence->articulation.empty()) {
-    step = &Cycled(
-        sequence->articulation, state.articulation++,
-        sequence->transforms[static_cast<std::size_t>(CursorLane::Notes)],
-        cycle, seed, 0x3000);
-  }
 
   SourceSpan durationSpan;
   const bool tieOnly = step && !step->atoms.empty() &&
@@ -727,8 +893,11 @@ StepEvents Runtime::next(double beat) noexcept {
         sequence->duration, state.duration,
         sequence->transforms[static_cast<std::size_t>(CursorLane::Duration)],
         cycle, seed, defaultDuration, durationSpan, 0x2000,
-        sequence->aligned[static_cast<std::size_t>(CursorLane::Duration)],
-        state.structuralCell, nullptr, beat - partStartBeat_));
+        sequence->alignment[static_cast<std::size_t>(CursorLane::Duration)],
+        state.structuralCell, state.structuralCellCount,
+        sequence
+            ->alignmentSpans[static_cast<std::size_t>(CursorLane::Duration)],
+        nullptr, beat - partStartBeat_));
     state.lastBaseDuration = baseDuration;
   }
   const double duration = baseDuration *
@@ -740,37 +909,54 @@ StepEvents Runtime::next(double beat) noexcept {
       !sequence->articulation.empty() &&
       state.articulation % sequence->articulation.size() == 0;
   const auto &arrangementPart = semantic.arrangement[arrangementPart_];
-  bool continuesSameSequence = !completesNotesPass;
-  if (completesNotesPass) {
-    if (arrangementPart.cycles < 0 ||
-        arrangementCycle_ + 1 < arrangementPart.cycles) {
-      continuesSameSequence = true;
-    } else {
-      const auto nextPart =
-          (arrangementPart_ + 1) % semantic.arrangement.size();
-      continuesSameSequence =
-          semantic.arrangement[nextPart].sequence == sequenceIndex;
-    }
+  bool nextPassSameSequence = false;
+  if (arrangementPart.cycles < 0 ||
+      arrangementCycle_ + 1 < arrangementPart.cycles) {
+    nextPassSameSequence = true;
+  } else {
+    const auto nextPart =
+        (arrangementPart_ + 1) % semantic.arrangement.size();
+    nextPassSameSequence =
+        semantic.arrangement[nextPart].sequence == sequenceIndex;
   }
+  const bool continuesSameSequence =
+      !completesNotesPass || nextPassSameSequence;
 
   const std::size_t atomCount = step ? step->atoms.size() : 1;
   bool legatoToNext = false;
+  std::size_t legatoToNextVoiceCount = 0;
   if (step && !sequence->articulation.empty()) {
-    if (continuesSameSequence) {
-      const auto nextCycle = cycle + (completesNotesPass ? 1 : 0);
+    const auto stepCount = sequence->articulation.size();
+    std::uint64_t nextCursor = state.articulation;
+    std::uint64_t nextCycle = cycle;
+    for (std::size_t checked = 0; checked < stepCount; ++checked) {
+      if (nextCursor % stepCount == 0) {
+        if (!nextPassSameSequence)
+          break;
+        ++nextCycle;
+      }
       const auto &nextStep = Cycled(
-          sequence->articulation, state.articulation,
+          sequence->articulation, nextCursor,
           sequence->transforms[static_cast<std::size_t>(CursorLane::Notes)],
           nextCycle, seed, 0x3000);
+      ++nextCursor;
+      if (!StepIsPresent(nextStep, nextCycle, seed))
+        continue;
       if (!nextStep.atoms.empty()) {
-        const auto nextArticulationCursor =
-            completesNotesPass ? std::uint64_t{1} : state.articulation + 1;
+        const auto nextArticulationCursor = nextCursor % stepCount;
+        const auto randomCursor =
+            nextArticulationCursor == 0 ? stepCount : nextArticulationCursor;
         const auto nextKind = EffectiveArticulation(
-            nextStep.atoms.front(),
-            nextArticulationCursor ^ MixRandom(nextCycle), 0, seed);
+            nextStep.atoms.front(), randomCursor ^ MixRandom(nextCycle), 0,
+            seed);
         legatoToNext = nextKind == ArticulationKind::Tie ||
                        nextKind == ArticulationKind::Slide;
+        if (nextKind == ArticulationKind::Slide &&
+            nextStep.atoms.front().hasPitch)
+          legatoToNextVoiceCount =
+              PreparedVoiceCount(nextStep.atoms.front().pitch);
       }
+      break;
     }
   }
 
@@ -789,6 +975,7 @@ StepEvents Runtime::next(double beat) noexcept {
       kind = ArticulationKind::Attack;
 
     bool legatoFromAtom = false;
+    std::size_t legatoTargetVoiceCount = 0;
     if ((kind == ArticulationKind::Attack || kind == ArticulationKind::Slide) &&
         !atom.ghost) {
       if (atomIndex + 1 < atomCount && step) {
@@ -797,8 +984,13 @@ StepEvents Runtime::next(double beat) noexcept {
                                   articulationRandomKey, atomIndex + 1, seed);
         legatoFromAtom = nextKind == ArticulationKind::Tie ||
                          nextKind == ArticulationKind::Slide;
+        if (nextKind == ArticulationKind::Slide &&
+            step->atoms[atomIndex + 1].hasPitch)
+          legatoTargetVoiceCount =
+              PreparedVoiceCount(step->atoms[atomIndex + 1].pitch);
       } else {
         legatoFromAtom = legatoToNext;
+        legatoTargetVoiceCount = legatoToNextVoiceCount;
       }
     }
 
@@ -812,17 +1004,22 @@ StepEvents Runtime::next(double beat) noexcept {
         sequence->offset, state.offset,
         sequence->transforms[static_cast<std::size_t>(CursorLane::Offset)],
         cycle, seed, 0.0, offsetSpan, 0x8800,
-        sequence->aligned[static_cast<std::size_t>(CursorLane::Offset)],
-        structuralCell, &offsetMilliseconds, cycleBeat);
+        sequence->alignment[static_cast<std::size_t>(CursorLane::Offset)],
+        structuralCell, state.structuralCellCount,
+        sequence->alignmentSpans[static_cast<std::size_t>(CursorLane::Offset)],
+        &offsetMilliseconds, cycleBeat);
     std::array<CvSample, CvLaneCount> cv{};
     for (std::size_t cvIndex = 0; cvIndex < cv.size(); ++cvIndex) {
       const auto lane = CvCursorLane(cvIndex);
       cv[cvIndex] = SampleCv(
           sequence->cv[cvIndex],
           sequence->transforms[static_cast<std::size_t>(lane)],
-          sequence->aligned[static_cast<std::size_t>(lane)], structuralCell,
-          atomBeat, cycleBeat, atomSpan, sequence->cvInterpolation[cvIndex],
-          sequence->cvPower[cvIndex], cycle, seed, 0x9000 + cvIndex * 0x100);
+          sequence->alignment[static_cast<std::size_t>(lane)], structuralCell,
+          state.structuralCellCount,
+          sequence->alignmentSpans[static_cast<std::size_t>(lane)], atomBeat,
+          cycleBeat, atomSpan, sequence->cvInterpolation[cvIndex],
+          sequence->cvPower[cvIndex], cycle, seed,
+          0x9000 + cvIndex * 0x100);
     }
     auto applyControls = [&](RuntimeEvent &event) {
       if (offsetMilliseconds)
@@ -867,8 +1064,10 @@ StepEvents Runtime::next(double beat) noexcept {
                sequence->transforms[static_cast<std::size_t>(lane)], cycle,
                seed, 0.0, suppressedLaneSpans[laneIndex],
                0xa000 + laneIndex * 0x100,
-               sequence->aligned[static_cast<std::size_t>(lane)],
-               structuralCell, nullptr, cycleBeat);
+               sequence->alignment[static_cast<std::size_t>(lane)],
+               structuralCell, state.structuralCellCount,
+               sequence->alignmentSpans[static_cast<std::size_t>(lane)],
+               nullptr, cycleBeat);
       }
     }
     if (kind == ArticulationKind::Tie || kind == ArticulationKind::Rest) {
@@ -897,8 +1096,10 @@ StepEvents Runtime::next(double beat) noexcept {
         }
       }
       applyControls(event);
-      if (kind == ArticulationKind::Rest)
+      if (kind == ArticulationKind::Rest) {
         state.hasSoundingPitch = false;
+        state.soundingVoiceCount = 0;
+      }
       continue;
     }
 
@@ -908,16 +1109,17 @@ StepEvents Runtime::next(double beat) noexcept {
                            ? atom.pitch
                            : Cycled(sequence->notes, state.notes,
                                     noteTransforms, cycle, seed, 0x4000);
-    const auto noteKey = state.notes;
+    const auto noteKey = atom.hasPitch ? std::uint64_t{0} : state.notes;
     ++state.notes;
     std::size_t choice = 0;
     if (note.choice == PitchItem::Choice::Alternate)
       choice = static_cast<std::size_t>(cycle % note.values.size());
-    else if (note.choice == PitchItem::Choice::Random) {
-      std::uint64_t hash = seed ^ state.notes ^ (cycle * 0x9e3779b97f4a7c15ULL);
-      hash ^= hash >> 29;
-      choice = static_cast<std::size_t>(hash % note.values.size());
-    }
+    else if (note.choice == PitchItem::Choice::Random)
+      choice = std::min<std::size_t>(
+          note.values.size() - 1,
+          static_cast<std::size_t>(RandomUnit(
+              seed, atom.hasPitch ? cycle : state.notes,
+              note.randomIdentity, 0x4030) * note.values.size()));
     PitchValue randomPitch;
     const ChordValue *chord = nullptr;
     if (note.randomDomain != PitchItem::RandomDomain::None) {
@@ -945,16 +1147,22 @@ StepEvents Runtime::next(double beat) noexcept {
       sequenceOctave = static_cast<int>(std::lround(Scalar(
           sequence->octave, state.octave,
           sequence->transforms[static_cast<std::size_t>(CursorLane::Octave)],
-          cycle, seed, 0.f, octaveSpan, 0x4400,
-          sequence->aligned[static_cast<std::size_t>(CursorLane::Octave)],
-          structuralCell, nullptr, cycleBeat)));
+          cycle, seed, sequence->scale.tonicOctave, octaveSpan, 0x4400,
+          sequence->alignment[static_cast<std::size_t>(CursorLane::Octave)],
+          structuralCell, state.structuralCellCount,
+          sequence
+              ->alignmentSpans[static_cast<std::size_t>(CursorLane::Octave)],
+          nullptr, cycleBeat)));
     }
     const float baseVelocity = static_cast<float>(Scalar(
         sequence->velocity, state.velocity,
         sequence->transforms[static_cast<std::size_t>(CursorLane::Velocity)],
         cycle, seed, 0.72, velocitySpan, 0x4800,
-        sequence->aligned[static_cast<std::size_t>(CursorLane::Velocity)],
-        structuralCell, nullptr, cycleBeat));
+        sequence->alignment[static_cast<std::size_t>(CursorLane::Velocity)],
+        structuralCell, state.structuralCellCount,
+        sequence
+            ->alignmentSpans[static_cast<std::size_t>(CursorLane::Velocity)],
+        nullptr, cycleBeat));
     float velocity = baseVelocity;
     float gateDefault = 0.8f;
     if (atom.gateArticulation == GateArticulation::Staccato)
@@ -966,15 +1174,20 @@ StepEvents Runtime::next(double beat) noexcept {
         Scalar(sequence->gate, state.gate,
                sequence->transforms[static_cast<std::size_t>(CursorLane::Gate)],
                cycle, seed, gateDefault, gateSpan, 0x6000,
-               sequence->aligned[static_cast<std::size_t>(CursorLane::Gate)],
-               structuralCell, &gateMilliseconds, cycleBeat));
+               sequence->alignment[static_cast<std::size_t>(CursorLane::Gate)],
+               structuralCell, state.structuralCellCount,
+               sequence
+                   ->alignmentSpans[static_cast<std::size_t>(CursorLane::Gate)],
+               &gateMilliseconds, cycleBeat));
     bool slideMilliseconds = false;
     float slide = static_cast<float>(Scalar(
         sequence->slide, state.slide,
         sequence->transforms[static_cast<std::size_t>(CursorLane::Slide)],
-        cycle, seed, 0.0, slideSpan, 0x7000,
-        sequence->aligned[static_cast<std::size_t>(CursorLane::Slide)],
-        structuralCell, &slideMilliseconds, cycleBeat));
+        cycle, seed, sequence->glideBeats, slideSpan, 0x7000,
+        sequence->alignment[static_cast<std::size_t>(CursorLane::Slide)],
+        structuralCell, state.structuralCellCount,
+        sequence->alignmentSpans[static_cast<std::size_t>(CursorLane::Slide)],
+        &slideMilliseconds, cycleBeat));
     float effectiveAccent = 0.f;
     if (atom.hasVelocity)
       velocity = atom.velocity;
@@ -1002,8 +1215,10 @@ StepEvents Runtime::next(double beat) noexcept {
         sequence->ratchet, state.ratchet,
         sequence->transforms[static_cast<std::size_t>(CursorLane::Ratchet)],
         cycle, seed, 1.0, ratchetSpan, 0x8000,
-        sequence->aligned[static_cast<std::size_t>(CursorLane::Ratchet)],
-        structuralCell, nullptr, cycleBeat);
+        sequence->alignment[static_cast<std::size_t>(CursorLane::Ratchet)],
+        structuralCell, state.structuralCellCount,
+        sequence->alignmentSpans[static_cast<std::size_t>(CursorLane::Ratchet)],
+        nullptr, cycleBeat);
     const std::size_t ratchets =
         atom.ratchets > 1
             ? atom.ratchets
@@ -1079,6 +1294,13 @@ StepEvents Runtime::next(double beat) noexcept {
       }
     }
 
+    if (kind == ArticulationKind::Slide &&
+        state.soundingVoiceCount != voiceCount)
+      kind = ArticulationKind::Attack;
+    if (legatoFromAtom && legatoTargetVoiceCount != 0 &&
+        legatoTargetVoiceCount != voiceCount)
+      legatoFromAtom = false;
+
     const auto firstEmitted = output.count;
     for (std::size_t ratchet = 0; ratchet < ratchets; ++ratchet) {
       for (std::size_t voice = 0; voice < voiceCount; ++voice) {
@@ -1099,7 +1321,7 @@ StepEvents Runtime::next(double beat) noexcept {
         event.gateFraction = std::clamp(gateFraction, 0.f, 1.f);
         event.gateMilliseconds = gateMilliseconds ? gate : -1.f;
         event.gateCapMilliseconds = atom.ghost ? 20.f : -1.f;
-        event.slideBeats = slide > 0.f ? slide : sequence->glideBeats;
+        event.slideBeats = slide;
         event.slideMilliseconds = slideMilliseconds ? slide : -1.f;
         event.voice = static_cast<std::uint8_t>(voice);
         event.voiceCount = static_cast<std::uint8_t>(voiceCount);
@@ -1136,6 +1358,7 @@ StepEvents Runtime::next(double beat) noexcept {
       }
     }
     state.hasSoundingPitch = !atom.ghost;
+    state.soundingVoiceCount = atom.ghost ? 0 : voiceCount;
   }
   state.structuralCell += step ? step->cellCount : 1;
   const auto swing = Swing(timingTransforms, cycle, seed);
@@ -1201,10 +1424,13 @@ StepEvents Runtime::next(double beat) noexcept {
     const auto completedCycles = state.completedCycles + 1;
     const auto lastBaseDuration = state.lastBaseDuration;
     const bool hasSoundingPitch = state.hasSoundingPitch;
+    const auto soundingVoiceCount = state.soundingVoiceCount;
     state = {};
     state.completedCycles = completedCycles;
     state.lastBaseDuration = lastBaseDuration;
     state.hasSoundingPitch = continuesSameSequence && hasSoundingPitch;
+    state.soundingVoiceCount =
+        continuesSameSequence ? soundingVoiceCount : 0;
     partStartBeat_ = beat + duration;
     if (arrangementPart.cycles >= 0) {
       ++arrangementCycle_;

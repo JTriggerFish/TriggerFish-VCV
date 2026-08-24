@@ -10,6 +10,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 add_library(triggerfish_dsp STATIC
 	src/tfseq_compiler.cpp
 	src/tfseq.hpp
+	src/tfseq_editor.hpp
 	src/tfseq_parser.cpp
 	src/tfseq_parser.hpp
 	src/tfseq_runtime.cpp

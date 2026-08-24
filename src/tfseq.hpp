@@ -153,6 +153,8 @@ struct ArticulationStep {
   std::vector<ArticulationAtom> atoms;
   double durationMultiplier = 1.0;
   std::size_t cellCount = 1;
+  float presenceProbability = 1.f;
+  std::uint64_t presenceIdentity = 0;
   SourceSpan span;
 };
 
@@ -172,6 +174,8 @@ struct ScalarItem {
 };
 
 enum class CvInterpolation { Step, Linear, Smooth, Power };
+
+enum class LaneAlignment { Free, Left, Right };
 
 enum class TransformKind {
   Reverse,
@@ -240,7 +244,10 @@ struct Sequence {
   std::array<std::vector<Transform>,
              static_cast<std::size_t>(CursorLane::Count)>
       transforms;
-  std::array<bool, static_cast<std::size_t>(CursorLane::Count)> aligned{};
+  std::array<LaneAlignment, static_cast<std::size_t>(CursorLane::Count)>
+      alignment{};
+  std::array<SourceSpan, static_cast<std::size_t>(CursorLane::Count)>
+      alignmentSpans{};
 };
 
 struct ArrangementPart {
@@ -263,9 +270,11 @@ struct SequencePlaybackState {
   std::uint64_t offset = 0;
   std::array<std::uint64_t, CvLaneCount> cv{};
   std::uint64_t structuralCell = 0;
+  std::uint64_t structuralCellCount = 0;
   std::uint64_t completedCycles = 0;
   double lastBaseDuration = 0.0;
   bool hasSoundingPitch = false;
+  std::size_t soundingVoiceCount = 0;
 };
 
 struct SemanticProgram {

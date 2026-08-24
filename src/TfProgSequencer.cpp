@@ -1,5 +1,6 @@
 #include "plugin.hpp"
 #include "tfseq.hpp"
+#include "tfseq_editor.hpp"
 #include "tfseq_parser.hpp"
 #include "tfui_animation.hpp"
 #include "tfui_colormap.hpp"
@@ -90,9 +91,14 @@ struct TfProgSequencer : Module {
   std::string evaluatedSource = DefaultSource;
   tfseq::syntax::Document evaluatedDocument;
   std::string compileMessage =
-      "READY - Ctrl+. runs all, Ctrl+Enter runs line/selection";
+      "READY - Ctrl+. runs all, Ctrl+Enter runs statement/selection";
   std::atomic<std::uint64_t> sourceRevision{1};
-  std::atomic<tfseq::CompiledProgram *> pendingProgram{nullptr};
+  // CompiledProgram is at least two-byte aligned, leaving the low pointer bit
+  // available to carry the restart-on-activation request in the same atomic
+  // publication as the program itself.
+  static_assert(alignof(tfseq::CompiledProgram) >= 2);
+  static constexpr std::uintptr_t PendingRestartBit = 1;
+  std::atomic<std::uintptr_t> pendingProgram{0};
   std::atomic<tfseq::CompiledProgram *> retiredProgram{nullptr};
   tfseq::CompiledProgram *activeProgram = nullptr;
   tfseq::Runtime runtime;
@@ -116,6 +122,7 @@ struct TfProgSequencer : Module {
   std::atomic<tfui::CursorTravelCurve> cursorMotionMode{
       tfui::CursorTravelCurve::Linear};
   std::atomic<int> arrangementCursorClocksPerPulse{4};
+  std::atomic<bool> editorRunEnabled{true};
 
   dsp::SchmittTrigger clockTrigger;
   dsp::SchmittTrigger resetTrigger;
@@ -179,8 +186,20 @@ struct TfProgSequencer : Module {
     publishSource(source);
   }
 
+  static tfseq::CompiledProgram *pendingProgramPointer(
+      std::uintptr_t tagged) noexcept {
+    return reinterpret_cast<tfseq::CompiledProgram *>(tagged &
+                                                       ~PendingRestartBit);
+  }
+
+  static std::uintptr_t tagPendingProgram(tfseq::CompiledProgram *program,
+                                          bool restart) noexcept {
+    return reinterpret_cast<std::uintptr_t>(program) |
+           (restart ? PendingRestartBit : 0);
+  }
+
   ~TfProgSequencer() override {
-    delete pendingProgram.exchange(nullptr);
+    delete pendingProgramPointer(pendingProgram.exchange(0));
     delete retiredProgram.exchange(nullptr);
     delete activeProgram;
   }
@@ -192,7 +211,8 @@ struct TfProgSequencer : Module {
   }
 
   bool publishDocument(const tfseq::syntax::Document &document,
-                       const std::string &editorSource) {
+                       const std::string &editorSource,
+                       bool restartOnActivation = false) {
     tfseq::CompileResult compiled;
     try {
       compiled = tfseq::Compile(document);
@@ -217,18 +237,21 @@ struct TfProgSequencer : Module {
     evaluatedSource.swap(nextSource);
     compileMessage.swap(nextMessage);
     auto *candidate = compiled.program.release();
-    delete pendingProgram.exchange(candidate, std::memory_order_acq_rel);
+    delete pendingProgramPointer(pendingProgram.exchange(
+        tagPendingProgram(candidate, restartOnActivation),
+        std::memory_order_acq_rel));
     return true;
   }
 
-  bool publishSource(const std::string &text) {
+  bool publishSource(const std::string &text,
+                     bool restartOnActivation = false) {
     try {
       const auto parsed = tfseq::syntax::Parse(text);
       if (!parsed) {
         reportDiagnostic(parsed.diagnostic);
         return false;
       }
-      return publishDocument(parsed.document, text);
+      return publishDocument(parsed.document, text, restartOnActivation);
     } catch (const std::bad_alloc &) {
       compileMessage = "ERROR not enough memory to parse this program";
       return false;
@@ -340,7 +363,8 @@ struct TfProgSequencer : Module {
         // saved source. A compile failure preserves any already-active valid
         // program; on initial construction there is no active program, so the
         // module remains silent instead of falling back to factory notes.
-        delete pendingProgram.exchange(nullptr, std::memory_order_acq_rel);
+        delete pendingProgramPointer(
+            pendingProgram.exchange(0, std::memory_order_acq_rel));
         evaluatedSource.clear();
         evaluatedDocument.statements.clear();
         if (storedLanguageVersion == LanguageVersion) {
@@ -384,13 +408,16 @@ struct TfProgSequencer : Module {
   void swapProgramAtClock(double beat) noexcept {
     if (retiredProgram.load(std::memory_order_acquire) != nullptr)
       return;
-    auto *candidate =
-        pendingProgram.exchange(nullptr, std::memory_order_acq_rel);
+    const auto pending =
+        pendingProgram.exchange(0, std::memory_order_acq_rel);
+    auto *candidate = pendingProgramPointer(pending);
     if (!candidate)
       return;
+    const bool restartOnActivation = (pending & PendingRestartBit) != 0;
     auto *previousProgram = activeProgram;
     const bool preservePhase =
-        previousProgram && !previousProgram->semantic().stopped &&
+        !restartOnActivation && previousProgram &&
+        !previousProgram->semantic().stopped &&
         !candidate->semantic().stopped && activationCheckpointValid &&
         std::abs(activationCheckpointBeat - beat) < 1e-7;
     activeProgram = candidate;
@@ -676,8 +703,10 @@ struct TfProgSequencer : Module {
     if (resetIgnoreSamples > 0)
       --resetIgnoreSamples;
 
-    const bool running = !inputs[RUN_INPUT].isConnected() ||
-                         inputs[RUN_INPUT].getVoltage() >= 1.f;
+    const bool running =
+        editorRunEnabled.load(std::memory_order_relaxed) &&
+        (!inputs[RUN_INPUT].isConnected() ||
+         inputs[RUN_INPUT].getVoltage() >= 1.f);
     bool clockEdge =
         clockTrigger.process(inputs[CLOCK_INPUT].getVoltage(), 0.1f, 2.f);
     if (resetIgnoreSamples > 0)
@@ -908,7 +937,7 @@ struct TfSequenceEditor : app::LedDisplayTextField {
     }
   }
 
-  void onChange(const ChangeEvent &) override {
+  void synchronizeEditedSource() {
     if (module) {
       module->source = getText();
       // Compiled spans refer to the previous source layout. Let the next clock
@@ -919,6 +948,17 @@ struct TfSequenceEditor : app::LedDisplayTextField {
       lastCursorPulseTimes = {};
       observedSpans = {};
     }
+  }
+
+  void onChange(const ChangeEvent &) override { synchronizeEditedSource(); }
+
+  void applyEdit(tfseq::editor::EditResult edit) {
+    if (!edit.changed)
+      return;
+    text = std::move(edit.text);
+    selection = edit.selection;
+    cursor = edit.cursor;
+    synchronizeEditedSource();
   }
 
   static bool sameSpan(const tfseq::SourceSpan &left,
@@ -1410,6 +1450,15 @@ struct TfSequenceEditor : app::LedDisplayTextField {
 
   void onSelectKey(const SelectKeyEvent &event) override {
     if (module && event.action == GLFW_PRESS &&
+        event.isKeyCommand(GLFW_KEY_PERIOD,
+                           RACK_MOD_CTRL | RACK_MOD_SHIFT)) {
+      module->source = getText();
+      if (module->publishSource(module->source, true))
+        module->flashExecution(0, static_cast<int>(module->source.size()));
+      event.consume(this);
+      return;
+    }
+    if (module && event.action == GLFW_PRESS &&
         event.isKeyCommand(GLFW_KEY_PERIOD, RACK_MOD_CTRL)) {
       module->source = getText();
       if (module->publishSource(module->source))
@@ -1431,6 +1480,26 @@ struct TfSequenceEditor : app::LedDisplayTextField {
                         static_cast<std::size_t>(span.second - span.first)),
             span.first);
       }
+      event.consume(this);
+      return;
+    }
+    if (module && event.action == GLFW_PRESS &&
+        event.isKeyCommand(GLFW_KEY_SLASH, RACK_MOD_CTRL)) {
+      applyEdit(tfseq::editor::ToggleLineComments(text, cursor, selection));
+      event.consume(this);
+      return;
+    }
+    if (module && event.action == GLFW_PRESS &&
+        event.isKeyCommand(GLFW_KEY_SPACE, RACK_MOD_CTRL)) {
+      const bool enabled =
+          module->editorRunEnabled.load(std::memory_order_relaxed);
+      module->editorRunEnabled.store(!enabled, std::memory_order_relaxed);
+      event.consume(this);
+      return;
+    }
+    if (module && event.action == GLFW_PRESS &&
+        event.isKeyCommand(GLFW_KEY_D, RACK_MOD_CTRL)) {
+      applyEdit(tfseq::editor::Duplicate(text, cursor, selection));
       event.consume(this);
       return;
     }

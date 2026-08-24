@@ -73,7 +73,13 @@ def test_prog_sequencer_has_three_valid_3u_widths_with_outlined_runtime_text():
     assert "cursorPulses[lane].fetch_add(1, std::memory_order_release)" in module_source
     assert "SchedulingLookaheadBeats" in module_source
     assert "guard++ < 64" not in module_source
-    assert "delete pendingProgram.exchange(nullptr" in module_source
+    assert "delete pendingProgramPointer(pendingProgram.exchange(0" in module_source
+    assert "PendingRestartBit" in module_source
+    assert "publishSource(module->source, true)" in module_source
+    assert "isKeyCommand(GLFW_KEY_SLASH, RACK_MOD_CTRL)" in module_source
+    assert "isKeyCommand(GLFW_KEY_SPACE, RACK_MOD_CTRL)" in module_source
+    assert "isKeyCommand(GLFW_KEY_D, RACK_MOD_CTRL)" in module_source
+    assert "editorRunEnabled.load(std::memory_order_relaxed)" in module_source
     assert screw_positions(module_source, 450.0, 380.0) == ()
     assert centered_component_specs("TfProgSequencer", module_source, 450.0) == (
         ("PJ301MPort", 409.0, 65.0),

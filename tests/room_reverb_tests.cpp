@@ -260,8 +260,9 @@ void TestAcousticPresetDefinitions() {
             std::abs(Superlush.shimmer - 0.65f) < 1.e-7f,
         "Superlush must use maximum modulation and a strong 65% shimmer while "
         "room presets remain restrained");
-  Check(SmallRoom.mix < MediumHall.mix && Superlush.mix <= 0.35f,
-        "ambience and texture presets must preserve a strong dry signal");
+  Check(SmallRoom.mix < MediumHall.mix && MediumHall.mix < Superlush.mix &&
+            std::abs(Superlush.mix - 0.40f) < 1.e-7f,
+        "Superlush must add more wet texture while remaining dry-forward");
   Check(SmallRoom.balance < MediumHall.balance && MediumHall.balance == 0.5f &&
             Superlush.balance > MediumHall.balance,
         "Small Room must lean toward early reflections, Medium Hall must use "
@@ -275,7 +276,7 @@ void TestAcousticPresetDefinitions() {
   Check(std::abs(lowCutHertz(SmallRoom.lowCut) - 40.f) < 0.01f &&
             std::abs(highCutHertz(SmallRoom.highCut) - 9'000.f) < 1.f &&
             std::abs(lowCutHertz(Superlush.lowCut) - 120.f) < 0.01f &&
-            std::abs(highCutHertz(Superlush.highCut) - 10'000.f) < 1.f,
+            std::abs(highCutHertz(Superlush.highCut) - 8'000.f) < 1.f,
         "room and texture preset filters must retain their documented cutoffs");
 
   for (const auto &[name, preset] :
