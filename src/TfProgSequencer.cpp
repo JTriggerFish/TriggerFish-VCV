@@ -2,6 +2,7 @@
 #include "tfseq.hpp"
 #include "tfseq_editor.hpp"
 #include "tfseq_parser.hpp"
+#include "tftransport.hpp"
 #include "tfui_animation.hpp"
 #include "tfui_colormap.hpp"
 
@@ -16,6 +17,7 @@
 #include <stdexcept>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace {
 
@@ -27,8 +29,8 @@ constexpr float Status = 0.76f;
 constexpr float Text = 0.86f;
 } // namespace EditorIntensity
 
-NVGcolor editorColor(float intensity) noexcept {
-  const auto rgb = tfui::sampleHeatmap(tfui::ProgramEditorHeatmap, intensity);
+NVGcolor editorColor(tfui::HeatmapPalette palette, float intensity) noexcept {
+  const auto rgb = tfui::sampleHeatmap(palette, intensity);
   return nvgRGBf(rgb.red, rgb.green, rgb.blue);
 }
 
@@ -85,7 +87,7 @@ struct TfProgSequencer : Module {
   };
   enum LightIds { RUN_LIGHT, NUM_LIGHTS };
 
-  enum class TransportStatus { Waiting, Playing, Stopped };
+  enum class TransportStatus { Waiting, Playing, Paused, Stopped };
 
   std::string source = DefaultSource;
   std::string evaluatedSource = DefaultSource;
@@ -93,6 +95,8 @@ struct TfProgSequencer : Module {
   std::string compileMessage =
       "READY - Ctrl+. runs all, Ctrl+Enter runs statement/selection";
   std::atomic<std::uint64_t> sourceRevision{1};
+  std::atomic<int> restoredEditorCursor{-1};
+  std::atomic<int> restoredEditorSelection{-1};
   // CompiledProgram is at least two-byte aligned, leaving the low pointer bit
   // available to carry the restart-on-activation request in the same atomic
   // publication as the program itself.
@@ -118,14 +122,22 @@ struct TfProgSequencer : Module {
   std::atomic<TransportStatus> transportStatus{TransportStatus::Waiting};
   std::atomic<bool> workspaceOverflow{false};
   std::atomic<double> visibleBeat{0.0};
+  std::atomic<std::uint64_t> activeStepSpan{0};
+  std::atomic<double> activeStepBeginBeat{0.0};
+  std::atomic<double> activeStepEndBeat{0.0};
+  std::array<std::atomic<std::uint64_t>, tfseq::CvLaneCount>
+      activeCvLineSpans{};
+  std::array<std::atomic<float>, tfseq::CvLaneCount> visibleCvValues{};
   std::atomic<int> panelWidthHp{30};
   std::atomic<tfui::CursorTravelCurve> cursorMotionMode{
       tfui::CursorTravelCurve::Linear};
+  std::atomic<tfui::HeatmapPalette> editorHeatmap{tfui::HeatmapPalette::Magma};
   std::atomic<int> arrangementCursorClocksPerPulse{4};
   std::atomic<bool> editorRunEnabled{true};
 
   dsp::SchmittTrigger clockTrigger;
   dsp::SchmittTrigger resetTrigger;
+  dsp::PulseGenerator clockLightPulse;
   struct OutputVoiceState {
     dsp::PulseGenerator triggerPulse;
     double gateOffBeat = -1.0;
@@ -157,10 +169,12 @@ struct TfProgSequencer : Module {
   std::uint64_t nextScheduleOrder = 0;
   bool clockSeen = false;
   bool periodKnown = false;
+  bool clockTimedOut = false;
   std::int64_t samplesSinceClock = 0;
+  std::int64_t transportPulseCount = 0;
   std::int64_t resetIgnoreSamples = 0;
   double periodSamples = 0.0;
-  double clockBeat = 0.0;
+  double pulseBeat = 0.0;
   double programStartBeat = 0.0;
   double nextStepBeat = 0.0;
   bool wasRunning = true;
@@ -171,9 +185,9 @@ struct TfProgSequencer : Module {
 
   TfProgSequencer() {
     config(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS);
-    configInput(CLOCK_INPUT, "Clock");
+    configInput(CLOCK_INPUT, "24 PPQN master clock");
     configInput(RESET_INPUT, "Reset");
-    configInput(RUN_INPUT, "Run gate (normalled high)");
+    configInput(RUN_INPUT, "Run gate (low pauses; normalled high)");
     configOutput(PITCH_OUTPUT, "Polyphonic 1 V/oct pitch");
     configOutput(GATE_OUTPUT, "Polyphonic gate");
     configOutput(TRIGGER_OUTPUT, "Polyphonic trigger");
@@ -186,10 +200,10 @@ struct TfProgSequencer : Module {
     publishSource(source);
   }
 
-  static tfseq::CompiledProgram *pendingProgramPointer(
-      std::uintptr_t tagged) noexcept {
+  static tfseq::CompiledProgram *
+  pendingProgramPointer(std::uintptr_t tagged) noexcept {
     return reinterpret_cast<tfseq::CompiledProgram *>(tagged &
-                                                       ~PendingRestartBit);
+                                                      ~PendingRestartBit);
   }
 
   static std::uintptr_t tagPendingProgram(tfseq::CompiledProgram *program,
@@ -232,7 +246,7 @@ struct TfProgSequencer : Module {
     // sees a program matching the retained evaluated document.
     tfseq::syntax::Document nextDocument = document;
     std::string nextSource = editorSource;
-    std::string nextMessage = "QUEUED - activates on the next clock";
+    std::string nextMessage = "QUEUED - activates on the next quarter beat";
     evaluatedDocument.statements.swap(nextDocument.statements);
     evaluatedSource.swap(nextSource);
     compileMessage.swap(nextMessage);
@@ -315,10 +329,12 @@ struct TfProgSequencer : Module {
     json_object_set_new(root, "cursorMotionMode",
                         json_integer(static_cast<int>(
                             cursorMotionMode.load(std::memory_order_relaxed))));
-    json_object_set_new(
-        root, "arrangementCursorClocksPerPulse",
-        json_integer(arrangementCursorClocksPerPulse.load(
-            std::memory_order_relaxed)));
+    json_object_set_new(root, "editorHeatmap",
+                        json_integer(static_cast<int>(
+                            editorHeatmap.load(std::memory_order_relaxed))));
+    json_object_set_new(root, "arrangementCursorClocksPerPulse",
+                        json_integer(arrangementCursorClocksPerPulse.load(
+                            std::memory_order_relaxed)));
     return root;
   }
 
@@ -345,11 +361,17 @@ struct TfProgSequencer : Module {
             std::memory_order_relaxed);
       }
     }
+    if (json_t *heatmapJson = json_object_get(root, "editorHeatmap")) {
+      if (json_is_integer(heatmapJson)) {
+        editorHeatmap.store(tfui::heatmapPaletteFromInt(static_cast<int>(
+                                json_integer_value(heatmapJson))),
+                            std::memory_order_relaxed);
+      }
+    }
     if (json_t *divisionJson =
             json_object_get(root, "arrangementCursorClocksPerPulse")) {
       if (json_is_integer(divisionJson)) {
-        const int value =
-            static_cast<int>(json_integer_value(divisionJson));
+        const int value = static_cast<int>(json_integer_value(divisionJson));
         arrangementCursorClocksPerPulse.store(
             value == 1 || value == 2 || value == 4 || value == 8 ? value : 4,
             std::memory_order_relaxed);
@@ -378,14 +400,27 @@ struct TfProgSequencer : Module {
     }
   }
 
+  void restoreEditedSource(const std::string &text, int cursor,
+                           int selection) {
+    if (source == text)
+      return;
+    source = text;
+    restoredEditorCursor.store(cursor, std::memory_order_relaxed);
+    restoredEditorSelection.store(selection, std::memory_order_relaxed);
+    sourceRevision.fetch_add(1, std::memory_order_release);
+  }
+
   void resetTransport() noexcept {
     runtime.reset();
     scheduledCount = 0;
     nextScheduleOrder = 0;
     clockSeen = false;
     periodKnown = false;
+    clockTimedOut = false;
     samplesSinceClock = 0;
-    clockBeat = 0.0;
+    transportPulseCount = 0;
+    periodSamples = 0.0;
+    pulseBeat = 0.0;
     programStartBeat = 0.0;
     nextStepBeat = 0.0;
     outputVoiceCount = 1;
@@ -396,30 +431,35 @@ struct TfProgSequencer : Module {
       voice.triggerPulse.reset();
     }
     cvOutputs = {};
+    clockLightPulse.reset();
+    activeStepSpan.store(0, std::memory_order_relaxed);
+    activeStepBeginBeat.store(0.0, std::memory_order_relaxed);
+    activeStepEndBeat.store(0.0, std::memory_order_relaxed);
+    for (auto &span : activeCvLineSpans)
+      span.store(0, std::memory_order_relaxed);
+    for (auto &value : visibleCvValues)
+      value.store(0.f, std::memory_order_relaxed);
     activationCheckpointValid = false;
     workspaceOverflow.store(false, std::memory_order_relaxed);
     for (auto &span : cursorSpans)
       span.store(0, std::memory_order_relaxed);
     lastArrangementCursorGroup = std::numeric_limits<std::int64_t>::min();
     lastArrangementCursorSpan = 0;
-    transportStatus.store(TransportStatus::Waiting, std::memory_order_relaxed);
+    transportStatus.store(TransportStatus::Stopped, std::memory_order_relaxed);
   }
 
   void swapProgramAtClock(double beat) noexcept {
     if (retiredProgram.load(std::memory_order_acquire) != nullptr)
       return;
-    const auto pending =
-        pendingProgram.exchange(0, std::memory_order_acq_rel);
+    const auto pending = pendingProgram.exchange(0, std::memory_order_acq_rel);
     auto *candidate = pendingProgramPointer(pending);
     if (!candidate)
       return;
     const bool restartOnActivation = (pending & PendingRestartBit) != 0;
     auto *previousProgram = activeProgram;
-    const bool preservePhase =
-        !restartOnActivation && previousProgram &&
-        !previousProgram->semantic().stopped &&
-        !candidate->semantic().stopped && activationCheckpointValid &&
-        std::abs(activationCheckpointBeat - beat) < 1e-7;
+    const bool preservePhase = !restartOnActivation && previousProgram &&
+                               activationCheckpointValid &&
+                               std::abs(activationCheckpointBeat - beat) < 1e-7;
     activeProgram = candidate;
     if (preservePhase) {
       runtime = activationRuntime;
@@ -444,9 +484,9 @@ struct TfProgSequencer : Module {
     }
     for (auto &span : cursorSpans)
       span.store(0, std::memory_order_relaxed);
-    if (activeProgram->semantic().stopped)
-      transportStatus.store(TransportStatus::Stopped,
-                            std::memory_order_relaxed);
+    activeStepSpan.store(0, std::memory_order_release);
+    for (auto &span : activeCvLineSpans)
+      span.store(0, std::memory_order_release);
     if (previousProgram)
       retiredProgram.store(previousProgram, std::memory_order_release);
   }
@@ -476,9 +516,8 @@ struct TfProgSequencer : Module {
       targetBeat += absoluteShift;
     if (periodKnown && periodSamples > 0.0 &&
         target.timingOffsetMilliseconds != 0.0) {
-      const double millisecondShift =
-          target.timingOffsetMilliseconds * 0.001 * sampleRateHz /
-          periodSamples;
+      const double millisecondShift = target.timingOffsetMilliseconds * 0.001 *
+                                      sampleRateHz / periodSamples;
       target.beat += millisecondShift;
       for (auto &targetBeat : target.cvTargetBeat)
         targetBeat += millisecondShift;
@@ -502,8 +541,7 @@ struct TfProgSequencer : Module {
   }
 
   void scheduleDueSteps(double horizon) noexcept {
-    if (!activeProgram || activeProgram->semantic().stopped ||
-        activeProgram->semantic().arrangement.empty())
+    if (!activeProgram || activeProgram->semantic().arrangement.empty())
       return;
     std::size_t preparedSteps = 0;
     const auto maximumPreparedSteps =
@@ -538,6 +576,18 @@ struct TfProgSequencer : Module {
   }
 
   void showCursors(const tfseq::RuntimeEvent &event) noexcept {
+    const auto notesLane = static_cast<std::size_t>(tfseq::CursorLane::Notes);
+    const auto noteSpan = packSpan(event.cursors[notesLane]);
+    activeStepBeginBeat.store(event.beat - programStartBeat,
+                              std::memory_order_relaxed);
+    activeStepEndBeat.store(event.beat - programStartBeat + event.spanBeats,
+                            std::memory_order_relaxed);
+    activeStepSpan.store(noteSpan, std::memory_order_release);
+    for (std::size_t index = 0; index < activeCvLineSpans.size(); ++index) {
+      const auto lane = static_cast<std::size_t>(tfseq::CvCursorLane(index));
+      activeCvLineSpans[index].store(packSpan(event.cursors[lane]),
+                                     std::memory_order_release);
+    }
     for (std::size_t lane = 0; lane < cursorSpans.size(); ++lane) {
       if (!event.cursors[lane].valid())
         continue;
@@ -626,9 +676,8 @@ struct TfProgSequencer : Module {
             : event.spanBeats * event.gateFraction;
     if (event.gateCapMilliseconds >= 0.f && periodKnown &&
         periodSamples > 0.0) {
-      gateDuration = std::min(
-          gateDuration, event.gateCapMilliseconds * 0.001 * sampleRateHz /
-                            periodSamples);
+      gateDuration = std::min(gateDuration, event.gateCapMilliseconds * 0.001 *
+                                                sampleRateHz / periodSamples);
       gateDuration =
           std::min(gateDuration, event.spanBeats * event.gateFraction);
     }
@@ -641,13 +690,13 @@ struct TfProgSequencer : Module {
       voice.slideTo = event.pitchVolts;
       voice.slideBeginBeat = event.beat;
       voice.slideEndBeat =
-          event.beat +
-          std::min<double>(
-              event.spanBeats,
-              event.slideMilliseconds >= 0.f && periodKnown && periodSamples > 0.0
-                  ? event.slideMilliseconds * 0.001 * sampleRateHz /
-                        periodSamples
-                  : event.slideBeats);
+          event.beat + std::min<double>(event.spanBeats,
+                                        event.slideMilliseconds >= 0.f &&
+                                                periodKnown &&
+                                                periodSamples > 0.0
+                                            ? event.slideMilliseconds * 0.001 *
+                                                  sampleRateHz / periodSamples
+                                            : event.slideBeats);
       voice.sliding = voice.slideEndBeat > voice.slideBeginBeat;
       if (!voice.sliding)
         voice.pitch = voice.slideTo;
@@ -694,6 +743,10 @@ struct TfProgSequencer : Module {
   }
 
   void process(const ProcessArgs &args) override {
+    if (periodKnown && sampleRateHz > 0.0 && args.sampleRate > 0.0 &&
+        args.sampleRate != sampleRateHz) {
+      periodSamples *= args.sampleRate / sampleRateHz;
+    }
     sampleRateHz = args.sampleRate;
     if (resetTrigger.process(inputs[RESET_INPUT].getVoltage(), 0.1f, 2.f)) {
       resetTransport();
@@ -703,78 +756,103 @@ struct TfProgSequencer : Module {
     if (resetIgnoreSamples > 0)
       --resetIgnoreSamples;
 
-    const bool running =
-        editorRunEnabled.load(std::memory_order_relaxed) &&
-        (!inputs[RUN_INPUT].isConnected() ||
-         inputs[RUN_INPUT].getVoltage() >= 1.f);
+    const bool running = editorRunEnabled.load(std::memory_order_relaxed) &&
+                         (!inputs[RUN_INPUT].isConnected() ||
+                          inputs[RUN_INPUT].getVoltage() >= 1.f);
     bool clockEdge =
         clockTrigger.process(inputs[CLOCK_INPUT].getVoltage(), 0.1f, 2.f);
     if (resetIgnoreSamples > 0)
       clockEdge = false;
 
     if (!running) {
-      if (wasRunning)
-        resetTransport();
-      for (auto &voice : outputVoices) {
-        voice.gateHigh = false;
-        voice.sliding = false;
-        voice.triggerPulse.reset();
+      if (wasRunning) {
+        clockLightPulse.reset();
+        for (auto &voice : outputVoices)
+          voice.triggerPulse.reset();
       }
-      transportStatus.store(TransportStatus::Stopped,
-                            std::memory_order_relaxed);
+      if (transportStatus.load(std::memory_order_relaxed) !=
+          TransportStatus::Stopped) {
+        transportStatus.store(TransportStatus::Paused,
+                              std::memory_order_relaxed);
+      }
     } else if (clockEdge) {
+      bool beatBoundary = false;
       if (clockSeen && samplesSinceClock > 0) {
-        const double measured = static_cast<double>(samplesSinceClock);
-        periodSamples =
-            periodKnown ? 0.75 * periodSamples + 0.25 * measured : measured;
+        const double measured =
+            tftransport::BeatPeriodFromPulseSamples(samplesSinceClock);
+        // A stopped external clock produces one very long apparent interval.
+        // Retain the last valid period on the returning edge; folding the gap
+        // into the smoother would make subdivisions crawl for several beats.
+        if (!clockTimedOut) {
+          periodSamples =
+              periodKnown ? 0.75 * periodSamples + 0.25 * measured : measured;
+        }
         periodKnown = true;
-        clockBeat += 1.0;
+        clockTimedOut = false;
+        ++transportPulseCount;
+        pulseBeat = tftransport::BeatAtPulse(transportPulseCount);
+        beatBoundary = tftransport::IsQuarterNotePulse(transportPulseCount);
       } else {
         clockSeen = true;
-        clockBeat = 0.0;
+        clockTimedOut = false;
+        transportPulseCount = 0;
+        pulseBeat = 0.0;
+        beatBoundary = true;
       }
       samplesSinceClock = 0;
-      swapProgramAtClock(clockBeat);
-      activationCheckpointBeat = clockBeat + 1.0;
-      activationCheckpointValid = false;
+      if (beatBoundary) {
+        clockLightPulse.trigger(0.075f);
+        swapProgramAtClock(pulseBeat);
+        activationCheckpointBeat = pulseBeat + 1.0;
+        activationCheckpointValid = false;
+      }
+      // A subdivision exactly on this clock, and any first-beat subdivisions
+      // held while the clock period was still unknown, already occupy the
+      // prepared queue. Apply them before filling the next lookahead window so
+      // two adjacent windows never need to coexist transiently.
+      processScheduled(pulseBeat);
       if (activeProgram)
-        scheduleDueSteps(clockBeat + tfseq::SchedulingLookaheadBeats(
+        scheduleDueSteps(pulseBeat + tfseq::SchedulingLookaheadBeats(
                                          *activeProgram, periodKnown,
                                          periodSamples, sampleRateHz));
-      processScheduled(clockBeat);
-      transportStatus.store(activeProgram && !activeProgram->semantic().stopped
-                                ? TransportStatus::Playing
-                            : activeProgram ? TransportStatus::Stopped
-                                            : TransportStatus::Waiting,
+      processScheduled(pulseBeat);
+      transportStatus.store(activeProgram ? TransportStatus::Playing
+                                           : TransportStatus::Waiting,
+                            std::memory_order_relaxed);
+    } else if (!wasRunning) {
+      transportStatus.store(activeProgram ? TransportStatus::Playing
+                                           : TransportStatus::Waiting,
                             std::memory_order_relaxed);
     }
 
-    double phase = clockBeat;
+    double phase = pulseBeat;
     if (clockSeen && periodKnown && periodSamples > 0.0) {
-      // Integer beat boundaries remain owned by CLOCK. Extrapolation is used
-      // only for subdivisions, and cannot advance into the next beat before
-      // its external edge actually arrives.
-      const double withinBeat = std::min(
-          0.999999, static_cast<double>(samplesSinceClock) / periodSamples);
+      // Every transport pulse owns its exact phase point. Interpolation covers
+      // only the interval before the following pulse arrives.
+      const double withinBeat =
+          std::min(tftransport::BeatsPerPulse - 1e-9,
+                   static_cast<double>(samplesSinceClock) / periodSamples);
       phase += withinBeat;
     }
     if (running && clockSeen) {
       if (activeProgram)
-        scheduleDueSteps(clockBeat + tfseq::SchedulingLookaheadBeats(
+        scheduleDueSteps(pulseBeat + tfseq::SchedulingLookaheadBeats(
                                          *activeProgram, periodKnown,
                                          periodSamples, sampleRateHz));
       processScheduled(phase);
       if (periodKnown && samplesSinceClock > periodSamples * 4.0) {
-        for (auto &voice : outputVoices) {
-          voice.gateHigh = false;
-          voice.sliding = false;
+        if (!clockTimedOut) {
+          for (auto &voice : outputVoices) {
+            voice.gateHigh = false;
+            voice.sliding = false;
+          }
         }
+        clockTimedOut = true;
         transportStatus.store(TransportStatus::Waiting,
                               std::memory_order_relaxed);
       }
     }
 
-    bool anyGateHigh = false;
     for (std::size_t index = 0; index < outputVoiceCount; ++index) {
       auto &voice = outputVoices[index];
       if (voice.sliding) {
@@ -793,7 +871,6 @@ struct TfProgSequencer : Module {
       }
       if (voice.gateHigh && phase >= voice.gateOffBeat)
         voice.gateHigh = false;
-      anyGateHigh = anyGateHigh || voice.gateHigh;
     }
 
     for (auto &state : cvOutputs) {
@@ -818,14 +895,15 @@ struct TfProgSequencer : Module {
     for (std::size_t index = 0; index < outputVoiceCount; ++index) {
       auto &voice = outputVoices[index];
       outputs[PITCH_OUTPUT].setVoltage(voice.pitch, static_cast<int>(index));
-      outputs[GATE_OUTPUT].setVoltage(voice.gateHigh ? 10.f : 0.f,
+      outputs[GATE_OUTPUT].setVoltage(running && voice.gateHigh ? 10.f : 0.f,
                                       static_cast<int>(index));
       outputs[TRIGGER_OUTPUT].setVoltage(
-          voice.triggerPulse.process(args.sampleTime) ? 10.f : 0.f,
+          running && voice.triggerPulse.process(args.sampleTime) ? 10.f : 0.f,
           static_cast<int>(index));
       outputs[VELOCITY_OUTPUT].setVoltage(voice.velocity,
                                           static_cast<int>(index));
-      outputs[ACCENT_OUTPUT].setVoltage(voice.gateHigh ? voice.accent : 0.f,
+      outputs[ACCENT_OUTPUT].setVoltage(running && voice.gateHigh ? voice.accent
+                                                                  : 0.f,
                                         static_cast<int>(index));
     }
     constexpr std::array<int, tfseq::CvLaneCount> cvOutputIds{
@@ -833,14 +911,43 @@ struct TfProgSequencer : Module {
     for (std::size_t index = 0; index < cvOutputIds.size(); ++index) {
       outputs[cvOutputIds[index]].setChannels(1);
       outputs[cvOutputIds[index]].setVoltage(cvOutputs[index].value);
+      visibleCvValues[index].store(cvOutputs[index].value,
+                                   std::memory_order_relaxed);
     }
-    lights[RUN_LIGHT].setBrightness(anyGateHigh ? 1.f : 0.f);
+    const bool transportActive = running && activeProgram;
+    const bool clockFlash = running && clockLightPulse.process(args.sampleTime);
+    lights[RUN_LIGHT].setBrightness(
+        tfui::transportLightBrightness(transportActive, clockFlash));
     visibleBeat.store(clockSeen ? phase - programStartBeat : 0.0,
                       std::memory_order_relaxed);
-    if (clockSeen)
+    if (running && clockSeen)
       ++samplesSinceClock;
     wasRunning = running;
   }
+};
+
+struct TfProgSequencerSourceChange : history::ModuleAction {
+  std::string oldSource;
+  std::string newSource;
+  int oldCursor = 0;
+  int oldSelection = 0;
+  int newCursor = 0;
+  int newSelection = 0;
+
+  TfProgSequencerSourceChange() { name = "edit sequencer program"; }
+
+  void apply(const std::string &source, int cursor, int selection) {
+    if (!APP || !APP->scene || !APP->scene->rack)
+      return;
+    auto *moduleWidget = APP->scene->rack->getModule(moduleId);
+    auto *module =
+        moduleWidget ? moduleWidget->getModule<TfProgSequencer>() : nullptr;
+    if (module)
+      module->restoreEditedSource(source, cursor, selection);
+  }
+
+  void undo() override { apply(oldSource, oldCursor, oldSelection); }
+  void redo() override { apply(newSource, newCursor, newSelection); }
 };
 
 struct TfSequenceEditor : app::LedDisplayTextField {
@@ -850,6 +957,14 @@ struct TfSequenceEditor : app::LedDisplayTextField {
   static constexpr std::size_t CursorMotionCapacity = 4;
   static constexpr std::size_t CursorBloomCapacity = 4;
   static constexpr int CursorGlowSamples = 14;
+  // Enough fixed storage for the full six-second window at the capped 90 Hz
+  // sampling rate, with a small margin for timer jitter.
+  static constexpr std::size_t CvTraceCapacity = 576;
+  static constexpr double CvTraceWindowSeconds = 6.0;
+  static constexpr double CvTraceSampleIntervalSeconds = 1.0 / 90.0;
+  static constexpr float CvTraceVoltageRange = 5.f;
+  static constexpr float MinimumCvTraceWidth = 42.f;
+  static constexpr int MaximumCvTraceCharacters = 12;
 
   struct CursorTrailPoint {
     tfseq::SourceSpan span;
@@ -892,6 +1007,11 @@ struct TfSequenceEditor : app::LedDisplayTextField {
     bool valid = false;
   };
 
+  struct CvTraceSample {
+    double sampledAt = 0.0;
+    float value = 0.f;
+  };
+
   TfProgSequencer *module = nullptr;
   std::uint64_t loadedRevision = 0;
   std::array<std::uint64_t, CursorLaneCount> observedPulses{};
@@ -903,17 +1023,46 @@ struct TfSequenceEditor : app::LedDisplayTextField {
   std::array<std::array<CursorBloom, CursorBloomCapacity>, CursorLaneCount>
       cursorBlooms{};
   std::array<double, CursorLaneCount> lastCursorPulseTimes{};
+  std::array<std::array<CvTraceSample, CvTraceCapacity>, tfseq::CvLaneCount>
+      cvTraces{};
+  std::array<std::size_t, tfseq::CvLaneCount> cvTraceWrite{};
+  std::array<std::size_t, tfseq::CvLaneCount> cvTraceCount{};
+  std::array<int, tfseq::CvLaneCount> cvTraceLineOrdinals{};
+  double lastCvTraceSampleAt = -INFINITY;
   std::uint64_t observedExecutionPulse = 0;
   double executionPulsedAt = 0.0;
   float executionTailEnergy = 0.f;
   double lastClickTime = -INFINITY;
   Vec lastClickPosition;
   int clickCount = 0;
+  int synchronizedCursor = 0;
+  int synchronizedSelection = 0;
+  int cursorBeforeChange = 0;
+  int selectionBeforeChange = 0;
+  bool changeSnapshotValid = false;
+  bool suppressShortcutSpace = false;
 
   TfSequenceEditor() {
     multiline = true;
-    color = editorColor(EditorIntensity::Text);
-    bgColor = editorColor(EditorIntensity::Background);
+    cvTraceLineOrdinals.fill(-1);
+    color = editorColor(tfui::HeatmapPalette::Magma, EditorIntensity::Text);
+    bgColor =
+        editorColor(tfui::HeatmapPalette::Magma, EditorIntensity::Background);
+  }
+
+  tfui::HeatmapPalette heatmap() const noexcept {
+    return module ? module->editorHeatmap.load(std::memory_order_relaxed)
+                  : tfui::HeatmapPalette::Magma;
+  }
+
+  NVGcolor heatmapColor(float intensity) const noexcept {
+    return editorColor(heatmap(), intensity);
+  }
+
+  bool sourcePositionsMatchActiveProgram() const noexcept {
+    return module &&
+           module->pendingProgram.load(std::memory_order_acquire) == 0 &&
+           module->source == module->evaluatedSource;
   }
 
   void draw(const DrawArgs &args) override {
@@ -928,37 +1077,105 @@ struct TfSequenceEditor : app::LedDisplayTextField {
     app::LedDisplayTextField::step();
     if (!module)
       return;
+    color = heatmapColor(EditorIntensity::Text);
+    bgColor = heatmapColor(EditorIntensity::Background);
     module->collectRetired();
     const auto revision =
         module->sourceRevision.load(std::memory_order_acquire);
     if (revision != loadedRevision) {
       setText(module->source);
+      const int restoredCursor =
+          module->restoredEditorCursor.exchange(-1, std::memory_order_relaxed);
+      const int restoredSelection = module->restoredEditorSelection.exchange(
+          -1, std::memory_order_relaxed);
+      if (restoredCursor >= 0 && restoredSelection >= 0) {
+        cursor = std::clamp(restoredCursor, 0, static_cast<int>(text.size()));
+        selection =
+            std::clamp(restoredSelection, 0, static_cast<int>(text.size()));
+      }
+      synchronizedCursor = cursor;
+      synchronizedSelection = selection;
+      clearSourcePositionVisualization();
       loadedRevision = revision;
     }
+    sampleCvTraces(system::getTime());
   }
 
-  void synchronizeEditedSource() {
-    if (module) {
-      module->source = getText();
-      // Compiled spans refer to the previous source layout. Let the next clock
-      // event establish fresh cursor positions rather than drawing stale ones.
-      cursorTrails = {};
-      cursorMotions = {};
-      cursorBlooms = {};
-      lastCursorPulseTimes = {};
-      observedSpans = {};
+  void clearSourcePositionVisualization() noexcept {
+    cursorTrails = {};
+    cursorMotions = {};
+    cursorBlooms = {};
+    lastCursorPulseTimes = {};
+    observedSpans = {};
+  }
+
+  void sampleCvTraces(double now) noexcept {
+    if (!module || !std::isfinite(now))
+      return;
+    if (lastCvTraceSampleAt > 0.0 &&
+        now - lastCvTraceSampleAt < CvTraceSampleIntervalSeconds)
+      return;
+    if (lastCvTraceSampleAt > 0.0 &&
+        now - lastCvTraceSampleAt > 2.0 * CvTraceWindowSeconds) {
+      cvTraces = {};
+      cvTraceWrite = {};
+      cvTraceCount = {};
+    }
+    lastCvTraceSampleAt = now;
+    for (std::size_t lane = 0; lane < cvTraces.size(); ++lane) {
+      auto &write = cvTraceWrite[lane];
+      cvTraces[lane][write] = {
+          now, module->visibleCvValues[lane].load(std::memory_order_relaxed)};
+      write = (write + 1) % CvTraceCapacity;
+      cvTraceCount[lane] =
+          std::min<std::size_t>(cvTraceCount[lane] + 1, CvTraceCapacity);
     }
   }
 
-  void onChange(const ChangeEvent &) override { synchronizeEditedSource(); }
+  void synchronizeEditedSource(int previousCursor, int previousSelection) {
+    if (module) {
+      const std::string editedSource = getText();
+      if (editedSource != module->source) {
+        auto *change = new TfProgSequencerSourceChange;
+        change->moduleId = module->id;
+        change->oldSource = module->source;
+        change->newSource = editedSource;
+        change->oldCursor = previousCursor;
+        change->oldSelection = previousSelection;
+        change->newCursor = cursor;
+        change->newSelection = selection;
+        module->source = editedSource;
+        if (APP && APP->history && module->id >= 0)
+          APP->history->push(change);
+        else
+          delete change;
+      }
+      // Compiled spans refer to the previous source layout. Let the next clock
+      // event establish fresh cursor positions rather than drawing stale ones.
+      // CV samples are independent of character positions, so editing must not
+      // erase the scrolling trace history.
+      clearSourcePositionVisualization();
+    }
+    synchronizedCursor = cursor;
+    synchronizedSelection = selection;
+  }
+
+  void onChange(const ChangeEvent &) override {
+    synchronizeEditedSource(changeSnapshotValid ? cursorBeforeChange
+                                                : synchronizedCursor,
+                            changeSnapshotValid ? selectionBeforeChange
+                                                : synchronizedSelection);
+  }
 
   void applyEdit(tfseq::editor::EditResult edit) {
     if (!edit.changed)
       return;
+    const int previousCursor = cursor;
+    const int previousSelection = selection;
     text = std::move(edit.text);
     selection = edit.selection;
     cursor = edit.cursor;
-    synchronizeEditedSource();
+    synchronizeEditedSource(previousCursor, previousSelection);
   }
 
   static bool sameSpan(const tfseq::SourceSpan &left,
@@ -1159,6 +1376,223 @@ struct TfSequenceEditor : app::LedDisplayTextField {
     }
   }
 
+  void drawActiveStep(const DrawArgs &args, const tfseq::SourceSpan &span,
+                      float progress) const {
+    if (!span.valid())
+      return;
+    forEachSpanBox(args, span, [&](const GlyphBox &glyph) {
+      nvgSave(args.vg);
+      nvgGlobalCompositeOperation(args.vg, NVG_LIGHTER);
+      NVGcolor activeFill = heatmapColor(0.30f);
+      activeFill.a = 0.13f;
+      nvgBeginPath(args.vg);
+      nvgRoundedRect(args.vg, glyph.x - 1.f, glyph.y - 0.5f, glyph.width + 2.f,
+                     glyph.height + 1.f, 1.5f);
+      nvgFillColor(args.vg, activeFill);
+      nvgFill(args.vg);
+
+      const float underlineY = glyph.y + glyph.height - 0.6f;
+      NVGcolor track = heatmapColor(0.22f);
+      track.a = 0.30f;
+      nvgBeginPath(args.vg);
+      nvgRect(args.vg, glyph.x, underlineY, glyph.width, 0.7f);
+      nvgFillColor(args.vg, track);
+      nvgFill(args.vg);
+
+      const float completed = glyph.width * std::clamp(progress, 0.f, 1.f);
+      NVGcolor beam = heatmapColor(0.88f);
+      beam.a = 0.76f;
+      nvgBeginPath(args.vg);
+      nvgRoundedRect(args.vg, glyph.x, underlineY - 0.3f,
+                     std::max(0.8f, completed), 1.3f, 0.65f);
+      nvgFillColor(args.vg, beam);
+      nvgFill(args.vg);
+
+      const float headX = glyph.x + completed;
+      NVGcolor headCore = heatmapColor(0.96f);
+      NVGcolor headEdge = headCore;
+      headCore.a = 0.72f;
+      headEdge.a = 0.f;
+      const auto headPaint = nvgRadialGradient(args.vg, headX, underlineY, 0.4f,
+                                               4.f, headCore, headEdge);
+      nvgBeginPath(args.vg);
+      nvgCircle(args.vg, headX, underlineY, 4.f);
+      nvgFillPaint(args.vg, headPaint);
+      nvgFill(args.vg);
+      nvgRestore(args.vg);
+    });
+  }
+
+  std::vector<tfseq::SourceSpan> cvLineSpans(std::size_t lane) const {
+    std::vector<tfseq::SourceSpan> spans;
+    if (lane >= tfseq::CvLaneCount)
+      return spans;
+    const std::string label = "cv" + std::to_string(lane + 1);
+    std::size_t lineBegin = 0;
+    while (lineBegin <= text.size()) {
+      const auto newline = text.find('\n', lineBegin);
+      const auto lineEnd = newline == std::string::npos ? text.size() : newline;
+      auto tokenBegin = lineBegin;
+      while (tokenBegin < lineEnd &&
+             (text[tokenBegin] == ' ' || text[tokenBegin] == '\t'))
+        ++tokenBegin;
+      const auto afterLabel = tokenBegin + label.size();
+      if (afterLabel <= lineEnd &&
+          text.compare(tokenBegin, label.size(), label) == 0 &&
+          (afterLabel == lineEnd || text[afterLabel] == ' ' ||
+           text[afterLabel] == '\t')) {
+        spans.push_back(
+            {static_cast<int>(lineBegin), static_cast<int>(lineEnd), 1, 1});
+      }
+      if (newline == std::string::npos)
+        break;
+      lineBegin = newline + 1;
+    }
+    return spans;
+  }
+
+  tfseq::SourceSpan cvTraceLineSpan(std::size_t lane,
+                                    const tfseq::SourceSpan &activeSpan,
+                                    bool sourcePositionsCurrent) {
+    const auto spans = cvLineSpans(lane);
+    if (spans.empty())
+      return {};
+
+    if (sourcePositionsCurrent && activeSpan.valid()) {
+      for (std::size_t index = 0; index < spans.size(); ++index) {
+        if (activeSpan.begin < spans[index].begin ||
+            activeSpan.begin > spans[index].end)
+          continue;
+        cvTraceLineOrdinals[lane] = static_cast<int>(index);
+        return spans[index];
+      }
+    }
+
+    const int ordinal = cvTraceLineOrdinals[lane];
+    if (ordinal >= 0 && ordinal < static_cast<int>(spans.size()))
+      return spans[static_cast<std::size_t>(ordinal)];
+
+    if (!activeSpan.valid())
+      return {};
+    const auto nearest = std::min_element(
+        spans.begin(), spans.end(),
+        [&](const tfseq::SourceSpan &left, const tfseq::SourceSpan &right) {
+          return std::abs(left.begin - activeSpan.begin) <
+                 std::abs(right.begin - activeSpan.begin);
+        });
+    cvTraceLineOrdinals[lane] =
+        static_cast<int>(std::distance(spans.begin(), nearest));
+    return *nearest;
+  }
+
+  GlyphBox inlineTraceBox(const DrawArgs &args,
+                          const tfseq::SourceSpan &lineSpan) const {
+    if (!lineSpan.valid())
+      return {};
+    GlyphBox finalRow;
+    forEachSpanBox(args, lineSpan,
+                   [&](const GlyphBox &row) { finalRow = row; });
+    if (!finalRow.valid)
+      return {};
+    const float right = box.size.x - textOffset.x - BND_TEXT_RADIUS;
+    const float left = finalRow.x + finalRow.width + 7.f;
+    const float availableWidth = right - left;
+    if (availableWidth < MinimumCvTraceWidth)
+      return {};
+    static constexpr char WidthReference[] = "000000000000";
+    static_assert(sizeof(WidthReference) - 1 == MaximumCvTraceCharacters,
+                  "CV trace width reference must match its character cap");
+    const float maximumWidth =
+        nvgTextBounds(args.vg, 0.f, 0.f, WidthReference, nullptr, nullptr);
+    return {left, finalRow.y + 0.5f, std::min(availableWidth, maximumWidth),
+            std::max(6.f, finalRow.height - 1.f), true};
+  }
+
+  void drawCvTrace(const DrawArgs &args, std::size_t lane, double now,
+                   const tfseq::SourceSpan &activeSpan,
+                   bool sourcePositionsCurrent) {
+    if (lane >= cvTraces.size() || cvTraceCount[lane] < 2)
+      return;
+    const auto lineSpan =
+        cvTraceLineSpan(lane, activeSpan, sourcePositionsCurrent);
+    const auto plot = inlineTraceBox(args, lineSpan);
+    if (!plot.valid)
+      return;
+
+    auto coordinates = [&](const CvTraceSample &sample) {
+      const double age = std::max(0.0, now - sample.sampledAt);
+      const float x =
+          plot.x +
+          plot.width * static_cast<float>(1.0 - age / CvTraceWindowSeconds);
+      const float normalized =
+          std::clamp(sample.value / CvTraceVoltageRange, -1.f, 1.f);
+      const float y = plot.y + 0.5f * plot.height * (1.f - normalized);
+      return Vec(x, y);
+    };
+
+    nvgSave(args.vg);
+    nvgIntersectScissor(args.vg, plot.x - 4.f, plot.y - 4.f, plot.width + 8.f,
+                        plot.height + 8.f);
+    NVGcolor zero = heatmapColor(0.22f);
+    zero.a = 0.20f;
+    nvgBeginPath(args.vg);
+    nvgMoveTo(args.vg, plot.x, plot.y + 0.5f * plot.height);
+    nvgLineTo(args.vg, plot.x + plot.width, plot.y + 0.5f * plot.height);
+    nvgStrokeWidth(args.vg, 0.6f);
+    nvgStrokeColor(args.vg, zero);
+    nvgStroke(args.vg);
+
+    const auto count = cvTraceCount[lane];
+    const auto first =
+        (cvTraceWrite[lane] + CvTraceCapacity - count) % CvTraceCapacity;
+    auto strokeTrace = [&](float width, float intensity, float alpha) {
+      bool started = false;
+      nvgBeginPath(args.vg);
+      for (std::size_t offset = 0; offset < count; ++offset) {
+        const auto &sample = cvTraces[lane][(first + offset) % CvTraceCapacity];
+        const double age = now - sample.sampledAt;
+        if (age < 0.0 || age > CvTraceWindowSeconds)
+          continue;
+        const auto point = coordinates(sample);
+        if (!started) {
+          nvgMoveTo(args.vg, point.x, point.y);
+          started = true;
+        } else {
+          nvgLineTo(args.vg, point.x, point.y);
+        }
+      }
+      if (!started)
+        return;
+      NVGcolor color = heatmapColor(intensity);
+      color.a = alpha;
+      nvgStrokeWidth(args.vg, width);
+      nvgLineCap(args.vg, NVG_ROUND);
+      nvgLineJoin(args.vg, NVG_ROUND);
+      nvgStrokeColor(args.vg, color);
+      nvgStroke(args.vg);
+    };
+
+    nvgGlobalCompositeOperation(args.vg, NVG_LIGHTER);
+    strokeTrace(5.0f, 0.58f, 0.055f);
+    strokeTrace(2.4f, 0.76f, 0.16f);
+    strokeTrace(0.9f, 0.96f, 0.78f);
+
+    const auto newestIndex =
+        (cvTraceWrite[lane] + CvTraceCapacity - 1) % CvTraceCapacity;
+    const auto head = coordinates(cvTraces[lane][newestIndex]);
+    NVGcolor headCore = heatmapColor(1.f);
+    NVGcolor headEdge = headCore;
+    headCore.a = 0.62f;
+    headEdge.a = 0.f;
+    const auto headPaint = nvgRadialGradient(args.vg, head.x, head.y, 0.5f,
+                                             4.5f, headCore, headEdge);
+    nvgBeginPath(args.vg);
+    nvgCircle(args.vg, head.x, head.y, 4.5f);
+    nvgFillPaint(args.vg, headPaint);
+    nvgFill(args.vg);
+    nvgRestore(args.vg);
+  }
+
   bool drawCursorMotion(const DrawArgs &args, CursorMotion &motion, double now,
                         tfui::CursorTravelCurve curve) const {
     if (!motion.valid())
@@ -1228,8 +1662,8 @@ struct TfSequenceEditor : app::LedDisplayTextField {
           depositedIntensity *
               tfui::exponentialDecay(now - depositedAt, motion.tailDuration),
           0.f, 1.f);
-      NVGcolor sampleCore = editorColor(sampleIntensity);
-      NVGcolor sampleEdge = editorColor(0.12f * sampleIntensity);
+      NVGcolor sampleCore = heatmapColor(sampleIntensity);
+      NVGcolor sampleEdge = heatmapColor(0.12f * sampleIntensity);
       sampleCore.a = 0.16f;
       sampleEdge.a = 0.f;
       const float sampleLeft = sampleCenter - 0.5f * sampleWidth;
@@ -1246,8 +1680,8 @@ struct TfSequenceEditor : app::LedDisplayTextField {
     // The beam head, rather than an already-bright destination caret, is the
     // dominant cursor. It therefore moves visibly at fractional glyph offsets.
     const float headLeft = headCenter - 0.5f * headWidth;
-    NVGcolor headCore = editorColor(intensity);
-    NVGcolor headEdge = editorColor(0.14f * intensity);
+    NVGcolor headCore = heatmapColor(intensity);
+    NVGcolor headEdge = heatmapColor(0.14f * intensity);
     headCore.a = 0.68f;
     headEdge.a = 0.f;
     const auto headPaint =
@@ -1258,7 +1692,7 @@ struct TfSequenceEditor : app::LedDisplayTextField {
             height + 14.f);
     nvgFillPaint(args.vg, headPaint);
     nvgFill(args.vg);
-    NVGcolor headFill = editorColor(std::min(1.f, intensity + 0.08f));
+    NVGcolor headFill = heatmapColor(std::min(1.f, intensity + 0.08f));
     headFill.a = 0.34f;
     nvgBeginPath(args.vg);
     nvgRoundedRect(args.vg, headLeft, top, headWidth, height, 1.5f);
@@ -1289,7 +1723,7 @@ struct TfSequenceEditor : app::LedDisplayTextField {
       const float spread = maximumSpread * distance;
       const float falloff = std::exp(-1.65f * distance * distance);
       const float level = (0.52f + 0.40f * falloff) * intensity;
-      NVGcolor layerColor = editorColor(level);
+      NVGcolor layerColor = heatmapColor(level);
       layerColor.a = opacityScale * (0.0155f + 0.0085f * (1.f - distance));
       const float cornerRadius = 1.2f + spread * (0.42f + 0.38f * distance);
       nvgBeginPath(args.vg);
@@ -1347,7 +1781,7 @@ struct TfSequenceEditor : app::LedDisplayTextField {
     nvgTextAlign(args.vg, NVG_ALIGN_LEFT | NVG_ALIGN_BASELINE);
     float lineHeight = 0.f;
     nvgTextMetrics(args.vg, nullptr, nullptr, &lineHeight);
-    const NVGcolor commentColor = editorColor(EditorIntensity::Comment);
+    const NVGcolor commentColor = heatmapColor(EditorIntensity::Comment);
 
     while (remaining < textEnd) {
       NVGtextRow rows[BND_MAX_ROWS];
@@ -1427,8 +1861,53 @@ struct TfSequenceEditor : app::LedDisplayTextField {
                                      : static_cast<int>(end)};
   }
 
+  void onSelectText(const SelectTextEvent &event) override {
+    if (suppressShortcutSpace) {
+      suppressShortcutSpace = false;
+      if (event.codepoint == static_cast<std::uint32_t>(' ')) {
+        event.consume(this);
+        return;
+      }
+    }
+    cursorBeforeChange = cursor;
+    selectionBeforeChange = selection;
+    changeSnapshotValid = true;
+    app::LedDisplayTextField::onSelectText(event);
+    changeSnapshotValid = false;
+    synchronizedCursor = cursor;
+    synchronizedSelection = selection;
+  }
+
+  bool requestConnectedTransport(tftransport::Command command,
+                                 const char *action) {
+    if (!module || !APP || !APP->scene || !APP->scene->rack)
+      return false;
+    auto *moduleWidget = APP->scene->rack->getModule(module->id);
+    auto *runPort = moduleWidget
+                        ? moduleWidget->getInput(TfProgSequencer::RUN_INPUT)
+                        : nullptr;
+    if (runPort) {
+      for (auto *cableWidget :
+           APP->scene->rack->getCompleteCablesOnPort(runPort)) {
+        auto *cable = cableWidget ? cableWidget->getCable() : nullptr;
+        if (cable && cable->inputModule == module &&
+            cable->inputId == TfProgSequencer::RUN_INPUT &&
+            tftransport::RequestModuleCommand(cable->outputModule,
+                                              cable->outputId, command)) {
+          module->compileMessage = std::string("TRANSPORT - ") + action;
+          return true;
+        }
+      }
+    }
+    module->compileMessage =
+        "TRANSPORT - connect RUN directly to TriggerFish Transport";
+    return false;
+  }
+
   void onButton(const ButtonEvent &event) override {
     app::LedDisplayTextField::onButton(event);
+    synchronizedCursor = cursor;
+    synchronizedSelection = selection;
     if (event.action != GLFW_PRESS || event.button != GLFW_MOUSE_BUTTON_LEFT)
       return;
     const double now = system::getTime();
@@ -1446,12 +1925,34 @@ struct TfSequenceEditor : app::LedDisplayTextField {
       selectLineAt(position);
       clickCount = 0;
     }
+    synchronizedCursor = cursor;
+    synchronizedSelection = selection;
+  }
+
+  void onDragHover(const DragHoverEvent &event) override {
+    app::LedDisplayTextField::onDragHover(event);
+    synchronizedCursor = cursor;
+    synchronizedSelection = selection;
   }
 
   void onSelectKey(const SelectKeyEvent &event) override {
+    if (event.key == GLFW_KEY_SPACE && event.action == GLFW_RELEASE)
+      suppressShortcutSpace = false;
+    if (event.action == GLFW_PRESS && APP && APP->history &&
+        (event.isKeyCommand(GLFW_KEY_Z, RACK_MOD_CTRL | RACK_MOD_SHIFT) ||
+         event.isKeyCommand(GLFW_KEY_Y, RACK_MOD_CTRL))) {
+      APP->history->redo();
+      event.consume(this);
+      return;
+    }
+    if (event.action == GLFW_PRESS && APP && APP->history &&
+        event.isKeyCommand(GLFW_KEY_Z, RACK_MOD_CTRL)) {
+      APP->history->undo();
+      event.consume(this);
+      return;
+    }
     if (module && event.action == GLFW_PRESS &&
-        event.isKeyCommand(GLFW_KEY_PERIOD,
-                           RACK_MOD_CTRL | RACK_MOD_SHIFT)) {
+        event.isKeyCommand(GLFW_KEY_PERIOD, RACK_MOD_CTRL | RACK_MOD_SHIFT)) {
       module->source = getText();
       if (module->publishSource(module->source, true))
         module->flashExecution(0, static_cast<int>(module->source.size()));
@@ -1489,11 +1990,40 @@ struct TfSequenceEditor : app::LedDisplayTextField {
       event.consume(this);
       return;
     }
+    if (module &&
+        (event.action == GLFW_PRESS || event.action == GLFW_REPEAT) &&
+        event.isKeyCommand(GLFW_KEY_SPACE,
+                           RACK_MOD_CTRL | RACK_MOD_SHIFT)) {
+      suppressShortcutSpace = true;
+      if (event.action == GLFW_PRESS)
+        requestConnectedTransport(tftransport::Command::TogglePlayPause,
+                                  "PLAY/PAUSE");
+      event.consume(this);
+      return;
+    }
     if (module && event.action == GLFW_PRESS &&
+        event.isKeyCommand(GLFW_KEY_R, RACK_MOD_CTRL | RACK_MOD_SHIFT)) {
+      requestConnectedTransport(tftransport::Command::PlayFromBeginning,
+                                "RESTART");
+      event.consume(this);
+      return;
+    }
+    if (module && event.action == GLFW_PRESS &&
+        event.isKeyCommand(GLFW_KEY_BACKSPACE,
+                           RACK_MOD_CTRL | RACK_MOD_SHIFT)) {
+      requestConnectedTransport(tftransport::Command::Stop, "STOP");
+      event.consume(this);
+      return;
+    }
+    if (module &&
+        (event.action == GLFW_PRESS || event.action == GLFW_REPEAT) &&
         event.isKeyCommand(GLFW_KEY_SPACE, RACK_MOD_CTRL)) {
-      const bool enabled =
-          module->editorRunEnabled.load(std::memory_order_relaxed);
-      module->editorRunEnabled.store(!enabled, std::memory_order_relaxed);
+      suppressShortcutSpace = true;
+      if (event.action == GLFW_PRESS) {
+        const bool enabled =
+            module->editorRunEnabled.load(std::memory_order_relaxed);
+        module->editorRunEnabled.store(!enabled, std::memory_order_relaxed);
+      }
       event.consume(this);
       return;
     }
@@ -1503,7 +2033,13 @@ struct TfSequenceEditor : app::LedDisplayTextField {
       event.consume(this);
       return;
     }
+    cursorBeforeChange = cursor;
+    selectionBeforeChange = selection;
+    changeSnapshotValid = true;
     app::LedDisplayTextField::onSelectKey(event);
+    changeSnapshotValid = false;
+    synchronizedCursor = cursor;
+    synchronizedSelection = selection;
   }
 
   void drawLayer(const DrawArgs &args, int layer) override {
@@ -1512,6 +2048,17 @@ struct TfSequenceEditor : app::LedDisplayTextField {
       NVGcolor invisibleText = color;
       invisibleText.a = 0.f;
       const double now = system::getTime();
+      const bool sourcePositionsCurrent = sourcePositionsMatchActiveProgram();
+      if (!sourcePositionsCurrent) {
+        clearSourcePositionVisualization();
+        // Ignore cursor pulses produced by the still-playing evaluated source
+        // while the editor displays a different draft. The first event from a
+        // newly activated program will publish a later pulse and fresh spans.
+        for (std::size_t lane = 0; lane < observedPulses.size(); ++lane) {
+          observedPulses[lane] =
+              module->cursorPulses[lane].load(std::memory_order_acquire);
+        }
+      }
       // Each event gets an immediate bright head and a longer phosphor-like
       // tail. Intensities are derived from event timestamps, so a late or
       // skipped UI frame cannot alter the envelope or introduce brightness
@@ -1529,6 +2076,19 @@ struct TfSequenceEditor : app::LedDisplayTextField {
       auto font = APP->window->loadFont(fontPath);
       if (font && font->handle >= 0) {
         bndSetFont(font->handle);
+        nvgFontFaceId(args.vg, font->handle);
+        nvgFontSize(args.vg, 12.f);
+        nvgTextAlign(args.vg, NVG_ALIGN_LEFT | NVG_ALIGN_BASELINE);
+
+        // CV history uses only the otherwise empty space to the right of the
+        // active lane. Draw it first so the source text and cursor effects
+        // remain crisp above the scope-like beam.
+        for (std::size_t lane = 0; lane < tfseq::CvLaneCount; ++lane) {
+          const auto span = unpackSpan(
+              module->activeCvLineSpans[lane].load(std::memory_order_acquire));
+          drawCvTrace(args, lane, now, span, sourcePositionsCurrent);
+        }
+
         const auto executed =
             unpackSpan(module->executionSpan.load(std::memory_order_relaxed));
         if (executed.valid() &&
@@ -1542,7 +2102,7 @@ struct TfSequenceEditor : app::LedDisplayTextField {
                                  tfui::exponentialDecay(
                                      executionAge, tfui::CursorTailSeconds),
                          0.f, 1.f);
-          const NVGcolor executionFill = editorColor(executionIntensity);
+          const NVGcolor executionFill = heatmapColor(executionIntensity);
           bndIconLabelCaret(
               args.vg, textOffset.x, textOffset.y,
               box.size.x - 2 * textOffset.x, box.size.y - 2 * textOffset.y, -1,
@@ -1562,6 +2122,8 @@ struct TfSequenceEditor : app::LedDisplayTextField {
           });
         }
         for (std::size_t lane = 0; lane < module->cursorSpans.size(); ++lane) {
+          if (!sourcePositionsCurrent)
+            continue;
           const auto pulse =
               module->cursorPulses[lane].load(std::memory_order_acquire);
           const auto span = unpackSpan(
@@ -1628,7 +2190,7 @@ struct TfSequenceEditor : app::LedDisplayTextField {
               continue;
             const float cursorIntensity =
                 std::clamp((current ? 0.025f : 0.f) + persistence, 0.f, 1.f);
-            const NVGcolor cursorFill = editorColor(cursorIntensity);
+            const NVGcolor cursorFill = heatmapColor(cursorIntensity);
             // This is trail persistence plus a deliberately faint resting
             // marker. Local movement is drawn by the fractional beam above.
             const int begin = point.drawBegin;
@@ -1639,6 +2201,20 @@ struct TfSequenceEditor : app::LedDisplayTextField {
                               box.size.y - 2 * textOffset.y, -1, invisibleText,
                               12.f, text.c_str(), cursorFill, begin, end);
           }
+        }
+        // The onset cursor deliberately decays quickly. This quieter layer
+        // remains for the complete note/rest/tie span, and its beam makes a
+        // slow step's continuing progress explicit between attacks.
+        if (sourcePositionsCurrent &&
+            module->transportStatus.load(std::memory_order_relaxed) ==
+                TfProgSequencer::TransportStatus::Playing) {
+          const auto span = unpackSpan(
+              module->activeStepSpan.load(std::memory_order_acquire));
+          const float progress = tfui::activeStepProgress(
+              module->visibleBeat.load(std::memory_order_relaxed),
+              module->activeStepBeginBeat.load(std::memory_order_relaxed),
+              module->activeStepEndBeat.load(std::memory_order_relaxed));
+          drawActiveStep(args, span, progress);
         }
         // Add stationary blooms and moving beams after every resting/history
         // marker. This prevents one lane's marker from masking another lane's
@@ -1664,7 +2240,8 @@ struct TfSequenceEditor : app::LedDisplayTextField {
         bndSetFont(font->handle);
         NVGcolor invisibleText = color;
         invisibleText.a = 0.f;
-        const NVGcolor highlightColor = editorColor(EditorIntensity::Selection);
+        const NVGcolor highlightColor =
+            heatmapColor(EditorIntensity::Selection);
         const int begin = std::min(cursor, selection);
         const int end = this == APP->event->selectedWidget
                             ? std::max(cursor, selection)
@@ -1692,6 +2269,13 @@ struct TfSequenceStatus : Widget {
   TfProgSequencer *module = nullptr;
   float requiredHeight = MinimumHeight;
 
+  NVGcolor heatmapColor(float intensity) const noexcept {
+    const auto palette =
+        module ? module->editorHeatmap.load(std::memory_order_relaxed)
+               : tfui::HeatmapPalette::Magma;
+    return editorColor(palette, intensity);
+  }
+
   std::string statusText() const {
     std::string status = module ? module->compileMessage : "PROG SEQUENCER";
     if (!module)
@@ -1700,6 +2284,7 @@ struct TfSequenceStatus : Widget {
         module->transportStatus.load(std::memory_order_relaxed);
     const char *name =
         transport == TfProgSequencer::TransportStatus::Playing   ? "PLAY"
+        : transport == TfProgSequencer::TransportStatus::Paused  ? "PAUSE"
         : transport == TfProgSequencer::TransportStatus::Stopped ? "STOP"
                                                                  : "WAIT";
     if (status.rfind("READY", 0) == 0)
@@ -1716,12 +2301,39 @@ struct TfSequenceStatus : Widget {
            "  " + status;
   }
 
+  static float wrappedTextHeight(NVGcontext *vg, const std::string &text,
+                                 float width) {
+    float ascender = 0.f;
+    float descender = 0.f;
+    float lineHeight = 0.f;
+    nvgTextMetrics(vg, &ascender, &descender, &lineHeight);
+    if (!(lineHeight > 0.f))
+      lineHeight = 10.f;
+
+    const char *remaining = text.c_str();
+    const char *end = remaining + text.size();
+    std::size_t lineCount = 0;
+    do {
+      NVGtextRow rows[BND_MAX_ROWS];
+      const int rowCount =
+          nvgTextBreakLines(vg, remaining, end, width, rows, BND_MAX_ROWS);
+      if (rowCount <= 0)
+        break;
+      lineCount += static_cast<std::size_t>(rowCount);
+      const char *next = rows[rowCount - 1].next;
+      if (next <= remaining)
+        break;
+      remaining = next;
+    } while (remaining < end);
+    return std::max(lineHeight, lineHeight * static_cast<float>(lineCount));
+  }
+
   void drawLayer(const DrawArgs &args, int layer) override {
     if (layer == 1) {
       nvgScissor(args.vg, RECT_ARGS(args.clipBox));
       nvgBeginPath(args.vg);
       nvgRect(args.vg, 0.f, 0.f, box.size.x, box.size.y);
-      nvgFillColor(args.vg, editorColor(EditorIntensity::Background));
+      nvgFillColor(args.vg, heatmapColor(EditorIntensity::Background));
       nvgFill(args.vg);
       auto font = APP->window->loadFont(
           asset::system("res/fonts/ShareTechMono-Regular.ttf"));
@@ -1730,16 +2342,13 @@ struct TfSequenceStatus : Widget {
         nvgFontSize(args.vg, 10.f);
         nvgTextAlign(args.vg, NVG_ALIGN_LEFT | NVG_ALIGN_TOP);
         nvgTextLineHeight(args.vg, 1.05f);
-        nvgFillColor(args.vg, editorColor(EditorIntensity::Status));
+        nvgFillColor(args.vg, heatmapColor(EditorIntensity::Status));
         const std::string status = statusText();
-        float bounds[4]{};
-        nvgTextBoxBounds(args.vg, 4.f, 3.f, box.size.x - 8.f, status.c_str(),
-                         nullptr, bounds);
+        const float textWidth = std::max(1.f, box.size.x - 8.f);
         requiredHeight = std::clamp(
-            std::ceil(std::max(10.f, bounds[3] - bounds[1])) + 6.f,
+            std::ceil(wrappedTextHeight(args.vg, status, textWidth)) + 6.f,
             MinimumHeight, MaximumHeight);
-        nvgTextBox(args.vg, 4.f, 3.f, box.size.x - 8.f, status.c_str(),
-                   nullptr);
+        nvgTextBox(args.vg, 4.f, 3.f, textWidth, status.c_str(), nullptr);
       }
       nvgResetScissor(args.vg);
     }
@@ -1764,9 +2373,8 @@ struct TfProgSequencerWidget : ModuleWidget {
         asset::plugin(pluginInstance, "res/TfProgSequencer.svg")));
 
     editor = createWidget<TfSequenceEditor>(Vec(5, EditorTop));
-    editor->box.size =
-        Vec(242, StatusBottom - TfSequenceStatus::MinimumHeight - DisplayGap -
-                     EditorTop);
+    editor->box.size = Vec(242, StatusBottom - TfSequenceStatus::MinimumHeight -
+                                    DisplayGap - EditorTop);
     editor->module = module;
     addChild(editor);
 
@@ -1794,12 +2402,12 @@ struct TfProgSequencerWidget : ModuleWidget {
         Vec(317, 244), module, TfProgSequencer::VELOCITY_OUTPUT);
     outputs[4] = createOutputCentered<PJ301MPort>(
         Vec(289, 300), module, TfProgSequencer::ACCENT_OUTPUT);
-    outputs[5] = createOutputCentered<PJ301MPort>(
-        Vec(317, 300), module, TfProgSequencer::CV1_OUTPUT);
-    outputs[6] = createOutputCentered<PJ301MPort>(
-        Vec(289, 356), module, TfProgSequencer::CV2_OUTPUT);
-    outputs[7] = createOutputCentered<PJ301MPort>(
-        Vec(317, 356), module, TfProgSequencer::CV3_OUTPUT);
+    outputs[5] = createOutputCentered<PJ301MPort>(Vec(317, 300), module,
+                                                  TfProgSequencer::CV1_OUTPUT);
+    outputs[6] = createOutputCentered<PJ301MPort>(Vec(289, 356), module,
+                                                  TfProgSequencer::CV2_OUTPUT);
+    outputs[7] = createOutputCentered<PJ301MPort>(Vec(317, 356), module,
+                                                  TfProgSequencer::CV3_OUTPUT);
     for (auto *output : outputs)
       addOutput(output);
     runLight = createLightCentered<SmallLight<GreenLight>>(
@@ -1826,16 +2434,16 @@ struct TfProgSequencerWidget : ModuleWidget {
     const float rightColumn = right + 14.f;
     editor->box.size.x = box.size.x - 65.f;
     status->box.size.x = box.size.x - 65.f;
-    const Vec inputPositions[] = {Vec(leftColumn, 65.f),
-                                  Vec(rightColumn, 65.f), Vec(right, 121.f)};
+    const Vec inputPositions[] = {Vec(leftColumn, 65.f), Vec(rightColumn, 65.f),
+                                  Vec(right, 121.f)};
     for (std::size_t index = 0; index < inputs.size(); ++index)
       inputs[index]->box.pos =
           inputPositions[index].minus(inputs[index]->box.size.div(2));
     const Vec outputPositions[] = {
-        Vec(leftColumn, 188.f),  Vec(rightColumn, 188.f),
-        Vec(leftColumn, 244.f),  Vec(rightColumn, 244.f),
-        Vec(leftColumn, 300.f),  Vec(rightColumn, 300.f),
-        Vec(leftColumn, 356.f),  Vec(rightColumn, 356.f)};
+        Vec(leftColumn, 188.f), Vec(rightColumn, 188.f),
+        Vec(leftColumn, 244.f), Vec(rightColumn, 244.f),
+        Vec(leftColumn, 300.f), Vec(rightColumn, 300.f),
+        Vec(leftColumn, 356.f), Vec(rightColumn, 356.f)};
     for (std::size_t index = 0; index < outputs.size(); ++index)
       outputs[index]->box.pos =
           outputPositions[index].minus(outputs[index]->box.size.div(2));
@@ -1847,15 +2455,14 @@ struct TfProgSequencerWidget : ModuleWidget {
 
   void step() override {
     ModuleWidget::step();
-    const float statusHeight = status ? status->requiredHeight
-                                      : TfSequenceStatus::MinimumHeight;
+    const float statusHeight =
+        status ? status->requiredHeight : TfSequenceStatus::MinimumHeight;
     if (status) {
       status->box.pos.y = StatusBottom - statusHeight;
       status->box.size.y = statusHeight;
     }
     if (editor)
-      editor->box.size.y =
-          StatusBottom - statusHeight - DisplayGap - EditorTop;
+      editor->box.size.y = StatusBottom - statusHeight - DisplayGap - EditorTop;
     auto *prog = getModule<TfProgSequencer>();
     if (prog)
       applyPanelWidth(prog->panelWidthHp.load(std::memory_order_relaxed));
@@ -1875,6 +2482,24 @@ struct TfProgSequencerWidget : ModuleWidget {
           },
           [=]() {
             prog->panelWidthHp.store(width, std::memory_order_relaxed);
+          }));
+    }
+    menu->addChild(new MenuSeparator);
+    menu->addChild(createMenuLabel("Editor heatmap"));
+    for (const auto palette :
+         {tfui::HeatmapPalette::Magma, tfui::HeatmapPalette::Inferno,
+          tfui::HeatmapPalette::Plasma, tfui::HeatmapPalette::Viridis,
+          tfui::HeatmapPalette::Cividis, tfui::HeatmapPalette::CrtGreen,
+          tfui::HeatmapPalette::CrtBlue, tfui::HeatmapPalette::CrtYellow,
+          tfui::HeatmapPalette::CrtRed}) {
+      menu->addChild(createCheckMenuItem(
+          tfui::heatmapPaletteName(palette), "",
+          [=]() {
+            return prog->editorHeatmap.load(std::memory_order_relaxed) ==
+                   palette;
+          },
+          [=]() {
+            prog->editorHeatmap.store(palette, std::memory_order_relaxed);
           }));
     }
     menu->addChild(new MenuSeparator);

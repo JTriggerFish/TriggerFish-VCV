@@ -1,9 +1,9 @@
 {
   "version": "2.6.6",
   "path": "",
-  "zoom": 0.78,
+  "zoom": 0.66,
   "gridOffset": [
-    -1.0,
+    -7.0,
     -0.1
   ],
   "modules": [
@@ -14,30 +14,30 @@
       "version": "2.6.6",
       "params": [],
       "data": {
-        "text": "TriggerFish two-source Room Reverb test\n\nA low sine and a higher saw pass through separate source-level mixers, then Scene Pack 4 combines them into one two-channel polyphonic cable. Room Reverb shows exactly two numbered amber markers, initially placed symmetrically left and right.\n\nDrag source 1 and source 2 independently around the room plan and compare the direct position, early-reflection direction, and handoff into the fixed late field. Use the two VCMixers to solo or balance the sources. Disconnect either Scene Pack input to confirm that its marker disappears. The scope shows packed source audio plus the stereo reverb output. Start with monitor volume low."
+        "text": "TriggerFish musical two-source Room Reverb test\n\nAt 96 BPM, two independent Prog Sequencers play an interlocking D-Dorian texture. Source 1 is a slow two-saw Unison Oscillator bass with a centred sub oscillator, analogue drift, and long 4072 filter and amplifier envelopes. Source 2 is a louder, driven descending folded arpeggio with a shorter, brighter 4072 voice whose cutoff follows a slow 18-beat bipolar CV triangle across the four-beat note phrase.\n\nThe shared Transport drives Clock, Run, and Reset into both sequencers. RESTART plays from beat zero, PAUSE preserves the current position, PLAY continues it, and STOP returns to zero. Both voices therefore remain synchronized through every action.\n\nScene Pack 4 keeps the voices as two independent room sources. Room Reverb uses the Superlush scene with its wet high cut lowered to 3 kHz. Drag their numbered amber markers to audition position, early reflections, and the late-field handoff; disconnect either Scene Pack input to confirm that only its marker disappears. The scope shows the packed sources and stereo result. Select an output device in Audio-8, then start with monitor volume low."
       },
       "pos": [
-        0,
+        -11,
         0
       ]
     },
     {
       "id": 2,
-      "plugin": "Fundamental",
-      "model": "VCO",
-      "version": "2.6.4",
+      "plugin": "TriggerFish-Elements",
+      "model": "TfTransport",
+      "version": "2.4.0",
       "params": [
         {
           "id": 0,
-          "value": 1.0
+          "value": 96.0
         },
         {
           "id": 1,
-          "value": 1.0
+          "value": 0.0
         },
         {
           "id": 2,
-          "value": -2.0
+          "value": 0.0
         },
         {
           "id": 3,
@@ -46,122 +46,64 @@
         {
           "id": 4,
           "value": 0.0
-        },
-        {
-          "id": 5,
-          "value": 0.5
-        },
-        {
-          "id": 6,
-          "value": 0.0
-        },
-        {
-          "id": 7,
-          "value": 0.0
         }
       ],
+      "data": {
+        "state": 2
+      },
       "pos": [
-        16,
+        5,
         0
       ]
     },
     {
       "id": 3,
-      "plugin": "Fundamental",
-      "model": "VCO",
-      "version": "2.6.4",
-      "params": [
-        {
-          "id": 0,
-          "value": 1.0
-        },
-        {
-          "id": 1,
-          "value": 1.0
-        },
-        {
-          "id": 2,
-          "value": -1.4166666667
-        },
-        {
-          "id": 3,
-          "value": 0.0
-        },
-        {
-          "id": 4,
-          "value": 0.0
-        },
-        {
-          "id": 5,
-          "value": 0.5
-        },
-        {
-          "id": 6,
-          "value": 0.0
-        },
-        {
-          "id": 7,
-          "value": 0.0
-        }
-      ],
+      "plugin": "TriggerFish-Elements",
+      "model": "TfProgSequencer",
+      "version": "2.4.0",
+      "params": [],
+      "data": {
+        "source": "bass = sequence {\n  subdiv 2\n  tonic D@1\n  scale dorian\n  notes 1_2 7_2 4_2 5 7\n  gate .96\n}\n\nplay bass\n",
+        "languageVersion": 1
+      },
       "pos": [
-        27,
+        25,
         0
       ]
     },
     {
       "id": 4,
-      "plugin": "Fundamental",
-      "model": "VCMixer",
-      "version": "2.6.4",
-      "params": [
-        {
-          "id": 0,
-          "value": 0.2511886432
-        },
-        {
-          "id": 1,
-          "value": 0.7
-        },
-        {
-          "id": 2,
-          "value": 0.0
-        },
-        {
-          "id": 3,
-          "value": 0.0
-        },
-        {
-          "id": 4,
-          "value": 0.0
-        }
-      ],
+      "plugin": "TriggerFish-Elements",
+      "model": "TfProgSequencer",
+      "version": "2.4.0",
+      "params": [],
       "data": {
-        "chExp": false,
-        "mixExp": false
+        "source": "arpeggio = sequence {\n  subdiv 16\n  tonic D@4\n  scale dorian\n  notes 3' 1' 5 3 ; 1' 5 3 1 ; 2' 7 5 2 ; 7 5 2 1\n  gate .52\n  cv1 4 -4 |> interp linear |> rate 1/9\n}\n\nplay arpeggio\n",
+        "languageVersion": 1,
+        "editorHeatmap": 5
       },
       "pos": [
-        38,
+        55,
         0
       ]
     },
     {
       "id": 5,
-      "plugin": "Fundamental",
-      "model": "VCMixer",
-      "version": "2.6.4",
+      "plugin": "TriggerFish-Elements",
+      "model": "TfUnisonOscillator",
+      "version": "2.4.0",
       "params": [
         {
           "id": 0,
-          "value": 0.2511886432
+          "value": 0.0
         },
         {
           "id": 1,
-          "value": 0.7
+          "value": 0.0
         },
         {
           "id": 2,
-          "value": 0.0
+          "value": 2.0
         },
         {
           "id": 3,
@@ -169,102 +111,55 @@
         },
         {
           "id": 4,
-          "value": 0.0
-        }
-      ],
-      "data": {
-        "chExp": false,
-        "mixExp": false
-      },
-      "pos": [
-        47,
-        0
-      ]
-    },
-    {
-      "id": 6,
-      "plugin": "TriggerFish-Elements",
-      "model": "TfScenePack4",
-      "version": "2.4.0",
-      "params": [],
-      "pos": [
-        58,
-        0
-      ]
-    },
-    {
-      "id": 7,
-      "plugin": "TriggerFish-Elements",
-      "model": "TfReverb",
-      "version": "2.4.0",
-      "params": [
-        {
-          "id": 0,
-          "value": 0.6
-        },
-        {
-          "id": 1,
           "value": 0.5
-        },
-        {
-          "id": 2,
-          "value": 0.048
-        },
-        {
-          "id": 3,
-          "value": 0.25
-        },
-        {
-          "id": 4,
-          "value": 0.35
         },
         {
           "id": 5,
-          "value": 0.5
-        },
-        {
-          "id": 6,
-          "value": 0.682
-        },
-        {
-          "id": 7,
-          "value": 0.64
-        },
-        {
-          "id": 8,
-          "value": 0.28
-        },
-        {
-          "id": 9,
-          "value": 0.82
-        },
-        {
-          "id": 10,
-          "value": 0.3
-        },
-        {
-          "id": 11,
-          "value": 0.6130368568946039
-        },
-        {
-          "id": 12,
-          "value": 0.5
-        },
-        {
-          "id": 13,
           "value": 0.0
         },
         {
+          "id": 6,
+          "value": 0.42
+        },
+        {
+          "id": 7,
+          "value": 0.55
+        },
+        {
+          "id": 8,
+          "value": 0.45
+        },
+        {
+          "id": 9,
+          "value": 0.2965061068534851
+        },
+        {
+          "id": 10,
+          "value": 0.0
+        },
+        {
+          "id": 11,
+          "value": 0.62
+        },
+        {
+          "id": 12,
+          "value": 0.04
+        },
+        {
+          "id": 13,
+          "value": 0.29333335161209106
+        },
+        {
           "id": 14,
-          "value": 0.829482217661603
+          "value": 0.3920000493526459
         },
         {
           "id": 15,
-          "value": 0.35
+          "value": 1.0
         },
         {
           "id": 16,
-          "value": -6.0
+          "value": 1.0
         },
         {
           "id": 17,
@@ -272,11 +167,414 @@
         },
         {
           "id": 18,
-          "value": 0.75
+          "value": 0.0
+        }
+      ],
+      "pos": [
+        29,
+        1
+      ]
+    },
+    {
+      "id": 6,
+      "plugin": "TriggerFish-Elements",
+      "model": "Tf4072VoiceCore",
+      "version": "2.4.0",
+      "params": [
+        {
+          "id": 0,
+          "value": 3.0938026905059814
+        },
+        {
+          "id": 1,
+          "value": 0.4920482337474823
+        },
+        {
+          "id": 2,
+          "value": 10.387954711914062
+        },
+        {
+          "id": 3,
+          "value": 0.55
+        },
+        {
+          "id": 4,
+          "value": 0.0
+        },
+        {
+          "id": 5,
+          "value": 0.0
+        },
+        {
+          "id": 6,
+          "value": 0.0
+        },
+        {
+          "id": 7,
+          "value": 0.9
+        },
+        {
+          "id": 8,
+          "value": 1.0
+        },
+        {
+          "id": 9,
+          "value": -1.6020599913279623
+        },
+        {
+          "id": 10,
+          "value": 0.25527250510330607
+        },
+        {
+          "id": 11,
+          "value": 0.12
+        },
+        {
+          "id": 12,
+          "value": -0.18708664335714442
+        },
+        {
+          "id": 13,
+          "value": 0.0
+        },
+        {
+          "id": 14,
+          "value": 0.25
+        },
+        {
+          "id": 15,
+          "value": -1.8239087409443189
+        },
+        {
+          "id": 16,
+          "value": -0.3010299956639812
+        },
+        {
+          "id": 17,
+          "value": 0.85
+        },
+        {
+          "id": 18,
+          "value": -0.2218487496163564
         },
         {
           "id": 19,
+          "value": 0.0
+        },
+        {
+          "id": 20,
+          "value": 1.0
+        },
+        {
+          "id": 21,
+          "value": 1.0
+        },
+        {
+          "id": 22,
+          "value": 1.0
+        },
+        {
+          "id": 23,
+          "value": 0.0
+        },
+        {
+          "id": 24,
+          "value": 1.0
+        }
+      ],
+      "pos": [
+        41,
+        1
+      ]
+    },
+    {
+      "id": 7,
+      "plugin": "TriggerFish-Elements",
+      "model": "TfWavefoldOscillator",
+      "version": "2.4.0",
+      "params": [
+        {
+          "id": 0,
+          "value": 0.0
+        },
+        {
+          "id": 1,
+          "value": 0.0
+        },
+        {
+          "id": 2,
+          "value": 0.28
+        },
+        {
+          "id": 3,
+          "value": 0.5012047290802002
+        },
+        {
+          "id": 4,
+          "value": 0.08
+        },
+        {
+          "id": 5,
+          "value": 0.0
+        },
+        {
+          "id": 6,
+          "value": 0.0
+        },
+        {
+          "id": 7,
+          "value": 0.0
+        },
+        {
+          "id": 8,
+          "value": 0.0
+        },
+        {
+          "id": 9,
+          "value": 0.0
+        },
+        {
+          "id": 10,
+          "value": 1.0
+        },
+        {
+          "id": 11,
+          "value": 0.58
+        },
+        {
+          "id": 12,
+          "value": 0.40800002217292786
+        },
+        {
+          "id": 13,
+          "value": 0.49066662788391113
+        },
+        {
+          "id": 14,
+          "value": 0.5093333721160889
+        },
+        {
+          "id": 15,
+          "value": 1.0
+        },
+        {
+          "id": 16,
+          "value": 0.39841330778621553
+        }
+      ],
+      "pos": [
+        65,
+        1
+      ]
+    },
+    {
+      "id": 8,
+      "plugin": "TriggerFish-Elements",
+      "model": "Tf4072VoiceCore",
+      "version": "2.4.0",
+      "params": [
+        {
+          "id": 0,
+          "value": 0.6673828959465027
+        },
+        {
+          "id": 1,
+          "value": 0.0
+        },
+        {
+          "id": 2,
+          "value": 3.5975842475891113
+        },
+        {
+          "id": 3,
+          "value": 0.5493977069854736
+        },
+        {
+          "id": 4,
+          "value": 0.8789158463478088
+        },
+        {
+          "id": 5,
+          "value": 0.0
+        },
+        {
+          "id": 6,
+          "value": 0.0
+        },
+        {
+          "id": 7,
+          "value": 1.0
+        },
+        {
+          "id": 8,
+          "value": 0.7283129692077637
+        },
+        {
+          "id": 9,
+          "value": -2.3979400086720375
+        },
+        {
+          "id": 10,
+          "value": 0.04110236465930939
+        },
+        {
+          "id": 11,
+          "value": 0.08
+        },
+        {
+          "id": 12,
+          "value": -0.7958800173440752
+        },
+        {
+          "id": 13,
+          "value": 0.0
+        },
+        {
+          "id": 14,
           "value": 0.35
+        },
+        {
+          "id": 15,
+          "value": -2.6989700043360187
+        },
+        {
+          "id": 16,
+          "value": 0.043807897716760635
+        },
+        {
+          "id": 17,
+          "value": 0.12
+        },
+        {
+          "id": 18,
+          "value": -0.8239087409443188
+        },
+        {
+          "id": 19,
+          "value": 0.0
+        },
+        {
+          "id": 20,
+          "value": 1.0
+        },
+        {
+          "id": 21,
+          "value": 1.0
+        },
+        {
+          "id": 22,
+          "value": 1.0
+        },
+        {
+          "id": 23,
+          "value": 0.0
+        },
+        {
+          "id": 24,
+          "value": 1.0
+        }
+      ],
+      "pos": [
+        77,
+        1
+      ]
+    },
+    {
+      "id": 9,
+      "plugin": "TriggerFish-Elements",
+      "model": "TfScenePack4",
+      "version": "2.4.0",
+      "params": [],
+      "pos": [
+        85,
+        0
+      ]
+    },
+    {
+      "id": 10,
+      "plugin": "TriggerFish-Elements",
+      "model": "TfReverb",
+      "version": "2.4.0",
+      "params": [
+        {
+          "id": 0,
+          "value": 0.78
+        },
+        {
+          "id": 1,
+          "value": 0.55
+        },
+        {
+          "id": 2,
+          "value": 0.112
+        },
+        {
+          "id": 3,
+          "value": 0.5
+        },
+        {
+          "id": 4,
+          "value": 0.32
+        },
+        {
+          "id": 5,
+          "value": 0.5
+        },
+        {
+          "id": 6,
+          "value": 0.68
+        },
+        {
+          "id": 7,
+          "value": 0.84
+        },
+        {
+          "id": 8,
+          "value": 0.26
+        },
+        {
+          "id": 9,
+          "value": 1.0
+        },
+        {
+          "id": 10,
+          "value": 1.0
+        },
+        {
+          "id": 11,
+          "value": 0.75
+        },
+        {
+          "id": 12,
+          "value": 0.75
+        },
+        {
+          "id": 13,
+          "value": 0.4580135308
+        },
+        {
+          "id": 14,
+          "value": 0.36672579134208466
+        },
+        {
+          "id": 15,
+          "value": 0.4
+        },
+        {
+          "id": 16,
+          "value": -6.0
+        },
+        {
+          "id": 17,
+          "value": 0.45
+        },
+        {
+          "id": 18,
+          "value": 0.5
+        },
+        {
+          "id": 19,
+          "value": 0.32
         },
         {
           "id": 20,
@@ -284,7 +582,7 @@
         },
         {
           "id": 21,
-          "value": 0.35
+          "value": 0.32
         },
         {
           "id": 22,
@@ -292,7 +590,7 @@
         },
         {
           "id": 23,
-          "value": 0.35
+          "value": 0.32
         },
         {
           "id": 24,
@@ -300,7 +598,7 @@
         },
         {
           "id": 25,
-          "value": 0.35
+          "value": 0.32
         },
         {
           "id": 26,
@@ -308,7 +606,7 @@
         },
         {
           "id": 27,
-          "value": 0.35
+          "value": 0.32
         },
         {
           "id": 28,
@@ -316,7 +614,7 @@
         },
         {
           "id": 29,
-          "value": 0.35
+          "value": 0.32
         },
         {
           "id": 30,
@@ -324,16 +622,16 @@
         },
         {
           "id": 31,
-          "value": 0.35
+          "value": 0.32
         }
       ],
       "pos": [
-        65,
+        91,
         0
       ]
     },
     {
-      "id": 8,
+      "id": 11,
       "plugin": "Core",
       "model": "AudioInterface",
       "version": "2.6.6",
@@ -349,12 +647,12 @@
         "dcFilter": true
       },
       "pos": [
-        86,
+        107,
         0
       ]
     },
     {
-      "id": 9,
+      "id": 12,
       "plugin": "Fundamental",
       "model": "Scope",
       "version": "2.6.4",
@@ -393,7 +691,7 @@
         }
       ],
       "pos": [
-        94,
+        117,
         0
       ]
     }
@@ -403,81 +701,201 @@
       "id": 1000,
       "outputModuleId": 2,
       "outputId": 0,
-      "inputModuleId": 4,
-      "inputId": 1,
+      "inputModuleId": 3,
+      "inputId": 0,
       "color": "#f3374b"
     },
     {
       "id": 1001,
-      "outputModuleId": 3,
+      "outputModuleId": 2,
       "outputId": 2,
-      "inputModuleId": 5,
+      "inputModuleId": 3,
       "inputId": 1,
       "color": "#ffcc00"
     },
     {
       "id": 1002,
-      "outputModuleId": 4,
-      "outputId": 0,
-      "inputModuleId": 6,
-      "inputId": 0,
+      "outputModuleId": 2,
+      "outputId": 1,
+      "inputModuleId": 3,
+      "inputId": 2,
       "color": "#0c8e15"
     },
     {
       "id": 1003,
-      "outputModuleId": 5,
+      "outputModuleId": 2,
       "outputId": 0,
-      "inputModuleId": 6,
-      "inputId": 1,
+      "inputModuleId": 4,
+      "inputId": 0,
       "color": "#0986ad"
     },
     {
       "id": 1004,
-      "outputModuleId": 6,
-      "outputId": 0,
-      "inputModuleId": 7,
-      "inputId": 0,
+      "outputModuleId": 2,
+      "outputId": 2,
+      "inputModuleId": 4,
+      "inputId": 1,
       "color": "#c91847"
     },
     {
       "id": 1005,
-      "outputModuleId": 7,
+      "outputModuleId": 2,
+      "outputId": 1,
+      "inputModuleId": 4,
+      "inputId": 2,
+      "color": "#7a3ec8"
+    },
+    {
+      "id": 1006,
+      "outputModuleId": 3,
       "outputId": 0,
+      "inputModuleId": 5,
+      "inputId": 0,
+      "color": "#f3374b"
+    },
+    {
+      "id": 1007,
+      "outputModuleId": 3,
+      "outputId": 0,
+      "inputModuleId": 6,
+      "inputId": 2,
+      "color": "#ffcc00"
+    },
+    {
+      "id": 1008,
+      "outputModuleId": 3,
+      "outputId": 1,
+      "inputModuleId": 6,
+      "inputId": 6,
+      "color": "#0c8e15"
+    },
+    {
+      "id": 1009,
+      "outputModuleId": 3,
+      "outputId": 2,
+      "inputModuleId": 6,
+      "inputId": 7,
+      "color": "#0986ad"
+    },
+    {
+      "id": 1010,
+      "outputModuleId": 5,
+      "outputId": 0,
+      "inputModuleId": 6,
+      "inputId": 0,
+      "color": "#c91847"
+    },
+    {
+      "id": 1011,
+      "outputModuleId": 6,
+      "outputId": 1,
+      "inputModuleId": 9,
+      "inputId": 0,
+      "color": "#7a3ec8"
+    },
+    {
+      "id": 1012,
+      "outputModuleId": 4,
+      "outputId": 0,
+      "inputModuleId": 7,
+      "inputId": 0,
+      "color": "#f3374b"
+    },
+    {
+      "id": 1013,
+      "outputModuleId": 4,
+      "outputId": 0,
+      "inputModuleId": 8,
+      "inputId": 2,
+      "color": "#ffcc00"
+    },
+    {
+      "id": 1014,
+      "outputModuleId": 4,
+      "outputId": 1,
+      "inputModuleId": 8,
+      "inputId": 6,
+      "color": "#0c8e15"
+    },
+    {
+      "id": 1015,
+      "outputModuleId": 4,
+      "outputId": 2,
+      "inputModuleId": 8,
+      "inputId": 7,
+      "color": "#0986ad"
+    },
+    {
+      "id": 1016,
+      "outputModuleId": 4,
+      "outputId": 5,
+      "inputModuleId": 8,
+      "inputId": 3,
+      "color": "#c91847"
+    },
+    {
+      "id": 1017,
+      "outputModuleId": 7,
+      "outputId": 1,
       "inputModuleId": 8,
       "inputId": 0,
       "color": "#7a3ec8"
     },
     {
-      "id": 1006,
-      "outputModuleId": 7,
+      "id": 1018,
+      "outputModuleId": 8,
       "outputId": 1,
-      "inputModuleId": 8,
+      "inputModuleId": 9,
       "inputId": 1,
       "color": "#f3374b"
     },
     {
-      "id": 1007,
-      "outputModuleId": 6,
+      "id": 1019,
+      "outputModuleId": 9,
       "outputId": 0,
-      "inputModuleId": 9,
+      "inputModuleId": 10,
       "inputId": 0,
       "color": "#ffcc00"
     },
     {
-      "id": 1008,
-      "outputModuleId": 7,
+      "id": 1020,
+      "outputModuleId": 10,
       "outputId": 0,
-      "inputModuleId": 9,
-      "inputId": 1,
+      "inputModuleId": 11,
+      "inputId": 0,
       "color": "#0c8e15"
     },
     {
-      "id": 1009,
-      "outputModuleId": 7,
+      "id": 1021,
+      "outputModuleId": 10,
       "outputId": 1,
-      "inputModuleId": 9,
-      "inputId": 2,
+      "inputModuleId": 11,
+      "inputId": 1,
       "color": "#0986ad"
+    },
+    {
+      "id": 1022,
+      "outputModuleId": 9,
+      "outputId": 0,
+      "inputModuleId": 12,
+      "inputId": 0,
+      "color": "#c91847"
+    },
+    {
+      "id": 1023,
+      "outputModuleId": 10,
+      "outputId": 0,
+      "inputModuleId": 12,
+      "inputId": 1,
+      "color": "#7a3ec8"
+    },
+    {
+      "id": 1024,
+      "outputModuleId": 10,
+      "outputId": 1,
+      "inputModuleId": 12,
+      "inputId": 2,
+      "color": "#f3374b"
     }
   ]
 }

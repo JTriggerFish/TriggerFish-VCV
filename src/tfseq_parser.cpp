@@ -13,14 +13,13 @@ namespace tfseq::syntax {
 namespace {
 
 constexpr const char *Grammar = R"PEG(
-  Document    <- (Sequence / Play / Stop / Seed / Assignment / BlankLine)* Trailing End
+  Document    <- (Sequence / Play / Seed / Assignment / BlankLine)* Trailing End
 
   Sequence    <- H Identifier H '=' H 'sequence' H '{' H Comment? Newline
                  (NotesLane / ScalarLane / CvLane / SettingLine /
                   BodyContinuation / BlankLine)*
                  H '}' H Comment? LineEnd SequenceContinuation*
   Play        <- H 'play' S Identifier H Comment? LineEnd
-  Stop        <- H < 'stop' > H Comment? LineEnd
   Seed        <- H 'seed' S UnsignedInteger H Comment? LineEnd
   Assignment  <- H Identifier H '=' H Expression H Comment? LineEnd
                  AssignmentContinuation*
@@ -39,7 +38,7 @@ constexpr const char *Grammar = R"PEG(
   SequenceContinuation <- H Pipeline (H Pipeline)* H Comment? LineEnd
   AssignmentContinuation <- H Pipeline (H Pipeline)* H Comment? LineEnd
 
-  NotePattern     <- NoteElement (S NoteElement)*
+  NotePattern     <- NoteElement (PatternSeparator NoteElement)*
   NoteElement     <- GroupElement / NoteEvent / RestEvent / TieExtension
   GroupElement    <- GroupPrimary DurationSuffix? EuclideanSuffix?
                      EventProbabilitySuffix? ReplicationSuffix?
@@ -47,7 +46,7 @@ constexpr const char *Grammar = R"PEG(
   BracketGroup    <- '[' H (RandomChoice / NotePattern) H ']'
   RandomChoice    <- NotePattern H '|' H NotePattern
                      (H '|' H NotePattern)*
-  Alternate       <- '<' H NoteElement (S NoteElement)* H '>'
+  Alternate       <- '<' H NoteElement (PatternSeparator NoteElement)* H '>'
 
   NoteEvent       <- OnsetPrefix? PitchedValue DurationSuffix?
                      EuclideanSuffix? RatchetSuffix? EventProbabilitySuffix?
@@ -114,10 +113,12 @@ constexpr const char *Grammar = R"PEG(
   AttributeName   <- < Identifier >
   AttributeValue  <- < ScalarValue >
 
-  ScalarPattern   <- RightAligned / LeftAligned / FreePattern
-  RightAligned    <- Ellipsis S ScalarTerm (S ScalarTerm)*
-  LeftAligned     <- ScalarTerm (S ScalarTerm)* S Ellipsis
-  FreePattern     <- ScalarTerm (S ScalarTerm)*
+  ScalarPattern   <- EdgeAligned / RightAligned / LeftAligned / FreePattern
+  EdgeAligned     <- ScalarTerm (PatternSeparator ScalarTerm)* S Ellipsis S
+                     ScalarTerm (PatternSeparator ScalarTerm)*
+  RightAligned    <- Ellipsis S ScalarTerm (PatternSeparator ScalarTerm)*
+  LeftAligned     <- ScalarTerm (PatternSeparator ScalarTerm)* S Ellipsis
+  FreePattern     <- ScalarTerm (PatternSeparator ScalarTerm)*
   ScalarTerm      <- (RandomScalar / ScalarAtom / Default) ReplicationSuffix?
   RandomScalar    <- '$' ScalarRandomDistribution RandomArguments
   ScalarRandomDistribution <- < 'u' / 'n' >
@@ -126,6 +127,7 @@ constexpr const char *Grammar = R"PEG(
   ScalarAtom      <- < ScalarValue >
   Ellipsis        <- '...'
   Default         <- < '.' !'.' >
+  PatternSeparator <- H ';' H / S
 
   SettingValue    <- < ScalarValue / PitchValue / Identifier >
   ScalarValue     <- Number Unit?
@@ -449,7 +451,15 @@ Pattern ReadScalarPattern(const Ast &node) {
   Pattern pattern;
   pattern.span = Span(node);
   Ast body = FirstChildNamed(node, "FreePattern");
-  if (const auto right = FirstChildNamed(node, "RightAligned")) {
+  if (const auto edges = FirstChildNamed(node, "EdgeAligned")) {
+    body = edges;
+    pattern.alignment = Pattern::Alignment::Edges;
+    const auto ellipsis = FirstChildNamed(edges, "Ellipsis");
+    for (const auto &term : ChildrenNamed(edges, "ScalarTerm")) {
+      if (Span(term).begin < Span(ellipsis).begin)
+        ++pattern.alignmentSplit;
+    }
+  } else if (const auto right = FirstChildNamed(node, "RightAligned")) {
     body = right;
     pattern.alignment = Pattern::Alignment::Right;
   } else if (const auto left = FirstChildNamed(node, "LeftAligned")) {
@@ -609,8 +619,6 @@ ParseResult ParseUsing(peg::parser &parser, const std::string &source) {
     } else if (node->name == "Play") {
       result.document.statements.emplace_back(PlayCommand{
           AstToken(FirstChildNamed(node, "Identifier")), Span(node)});
-    } else if (node->name == "Stop") {
-      result.document.statements.emplace_back(StopCommand{Span(node)});
     } else if (node->name == "Seed") {
       result.document.statements.emplace_back(SeedCommand{
           AstToken(FirstChildNamed(node, "UnsignedInteger")), Span(node)});
@@ -761,9 +769,8 @@ std::string DefinitionKey(const Statement &statement) {
   return {};
 }
 
-bool IsTransport(const Statement &statement) {
-  return std::holds_alternative<PlayCommand>(statement) ||
-         std::holds_alternative<StopCommand>(statement);
+bool IsPlaySelection(const Statement &statement) {
+  return std::holds_alternative<PlayCommand>(statement);
 }
 
 bool IsSeed(const Statement &statement) {
@@ -863,8 +870,8 @@ bool SameIdentity(const Statement &left, const Statement &right) {
   const auto leftDefinition = DefinitionKey(left);
   if (!leftDefinition.empty())
     return leftDefinition == DefinitionKey(right);
-  if (IsTransport(left))
-    return IsTransport(right);
+  if (IsPlaySelection(left))
+    return IsPlaySelection(right);
   return IsSeed(left) && IsSeed(right);
 }
 
@@ -885,7 +892,7 @@ SelectionDocumentResult MergeSelectionDocuments(
 
   std::vector<std::size_t> selected;
   std::unordered_set<std::string> replacedDefinitions;
-  bool replaceTransport = false;
+  bool replacePlaySelection = false;
   bool replaceSeed = false;
   for (std::size_t index = 0; index < draftDocument.statements.size();
        ++index) {
@@ -901,7 +908,7 @@ SelectionDocumentResult MergeSelectionDocuments(
     const auto key = DefinitionKey(statement);
     if (!key.empty())
       replacedDefinitions.insert(key);
-    replaceTransport = replaceTransport || IsTransport(statement);
+    replacePlaySelection = replacePlaySelection || IsPlaySelection(statement);
     replaceSeed = replaceSeed || IsSeed(statement);
   }
   if (selected.empty()) {
@@ -933,7 +940,7 @@ SelectionDocumentResult MergeSelectionDocuments(
     }
   };
 
-  bool insertedTransport = false;
+  bool insertedPlaySelection = false;
   bool insertedSeed = false;
   for (const auto &evaluatedStatement : evaluatedDocument.statements) {
     const auto key = DefinitionKey(evaluatedStatement);
@@ -941,10 +948,10 @@ SelectionDocumentResult MergeSelectionDocuments(
       appendSelectedMatching(evaluatedStatement);
       continue;
     }
-    if (replaceTransport && IsTransport(evaluatedStatement)) {
-      if (!insertedTransport) {
+    if (replacePlaySelection && IsPlaySelection(evaluatedStatement)) {
+      if (!insertedPlaySelection) {
         appendSelectedMatching(evaluatedStatement);
-        insertedTransport = true;
+        insertedPlaySelection = true;
       }
       continue;
     }

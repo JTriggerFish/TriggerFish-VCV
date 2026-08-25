@@ -345,6 +345,7 @@ const T &Cycled(const std::vector<T> &items, std::uint64_t cursor,
 }
 
 bool AlignedItemIndex(std::size_t itemCount, LaneAlignment alignment,
+                      std::size_t alignmentSplit,
                       std::uint64_t structuralCell,
                       std::uint64_t structuralCellCount,
                       std::size_t &index) noexcept {
@@ -356,6 +357,35 @@ bool AlignedItemIndex(std::size_t itemCount, LaneAlignment alignment,
       return false;
     index = static_cast<std::size_t>(structuralCell);
     return true;
+  }
+  if (alignment == LaneAlignment::Edges) {
+    const auto leftCount = std::min(alignmentSplit, itemCount);
+    const auto rightCount = itemCount - leftCount;
+    const bool hasLeft = structuralCell < leftCount;
+    const auto visibleRight = std::min<std::uint64_t>(
+        rightCount, structuralCellCount);
+    const auto rightStartCell = structuralCellCount - visibleRight;
+    const bool hasRight = rightCount > 0 && structuralCell >= rightStartCell;
+
+    // Presence omissions can make the realized Notes pass shorter than the
+    // two explicit edge groups together. Preserve the values nearest each
+    // outer edge; where the groups overlap, the closest edge owns the cell.
+    // A central tie goes to the left group for a stable deterministic result.
+    const bool chooseLeft =
+        hasLeft &&
+        (!hasRight || structuralCell <=
+                          structuralCellCount - 1 - structuralCell);
+    if (chooseLeft) {
+      index = static_cast<std::size_t>(structuralCell);
+      return true;
+    }
+    if (hasRight) {
+      const auto omittedRight = rightCount - visibleRight;
+      index = leftCount + static_cast<std::size_t>(
+                              omittedRight + structuralCell - rightStartCell);
+      return true;
+    }
+    return false;
   }
   if (structuralCellCount >= itemCount) {
     const auto padding = structuralCellCount - itemCount;
@@ -376,6 +406,7 @@ double Scalar(const std::vector<ScalarItem> &items, std::uint64_t &cursor,
                LaneAlignment alignment = LaneAlignment::Free,
                std::uint64_t structuralCell = 0,
                std::uint64_t structuralCellCount = 0,
+               std::size_t alignmentSplit = 0,
                SourceSpan alignmentSpan = {}, bool *milliseconds = nullptr,
                double scoreBeat = 0.0) noexcept {
   if (milliseconds)
@@ -394,7 +425,7 @@ double Scalar(const std::vector<ScalarItem> &items, std::uint64_t &cursor,
         static_cast<std::size_t>(structuralCellCount), transforms, cycle, seed,
         salt);
     std::size_t alignedIndex = 0;
-    if (!AlignedItemIndex(items.size(), alignment, mappedCell,
+    if (!AlignedItemIndex(items.size(), alignment, alignmentSplit, mappedCell,
                           structuralCellCount, alignedIndex)) {
       span = alignmentSpan;
       return fallback;
@@ -436,7 +467,8 @@ struct CvSample {
 CvSample SampleCv(const std::vector<ScalarItem> &items,
                   const std::vector<Transform> &transforms,
                   LaneAlignment alignment, std::uint64_t structuralCell,
-                  std::uint64_t structuralCellCount, SourceSpan alignmentSpan,
+                  std::uint64_t structuralCellCount,
+                  std::size_t alignmentSplit, SourceSpan alignmentSpan,
                   double scoreBeat, double cycleBeat, double cellSpan,
                   CvInterpolation interpolation, double power,
                   std::uint64_t cycle, std::uint64_t seed,
@@ -451,6 +483,26 @@ CvSample SampleCv(const std::vector<ScalarItem> &items,
       return sample;
     const auto virtualCount = structuralCellCount;
     const auto base = structuralCell % virtualCount;
+    if (alignment == LaneAlignment::Edges) {
+      const auto mappedCell = TransformIndex(
+          static_cast<std::size_t>(base),
+          static_cast<std::size_t>(virtualCount), transforms, cycle, seed,
+          salt);
+      std::size_t itemIndex = 0;
+      if (!AlignedItemIndex(items.size(), alignment, alignmentSplit,
+                            mappedCell, virtualCount, itemIndex))
+        return sample;
+      const auto &item = items[itemIndex];
+      sample.span = item.span;
+      if (item.isDefault)
+        return sample;
+      const auto value = static_cast<float>(
+          SampleScalarItem(item, seed, structuralCell ^ MixRandom(cycle),
+                           salt));
+      sample.value = value;
+      sample.target = value;
+      return sample;
+    }
     const ScalarItem *previous = nullptr;
     std::uint64_t previousCell = base;
     for (std::uint64_t distance = 0; distance < virtualCount; ++distance) {
@@ -459,8 +511,8 @@ CvSample SampleCv(const std::vector<ScalarItem> &items,
           static_cast<std::size_t>(cell),
           static_cast<std::size_t>(virtualCount), transforms, cycle, seed, salt);
       std::size_t itemIndex = 0;
-      if (!AlignedItemIndex(items.size(), alignment, mappedCell, virtualCount,
-                            itemIndex))
+      if (!AlignedItemIndex(items.size(), alignment, alignmentSplit,
+                            mappedCell, virtualCount, itemIndex))
         continue;
       const auto &candidate = items[itemIndex];
       if (distance == 0)
@@ -851,16 +903,17 @@ StepEvents Runtime::next(double beat) noexcept {
           semantic.arrangement[nextPart].sequence == sequenceIndex;
     }
     const auto completedCycles = candidateState.completedCycles + 1;
-    const auto lastBaseDuration = candidateState.lastBaseDuration;
-    const bool hasSoundingPitch = candidateState.hasSoundingPitch;
-    const auto soundingVoiceCount = candidateState.soundingVoiceCount;
-    candidateState = {};
-    candidateState.completedCycles = completedCycles;
-    candidateState.lastBaseDuration = lastBaseDuration;
-    candidateState.hasSoundingPitch =
-        continuesSameSequence && hasSoundingPitch;
-    candidateState.soundingVoiceCount =
-        continuesSameSequence ? soundingVoiceCount : 0;
+    if (continuesSameSequence) {
+      candidateState.completedCycles = completedCycles;
+      candidateState.freeLaneBeat += std::max(0.0, beat - partStartBeat_);
+      candidateState.structuralCell = 0;
+      candidateState.structuralCellCount = 0;
+    } else {
+      const auto lastBaseDuration = candidateState.lastBaseDuration;
+      candidateState = {};
+      candidateState.completedCycles = completedCycles;
+      candidateState.lastBaseDuration = lastBaseDuration;
+    }
     partStartBeat_ = beat;
     if (part.cycles >= 0) {
       ++arrangementCycle_;
@@ -896,8 +949,10 @@ StepEvents Runtime::next(double beat) noexcept {
         sequence->alignment[static_cast<std::size_t>(CursorLane::Duration)],
         state.structuralCell, state.structuralCellCount,
         sequence
+            ->alignmentSplits[static_cast<std::size_t>(CursorLane::Duration)],
+        sequence
             ->alignmentSpans[static_cast<std::size_t>(CursorLane::Duration)],
-        nullptr, beat - partStartBeat_));
+        nullptr, state.freeLaneBeat + beat - partStartBeat_));
     state.lastBaseDuration = baseDuration;
   }
   const double duration = baseDuration *
@@ -995,7 +1050,8 @@ StepEvents Runtime::next(double beat) noexcept {
     }
 
     const double atomBeat = beat + duration * atom.offsetFraction;
-    const double cycleBeat = atomBeat - partStartBeat_;
+    const double cycleBeat =
+        state.freeLaneBeat + atomBeat - partStartBeat_;
     const double atomSpan = duration * atom.spanFraction;
     const auto structuralCell = state.structuralCell + atom.cellOffset;
     SourceSpan offsetSpan;
@@ -1006,6 +1062,8 @@ StepEvents Runtime::next(double beat) noexcept {
         cycle, seed, 0.0, offsetSpan, 0x8800,
         sequence->alignment[static_cast<std::size_t>(CursorLane::Offset)],
         structuralCell, state.structuralCellCount,
+        sequence
+            ->alignmentSplits[static_cast<std::size_t>(CursorLane::Offset)],
         sequence->alignmentSpans[static_cast<std::size_t>(CursorLane::Offset)],
         &offsetMilliseconds, cycleBeat);
     std::array<CvSample, CvLaneCount> cv{};
@@ -1016,6 +1074,7 @@ StepEvents Runtime::next(double beat) noexcept {
           sequence->transforms[static_cast<std::size_t>(lane)],
           sequence->alignment[static_cast<std::size_t>(lane)], structuralCell,
           state.structuralCellCount,
+          sequence->alignmentSplits[static_cast<std::size_t>(lane)],
           sequence->alignmentSpans[static_cast<std::size_t>(lane)], atomBeat,
           cycleBeat, atomSpan, sequence->cvInterpolation[cvIndex],
           sequence->cvPower[cvIndex], cycle, seed,
@@ -1066,6 +1125,7 @@ StepEvents Runtime::next(double beat) noexcept {
                0xa000 + laneIndex * 0x100,
                sequence->alignment[static_cast<std::size_t>(lane)],
                structuralCell, state.structuralCellCount,
+               sequence->alignmentSplits[static_cast<std::size_t>(lane)],
                sequence->alignmentSpans[static_cast<std::size_t>(lane)],
                nullptr, cycleBeat);
       }
@@ -1151,6 +1211,8 @@ StepEvents Runtime::next(double beat) noexcept {
           sequence->alignment[static_cast<std::size_t>(CursorLane::Octave)],
           structuralCell, state.structuralCellCount,
           sequence
+              ->alignmentSplits[static_cast<std::size_t>(CursorLane::Octave)],
+          sequence
               ->alignmentSpans[static_cast<std::size_t>(CursorLane::Octave)],
           nullptr, cycleBeat)));
     }
@@ -1160,6 +1222,8 @@ StepEvents Runtime::next(double beat) noexcept {
         cycle, seed, 0.72, velocitySpan, 0x4800,
         sequence->alignment[static_cast<std::size_t>(CursorLane::Velocity)],
         structuralCell, state.structuralCellCount,
+        sequence
+            ->alignmentSplits[static_cast<std::size_t>(CursorLane::Velocity)],
         sequence
             ->alignmentSpans[static_cast<std::size_t>(CursorLane::Velocity)],
         nullptr, cycleBeat));
@@ -1177,6 +1241,8 @@ StepEvents Runtime::next(double beat) noexcept {
                sequence->alignment[static_cast<std::size_t>(CursorLane::Gate)],
                structuralCell, state.structuralCellCount,
                sequence
+                   ->alignmentSplits[static_cast<std::size_t>(CursorLane::Gate)],
+               sequence
                    ->alignmentSpans[static_cast<std::size_t>(CursorLane::Gate)],
                &gateMilliseconds, cycleBeat));
     bool slideMilliseconds = false;
@@ -1186,6 +1252,8 @@ StepEvents Runtime::next(double beat) noexcept {
         cycle, seed, sequence->glideBeats, slideSpan, 0x7000,
         sequence->alignment[static_cast<std::size_t>(CursorLane::Slide)],
         structuralCell, state.structuralCellCount,
+        sequence
+            ->alignmentSplits[static_cast<std::size_t>(CursorLane::Slide)],
         sequence->alignmentSpans[static_cast<std::size_t>(CursorLane::Slide)],
         &slideMilliseconds, cycleBeat));
     float effectiveAccent = 0.f;
@@ -1217,6 +1285,8 @@ StepEvents Runtime::next(double beat) noexcept {
         cycle, seed, 1.0, ratchetSpan, 0x8000,
         sequence->alignment[static_cast<std::size_t>(CursorLane::Ratchet)],
         structuralCell, state.structuralCellCount,
+        sequence
+            ->alignmentSplits[static_cast<std::size_t>(CursorLane::Ratchet)],
         sequence->alignmentSpans[static_cast<std::size_t>(CursorLane::Ratchet)],
         nullptr, cycleBeat);
     const std::size_t ratchets =
@@ -1422,15 +1492,18 @@ StepEvents Runtime::next(double beat) noexcept {
   }
   if (completesNotesPass) {
     const auto completedCycles = state.completedCycles + 1;
-    const auto lastBaseDuration = state.lastBaseDuration;
-    const bool hasSoundingPitch = state.hasSoundingPitch;
-    const auto soundingVoiceCount = state.soundingVoiceCount;
-    state = {};
-    state.completedCycles = completedCycles;
-    state.lastBaseDuration = lastBaseDuration;
-    state.hasSoundingPitch = continuesSameSequence && hasSoundingPitch;
-    state.soundingVoiceCount =
-        continuesSameSequence ? soundingVoiceCount : 0;
+    if (continuesSameSequence) {
+      state.completedCycles = completedCycles;
+      state.freeLaneBeat +=
+          std::max(0.0, beat + duration - partStartBeat_);
+      state.structuralCell = 0;
+      state.structuralCellCount = 0;
+    } else {
+      const auto lastBaseDuration = state.lastBaseDuration;
+      state = {};
+      state.completedCycles = completedCycles;
+      state.lastBaseDuration = lastBaseDuration;
+    }
     partStartBeat_ = beat + duration;
     if (arrangementPart.cycles >= 0) {
       ++arrangementCycle_;

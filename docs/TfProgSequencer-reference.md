@@ -20,6 +20,7 @@ as musical workflows are refined; check this reference when upgrading.
 
 - [Quick start](#quick-start)
 - [Editing and execution](#editing-and-execution)
+- [Clock and shared transport](#clock-and-shared-transport)
 - [Program structure](#program-structure)
 - [Notes and pitch](#notes-and-pitch)
   - [Scale degrees](#scale-degrees)
@@ -65,9 +66,12 @@ seed 42
 play song
 ```
 
-Each incoming Clock advances one beat. `subdiv 8` makes an unsuffixed note an
-eighth note (`1/2` beat), so the eight-step Notes pass lasts four incoming-clock
-beats. Short auxiliary lanes loop within that pass and restart with it.
+The Clock input uses a fixed 24 PPQN transport signal. Twenty-four pulses
+advance one quarter-note beat. `subdiv 8` makes an unsuffixed note an eighth
+note (`1/2` beat), so the eight-step Notes pass lasts four quarter-note beats.
+Ordinary auxiliary lanes keep their own cycle lengths across repeated Notes
+passes. Use `...` to attach values to the beginning or end, or both edges of
+each Notes pass.
 
 The essential live controls are:
 
@@ -75,17 +79,28 @@ The essential live controls are:
   containing the cursor;
 - Ctrl+`.` evaluates the complete document while preserving playback phase;
 - Ctrl+Shift+`.` evaluates the complete document and restarts the arrangement
-  on the next Clock; and
-- Ctrl+Space toggles the module's local transport gate.
+  on the next quarter beat; and
+- Ctrl+Space pauses or resumes the module at its current position.
 
-A successful evaluation takes effect on the next Clock. The active
+When RUN is connected directly to a TriggerFish Transport, Ctrl+Shift+Space
+pauses or plays that Transport, Ctrl+Shift+R restarts it from beat zero, and
+Ctrl+Shift+Backspace stops it at beat zero. These commands control every
+sequencer receiving the same Transport outputs.
+
+Ctrl+Z undoes program edits. Ctrl+Shift+Z and Ctrl+Y redo them.
+
+A successful evaluation takes effect on the next quarter beat. The active
 arrangement term follows that named sequence across insertions and reordering;
 if the active term was removed, the nearest remaining structural position
-starts cleanly on the activation clock. If an edit has an error, the last valid
+starts cleanly on the activation beat. If an edit has an error, the last valid
 program keeps playing.
 
-`//` starts a comment. `stop` stops the arrangement without deleting the
-program.
+During playback, the active note, rest, or tie remains softly illuminated and
+an underline advances across it for its complete duration. The RUN light is dim
+while the transport is enabled and flashes brightly on each quarter beat,
+so sustained or slow phrases still show that time is advancing.
+
+`//` starts a comment.
 
 ## Editing and execution
 
@@ -97,20 +112,83 @@ not alter the active program.
 | --- | --- |
 | Ctrl+Enter | Evaluate the selection, or the containing top-level statement when there is no selection |
 | Ctrl+`.` | Evaluate the complete document and preserve the phase of sequences whose names remain active |
-| Ctrl+Shift+`.` | Evaluate the complete document and restart its arrangement from the beginning on the next Clock |
-| Ctrl+Space | Toggle the local transport gate; stopping drops Gates and resets playback, and restarting waits for the next Clock |
+| Ctrl+Shift+`.` | Evaluate the complete document and restart its arrangement from the beginning on the next quarter beat |
+| Ctrl+Space | Pause or resume this module locally and retain its current position |
+| Ctrl+Shift+Space | Pause or play the TriggerFish Transport connected directly to RUN |
+| Ctrl+Shift+R | Restart the connected TriggerFish Transport from beat zero |
+| Ctrl+Shift+Backspace | Stop the connected TriggerFish Transport and return it to beat zero |
 | Ctrl+`/` | Toggle line comments on the selected lines or the line containing the cursor |
 | Ctrl+D | Duplicate the selection or, when there is no selection, the current line |
+| Ctrl+Z | Undo the last program edit |
+| Ctrl+Shift+Z or Ctrl+Y | Redo the last undone program edit |
 
 The local transport starts enabled. It is combined with the RUN input, so both
 must permit playback. The RUN jack is normalled high, and an unpatched module
-therefore follows the local transport. A connected RUN voltage below 1 V stops
-and resets playback; a high gate enables the next Clock to restart it.
-Ctrl+Space does not insert or remove `play` and `stop` statements from the
-source.
+therefore follows the local transport. A connected RUN voltage below 1 V pauses
+playback: Gate, Trigger, and Accent go low while pitch, CV values, sequence
+position, clock period, slides, and lane phases are retained. Raising RUN
+continues from that position. RESET is the separate operation that returns the
+arrangement and all lanes to their beginnings.
+
+The transport shortcuts leave the program source unchanged. A connected
+Transport command is handed to the Transport's audio processing through an
+atomic mailbox. Timing then reaches every sequencer through the ordinary
+Clock, Run, and Reset cables. If RUN has no direct connection from a
+TriggerFish Transport, a connected-Transport shortcut reports this in the
+status area and leaves the patch unchanged. The shortcut requires a direct RUN
+cable, which identifies one unambiguous Transport even in a larger patch.
 
 Double-click selects a word and triple-click selects a complete row. The usual
 text-field selection, clipboard, and navigation controls remain available.
+The module context menu offers the perceptually uniform Magma, Inferno, Plasma,
+Viridis, and Cividis heatmaps, plus black-based CRT Green, CRT Blue, CRT Yellow,
+and CRT Red phosphor-style ramps. The choice is stored with the patch.
+
+Each active `cv1`, `cv2`, or `cv3` line displays a six-second scrolling trace
+of that lane's output in the unused space to the right of its text. The fixed
+vertical range is -5 V to +5 V, with 0 V at the centre. The line and its subtle
+phosphor glow use the selected heatmap. If the program text leaves less than
+42 pixels on that row, the trace is hidden rather than drawn over the source;
+widen the module or shorten the line to reveal it. The trace is capped at the
+width of 12 editor characters so it remains a compact lane indicator.
+
+## Clock and shared transport
+
+Prog Sequencer interprets CLOCK as a fixed 24-pulse-per-quarter-note transport
+stream. Score time is still written in quarter-note beats: `subdiv 4` produces
+quarter notes, `subdiv 8` eighth notes, and `subdiv 16` sixteenth notes. The
+additional clock edges provide timing resolution and rapid period acquisition;
+program speed continues to follow quarter-note score time. An external clock
+source must therefore be configured for 24 PPQN.
+
+The receiver uses direct edge locking. Each incoming pulse is an authoritative
+phase point. The interval between adjacent pulses supplies a lightly smoothed
+quarter-note period estimate for interpolation until the next pulse, and every
+twenty-fourth pulse is the exact beat boundary. Phase is acquired on the first
+pulse, the period is known on the second, and every later pulse applies an exact
+phase correction.
+
+For several sequencers, connect one TriggerFish Transport in parallel:
+
+| Transport output | Prog Sequencer input | Purpose |
+| --- | --- | --- |
+| CLOCK | CLOCK | Shared fixed-rate timing and phase |
+| RUN | RUN | Common pause and resume state |
+| RESET | RESET | Common return to beat zero |
+
+RESTART sends Reset before the first Clock and Run signals, giving every
+sequencer time to clear its arrangement before beat zero arrives. PAUSE freezes
+the master-clock phase and lowers Run. PLAY continues that phase. STOP lowers
+Run, resets every connected sequencer, and leaves the master phase at zero.
+A Clock cable carries timing edges. Run carries the immediate play/pause state,
+and Reset marks the common beginning; all three connections form the complete
+shared transport.
+
+With the editor focused, Ctrl+Shift+Space controls Play/Pause on the Transport
+connected directly to RUN. Ctrl+Shift+R requests Restart and
+Ctrl+Shift+Backspace requests Stop. The keyboard request changes only the
+connected Transport; its Clock, Run, and Reset outputs remain the source of
+synchronization for the sequencers.
 
 ## Program structure
 
@@ -135,7 +213,6 @@ A document is assembled from a small number of building blocks:
 - an assignment such as `song = verse * 2 + chorus` names an arrangement or a
   transformed variation;
 - `play NAME` selects the sequence or arrangement that should loop;
-- `stop` silences arrangement playback; and
 - `seed NUMBER` selects a repeatable set of random choices.
 
 Definitions and assignments may appear in any order, but every name must be
@@ -146,7 +223,8 @@ are reserved for control-voltage lanes and future signal values.
 Blank lines and `//` comments may appear between definitions or inside a
 sequence, and a comment may follow any complete line. If an evaluated document
 contains several `seed` commands, the last seed takes effect. The final `play`
-or `stop` command decides the transport state.
+command selects the active arrangement. Playback state is controlled locally
+with Ctrl+Space or by the connected Transport.
 
 Every sequence requires exactly one `notes` lane. Settings and auxiliary lanes
 are optional, but the same lane cannot be declared twice. `vel` is a shorter
@@ -165,10 +243,12 @@ Settings do not cycle:
 One complete top-level Notes pass is the sequence boundary. Its actual elapsed
 length follows the default subdivision, explicit duration suffixes, the
 Duration lane, `??` presence decisions, and timing transforms. At the boundary
-every auxiliary lane
-restarts, and an arrangement advances after the requested number of complete
-passes. A bracket group such as `[1 2]` subdivides one step and therefore still
-occupies one top-level position.
+the Notes pattern repeats, independently cycling auxiliary lanes continue from
+their current positions, and an arrangement advances after the requested
+number of complete passes. A bracket group such as `[1 2]` subdivides one step
+and therefore still occupies one top-level position. When the arrangement
+moves to a different named sequence, that sequence starts its independent lane
+cursors and phases from the beginning.
 
 ## Notes and pitch
 
@@ -298,8 +378,9 @@ A `?` miss becomes an ordinary rest. It closes Gate, consumes Duration, and
 advances the numerical lanes which apply to that event. A `??` miss is resolved
 before Duration or any event-based lane is read. Independent numerical lanes
 therefore advance only for surviving events and retain their own cycle lengths.
-Offset and CV lanes follow the resulting shorter score time. Every auxiliary
-lane restarts when the shortened Notes pass reaches its boundary.
+Offset and CV lanes follow the resulting shorter score time. Every lane written
+with `...` is remapped to the shortened Notes pass; ordinary lanes continue
+their independent cycles across its boundary.
 
 Presence probability is accepted on a top-level pitched event, a top-level
 rest, or a complete top-level group. An omitted rest does not interrupt the
@@ -492,8 +573,22 @@ number one tenth. `.!3` repeats the default across three positions.
 Free numerical lanes advance independently according to the final column of
 the table. A `?` miss is a rest and advances the applicable lanes. A `??` miss
 does not exist as an event, so it advances none of them. A free lane may cycle
-several times during one Notes pass or leave values unused; it restarts when
-that Notes pass ends.
+several times during one Notes pass or leave values unused. It keeps its cursor
+when the Notes pattern repeats, wraps only at the end of its own values, and
+therefore need not share the Notes cycle length. A `rate` pipeline likewise
+keeps score-time phase across repeated passes of the same sequence.
+
+A semicolon between pattern terms is a visual separator. It adds no event and
+no duration, so these two lanes are identical:
+
+```text
+notes 1 2 3 4 5 6 7 8
+notes 1 2 3 4 ; 5 6 7 8
+```
+
+This is especially useful with `subdiv 16`, where groups of four terms make
+the beats visible. Semicolons work in Notes, numerical, and CV patterns. They
+must occur between terms; they are neither barlines nor statement terminators.
 
 An accent prefix raises Velocity to its built-in accent floor and drives the
 separate Accent output for the effective Gate. A Slide value is read for every
@@ -502,7 +597,8 @@ pitched event but matters only when the note uses `>`.
 ### Aligning a lane to Notes
 
 A leading `...` right-aligns explicit values with one realized Notes pass; a
-trailing `...` left-aligns them:
+trailing `...` left-aligns them. An ellipsis between two groups applies values
+at both edges and leaves the middle positions at the lane's normal default:
 
 ```text
 notes 1 2 3 4 5 6 7 8
@@ -510,19 +606,26 @@ gate  ... .1!2          // short gates on notes 7 and 8
 
 notes 1 2 3 4 5 6 7 8
 gate  .1!2 ...          // short gates on notes 1 and 2
+
+notes 1 2 3 4 5 6 7 8
+gate  .5 .1 ... .1 .5   // shape notes 1, 2, 7, and 8 only
 ```
 
-`...` must be the first or last term and may appear only once. `!N`
-repetitions and Euclidean cells count as positions; ratchets and elongation do
-not. Random and alternate branches must have equal cell counts when another
-lane is aligned to them. An aligned lane cannot also use `rate`.
+`...` may appear once, at the beginning, at the end, or between at least one
+value on either side. `!N` repetitions count as positions; ratchets and note
+elongation do not. Random and alternate Notes branches must have equal cell
+counts when another lane is aligned to them. An aligned lane cannot also use
+`rate`.
 
 Presence omissions are resolved before alignment. A right-aligned lane remains
 attached to the final surviving positions, and a left-aligned lane remains
 attached to the first surviving positions. If omissions leave fewer positions
 than explicit lane values, right alignment uses the final values and left
-alignment uses the first values. Aligned lanes restart at the same shortened
-Notes boundary as free lanes.
+alignment uses the first values. Values on both sides of a middle ellipsis stay
+attached to their respective edges. If omissions make the pass shorter than
+the two edge groups together, each cell uses the value from the nearer outer
+edge; a central tie uses the left group. Aligned lanes are recalculated from
+the start of every realized Notes pass; free lanes continue independently.
 
 ## CV1, CV2, and CV3
 
@@ -822,11 +925,10 @@ punctuation are literal source text.
 ### Top-level statements and names
 
 ```text
-program     ::= { sequence | assignment | play | stop | seed | comment }
+program     ::= { sequence | assignment | play | seed | comment }
 sequence    ::= NAME "=" "sequence" "{" sequence-line+ "}" pipeline*
 assignment  ::= NAME "=" expression pipeline*
 play        ::= "play" NAME
-stop        ::= "stop"
 seed        ::= "seed" UNSIGNED_INTEGER
 
 expression  ::= term { "+" term }
@@ -843,8 +945,8 @@ expression, and parentheses group an expression. Repetition therefore binds
 more tightly than concatenation. Pipelines apply after the complete expression.
 An assignment names an arrangement expression; `play` accepts either a sequence
 or an assignment. The selected arrangement loops until another executed `play`
-or `stop` command replaces it. When a document contains several transport or
-seed commands, the last one in the evaluated document takes effect.
+command replaces it. The final `play` command selects the arrangement, and the
+final `seed` command selects the random seed.
 
 Names beginning with `cv` followed only by a non-zero decimal integer are
 reserved for CV lanes and future typed signal values.
@@ -897,7 +999,7 @@ riff = sequence {
 ### Note-pattern syntax
 
 ```text
-note-pattern ::= note-element { SPACE note-element }
+note-pattern ::= note-element { pattern-separator note-element }
 note-element ::= group | note-event | rest | tie
 
 note-event   ::= [">"] ["x" | "^" | "^^"] pitched-value
@@ -972,10 +1074,14 @@ attribute    ::= "quiet" | "stacc" | "ten" |
                  "vel=" value | "gate=" value |
                  "slide=" value | "len=" value
 
-scalar-pattern ::= scalar-term { SPACE scalar-term } |
-                   "..." SPACE scalar-term { SPACE scalar-term } |
-                   scalar-term { SPACE scalar-term } SPACE "..."
+scalar-pattern ::= scalar-term { pattern-separator scalar-term } |
+                   "..." SPACE scalar-term
+                     { pattern-separator scalar-term } |
+                   scalar-term { pattern-separator scalar-term } SPACE "..." |
+                   scalar-term { pattern-separator scalar-term } SPACE "..."
+                     SPACE scalar-term { pattern-separator scalar-term }
 scalar-term    ::= (value | "." | random-scalar) [replication]
+pattern-separator ::= SPACE | [SPACE] ";" [SPACE]
 random-scalar  ::= "$u{" value "," value "}" |
                    "$n{" value "," value "}"
 
@@ -1009,9 +1115,10 @@ duration spans use incoming-clock beats or dimensionless values as described
 below.
 
 Scalar patterns contain flat values rather than note groups. `.` consumes a
-position and inherits that lane's normal value. An ellipsis may occur at one
-edge to align the supplied values with the beginning or end of the Notes
-structure.
+position and inherits that lane's normal value. One ellipsis may occur at an
+edge, or between two sets of values, to align the supplied values with the
+beginning, end, or both edges of the Notes structure. A semicolon is accepted
+where whitespace would separate two pattern terms and has no semantic effect.
 
 ### Pipelines
 

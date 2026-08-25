@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="380" viewBox="0 0 120 380">
+  <rect width="120" height="380" fill="#cecece"/>
+
+  <g font-family="DejaVu Sans, sans-serif" text-anchor="middle" fill="#1f1f1f">
+    <text x="60" y="13" font-size="9.2" font-weight="bold"
+          letter-spacing="0.75">TRIGGERFISH</text>
+    <text x="60" y="23" font-size="6.8" letter-spacing="0.9">TRANSPORT</text>
+
+    <text x="60.1713" y="39" font-size="5.8" font-weight="bold"
+          letter-spacing="0.5" data-control="TEMPO">TEMPO</text>
+    <rect x="23" y="101" width="74" height="18" rx="2"
+          fill="#151515" stroke="#666666" stroke-width="0.7"/>
+    <g font-size="5.2" font-weight="bold" letter-spacing="0.35">
+      <text x="33.7734" y="150" data-control="PLAY_FROM_BEGINNING">RESTART</text>
+      <text x="88.1747" y="150" data-control="PAUSE">PAUSE</text>
+      <text x="33.7792" y="210" data-control="PLAY">PLAY</text>
+      <text x="88.1894" y="210" data-control="STOP">STOP</text>
+    </g>
+
+    <text x="60" y="260" font-size="4.7" font-weight="bold"
+          letter-spacing="0.45" fill="#686868">STATE</text>
+    <g font-size="4.2" font-weight="bold" fill="#555555">
+      <text x="35" y="297">PLAY</text>
+      <text x="60" y="297">PAUSE</text>
+      <text x="85" y="297">STOP</text>
+    </g>
+
+    <g font-size="5" font-weight="bold" letter-spacing="0.25">
+      <text x="19.5371" y="319" data-control="CLOCK_OUTPUT">CLOCK</text>
+      <text x="60" y="319" data-control="RUN_OUTPUT">RUN</text>
+      <text x="99.3936" y="319" data-control="RESET_OUTPUT">RESET</text>
+    </g>
+  </g>
+</svg>

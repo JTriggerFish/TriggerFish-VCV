@@ -46,6 +46,7 @@ MODULE_NAMES = (
     "TfUnisonOscillator",
     "TfScenePack4",
     "TfReverb",
+    "TfTransport",
     "TfProgSequencer",
 )
 
@@ -109,6 +110,7 @@ COMPONENTS = {
     "TfEnvelopeSlider": ("TfSlider.svg", "TfSliderHandle.svg"),
     "CKSS": ("CKSS_0.svg", "CKSS_1.svg"),
     "CKSSThree": ("CKSSThree_0.svg", "CKSSThree_1.svg", "CKSSThree_2.svg"),
+    "LEDButton": ("VCVButton_0.svg",),
     "PJ301MPort": ("PJ301M.svg",),
 }
 
@@ -139,6 +141,9 @@ SLIDER_LIGHT_BRIGHTNESS = {
 # SVG's reflections over it. Dimensions are Rack units (3 mm at 96 DPI).
 LIGHTS = {
     "MediumLight<BlueLight>": ("MediumLight.svg", 3.0 * 96.0 / 25.4),
+    "MediumLight<GreenLight>": ("MediumLight.svg", 3.0 * 96.0 / 25.4),
+    "MediumLight<YellowLight>": ("MediumLight.svg", 3.0 * 96.0 / 25.4),
+    "MediumLight<RedLight>": ("MediumLight.svg", 3.0 * 96.0 / 25.4),
 }
 
 PANEL_GRAPHICS = (
@@ -163,6 +168,7 @@ MODULE_GRAPHICS = {
     "TfUnisonOscillator": (),
     "TfScenePack4": (),
     "TfReverb": (),
+    "TfTransport": (),
     "TfProgSequencer": (),
 }
 
@@ -173,6 +179,15 @@ MODULE_PANEL_FILES = {
 
 
 def module_preview_markup(module_name: str) -> str:
+    if module_name == "TfTransport":
+        # TfTempoDisplay is drawn by NanoVG at runtime. Mirror its factory
+        # value and geometry without baking a second label into the panel SVG.
+        return (
+            '<text id="transport-tempo-preview" x="60" y="110.5" '
+            'text-anchor="middle" dominant-baseline="middle" '
+            'font-family="Share Tech Mono, monospace" font-size="9" '
+            'fill="#ffd714">120.00 BPM</text>\n'
+        )
     if module_name == "TfReverb":
         # TfRoomPlanWidget is drawn by NanoVG at runtime rather than by the
         # panel SVG. Reproduce its factory appearance here so documentation
@@ -452,6 +467,9 @@ MODULE_KNOB_ANGLES = {
         "HIGH_CUT": 95.5,
         "MIX": -43.5,
         "LEVEL": 118.6,
+    },
+    "TfTransport": {
+        "TEMPO": -48.3,
     },
 }
 

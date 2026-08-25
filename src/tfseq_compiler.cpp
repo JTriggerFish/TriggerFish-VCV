@@ -2334,19 +2334,11 @@ CompileResult CompileDocument(const syntax::Document &document) {
   std::unordered_map<std::string, syntax::Assignment> assignments;
   std::string playName;
   SourceSpan playSpan;
-  bool stopped = false;
 
   for (const auto &statement : document.statements) {
     if (const auto *play = std::get_if<syntax::PlayCommand>(&statement)) {
       playName = play->name.text;
       playSpan = play->name.span;
-      stopped = false;
-      continue;
-    }
-    if (const auto *stop = std::get_if<syntax::StopCommand>(&statement)) {
-      playName.clear();
-      playSpan = stop->span;
-      stopped = true;
       continue;
     }
     if (const auto *seed = std::get_if<syntax::SeedCommand>(&statement)) {
@@ -2509,10 +2501,36 @@ CompileResult CompileDocument(const syntax::Document &document) {
         ok = ParseScalars(lane.pattern, *items, laneSpec->canonical,
                           result.diagnostic);
         if (lane.pattern.alignment != syntax::Pattern::Alignment::Free) {
-          sequence.alignment[static_cast<std::size_t>(parsedLane)] =
-              lane.pattern.alignment == syntax::Pattern::Alignment::Left
-                  ? LaneAlignment::Left
-                  : LaneAlignment::Right;
+          const auto laneIndex = static_cast<std::size_t>(parsedLane);
+          if (lane.pattern.alignment == syntax::Pattern::Alignment::Left) {
+            sequence.alignment[laneIndex] = LaneAlignment::Left;
+          } else if (lane.pattern.alignment ==
+                     syntax::Pattern::Alignment::Right) {
+            sequence.alignment[laneIndex] = LaneAlignment::Right;
+          } else {
+            sequence.alignment[laneIndex] = LaneAlignment::Edges;
+            std::size_t split = 0;
+            for (std::size_t term = 0;
+                 term < lane.pattern.alignmentSplit; ++term) {
+              std::size_t repetitions = 1;
+              if (!ParsePositiveCount(lane.pattern.steps[term].repeatCount,
+                                      laneName + " repetition", repetitions,
+                                      result.diagnostic)) {
+                ok = false;
+                break;
+              }
+              if (split > std::numeric_limits<std::size_t>::max() -
+                              repetitions) {
+                result.diagnostic = Error(
+                    lane.pattern.steps[term].span,
+                    laneName + " edge alignment has too many values");
+                ok = false;
+                break;
+              }
+              split += repetitions;
+            }
+            sequence.alignmentSplits[laneIndex] = split;
+          }
           sequence.alignmentSpans[static_cast<std::size_t>(parsedLane)] =
               lane.pattern.span;
           alignmentSpans[static_cast<std::size_t>(parsedLane)] =
@@ -2806,10 +2824,6 @@ CompileResult CompileDocument(const syntax::Document &document) {
     return true;
   };
 
-  if (stopped) {
-    program->stopped = true;
-    return FinishProgram(std::move(program));
-  }
   if (program->sequences.empty()) {
     result.diagnostic = {"program does not define a sequence", 1, 1};
     return result;

@@ -15,7 +15,6 @@ PATCH_PATHS = {
     "vdpo": ROOT / "test-vdpo.vcv",
     "303_voice": ROOT / "test-303-voice.vcv",
     "prog_303": ROOT / "test-prog-sequencer-303.vcv",
-    "room_reverb": ROOT / "test-room-reverb.vcv",
     "reverb_two_sources": ROOT / "test-room-reverb-two-sources.vcv",
     "4072_voice": ROOT / "test-4072-voice.vcv",
     "wavefold": ROOT / "test-wavefold-oscillator.vcv",
@@ -91,6 +90,7 @@ EXPECTED_DEFAULTS = {
     "TfVDPO": {0: 0.5, 1: 0.0, 2: 1.0, 3: 1.0, 4: 1.0, 5: 1.0},
     "TfVCA": {0: 0.5, 1: 1.0, 2: 1.0, 3: 0.5, 4: 50.0, 5: 1.0},
     "TfProgSequencer": {},
+    "TfTransport": {0: 120.0, 1: 0.0, 2: 0.0, 3: 0.0, 4: 0.0},
     "Tf303VoiceCore": {
         0: 0.9344246,
         1: 0.0,
@@ -329,6 +329,7 @@ def test_smoke_patches_collectively_contain_every_triggerfish_module():
         "TfUnisonOscillator",
         "TfScenePack4",
         "TfReverb",
+        "TfTransport",
         "TfProgSequencer",
     }
 
@@ -344,21 +345,42 @@ def test_smoke_patches_use_triggerfish_parameter_defaults(name):
         actual = param_values(triggerfish_module)
         expected = EXPECTED_DEFAULTS[triggerfish_module["model"]]
         musical_overrides = set()
-        if name in {
-            "303_voice",
-            "prog_303",
-            "room_reverb",
-            "reverb_two_sources",
-            "scene_pack",
-        }:
-            if triggerfish_module["model"] == "Tf303VoiceCore":
-                musical_overrides = {0, 1, 2, 4, 5, 6, 7, 8, 9, 11, 12}
-            elif triggerfish_module["model"] == "Tf303Oscillator":
-                musical_overrides = {2, 4}
-            elif triggerfish_module["model"] == "TfReverb":
-                musical_overrides = (
-                    {3, 4, 16, 18, 19} if name == "reverb_two_sources" else {16}
-                )
+        if name == "prog_303":
+            musical_overrides = {
+                "Tf303Oscillator": {0, 4},
+                "Tf303VoiceCore": {0, 1, 2, 3, 4, 9},
+                "TfReverb": {16},
+            }.get(triggerfish_module["model"], set())
+        elif name == "scene_pack":
+            if triggerfish_module["model"] == "TfReverb":
+                musical_overrides = {16}
+        elif name == "reverb_two_sources":
+            musical_overrides = {
+                "TfUnisonOscillator": {2, 7, 8, 9, 11, 12, 13, 14},
+                "TfWavefoldOscillator": {2, 3, 4, 10, 11, 12, 13, 14},
+                "Tf4072VoiceCore": {
+                    0,
+                    1,
+                    2,
+                    3,
+                    4,
+                    7,
+                    8,
+                    9,
+                    10,
+                    11,
+                    12,
+                    13,
+                    14,
+                    15,
+                    16,
+                    17,
+                    18,
+                    19,
+                },
+                "TfReverb": set(range(32)),
+                "TfTransport": {0},
+            }.get(triggerfish_module["model"], set())
         assert {
             param_id: value
             for param_id, value in actual.items()
@@ -401,14 +423,15 @@ def test_smoke_patch_has_playable_control_and_stereo_audio_paths(name):
     if name == "scene_pack":
         assert len(modules(patch, "VCO")) == 4
     elif name == "reverb_two_sources":
-        assert len(modules(patch, "VCO")) == 2
-        assert len(modules(patch, "VCMixer")) == 2
+        assert len(modules(patch, "TfProgSequencer")) == 2
+        assert len(modules(patch, "Tf4072VoiceCore")) == 2
+        assert modules(patch, "TfTransport")
     elif modules(patch, "MIDIToCVInterface"):
         midi = modules(patch, "MIDIToCVInterface")[0]
         assert all(has_cable(patch, midi["id"], 1, adsr["id"], 4) for adsr in adsrs)
     elif name == "prog_303":
         assert modules(patch, "TfProgSequencer")
-        assert modules(patch, "Clocked")
+        assert modules(patch, "TfTransport")
     else:
         assert modules(patch, "Foundry")
         assert modules(patch, "Clocked")
@@ -522,30 +545,16 @@ def test_303_voice_patch_connects_sequencer_oscillator_filter_and_vca():
     master = modules(patch, "VCMixer")[0]
 
     assert has_cable(patch, clock["id"], 1, foundry["id"], 6)
+    assert has_cable(patch, clock["id"], 4, foundry["id"], 5)
     assert has_cable(patch, foundry["id"], 0, oscillator["id"], 0)
     assert has_cable(patch, foundry["id"], 9, oscillator["id"], 1)
-    assert param_values(oscillator)[2] == pytest.approx(math.log10(0.100))
-    assert param_values(oscillator)[4] == pytest.approx(0.296385675668716)
+    assert param_values(oscillator) == EXPECTED_DEFAULTS["Tf303Oscillator"]
     assert not has_cable(patch, oscillator["id"], 0, diode["id"], 1)
     assert has_cable(patch, oscillator["id"], 1, diode["id"], 0)
     assert has_cable(patch, cutoff_lfo["id"], 0, diode["id"], 2)
     assert has_cable(patch, resonance_lfo["id"], 0, diode["id"], 4)
     assert has_cable(patch, fm_lfo["id"], 0, diode["id"], 3)
-    preserved_voice_settings = {
-        0: 0.128505349159241,
-        1: 0.408434182405472,
-        2: 1.0,
-        4: 0.479517936706543,
-        5: 0.406198114156723,
-        6: 0.2313252389431,
-        7: 0.60891592502594,
-        8: 1.0,
-        9: -1.18070936203003,
-        11: 0.589156568050385,
-        12: 0.497590363025665,
-    }
-    for param_id, value in preserved_voice_settings.items():
-        assert param_values(diode)[param_id] == pytest.approx(value)
+    assert param_values(diode) == EXPECTED_DEFAULTS["Tf303VoiceCore"]
     assert param_values(cutoff_lfo)[0] == 0.0
     assert param_values(cutoff_lfo)[2] == pytest.approx(-4.00999546051025)
     assert param_values(resonance_lfo)[2] == pytest.approx(-4.1243371963501)
@@ -579,15 +588,16 @@ def test_303_voice_patch_preserves_saved_layout_and_view():
 def test_prog_303_replaces_foundry_with_the_concise_program():
     patch = load_patch("prog_303")
     sequencer = modules(patch, "TfProgSequencer")[0]
-    clock = modules(patch, "Clocked")[0]
+    clock = modules(patch, "TfTransport")[0]
     oscillator = modules(patch, "Tf303Oscillator")[0]
     voice = modules(patch, "Tf303VoiceCore")[0]
     reverb = modules(patch, "TfReverb")[0]
     audio = modules(patch, "AudioInterface")[0]
 
     assert modules(patch, "Foundry") == []
-    assert has_cable(patch, clock["id"], 1, sequencer["id"], 0)
-    assert has_cable(patch, clock["id"], 4, sequencer["id"], 1)
+    assert has_cable(patch, clock["id"], 0, sequencer["id"], 0)
+    assert has_cable(patch, clock["id"], 2, sequencer["id"], 1)
+    assert has_cable(patch, clock["id"], 1, sequencer["id"], 2)
     assert has_cable(patch, sequencer["id"], 0, oscillator["id"], 0)
     assert has_cable(patch, sequencer["id"], 1, voice["id"], 5)
     assert has_cable(patch, sequencer["id"], 4, voice["id"], 6)
@@ -599,8 +609,20 @@ def test_prog_303_replaces_foundry_with_the_concise_program():
     assert modules(patch, "VCMixer") == []
 
     source = sequencer["data"]["source"]
+    assert "subdiv 16" in source
     assert "notes ^1 1!3 ^5 7 ^1 ~ 1 ~ ^8 >1, ~ 1 >^1, >1" in source
+    assert "glide .5" in source
     assert sequencer["data"]["languageVersion"] == 1
+    oscillator_values = param_values(oscillator)
+    voice_values = param_values(voice)
+    assert oscillator_values[0] == 1.0
+    assert oscillator_values[4] == pytest.approx(0.17951805889606476)
+    assert voice_values[0] == pytest.approx(0.6371597647666931)
+    assert voice_values[1] == pytest.approx(0.48494037985801697)
+    assert voice_values[2] == 1.0
+    assert voice_values[3] == pytest.approx(8.949535369873047)
+    assert voice_values[4] == pytest.approx(0.14879514276981354)
+    assert voice_values[9] == pytest.approx(-0.06006646901369095)
     assert "articulation" not in source
     assert "\n  accent " not in source
     assert "gate .5" in source
@@ -608,32 +630,7 @@ def test_prog_303_replaces_foundry_with_the_concise_program():
     assert "iv = acid |> modulate_degree 4 |> octave -1" in source
     assert "v  = acid |> modulate_degree 5 |> octave -1 |> scale major" in source
     assert "song = acid * 8 + iv * 4 + v * 4" in source
-    assert len(source.splitlines()) == 13
-
-
-def test_room_reverb_patch_routes_programmed_303_mono_to_stereo():
-    patch = load_patch("room_reverb")
-    smoke_303 = load_patch("303_voice")
-    voice = modules(patch, "Tf303VoiceCore")[0]
-    reverb = modules(patch, "TfReverb")[0]
-    audio = modules(patch, "AudioInterface")[0]
-    room_foundry = modules(patch, "Foundry")[0]
-    smoke_foundry = modules(smoke_303, "Foundry")[0]
-    room_clock = modules(patch, "Clocked")[0]
-    smoke_clock = modules(smoke_303, "Clocked")[0]
-
-    assert room_foundry["data"] == smoke_foundry["data"]
-    assert room_clock["data"] == smoke_clock["data"]
-    assert modules(patch, "LFO") == []
-    assert modules(patch, "VCA-1") == []
-    assert has_cable(patch, room_foundry["id"], 8, voice["id"], 5)
-    assert has_cable(patch, voice["id"], 1, reverb["id"], 0)
-    assert modules(patch, "VCMixer") == []
-    assert has_cable(patch, reverb["id"], 0, audio["id"], 0)
-    assert has_cable(patch, reverb["id"], 1, audio["id"], 1)
-    reverb_values = param_values(reverb)
-    assert {**reverb_values, 16: 0.0} == EXPECTED_DEFAULTS["TfReverb"]
-    assert reverb_values[16] == -6.0
+    assert len(source.splitlines()) == 14
 
 
 def test_4072_voice_patch_connects_midi_oscillator_filter_envelopes_and_vca():
@@ -717,29 +714,136 @@ def test_scene_pack_patch_connects_four_sources_and_packed_outputs():
     assert modules(patch, "VCMixer") == []
 
 
-def test_two_source_reverb_patch_exposes_independent_packed_sources():
+def test_two_source_reverb_patch_builds_two_independently_sequenced_voices():
     patch = load_patch("reverb_two_sources")
-    oscillators = modules(patch, "VCO")
-    source_levels = modules(patch, "VCMixer")
+    clock = modules(patch, "TfTransport")[0]
+    sequencers = modules(patch, "TfProgSequencer")
+    bass_sequencer = next(
+        sequencer
+        for sequencer in sequencers
+        if "bass = sequence" in sequencer["data"]["source"]
+    )
+    arpeggio_sequencer = next(
+        sequencer
+        for sequencer in sequencers
+        if "arpeggio = sequence" in sequencer["data"]["source"]
+    )
+    unison = modules(patch, "TfUnisonOscillator")[0]
+    wavefolder = modules(patch, "TfWavefoldOscillator")[0]
+    voices = modules(patch, "Tf4072VoiceCore")
+    bass_voice = next(
+        voice for voice in voices if has_cable(patch, unison["id"], 0, voice["id"], 0)
+    )
+    arpeggio_voice = next(
+        voice
+        for voice in voices
+        if has_cable(patch, wavefolder["id"], 1, voice["id"], 0)
+    )
     scene_pack = modules(patch, "TfScenePack4")[0]
     reverb = modules(patch, "TfReverb")[0]
     scope = modules(patch, "Scope")[0]
     audio = modules(patch, "AudioInterface")[0]
 
-    assert len(oscillators) == len(source_levels) == 2
-    assert has_cable(patch, oscillators[0]["id"], 0, source_levels[0]["id"], 1)
-    assert has_cable(patch, oscillators[1]["id"], 2, source_levels[1]["id"], 1)
-    for source, source_level in enumerate(source_levels):
-        assert has_cable(patch, source_level["id"], 0, scene_pack["id"], source)
+    assert len(sequencers) == len(voices) == 2
+    assert param_values(clock)[0] == 96.0
+    assert param_values(clock) == {
+        0: 96.0,
+        1: 0.0,
+        2: 0.0,
+        3: 0.0,
+        4: 0.0,
+    }
+    assert clock["data"]["state"] == 2
+    for sequencer in sequencers:
+        assert has_cable(patch, clock["id"], 0, sequencer["id"], 0)
+        assert has_cable(patch, clock["id"], 2, sequencer["id"], 1)
+        assert has_cable(patch, clock["id"], 1, sequencer["id"], 2)
+        assert sequencer["data"]["languageVersion"] == 1
+
+    bass_source = bass_sequencer["data"]["source"]
+    assert "tonic D@1" in bass_source
+    assert "subdiv 2" in bass_source
+    assert "scale dorian" in bass_source
+    assert "notes 1_2 7_2 4_2 5 7" in bass_source
+    assert "~" not in bass_source
+    assert "gate .96" in bass_source
+    assert param_values(unison)[2] == 2.0
+    assert param_values(unison)[3] == 0.0
+    assert param_values(unison)[9] == pytest.approx(0.2965061068534851)
+    assert param_values(unison)[13] == pytest.approx(0.29333335161209106)
+    assert param_values(unison)[14] == pytest.approx(0.3920000493526459)
+    assert param_values(bass_voice)[0] == pytest.approx(3.0938026905059814)
+    assert param_values(bass_voice)[1] == pytest.approx(0.4920482337474823)
+    assert param_values(bass_voice)[2] == pytest.approx(10.387954711914062)
+    assert param_values(bass_voice)[10] == pytest.approx(math.log10(1.8))
+    assert param_values(bass_voice)[17] == pytest.approx(0.85)
+    assert has_cable(patch, bass_sequencer["id"], 0, unison["id"], 0)
+    assert has_cable(patch, bass_sequencer["id"], 0, bass_voice["id"], 2)
+    assert has_cable(patch, bass_sequencer["id"], 1, bass_voice["id"], 6)
+    assert has_cable(patch, bass_sequencer["id"], 2, bass_voice["id"], 7)
+    assert has_cable(patch, bass_voice["id"], 1, scene_pack["id"], 0)
+
+    arpeggio_source = arpeggio_sequencer["data"]["source"]
+    assert "tonic D@4" in arpeggio_source
+    assert "notes 3' 1' 5 3 ; 1' 5 3 1 ; 2' 7 5 2 ; 7 5 2 1" in arpeggio_source
+    assert "cv1 4 -4 |> interp linear |> rate 1/9" in arpeggio_source
+    assert arpeggio_sequencer["data"]["editorHeatmap"] == 5
+    assert param_values(wavefolder)[3] == pytest.approx(0.5012047290802002)
+    assert param_values(wavefolder)[10] == 1.0
+    assert param_values(wavefolder)[12] == pytest.approx(0.40800002217292786)
+    assert param_values(wavefolder)[13] == pytest.approx(0.49066662788391113)
+    assert param_values(wavefolder)[14] == pytest.approx(0.5093333721160889)
+    assert param_values(arpeggio_voice)[0] == pytest.approx(0.6673828959465027)
+    assert param_values(arpeggio_voice)[1] == 0.0
+    assert param_values(arpeggio_voice)[2] == pytest.approx(3.5975842475891113)
+    assert param_values(arpeggio_voice)[3] == pytest.approx(0.5493977069854736)
+    assert param_values(arpeggio_voice)[4] == pytest.approx(0.8789158463478088)
+    assert param_values(arpeggio_voice)[8] == pytest.approx(0.7283129692077637)
+    assert param_values(arpeggio_voice)[10] == pytest.approx(0.04110236465930939)
+    assert param_values(arpeggio_voice)[16] == pytest.approx(0.043807897716760635)
+    assert param_values(arpeggio_voice)[7] == pytest.approx(1.0)
+    assert has_cable(patch, arpeggio_sequencer["id"], 0, wavefolder["id"], 0)
+    assert has_cable(patch, arpeggio_sequencer["id"], 0, arpeggio_voice["id"], 2)
+    assert has_cable(patch, arpeggio_sequencer["id"], 1, arpeggio_voice["id"], 6)
+    assert has_cable(patch, arpeggio_sequencer["id"], 2, arpeggio_voice["id"], 7)
+    assert has_cable(patch, arpeggio_sequencer["id"], 5, arpeggio_voice["id"], 3)
+    assert has_cable(patch, arpeggio_voice["id"], 1, scene_pack["id"], 1)
+
     assert has_cable(patch, scene_pack["id"], 0, reverb["id"], 0)
     assert has_cable(patch, reverb["id"], 0, audio["id"], 0)
     assert has_cable(patch, reverb["id"], 1, audio["id"], 1)
     assert has_cable(patch, scene_pack["id"], 0, scope["id"], 0)
     assert has_cable(patch, reverb["id"], 0, scope["id"], 1)
     assert has_cable(patch, reverb["id"], 1, scope["id"], 2)
-    positions = param_values(reverb)
-    assert (positions[3], positions[4]) == (0.25, 0.35)
-    assert (positions[18], positions[19]) == (0.75, 0.35)
+    reverb_values = param_values(reverb)
+    superlush = {
+        0: 0.78,
+        1: 0.55,
+        2: 0.112,
+        3: 0.50,
+        4: 0.32,
+        5: 0.50,
+        6: 0.68,
+        7: 0.84,
+        8: 0.26,
+        9: 1.0,
+        10: 1.0,
+        11: 0.75,
+        12: 0.75,
+        13: 0.4580135308,
+        14: math.log(3.0) / math.log(20.0),
+        15: 0.40,
+        16: -6.0,
+        17: 0.45,
+    }
+    for param_id, value in superlush.items():
+        assert reverb_values[param_id] == pytest.approx(value)
+    assert 1000.0 * math.exp(reverb_values[14] * math.log(20.0)) == pytest.approx(
+        3000.0
+    )
+    for source in range(8):
+        assert reverb_values[3 if source == 0 else 18 + 2 * (source - 1)] == 0.5
+        assert reverb_values[4 if source == 0 else 19 + 2 * (source - 1)] == 0.32
 
 
 def test_diode_ladder_default_cutoff_cv_range_reaches_fully_open():
@@ -827,7 +931,6 @@ def test_smoke_patch_has_quiet_master(name):
     patch = load_patch(name)
     audio = modules(patch, "AudioInterface")[0]
     if name in {
-        "room_reverb",
         "reverb_two_sources",
         "prog_303",
         "scene_pack",

@@ -68,10 +68,13 @@ struct PatternNode {
 };
 
 struct Pattern {
-  enum class Alignment { Free, Left, Right };
+  enum class Alignment { Free, Left, Right, Edges };
   std::vector<PatternNode> steps;
   SourceSpan span;
   Alignment alignment = Alignment::Free;
+  // Number of source terms before a middle ellipsis. The compiler expands
+  // repetitions when it turns this into the runtime edge split.
+  std::size_t alignmentSplit = 0;
 };
 
 struct Lane {
@@ -121,17 +124,13 @@ struct PlayCommand {
   SourceSpan span;
 };
 
-struct StopCommand {
-  SourceSpan span;
-};
-
 struct SeedCommand {
   Token value;
   SourceSpan span;
 };
 
-using Statement = std::variant<SequenceDefinition, Assignment, PlayCommand,
-                               StopCommand, SeedCommand>;
+using Statement =
+    std::variant<SequenceDefinition, Assignment, PlayCommand, SeedCommand>;
 
 struct Document {
   std::vector<Statement> statements;

@@ -14,7 +14,7 @@
       "version": "2.6.6",
       "params": [],
       "data": {
-        "text": "TriggerFish 303 voice smoke test\n\nSETUP\nSelect an output device in Audio-8 and start with monitor volume low. Impromptu Clocked and Foundry run the full 16-bar Gibber Acid playground line by fasttriggerfish and thecharlie at 120 BPM: i for 8 bars, -iv for 4, then -V for 4.\n\nFoundry track A contains the notes, rests, and accents. Track B reproduces the repeating 1, 1, 100, 100 ms glide cycle; the first two quarters are effectively instantaneous. Independent slow bipolar sines modulate cutoff and resonance. A separate 14 Hz sine is connected to linear filter FM with its attenuverter at zero. VCA OUT feeds the -6 dB stereo master.\n\nThe cutoff, resonance, CV depths, and slide time are set for this line; other TriggerFish parameters use their declared defaults. Try WAVE and SHAPE on the oscillator, then CUTOFF, RES, ENV, ACCENT, DRIVE, and BASS on the filter."
+        "text": "TriggerFish 303 voice smoke test\n\nSETUP\nSelect an output device in Audio-8 and start with monitor volume low. Impromptu Clocked and Foundry run the full 16-bar Gibber Acid playground line by fasttriggerfish and thecharlie at 120 BPM: i for 8 bars, -iv for 4, then -V for 4.\n\nFoundry track A contains the notes, rests, and accents. Track B reproduces the repeating 1, 1, 100, 100 ms glide cycle; the first two quarters are effectively instantaneous. Independent slow bipolar sines modulate cutoff and resonance. A separate 14 Hz sine is connected to linear filter FM with its attenuverter at zero. VCA OUT feeds the -6 dB stereo master.\n\nThe 303 oscillator and voice retain the original smoke patch's factory parameter state. Try WAVE and SHAPE on the oscillator, then CUTOFF, RES, ENV, ACCENT, DRIVE, and BASS on the filter."
       },
       "pos": [
         -9,
@@ -1081,7 +1081,7 @@
         },
         {
           "id": 2,
-          "value": -1.0
+          "value": -1.2218487496163564
         },
         {
           "id": 3,
@@ -1089,7 +1089,7 @@
         },
         {
           "id": 4,
-          "value": 0.296385675668716
+          "value": 0.0
         },
         {
           "id": 5,
@@ -1125,15 +1125,15 @@
       "params": [
         {
           "id": 0,
-          "value": 0.128505349159241
+          "value": 0.9344246
         },
         {
           "id": 1,
-          "value": 0.408434182405472
+          "value": 0.0
         },
         {
           "id": 2,
-          "value": 1.0
+          "value": 0.0
         },
         {
           "id": 3,
@@ -1141,27 +1141,27 @@
         },
         {
           "id": 4,
-          "value": 0.479517936706543
+          "value": 0.0
         },
         {
           "id": 5,
-          "value": 0.406198114156723
+          "value": 0.5321928
         },
         {
           "id": 6,
-          "value": 0.2313252389431
+          "value": 0.0
         },
         {
           "id": 7,
-          "value": 0.60891592502594
+          "value": 0.0
         },
         {
           "id": 8,
-          "value": 1.0
+          "value": 0.3333333333333333
         },
         {
           "id": 9,
-          "value": -1.18070936203003
+          "value": -0.3010299956639812
         },
         {
           "id": 10,
@@ -1169,11 +1169,11 @@
         },
         {
           "id": 11,
-          "value": 0.589156568050385
+          "value": 0.5
         },
         {
           "id": 12,
-          "value": 0.497590363025665
+          "value": 0.5
         },
         {
           "id": 13,

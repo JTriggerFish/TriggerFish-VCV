@@ -175,7 +175,7 @@ struct ScalarItem {
 
 enum class CvInterpolation { Step, Linear, Smooth, Power };
 
-enum class LaneAlignment { Free, Left, Right };
+enum class LaneAlignment { Free, Left, Right, Edges };
 
 enum class TransformKind {
   Reverse,
@@ -246,6 +246,8 @@ struct Sequence {
       transforms;
   std::array<LaneAlignment, static_cast<std::size_t>(CursorLane::Count)>
       alignment{};
+  std::array<std::size_t, static_cast<std::size_t>(CursorLane::Count)>
+      alignmentSplits{};
   std::array<SourceSpan, static_cast<std::size_t>(CursorLane::Count)>
       alignmentSpans{};
 };
@@ -272,6 +274,9 @@ struct SequencePlaybackState {
   std::uint64_t structuralCell = 0;
   std::uint64_t structuralCellCount = 0;
   std::uint64_t completedCycles = 0;
+  // Score time accumulated by independently cycling lanes before the current
+  // Notes pass. partStartBeat_ supplies the within-pass portion.
+  double freeLaneBeat = 0.0;
   double lastBaseDuration = 0.0;
   bool hasSoundingPitch = false;
   std::size_t soundingVoiceCount = 0;
@@ -281,7 +286,6 @@ struct SemanticProgram {
   std::vector<Sequence> sequences;
   std::vector<ArrangementPart> arrangement;
   bool loopArrangement = true;
-  bool stopped = false;
   std::uint64_t seed = 1;
 };
 

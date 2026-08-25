@@ -80,4 +80,20 @@ inline float accumulatedTail(float previousEnergy, double age, float impulse,
       previousEnergy * exponentialDecay(age, tailDuration) + impulse, 0.f, 1.f);
 }
 
+inline float activeStepProgress(double visibleBeat, double beginBeat,
+                                double endBeat) noexcept {
+  if (!std::isfinite(visibleBeat) || !std::isfinite(beginBeat) ||
+      !std::isfinite(endBeat) || !(endBeat > beginBeat))
+    return 0.f;
+  return static_cast<float>(
+      std::clamp((visibleBeat - beginBeat) / (endBeat - beginBeat), 0.0, 1.0));
+}
+
+inline float transportLightBrightness(bool transportActive,
+                                      bool clockPulse) noexcept {
+  if (!transportActive)
+    return 0.f;
+  return clockPulse ? 1.f : 0.16f;
+}
+
 } // namespace tfui

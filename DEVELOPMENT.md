@@ -41,8 +41,7 @@ Run the usual tasks from PowerShell:
 .\dev.ps1 smoke-vdpo   # Install and open the two-VDPO patch
 .\dev.ps1 smoke-303    # Install and open the sequenced 303 voice patch
 .\dev.ps1 smoke-prog-303 # Replace Foundry with Prog Sequencer in the 303 patch
-.\dev.ps1 smoke-reverb # Install and open the 303-through-room-reverb patch
-.\dev.ps1 smoke-reverb-two-sources # Open the two-source spatial reverb patch
+.\dev.ps1 smoke-reverb-two-sources # Open the musical two-source reverb patch
 .\dev.ps1 smoke-4072   # Install and open the MIDI-playable 4072 voice patch
 .\dev.ps1 smoke-wavefold # Install and open the Wavefold Oscillator patch
 .\dev.ps1 smoke-unison # Install and open the Unison Oscillator patch
@@ -158,15 +157,21 @@ slow cutoff and resonance cycles; a 14 Hz LFO is connected to
 linear filter FM with its attenuverter at zero. Install Impromptu Modular from
 the Rack Library before opening it.
 
-[test-prog-sequencer-303.vcv](test-prog-sequencer-303.vcv) keeps the tuned
-Clocked, oscillator, voice, modulation, Room Reverb, and stereo output path but
-replaces Foundry with Prog Sequencer. Its visible program is both a
+[test-prog-sequencer-303.vcv](test-prog-sequencer-303.vcv) keeps the original
+303 parameter state together with the current modulation, Room Reverb, and
+stereo output path, but replaces Clocked and Foundry with TriggerFish Transport
+and Prog Sequencer. Its visible program is both a
 playable test and a compact-syntax regression fixture.
 
 [test-room-reverb-two-sources.vcv](test-room-reverb-two-sources.vcv) feeds a
-low sine and a higher saw through independent level controls and Scene Pack 4.
-Its two packed channels appear as independently draggable Room Reverb sources;
-the scope shows the packed input and stereo result.
+slow, drifting two-saw/sub bass and a descending folded arpeggio through
+separate 4072 voices. Independent Prog Sequencers drive both parts, and Scene
+Pack 4 keeps them as independently draggable Room Reverb sources. The reverb
+uses Superlush with a 3 kHz wet high cut. Arpeggio CV1 drives an 18-beat bipolar
+cutoff triangle across the four-beat note phrase. One TriggerFish Transport
+fans its fixed 24 PPQN Clock, Run, and Reset signals to both sequencers. Its
+four controls restart, pause, play, or stop the complete patch while keeping
+both programs aligned. The scope shows the packed input and stereo result.
 
 [test-4072-voice.vcv](test-4072-voice.vcv) connects a Fundamental saw
 oscillator to 4072 Voice Core, with MIDI pitch tracking both oscillator and
@@ -182,8 +187,9 @@ Unison Oscillator patch exposing its mono and stereo mixes.
 oscillators into Scene Pack 4, sends its single packed polyphonic output through
 Room Reverb, and exposes the packed source bundle plus stereo result on a scope.
 
-The Slop4, VDPO, 4072, Wavefold, Unison, and Scene Pack patches use Rack Core,
-Fundamental, and TriggerFish modules; the 303 patch also uses Impromptu Modular.
+The Slop4, VDPO, 4072, Wavefold, Unison, Scene Pack, Prog-303, and musical
+reverb patches use Rack Core, Fundamental, and TriggerFish modules. The
+Foundry-based 303 patch additionally uses Impromptu Modular.
 Their final stereo masters are set to -6 dB. `dev.ps1 smoke` remains an alias
 for `dev.ps1 smoke-vdpo`.
 

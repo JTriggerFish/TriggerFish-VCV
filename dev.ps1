@@ -14,7 +14,6 @@ param(
         "smoke-vdpo",
         "smoke-303",
         "smoke-prog-303",
-        "smoke-reverb",
         "smoke-reverb-two-sources",
         "smoke-4072",
         "smoke-wavefold",
@@ -220,6 +219,17 @@ switch ($Command) {
             if ($LASTEXITCODE -ne 0) {
                 throw "TfReverb panel generation failed with exit code $LASTEXITCODE."
             }
+            & uv run python tools/align_panel_labels.py `
+                --rack-runtime $rackRuntime --module TfTransport
+            if ($LASTEXITCODE -ne 0) {
+                throw "TfTransport label alignment failed with exit code $LASTEXITCODE."
+            }
+            & uv run python tools/svg_text_to_paths.py `
+                "res-src/TfTransport.svg" "res/TfTransport.svg" `
+                --font $panelFont
+            if ($LASTEXITCODE -ne 0) {
+                throw "TfTransport panel generation failed with exit code $LASTEXITCODE."
+            }
             foreach ($suffix in @("", "-30", "-38")) {
                 & uv run python tools/svg_text_to_paths.py `
                     "res-src/TfProgSequencer$suffix.svg" "res/TfProgSequencer$suffix.svg" `
@@ -253,7 +263,6 @@ switch ($Command) {
     "smoke-vdpo" { Start-SmokePatch "test-vdpo.vcv" }
     "smoke-303" { Start-SmokePatch "test-303-voice.vcv" }
     "smoke-prog-303" { Start-SmokePatch "test-prog-sequencer-303.vcv" }
-    "smoke-reverb" { Start-SmokePatch "test-room-reverb.vcv" }
     "smoke-reverb-two-sources" {
         Start-SmokePatch "test-room-reverb-two-sources.vcv"
     }

@@ -1008,7 +1008,7 @@ master Output Level.
 | Damping | 28% | 40% | 26% |
 | Diffusion | 82% | 62% | 100% |
 | Modulation | 30% | 15% | 100% |
-| Shimmer | 0% | 0% | 65% |
+| Shimmer | 0% | 0% | 45% |
 | Wet low/high cut | 20 Hz / 12 kHz | 40 Hz / 9 kHz | 120 Hz / 8 kHz |
 | ER / tail balance | Centre (50%) | 40%, early-leaning | 75%, tail-leaning |
 | Stereo width | 100% | 86% | 127% |

@@ -10,7 +10,9 @@
       <text x="303" y="34">INPUTS</text>
       <text x="289" y="49">CLOCK</text>
       <text x="317" y="49">RESET</text>
-      <text x="303" y="105">RUN</text>
+      <text x="303" y="103">RUN</text>
+      <text x="303" y="111" font-size="4" font-weight="normal"
+            fill="#666">LOW = PAUSE</text>
       <text x="303" y="153">OUTPUTS</text>
       <text x="289" y="172">V/OCT</text>
       <text x="317" y="172">GATE</text>

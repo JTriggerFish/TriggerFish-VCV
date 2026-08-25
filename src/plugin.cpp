@@ -26,6 +26,7 @@ void init(Plugin *p)
 	p->addModel(modelTfUnisonOscillator);
 	p->addModel(modelTfScenePack4);
 	p->addModel(modelTfReverb);
+	p->addModel(modelTfTransport);
 	p->addModel(modelTfProgSequencer);
 
 	// Any other pluginInstance initialization may go here.

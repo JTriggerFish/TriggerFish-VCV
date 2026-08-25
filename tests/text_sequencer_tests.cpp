@@ -76,8 +76,7 @@ void editorShortcutTextOperationsAreStructural() {
   const auto duplicatedCarriageReturnLine =
       tfseq::editor::Duplicate("notes 1\rplay a", 2, 2);
   check(duplicatedCarriageReturnLine.changed &&
-            duplicatedCarriageReturnLine.text ==
-                "notes 1\rnotes 1\rplay a",
+            duplicatedCarriageReturnLine.text == "notes 1\rnotes 1\rplay a",
         "duplicate preserves lone carriage-return line endings");
 }
 
@@ -93,16 +92,52 @@ void heatmapMapsScalarIntensity() {
             close(bright.blue, tfui::MagmaHeatmap.back().blue),
         "heatmap clamps intensity above one to its bright endpoint");
 
-  float previousLuminance = -1.f;
-  for (int step = 0; step <= 100; ++step) {
-    const auto color = tfui::sampleHeatmap(tfui::ProgramEditorHeatmap,
-                                           static_cast<float>(step) / 100.f);
-    const float luminance =
-        0.2126f * color.red + 0.7152f * color.green + 0.0722f * color.blue;
-    check(luminance + 1e-6f >= previousLuminance,
-          "increasing editor intensity never lowers heatmap luminance");
-    previousLuminance = luminance;
+  for (const auto palette : {
+           tfui::HeatmapPalette::Magma, tfui::HeatmapPalette::Inferno,
+           tfui::HeatmapPalette::Plasma, tfui::HeatmapPalette::Viridis,
+           tfui::HeatmapPalette::Cividis, tfui::HeatmapPalette::CrtGreen,
+           tfui::HeatmapPalette::CrtBlue, tfui::HeatmapPalette::CrtYellow,
+           tfui::HeatmapPalette::CrtRed}) {
+    float previousLuminance = -1.f;
+    for (int step = 0; step <= 100; ++step) {
+      const auto color = tfui::sampleHeatmap(
+          palette, static_cast<float>(step) / 100.f);
+      const float luminance =
+          0.2126f * color.red + 0.7152f * color.green + 0.0722f * color.blue;
+      check(luminance + 1e-6f >= previousLuminance,
+            "increasing editor intensity never lowers heatmap luminance");
+      previousLuminance = luminance;
+    }
   }
+
+  const auto viridis = tfui::sampleHeatmap(tfui::HeatmapPalette::Viridis, 0.f);
+  check(close(viridis.red, tfui::ViridisHeatmap.front().red) &&
+            close(viridis.green, tfui::ViridisHeatmap.front().green) &&
+            close(viridis.blue, tfui::ViridisHeatmap.front().blue),
+        "named heatmaps select their own color table");
+  check(tfui::heatmapPaletteFromInt(3) == tfui::HeatmapPalette::Viridis &&
+            tfui::heatmapPaletteFromInt(8) == tfui::HeatmapPalette::CrtRed &&
+            tfui::heatmapPaletteFromInt(99) == tfui::HeatmapPalette::Magma,
+        "saved heatmap values restore valid choices and default safely");
+
+  for (const auto palette : {
+           tfui::HeatmapPalette::CrtGreen, tfui::HeatmapPalette::CrtBlue,
+           tfui::HeatmapPalette::CrtYellow, tfui::HeatmapPalette::CrtRed}) {
+    const auto unlit = tfui::sampleHeatmap(palette, 0.f);
+    check(close(unlit.red, 0.f) && close(unlit.green, 0.f) &&
+              close(unlit.blue, 0.f),
+          "CRT heatmaps begin at an unlit black screen");
+  }
+  const auto green = tfui::sampleHeatmap(tfui::HeatmapPalette::CrtGreen, 0.7f);
+  const auto blue = tfui::sampleHeatmap(tfui::HeatmapPalette::CrtBlue, 0.7f);
+  const auto yellow =
+      tfui::sampleHeatmap(tfui::HeatmapPalette::CrtYellow, 0.7f);
+  const auto red = tfui::sampleHeatmap(tfui::HeatmapPalette::CrtRed, 0.7f);
+  check(green.green > green.red && green.green > green.blue &&
+            blue.blue > blue.red && blue.blue > blue.green &&
+            yellow.red > yellow.blue && yellow.green > yellow.blue &&
+            red.red > red.green && red.red > red.blue,
+        "CRT heatmaps retain their named phosphor hue below the bright bloom");
 }
 
 void cursorAnimationIsFrameIndependentAndTempoBounded() {
@@ -156,6 +191,17 @@ void cursorAnimationIsFrameIndependentAndTempoBounded() {
   check(tfui::cursorMotionIntensity(duration + tailDuration, duration,
                                     tailDuration) < 0.25f,
         "motion persistence is derived directly from timestamp age");
+  check(close(tfui::activeStepProgress(3.0, 2.0, 6.0), .25f) &&
+            close(tfui::activeStepProgress(1.0, 2.0, 6.0), 0.f) &&
+            close(tfui::activeStepProgress(7.0, 2.0, 6.0), 1.f) &&
+            close(tfui::activeStepProgress(3.0, 2.0, 2.0), 0.f),
+        "active-step progress is duration-aware, clamped, and safe");
+  check(close(tfui::transportLightBrightness(true, false), .16f) &&
+            close(tfui::transportLightBrightness(true, true), 1.f) &&
+            close(tfui::transportLightBrightness(false, true), 0.f) &&
+            close(tfui::transportLightBrightness(false, false), 0.f),
+        "the transport light distinguishes an armed transport from a clock "
+        "heartbeat");
 }
 
 void pegFrontendBuildsTypedSyntax() {
@@ -362,20 +408,29 @@ play a
           "selected statement source spans remain aligned to the editor");
   }
 
-  const auto stopBegin = static_cast<int>(draft.find("play a"));
-  std::string stoppedDraft = draft;
-  stoppedDraft.replace(static_cast<std::size_t>(stopBegin), 6, "stop  ");
-  const auto stoppedDocument = tfseq::syntax::Parse(stoppedDraft);
-  const auto stoppedContext =
-      stoppedDocument
+  const auto playBegin = static_cast<int>(draft.find("play a"));
+  std::string alternateDraft = draft;
+  alternateDraft.replace(static_cast<std::size_t>(playBegin), 6, "play b");
+  const auto alternateDocument = tfseq::syntax::Parse(alternateDraft);
+  const auto alternateContext =
+      alternateDocument
           ? tfseq::syntax::MergeSelectionDocuments(
-                evaluatedDocument.document, evaluated, stoppedDocument.document,
-                stoppedDraft, stopBegin, stopBegin + 4)
+                evaluatedDocument.document, evaluated,
+                alternateDocument.document, alternateDraft, playBegin,
+                playBegin + 6)
           : tfseq::syntax::SelectionDocumentResult{};
-  const auto stopped = stoppedContext ? tfseq::Compile(stoppedContext.document)
-                                      : tfseq::Compile("");
-  check(stoppedContext && stopped && stopped.program->semantic().stopped,
-        "a selected transport statement replaces the active transport only");
+  const auto alternate =
+      alternateContext ? tfseq::Compile(alternateContext.document)
+                       : tfseq::Compile("");
+  const bool playsB = alternate &&
+                      !alternate.program->semantic().arrangement.empty() &&
+                      alternate.program->semantic()
+                              .sequences[alternate.program->semantic()
+                                             .arrangement.front()
+                                             .sequence]
+                              .name == "b";
+  check(alternateContext && playsB,
+        "a selected play statement replaces the active arrangement selection");
 
   const std::string brokenElsewhere = R"(a = sequence {
   notes 9 10
@@ -777,7 +832,7 @@ play a
 void structuralPresenceShortensRealizedPasses() {
   const auto independent = tfseq::Compile(R"(a = sequence {
   notes    1 2??0 3
-  velocity 0.9 0.4
+  velocity 0.9 0.4 0.2
   duration 0.5 1
 }
 play a
@@ -803,8 +858,8 @@ play a
               close(static_cast<float>(thirdDuration), 1.f),
           "an omitted event consumes neither time nor independent lane values");
     check(wrapped.count == 1 && close(wrapped.events[0].pitchVolts, 0.f) &&
-              close(wrapped.events[0].velocity, 0.9f),
-          "independent lanes restart at the shortened Notes boundary");
+              close(wrapped.events[0].velocity, 0.2f),
+          "independent lanes continue across the shortened Notes boundary");
   }
 
   const auto rightAligned = tfseq::Compile(R"(a = sequence {
@@ -829,6 +884,78 @@ play a
           "right alignment is recalculated against the surviving Notes pass");
   }
 
+  const auto edgeAligned = tfseq::Compile(R"(a = sequence {
+  notes    1 2 3 4 ; 5 6 7 8
+  velocity 0.5 ; 0.1 ... 0.1 ; 0.5
+  gate     0.25!2 ... 0.5!2
+  cv1      4 ; 3 ... 2 ; 1
+}
+play a
+)");
+  check(static_cast<bool>(edgeAligned), edgeAligned.diagnostic.message);
+  if (edgeAligned) {
+    tfseq::Runtime runtime;
+    runtime.setProgram(edgeAligned.program.get());
+    std::array<float, 8> velocity{};
+    std::array<float, 8> gate{};
+    std::array<float, 8> cv{};
+    for (std::size_t step = 0; step < velocity.size(); ++step) {
+      const auto events = runtime.next(static_cast<double>(step));
+      if (events.count > 0) {
+        velocity[step] = events.events[0].velocity;
+        gate[step] = events.events[0].gateFraction;
+        cv[step] = events.events[0].cvValue[0];
+      }
+    }
+    check(close(velocity[0], .5f) && close(velocity[1], .1f) &&
+              close(velocity[2], .72f) && close(velocity[5], .72f) &&
+              close(velocity[6], .1f) && close(velocity[7], .5f),
+          "a middle ellipsis overrides both edges and leaves the gap at the "
+          "lane default");
+    check(close(gate[0], .25f) && close(gate[1], .25f) &&
+              close(gate[2], .8f) && close(gate[5], .8f) &&
+              close(gate[6], .5f) && close(gate[7], .5f),
+          "repetition counts expand independently on both sides of an "
+          "ellipsis");
+    check(close(cv[0], 4.f) && close(cv[1], 3.f) && close(cv[2], 0.f) &&
+              close(cv[5], 0.f) && close(cv[6], 2.f) && close(cv[7], 1.f),
+          "sparse edge alignment leaves uncovered CV cells at zero volts");
+  }
+
+  const auto overlappingEdges = tfseq::Compile(R"(a = sequence {
+  notes    1 2??0 3??0 4
+  velocity .1 .2 ... .8 .9
+}
+play a
+)");
+  check(static_cast<bool>(overlappingEdges),
+        overlappingEdges.diagnostic.message);
+  if (overlappingEdges) {
+    tfseq::Runtime runtime;
+    runtime.setProgram(overlappingEdges.program.get());
+    const auto first = runtime.next(0.0);
+    const auto firstVelocity = first.count ? first.events[0].velocity : 0.f;
+    const auto last = runtime.next(1.0);
+    check(first.count == 1 && last.count == 1 &&
+              close(firstVelocity, .1f) && close(last.events[0].velocity, .9f),
+          "overlapping edge groups retain their outermost values after "
+          "presence omissions");
+  }
+
+  const bool rejectsTrailingSeparator = !tfseq::Compile(R"(a = sequence {
+  notes 1 2 ;
+}
+play a
+)");
+  const bool rejectsSecondEllipsis = !tfseq::Compile(R"(a = sequence {
+  notes 1 2
+  gate 0.5 ... 0.5 ...
+}
+play a
+)");
+  check(rejectsTrailingSeparator && rejectsSecondEllipsis,
+        "visual separators cannot trail and an aligned lane has one ellipsis");
+
   const auto alignmentBeforeEdit = tfseq::Compile(R"(a = sequence {
   notes 1 2 3
   velocity ... 0.2 0.4
@@ -851,9 +978,10 @@ play a
     runtime.next(0.0);
     runtime.replaceProgram(alignmentAfterEdit.program.get(), 1.0);
     const auto next = runtime.next(1.0);
-    check(next.count == 1 && close(next.events[0].pitchVolts, 4.f / 12.f) &&
-              close(next.events[0].velocity, 0.4f),
-          "hot replacement recalculates realized alignment for the new program");
+    check(
+        next.count == 1 && close(next.events[0].pitchVolts, 4.f / 12.f) &&
+            close(next.events[0].velocity, 0.4f),
+        "hot replacement recalculates realized alignment for the new program");
   }
 
   const auto leftAligned = tfseq::Compile(R"(a = sequence {
@@ -869,8 +997,8 @@ play a
     const auto first = runtime.next(0.0);
     const auto firstVelocity = first.count ? first.events[0].velocity : 0.f;
     const auto third = runtime.next(1.0);
-    check(first.count == 1 && close(firstVelocity, 0.1f) &&
-              third.count == 1 && close(third.events[0].velocity, 0.2f),
+    check(first.count == 1 && close(firstVelocity, 0.1f) && third.count == 1 &&
+              close(third.events[0].velocity, 0.2f),
           "left alignment retains the first values of the surviving pass");
   }
 
@@ -921,8 +1049,7 @@ play a
     tfseq::Runtime runtime;
     runtime.setProgram(changedVoiceCount.program.get());
     const auto source = runtime.next(0.0);
-    const bool sourceLegato =
-        source.count > 0 && source.events[0].legatoToNext;
+    const bool sourceLegato = source.count > 0 && source.events[0].legatoToNext;
     const auto target = runtime.next(1.0);
     check(!sourceLegato && target.count == 1 &&
               target.events[0].kind == tfseq::EventKind::Attack,
@@ -1850,27 +1977,6 @@ play v
         "harmonic-minor in-key shift completes the major dominant triad");
 }
 
-void stopIsAFirstClassTransportCommand() {
-  auto stopped = tfseq::Compile("stop\n");
-  check(static_cast<bool>(stopped), stopped.diagnostic.message);
-  if (!stopped)
-    return;
-  check(stopped.program->semantic().stopped,
-        "stop compiles without a sequence definition");
-  check(stopped.program->semantic().arrangement.empty(),
-        "stop schedules no arrangement");
-
-  auto lastCommandWins = tfseq::Compile(R"(riff = sequence {
-  notes 1
-}
-play riff
-stop
-)");
-  check(static_cast<bool>(lastCommandWins), lastCommandWins.diagnostic.message);
-  check(lastCommandWins && lastCommandWins.program->semantic().stopped,
-        "a trailing stop overrides play");
-}
-
 void conciseAcidSyntax() {
   const std::string source = R"(acid = sequence {
   tonic D#@2
@@ -2451,8 +2557,38 @@ play a
     runtime.next(3.0);
     const auto later = runtime.next(4.0);
     check(later.count > 0 &&
-              close(static_cast<float>(later.events[0].beat), 3.875f),
-          "a rate-controlled lane restarts with each Notes pass");
+              close(static_cast<float>(later.events[0].beat), 4.125f),
+          "a rate-controlled lane preserves phase across Notes passes");
+  }
+
+  const auto polyrhythmic = tfseq::Compile(R"(arpeggio = sequence {
+  subdiv 16
+  tonic D@4
+  scale dorian
+  notes 3' 1' 5 3 ; 1' 5 3 1 ; 2' 7 5 2 ; 7 5 2 1
+  gate .52
+  cv1 4 0 |> interp linear |> rate 1/5
+}
+play arpeggio
+)");
+  check(static_cast<bool>(polyrhythmic), polyrhythmic.diagnostic.message);
+  if (polyrhythmic) {
+    tfseq::Runtime runtime;
+    runtime.setProgram(polyrhythmic.program.get());
+    const auto first = runtime.next(0.0);
+    const auto firstCv = first.events[0].cvValue[0];
+    for (int step = 1; step < 16; ++step)
+      runtime.next(step * .25);
+    const auto secondPass = runtime.next(4.0);
+    const auto secondPassCv = secondPass.events[0].cvValue[0];
+    for (int step = 17; step < 20; ++step)
+      runtime.next(step * .25);
+    const auto low = runtime.next(5.0);
+    check(first.count == 1 && secondPass.count == 1 && low.count == 1,
+          "a semicolon-grouped 16-step phrase keeps one event per sixteenth");
+    check(close(firstCv, 4.f) && close(secondPassCv, .8f) &&
+              close(low.events[0].cvValue[0], 0.f),
+          "a ten-beat CV triangle continues through a four-beat Notes pass");
   }
 
   check(!tfseq::Compile(R"(a = sequence {
@@ -2500,7 +2636,7 @@ void unsafeNumericInputsAreDiagnostics() {
         "fractional subdivision denominators are rejected");
   check(!tfseq::Compile("a = sequence {\n cycle 8\n notes 1\n}\nplay a\n"),
         "the fixed wall-clock cycle setting is not part of the language");
-  check(!tfseq::Compile("seed .5\nstop\n"),
+  check(!tfseq::Compile("seed .5\n"),
         "fractional seeds are rejected rather than narrowed");
   check(!tfseq::Compile("a = sequence {\n notes 1\n duration 0\n}\nplay a\n"),
         "zero duration is rejected before playback");
@@ -2548,7 +2684,6 @@ int main() {
   duplicateNamesAreRejectedInEitherOrder();
   settingLanePipelinesAreNeverIgnored();
   harmonicMinorBuildsMajorDominantInKey();
-  stopIsAFirstClassTransportCommand();
   conciseAcidSyntax();
   hotSwapPreservesNamedSequencePhase();
   hotSwapPreservesActiveArrangementTermIdentity();

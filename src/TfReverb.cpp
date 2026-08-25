@@ -223,9 +223,9 @@ struct TfReverb : Module {
       configParam(sourceYParamId(source), 0.f, 1.f,
                   SourcePlanDefaults[source][1], name + " Y", "%", 0.f, 100.f);
       getParamQuantity(sourceXParamId(source))->description =
-          "Horizontal room-plan position for this polyphonic audio channel.";
+          "Sets this source's left/right room position.";
       getParamQuantity(sourceYParamId(source))->description =
-          "Front/back room-plan position for this polyphonic audio channel.";
+          "Sets this source's front/back room position.";
     }
     for (std::size_t source = 0; source < SourcePlanDefaults.size(); ++source) {
       const std::string name = "Source " + std::to_string(source + 1);
@@ -233,72 +233,41 @@ struct TfReverb : Module {
                    name + " horizontal placement", {"Manual", "Automatic"});
     }
     getParamQuantity(ASPECT)->description =
-        "Reshapes the floor without changing its area. Below centre is "
-        "narrower and deeper; above centre is wider and shallower, changing "
-        "the reflection pattern while preserving overall room size.";
+        "Changes room width and depth while preserving floor area.";
     getParamQuantity(SPACE)->description =
-        "Sets the room's overall dimensions. Larger values give later, more "
-        "widely spaced reflections and a slower sense of buildup. Decay sets "
-        "how long the tail lasts independently.";
+        "Sets room dimensions and reflection spacing.";
     getParamQuantity(PRE_DELAY)->description =
-        "Delays the entire wet response behind the dry signal. Increase it to "
-        "separate the source from the room, preserve attack, or create a "
-        "rhythmic gap before the reflections begin.";
+        "Delays the wet response behind the dry attack.";
     getParamQuantity(SOURCE_X)->description =
-        "Moves the default source from the left wall to the right wall. Source "
-        "position pans the positioned direct sound and changes "
-        "early-reflection timing and direction.";
+        "Sets default source left/right position and direct panning.";
     getParamQuantity(SOURCE_Y)->description =
-        "Moves the default source from the front wall to the back wall. Its "
-        "distance from the listener changes positioned-direct level and the "
-        "early-reflection geometry.";
+        "Sets default source front/back position and distance.";
     getParamQuantity(LISTENER_X)->description =
-        "Moves the listening point from the left wall to the right wall, "
-        "changing reflection timing and the stereo perspective.";
+        "Sets listener left/right position and stereo perspective.";
     getParamQuantity(LISTENER_Y)->description =
-        "Moves the listening point from the front wall to the back wall. "
-        "Moving it relative to the source changes direct level and the early "
-        "reflection pattern; the diffuse late FDN remains fixed.";
+        "Sets listener front/back position and source distance.";
     getParamQuantity(DECAY)->description =
-        "Sets how long the midrange late tail takes to fall by 60 dB. Use "
-        "Damping to make low and high frequencies decay at different rates.";
+        "Sets the midrange late-tail RT60.";
     getParamQuantity(WIDTH)->description =
-        "Sets the spread of the wet signal. 0% is mono, 100% keeps the natural "
-        "room image, and 150% exaggerates the stereo width.";
+        "Sets wet width: 0% mono, 100% natural, 150% extra-wide.";
     getParamQuantity(MODULATION)->description =
-        "Adds slow random movement to the late tail, reducing stationary "
-        "ringing and adding animation. The quadratic range progresses "
-        "continuously from subtle motion to audible chorusing.";
+        "Adds slow late-tail movement, from subtle motion to chorusing.";
     getParamQuantity(DIFFUSION)->description =
-        "Controls how quickly individual echoes merge into a smooth tail. Low "
-        "values keep more separated, textured reflections; high values create "
-        "a denser, softer wash. It does not change the decay time.";
+        "Sets how quickly echoes merge into a dense, smooth tail.";
     getParamQuantity(DAMPING)->description =
-        "Makes low and high frequencies die away sooner than the midrange. "
-        "Increase it for a darker, tighter and more absorbent room; reduce it "
-        "for a brighter, more persistent tail.";
+        "Shortens low- and high-frequency decay relative to the midrange.";
     getParamQuantity(BALANCE)->description =
-        "Balances the geometry-derived wet response without changing its "
-        "centre calibration. Turn left for early reflections only, centre "
-        "for the inferred early/late handoff, or right for the late tail "
-        "only.";
+        "Turns from early reflections through the inferred mix to late tail.";
     getParamQuantity(SHIMMER)->description =
-        "Feeds octave-up energy back through the late tail. Higher values "
-        "create a stronger rising harmonic bloom; increase Damping or lower "
-        "Wet high cut if the result is too bright.";
+        "Feeds octave-up energy through the late tail.";
     getParamQuantity(LOW_CUT)->description =
-        "Removes bass from the wet output without thinning the dry signal. "
-        "Raise it to prevent low-frequency mud or leave more space for bass "
-        "and kick.";
+        "Removes bass from the wet signal only.";
     getParamQuantity(HIGH_CUT)->description =
-        "Softens the wet output above the selected frequency. Lower it for a "
-        "darker or more distant room; use Damping when the high frequencies "
-        "should also decay faster.";
+        "Softens high frequencies in the wet signal only.";
     getParamQuantity(MIX)->description =
-        "Balances the original signal against the complete room response. 0% "
-        "is dry and 100% is wet.";
+        "Balances dry input and complete room response.";
     getParamQuantity(LEVEL)->description =
-        "Sets the final output level after the dry/wet mix.";
+        "Sets output level after the dry/wet mix.";
     getParamQuantity(LOW_CUT)->displayPrecision = 5;
     getParamQuantity(HIGH_CUT)->displayPrecision = 5;
     getParamQuantity(DECAY)->displayPrecision = 4;
@@ -603,12 +572,9 @@ struct TfRoomPlanWidget : widget::OpaqueWidget {
     void step() override {
       if (plan && plan->module) {
         text = rack::string::f(
-            "Room plan\n%zu connected source%s\n"
-            "Placement changes positioned-direct level and pan, reflection "
-            "timing and direction, and the ER-to-tail handoff; it does not "
-            "steer the late stereo field.\nDrag a numbered amber source or "
-            "the blue listener; "
-            "double-click to reset.",
+            "Room plan - %zu source%s\n"
+            "Drag markers; double-click to reset.\n"
+            "Affects direct sound and early reflections.",
             plan->module->roomPlanSourceCount(),
             plan->module->roomPlanSourceCount() == 1 ? "" : "s");
       } else {

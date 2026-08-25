@@ -126,6 +126,16 @@
       ]
     },
     {
+      "slug": "TfTransport",
+      "name": "Transport",
+      "description": "Precise fixed-24-PPQN master clock and shared transport",
+      "manualUrl": "https://github.com/JTriggerFish/TriggerFish-VCV#transport",
+      "tags": [
+        "Clock generator",
+        "Controller"
+      ]
+    },
+    {
       "slug": "TfProgSequencer",
       "name": "Prog Sequencer",
       "description": "Beta live-coded polyphonic note and chord sequencer; language and features may change",

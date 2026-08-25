@@ -90,7 +90,7 @@ inline constexpr ReverbPreset Superlush{
     0.26f,
     1.f,
     1.f,
-    0.65f,
+    0.45f,
     0.75f, // approximately 127% displayed width
     0.75f,
     0.4580135308f, // 120 Hz

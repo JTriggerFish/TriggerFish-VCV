@@ -257,8 +257,8 @@ void TestAcousticPresetDefinitions() {
   Check(SmallRoom.modulation < MediumHall.modulation &&
             MediumHall.modulation < Superlush.modulation &&
             Superlush.modulation == 1.f &&
-            std::abs(Superlush.shimmer - 0.65f) < 1.e-7f,
-        "Superlush must use maximum modulation and a strong 65% shimmer while "
+            std::abs(Superlush.shimmer - 0.45f) < 1.e-7f,
+        "Superlush must use maximum modulation and a strong 45% shimmer while "
         "room presets remain restrained");
   Check(SmallRoom.mix < MediumHall.mix && MediumHall.mix < Superlush.mix &&
             std::abs(Superlush.mix - 0.40f) < 1.e-7f,

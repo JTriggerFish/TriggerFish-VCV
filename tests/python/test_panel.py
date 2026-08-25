@@ -64,8 +64,11 @@ def test_prog_sequencer_has_three_valid_3u_widths_with_outlined_runtime_text():
     assert "CV2_OUTPUT" in module_source
     assert "CV3_OUTPUT" in module_source
     assert "static constexpr float MinimumHeight = 16.f" in module_source
-    assert "nvgTextBoxBounds" in module_source
+    assert "wrappedTextHeight" in module_source
+    assert "nvgTextBreakLines" in module_source
     assert "status->requiredHeight" in module_source
+    assert "cvTraceLineSpan" in module_source
+    assert "drawCvTrace(args, lane, now, span, sourcePositionsCurrent)" in module_source
     assert "stateTransferOrder" in runtime_source
     assert "activationCheckpointBeat" in module_source
     assert "activationNextStepBeat" in module_source
@@ -78,8 +81,33 @@ def test_prog_sequencer_has_three_valid_3u_widths_with_outlined_runtime_text():
     assert "publishSource(module->source, true)" in module_source
     assert "isKeyCommand(GLFW_KEY_SLASH, RACK_MOD_CTRL)" in module_source
     assert "isKeyCommand(GLFW_KEY_SPACE, RACK_MOD_CTRL)" in module_source
+    assert "void onSelectText(const SelectTextEvent &event) override" in module_source
+    assert "suppressShortcutSpace = true" in module_source
+    assert "event.codepoint == static_cast<std::uint32_t>(' ')" in module_source
+    assert (
+        "isKeyCommand(GLFW_KEY_SPACE,\n                           RACK_MOD_CTRL | RACK_MOD_SHIFT)"
+        in module_source
+    )
+    assert "isKeyCommand(GLFW_KEY_R, RACK_MOD_CTRL | RACK_MOD_SHIFT)" in module_source
+    assert (
+        "isKeyCommand(GLFW_KEY_BACKSPACE,\n                           RACK_MOD_CTRL | RACK_MOD_SHIFT)"
+        in module_source
+    )
+    assert "getCompleteCablesOnPort(runPort)" in module_source
+    assert "tftransport::RequestModuleCommand" in module_source
+    assert "cable->outputId, command" in module_source
+    assert '"QUEUED - activates on the next quarter beat"' in module_source
+    assert "TransportStatus { Waiting, Playing, Paused, Stopped }" in module_source
+    assert 'TransportStatus::Stopped ? "STOP"' in module_source
+    assert (
+        "transportStatus.load(std::memory_order_relaxed) !=\n"
+        "          TransportStatus::Stopped" in module_source
+    )
     assert "isKeyCommand(GLFW_KEY_D, RACK_MOD_CTRL)" in module_source
     assert "editorRunEnabled.load(std::memory_order_relaxed)" in module_source
+    assert "change->oldCursor = previousCursor" in module_source
+    assert "change->newCursor = cursor" in module_source
+    assert "restoredEditorCursor.exchange(-1" in module_source
     assert screw_positions(module_source, 450.0, 380.0) == ()
     assert centered_component_specs("TfProgSequencer", module_source, 450.0) == (
         ("PJ301MPort", 409.0, 65.0),
@@ -113,7 +141,9 @@ def test_prog_sequencer_has_three_valid_3u_widths_with_outlined_runtime_text():
         )
         assert labels["CLOCK"].attrib["y"] == labels["RESET"].attrib["y"] == "49"
         assert labels["RUN"].attrib["x"] == str(center)
-        assert labels["RUN"].attrib["y"] == "105"
+        assert labels["RUN"].attrib["y"] == "103"
+        assert labels["LOW = PAUSE"].attrib["x"] == str(center)
+        assert labels["LOW = PAUSE"].attrib["y"] == "111"
         for first, second, y in (
             ("V/OCT", "GATE", "172"),
             ("TRIG", "VEL", "228"),
@@ -141,6 +171,36 @@ def test_preview_screws_follow_each_module_widget_specification():
         assert len(positions) == (0 if module_name == "TfProgSequencer" else 4)
 
 
+def test_transport_panel_exposes_one_precise_fixed_rate_master_clock():
+    source = (ROOT / "src" / "TfTransport.cpp").read_text(encoding="utf-8")
+    panel = ET.parse(ROOT / "res-src" / "TfTransport.svg").getroot()
+    labels = {node.text: node for node in panel.findall(f".//{SVG}text")}
+    controls = {
+        match.group("id") for match in control_pattern("TfTransport").finditer(source)
+    }
+
+    assert panel.attrib["width"] == "120"
+    assert "FIXED 24 PPQN CLOCK" not in labels
+    assert "120.00 BPM" not in labels
+    assert {"RESTART", "PAUSE", "PLAY", "STOP"} <= labels.keys()
+    assert controls == {
+        "TEMPO",
+        "PLAY_FROM_BEGINNING",
+        "PAUSE",
+        "PLAY",
+        "STOP",
+        "CLOCK_OUTPUT",
+        "RUN_OUTPUT",
+        "RESET_OUTPUT",
+    }
+    assert 'string::f("%.2f BPM"' in source
+    assert "nvgFontSize(args.vg, 9.f)" in source
+    assert "NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE" in source
+    assert "tempoParam->createContextMenu()" in source
+    preview = (ROOT / "tools" / "render_panel_preview.py").read_text(encoding="utf-8")
+    assert 'id="transport-tempo-preview"' in preview
+
+
 def test_room_reverb_tooltips_use_physical_units():
     source = (ROOT / "src" / "TfReverb.cpp").read_text(encoding="utf-8")
     defaults = (ROOT / "src" / "tfdsp" / "reverb_defaults.hpp").read_text(
@@ -159,6 +219,20 @@ def test_room_reverb_tooltips_use_physical_units():
     assert "configParam<AspectQuantity>" in source
     assert "reverb_defaults::HighCut" in source
     assert "inline constexpr float HighCut = MediumHall.highCut;" in defaults
+
+
+def test_room_reverb_tooltip_descriptions_stay_concise():
+    source = (ROOT / "src" / "TfReverb.cpp").read_text(encoding="utf-8")
+    assignments = re.findall(
+        r"description\s*=\s*((?:\s*\"[^\"]*\"\s*)+);", source, re.DOTALL
+    )
+    descriptions = [
+        "".join(re.findall(r"\"([^\"]*)\"", block)) for block in assignments
+    ]
+
+    assert descriptions
+    assert max(map(len, descriptions)) <= 72
+    assert "Drag markers; double-click to reset." in source
 
 
 def test_room_reverb_uses_a_two_dimensional_room_plan():

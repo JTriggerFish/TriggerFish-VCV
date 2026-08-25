@@ -25,7 +25,12 @@ Circuit-modelled sound generators and processors, plus pitch utilities for VCV R
   <tr>
     <td align="center"><a href="#scene-pack-4"><img src="doc/TfScenePack4.png" height="260" alt="Scene Pack 4 module"><br><strong>Scene Pack 4</strong></a></td>
     <td align="center"><a href="#room-reverb"><img src="doc/TfReverb.png" height="260" alt="Room Reverb module"><br><strong>Room Reverb</strong></a></td>
+    <td></td>
+  </tr>
+  <tr>
+    <td align="center"><a href="#transport"><img src="doc/TfTransport.png" height="260" alt="Transport module"><br><strong>Transport</strong></a></td>
     <td align="center"><a href="#prog-sequencer"><img src="doc/TfProgSequencer.png" height="260" alt="Prog Sequencer module"><br><strong>Prog Sequencer</strong></a></td>
+    <td></td>
   </tr>
 </table>
 
@@ -44,7 +49,8 @@ Circuit-modelled sound generators and processors, plus pitch utilities for VCV R
 | Unison Oscillator | Fully polyphonic, with an independent oscillator stack and drift state per channel; mono controls are broadcast | Widest connected input, up to 16 |
 | Scene Pack 4 | Concatenates four mono/poly source bundles in jack order | One polyphonic audio output, up to 8 channels |
 | Room Reverb | Mono by default; accepts and places up to eight source channels | Independent stereo left/right outputs |
-| Prog Sequencer | Polyphonic chord-capable program with control lanes synchronized to each Notes pass | Up to 16 aligned pitch/gate/trigger/velocity/accent channels plus CV1-CV3 |
+| Transport | Monophonic shared clock, run state, and reset | Clock pulse, Run gate, and Reset pulse |
+| Prog Sequencer | Polyphonic chord-capable program with independently cycling control lanes and optional Notes-pass edge alignment | Up to 16 pitch/gate/trigger/velocity/accent channels plus CV1-CV3 |
 
 ## Modules
 
@@ -346,28 +352,68 @@ Small Room ambience, and a filtered Superlush synth texture. Applying a preset
 preserves the module's output LEVEL.
 
 The [two-source Room Reverb test patch](test-room-reverb-two-sources.vcv) uses
-distinct sine and saw sources with independent levels and left/right room-plan
-placements for quickly auditioning the spatial direct and early fields.
+a slow two-saw/sub bass and a descending folded arpeggio, each driven by its
+own Prog Sequencer and shaped by a 4072 voice. Scene Pack 4 preserves them as
+independent left/right room-plan sources for auditioning the spatial direct,
+early, and late fields with a musical input. The patch uses Superlush with a
+3 kHz wet high cut; arpeggio CV1 drives an 18-beat bipolar cutoff triangle
+across the four-beat note phrase. One Transport supplies Clock, Run, and Reset
+to both sequencers so all transport operations act on them together.
+
+### Transport
+
+Transport is the shared master clock for TriggerFish sequencers. TEMPO covers
+30 to 300 BPM. The unsnapped knob supports Rack's fine adjustment and the
+numeric display shows hundredths of a BPM; clicking the display opens Rack's
+parameter menu for direct value entry. CLOCK has one fixed 24 PPQN rate:
+each quarter-note beat contains 24 one-millisecond pulses. The fixed rate gives
+a newly started sequencer a
+usable period measurement after 1/24 of a beat, including at slow tempos, and
+supports straight and triplet subdivisions with the same clock setting in every
+patch. The phase accumulator runs at the audio sample rate.
+
+The four buttons have distinct transport meanings:
+
+- RESTART pulses Reset, waits 1.5 ms so downstream modules see it, then raises
+  Run and emits the first Clock pulse at beat zero;
+- PAUSE lowers Run and freezes the master-clock phase;
+- PLAY raises Run and continues from the frozen phase; and
+- STOP lowers Run, pulses Reset, and returns the phase to beat zero.
+
+CLOCK is a 10 V pulse stream, RUN is 10 V only while playing, and RESET is a
+one-millisecond 10 V pulse. Fan all three outputs from one Transport to every
+Prog Sequencer that belongs to the same song. This gives every sequencer the
+same pulse edges and makes restart, pause, play, and stop sample-aligned.
 
 ### Prog Sequencer
 
 [Complete Prog Sequencer manual and language reference](docs/TfProgSequencer-reference.md)
 
-Prog Sequencer is an externally clocked live-coding sequencer with
+Prog Sequencer is a 24 PPQN externally clocked live-coding sequencer with
 up to 16 polyphonic V/OCT, Gate, Trigger, Velocity, and Accent channels, plus
 three monophonic CV lanes. Edit the program
 directly on the module. Ctrl+`.` compiles the complete document; Ctrl+Enter
 evaluates the top-level statement containing the selection or current line.
-Ctrl+Shift+`.` compiles the document and restarts it on the next Clock;
-Ctrl+Space toggles local transport. Ctrl+`/` toggles line comments and Ctrl+D
-duplicates the current line or selection without evaluating the draft.
+Ctrl+Shift+`.` compiles the document and restarts it on the next quarter beat;
+Ctrl+Space toggles local transport. With RUN connected directly to a
+TriggerFish Transport, Ctrl+Shift+Space pauses or plays the shared Transport,
+Ctrl+Shift+R restarts it, and Ctrl+Shift+Backspace stops it. Ctrl+`/` toggles
+line comments and Ctrl+D duplicates the current line or selection without
+evaluating the draft. Ctrl+Z undoes editor changes; Ctrl+Shift+Z and Ctrl+Y
+redo them.
 Other edited statements remain inactive until separately evaluated; unrelated
 malformed draft text does not block a complete valid selected statement. A
-successful edit swaps in on the next Clock edge while preserving the arrangement phase and the
-lane cursors of sequences whose names still exist. Successfully executed code
-flashes in the editor. `stop` is a valid transport command and an executed
-`play` or `stop` line overrides other transport lines. Diagnostics wrap in the
-status strip, and the last valid program keeps playing after an error.
+successful edit swaps in on the next quarter beat while preserving the
+arrangement phase and the lane cursors of sequences whose names still exist.
+Successfully executed code flashes in the editor. The final executed
+`play NAME` statement selects the looping sequence or arrangement. Diagnostics
+wrap in the status strip, and the last valid program keeps playing after an
+error.
+
+While it plays, a soft highlight and progress underline remain on the active
+note, rest, or tie. The RUN light flashes on each quarter beat, and each
+active CV lane can show a six-second scrolling trace with a fixed -5 V to +5 V
+range in the free space to the right of its source line.
 
 Its language is inspired by TidalCycles, Gibber, and other live-coding and
 pattern-sequencing systems. It is intended to make musical ideas quick to type,
@@ -419,14 +465,15 @@ predecessor. `[8 9]` subdivides one parent span, `7*3` ratchets within a span,
 `7(3,8,1)` distributes that event over a rotated eight-cell Euclidean rhythm.
 Inactive Euclidean cells are rests. `7_`, `7_3`, and `7.` make a note doubled,
 three times as long, and dotted respectively. Sparse numerical lanes use `.`
-as a typed no-op. A velocity such as `.5` means 5 V; there is no separate
-numerical Accent lane.
+as a typed no-op. A velocity such as `.5` means one half; CV lane numbers are
+volts. There is no separate numerical Accent lane. A semicolon between pattern
+terms is a visual separator with no effect on timing.
 
 `3?0.35` plays degree 3 with 35 percent probability and otherwise produces a
 rest for the same span. `3??0.35` instead omits the event and its span on a
 miss, shortening that Notes pass. Free numerical lanes advance only for
-surviving events; lanes using `...` align to the surviving pass, and every lane
-restarts when Notes wraps.
+surviving events and continue cycling when Notes wraps. Lanes using `...` align
+to the beginning, end, or both edges of each surviving Notes pass.
 
 `$` produces a seeded random note from the active scale. `${1,8}` selects an
 inclusive scale-degree range, `$n{4,1.5}` uses a normal distribution in degree

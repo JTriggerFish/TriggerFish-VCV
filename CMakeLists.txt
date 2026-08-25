@@ -56,6 +56,7 @@ if(EXISTS "${RACK_SDK_DIR}/include/rack.hpp")
 		src/TfUnisonOscillator.cpp
 		src/TfScenePack4.cpp
 		src/TfReverb.cpp
+		src/TfTransport.cpp
 		src/TfProgSequencer.cpp
 	)
 	target_include_directories(triggerfish_rack_index PRIVATE
@@ -113,6 +114,10 @@ if(BUILD_TESTING)
 		triggerfish_dsp)
 	add_test(NAME triggerfish_text_sequencer_tests
 		COMMAND triggerfish_text_sequencer_tests)
+
+	add_executable(triggerfish_transport_tests tests/transport_tests.cpp)
+	target_link_libraries(triggerfish_transport_tests PRIVATE triggerfish_dsp)
+	add_test(NAME triggerfish_transport_tests COMMAND triggerfish_transport_tests)
 endif()
 
 option(TRIGGERFISH_BUILD_PYTHON "Build the optional Python DSP bindings" OFF)

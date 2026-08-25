@@ -124,6 +124,7 @@ DEFAULT_PARAMS = {
         0.0,
     ],
     "TfScenePack4": [],
+    "TfTransport": [120.0, 0.0, 0.0, 0.0, 0.0],
     "TfReverb": [
         0.60,
         0.5,
@@ -532,22 +533,10 @@ def generate_303_voice_patch() -> None:
         )
     )
 
-    # Auditioned settings saved with the musical smoke patch.
+    # Retain the original pre-56ed864 smoke-patch parameter state while the
+    # newer Acid arrangement exercises the current sequencer and reverb path.
     voice_params = DEFAULT_PARAMS["Tf303VoiceCore"].copy()
-    voice_params[0] = 0.128505349159241
-    voice_params[1] = 0.408434182405472
-    voice_params[2] = 1.0
-    voice_params[4] = 0.479517936706543
-    voice_params[5] = 0.406198114156723
-    voice_params[6] = 0.2313252389431
-    voice_params[7] = 0.60891592502594
-    voice_params[8] = 1.0
-    voice_params[9] = -1.18070936203003
-    voice_params[11] = 0.589156568050385
-    voice_params[12] = 0.497590363025665
     oscillator_params = DEFAULT_PARAMS["Tf303Oscillator"].copy()
-    oscillator_params[2] = math.log10(0.100)
-    oscillator_params[4] = 0.296385675668716
     foundry_data.update(
         foundry_track(
             1,
@@ -562,7 +551,8 @@ def generate_303_voice_patch() -> None:
             1,
             "TriggerFish 303 voice smoke test\n\n"
             "SETUP\nSelect an output device in Audio-8 and start with monitor "
-            "volume low. Impromptu Clocked and Foundry run the full 16-bar "
+            "volume low. Impromptu Clocked and Foundry run the "
+            "full 16-bar "
             "Gibber Acid playground line by fasttriggerfish and thecharlie at "
             "120 BPM: i for 8 bars, -iv for 4, then -V for 4.\n\n"
             "Foundry track A contains the notes, rests, and accents. Track B "
@@ -572,8 +562,8 @@ def generate_303_voice_patch() -> None:
             "sine is connected "
             "to linear filter FM with its attenuverter at zero. VCA OUT feeds "
             "the -6 dB stereo master.\n\n"
-            "The cutoff, resonance, CV depths, and slide time are set for this "
-            "line; other TriggerFish parameters use their declared defaults. Try "
+            "The 303 oscillator and voice retain the original smoke patch's "
+            "factory parameter state. Try "
             "WAVE and SHAPE on the oscillator, then CUTOFF, RES, ENV, ACCENT, "
             "DRIVE, and BASS on the filter.",
             pos=(-9, 0),
@@ -670,32 +660,48 @@ def generate_303_voice_patch() -> None:
 
 def generate_prog_sequencer_303_patch() -> None:
     """Replace the reverb-equipped smoke-303's Foundry with Prog Sequencer."""
-    source_patch = json.loads(
-        (ROOT / "test-room-reverb.vcv").read_text(encoding="utf-8")
-    )
+    source_patch = _build_reverb_303_patch()
     patch = Patch(zoom=0.82, grid_offset=(-8.0, -0.15))
-    patch.modules = [module for module in source_patch["modules"] if module["id"] != 3]
+    patch.modules = [module for module in source_patch.modules if module["id"] != 3]
+    patch.modules = [
+        (
+            module(
+                2,
+                "TriggerFish-Elements",
+                "TfTransport",
+                (7, 0),
+                data={"state": 2},
+            )
+            if item["id"] == 2
+            else item
+        )
+        for item in patch.modules
+    ]
     for item in patch.modules:
         if item["id"] == 1:
             item["data"]["text"] = (
                 "TriggerFish Prog Sequencer 303 smoke test\n\n"
-                "This is the tuned, reverb-equipped smoke-303 signal path with "
-                "Foundry replaced by TfProgSequencer. The complete 16-bar "
+                "This is the hand-tuned, reverb-equipped smoke-303 "
+                "signal path with Foundry replaced by TfProgSequencer. The "
+                "complete 16-bar "
                 "Gibber Acid line is the short program visible in the "
                 "sequencer: i for 8 bars, -iv for 4, then -V for 4.\n\n"
                 "The test deliberately uses repetition, rests, slides, sparse "
                 "accents, an octave mark, derived patterns, mode replacement, "
                 "and concatenation as a syntax litmus test. Select an output "
-                "device in Audio-8 and start with monitor volume low."
+                "device in Audio-8 and start with monitor volume low. The "
+                "shared Transport can restart, pause, play, or stop the "
+                "whole patch without changing the program."
             )
 
     program = """acid = sequence {
+  subdiv 16
   tonic D#@2
   scale minor
   notes ^1 1!3 ^5 7 ^1 ~ 1 ~ ^8 >1, ~ 1 >^1, >1
   velocity .5
   gate .5
-  glide .8
+  glide .5
 }
 
 iv = acid |> modulate_degree 4 |> octave -1
@@ -713,23 +719,47 @@ play song
         )
     )
 
+    # Musical settings captured from the Rack-saved Prog-303 audition patch.
+    # Keep these overrides local to this patch: the standalone 303 smoke patch
+    # deliberately retains its separate reference settings.
+    prog_303_parameter_overrides = {
+        4: {
+            0: 1.0,  # oscillator octave
+            4: 0.17951805889606476,  # saw / square morph
+        },
+        5: {
+            0: 0.6371597647666931,  # cutoff pitch (about 407 Hz)
+            1: 0.48494037985801697,  # resonance
+            2: 1.0,  # high resonance range
+            3: 8.949535369873047,  # drive in dB
+            4: 0.14879514276981354,  # bass extension
+            9: -0.06006646901369095,  # normal envelope decay (about 871 ms)
+        },
+    }
+    for item in patch.modules:
+        overrides = prog_303_parameter_overrides.get(item["id"], {})
+        for parameter in item.get("params", []):
+            if parameter["id"] in overrides:
+                parameter["value"] = overrides[parameter["id"]]
+
     patch.cables = [
         cable
-        for cable in source_patch["cables"]
+        for cable in source_patch.cables
         if cable["outputModuleId"] != 3 and cable["inputModuleId"] != 3
     ]
     for index, cable in enumerate(patch.cables):
         cable["id"] = 1000 + index
-    patch.cable(2, 1, 3, 0)  # Clocked x4 -> Prog Sequencer clock
-    patch.cable(2, 4, 3, 1)  # Clocked reset -> Prog Sequencer reset
+    patch.cable(2, 0, 3, 0)  # fixed 24 PPQN master clock
+    patch.cable(2, 2, 3, 1)  # Transport reset -> Prog Sequencer reset
+    patch.cable(2, 1, 3, 2)  # Transport RUN gate -> pause/resume
     patch.cable(3, 0, 4, 0)  # pitch, including programmed slides -> oscillator
     patch.cable(3, 1, 5, 5)  # gate -> 303 articulation
     patch.cable(3, 4, 5, 6)  # dedicated sparse accent -> 303 accent
     patch.write("test-prog-sequencer-303.vcv")
 
 
-def generate_room_reverb_patch() -> None:
-    """Insert Room Reverb into the full smoke-303 patch."""
+def _build_reverb_303_patch() -> Patch:
+    """Build the reverb-equipped 303 path used by the Prog-303 smoke patch."""
     source = json.loads((ROOT / "test-303-voice.vcv").read_text(encoding="utf-8"))
     patch = Patch(zoom=0.82, grid_offset=(-8.0, -0.15))
     # Room Reverb already has equal-power Mix and an output Level control, so
@@ -787,67 +817,253 @@ def generate_room_reverb_patch() -> None:
     patch.cable(5, 1, 11, 0)  # 303 mono VCA output -> reverb
     patch.cable(11, 0, 7, 0)  # stereo left -> Audio-8 input 1
     patch.cable(11, 1, 7, 1)  # stereo right -> Audio-8 input 2
-    patch.write("test-room-reverb.vcv")
+    return patch
 
 
 def generate_two_source_reverb_patch() -> None:
-    patch = Patch(zoom=0.78, grid_offset=(-1.0, -0.1))
+    patch = Patch(zoom=0.66, grid_offset=(-7.0, -0.1))
     patch.add(
         notes(
             1,
-            "TriggerFish two-source Room Reverb test\n\n"
-            "A low sine and a higher saw pass through separate source-level "
-            "mixers, then Scene Pack 4 combines them into one two-channel "
-            "polyphonic cable. Room Reverb shows exactly two numbered amber "
-            "markers, initially placed symmetrically left and right.\n\n"
-            "Drag source 1 and source 2 independently around the room plan "
-            "and compare the direct position, early-reflection direction, and "
-            "handoff into the fixed late field. Use the two VCMixers to solo "
-            "or balance the sources. Disconnect either Scene Pack input to "
-            "confirm that its marker disappears. The scope shows packed "
-            "source audio plus the stereo reverb output. Start with monitor "
-            "volume low.",
+            "TriggerFish musical two-source Room Reverb test\n\n"
+            "At 96 BPM, two independent Prog Sequencers play an interlocking "
+            "D-Dorian texture. Source 1 is a slow two-saw Unison "
+            "Oscillator bass with a centred sub oscillator, analogue drift, "
+            "and long 4072 filter and amplifier envelopes. Source 2 is a "
+            "louder, driven descending folded arpeggio with a shorter, "
+            "brighter 4072 voice whose cutoff follows a slow 18-beat bipolar "
+            "CV triangle across the four-beat note phrase.\n\n"
+            "The shared Transport drives Clock, Run, and Reset into both "
+            "sequencers. RESTART plays from beat zero, PAUSE preserves the "
+            "current position, PLAY continues it, and STOP returns to zero. "
+            "Both voices therefore remain synchronized through every action.\n\n"
+            "Scene Pack 4 keeps the voices as two independent room sources. "
+            "Room Reverb uses the Superlush scene with its wet high cut "
+            "lowered to 3 kHz. "
+            "Drag their numbered amber markers to audition position, early "
+            "reflections, and the late-field handoff; disconnect either Scene "
+            "Pack input to confirm that only its marker disappears. The scope "
+            "shows the packed sources and stereo result. Select an output "
+            "device in Audio-8, then start with monitor volume low.",
+            pos=(-11, 0),
         )
     )
 
-    sine_values = DEFAULT_PARAMS["VCO"].copy()
-    sine_values[2] = -2.0
-    saw_values = DEFAULT_PARAMS["VCO"].copy()
-    saw_values[2] = -1.4166666667
-    patch.add(module(2, "Fundamental", "VCO", (16, 0), values=sine_values))
-    patch.add(module(3, "Fundamental", "VCO", (27, 0), values=saw_values))
-    patch.add(mixer(4, (38, 0), (0.2511886432, 0.7, 0.0, 0.0, 0.0)))
-    patch.add(mixer(5, (47, 0), (0.2511886432, 0.7, 0.0, 0.0, 0.0)))
-    patch.add(module(6, "TriggerFish-Elements", "TfScenePack4", (58, 0)))
+    patch.add(
+        module(
+            2,
+            "TriggerFish-Elements",
+            "TfTransport",
+            (5, 0),
+            values=[96.0, 0.0, 0.0, 0.0, 0.0],
+            data={"state": 2},
+        )
+    )
 
-    reverb_values = [*DEFAULT_PARAMS["TfReverb"]]
-    reverb_values[3] = 0.25
-    reverb_values[4] = 0.35
-    reverb_values[16] = -6.0
-    reverb_values[18] = 0.75
-    reverb_values[19] = 0.35
+    bass_program = """bass = sequence {
+  subdiv 2
+  tonic D@1
+  scale dorian
+  notes 1_2 7_2 4_2 5 7
+  gate .96
+}
+
+play bass
+"""
+    arpeggio_program = """arpeggio = sequence {
+  subdiv 16
+  tonic D@4
+  scale dorian
+  notes 3' 1' 5 3 ; 1' 5 3 1 ; 2' 7 5 2 ; 7 5 2 1
+  gate .52
+  cv1 4 -4 |> interp linear |> rate 1/9
+}
+
+play arpeggio
+"""
+    patch.add(
+        module(
+            3,
+            "TriggerFish-Elements",
+            "TfProgSequencer",
+            (25, 0),
+            data={"source": bass_program, "languageVersion": 1},
+        )
+    )
+    patch.add(
+        module(
+            4,
+            "TriggerFish-Elements",
+            "TfProgSequencer",
+            (55, 0),
+            data={
+                "source": arpeggio_program,
+                "languageVersion": 1,
+                # tfui::HeatmapPalette::CrtGreen. The bass remains Magma so
+                # both live programs are immediately distinguishable.
+                "editorHeatmap": 5,
+            },
+        )
+    )
+
+    unison_values = [*DEFAULT_PARAMS["TfUnisonOscillator"]]
+    unison_values[2] = 2.0  # two saw oscillators
+    unison_values[7] = 0.55  # a wider, but still tonal, unison spread
+    unison_values[8] = 0.45
+    unison_values[9] = 0.2965061068534851  # centred sub oscillator
+    unison_values[11] = 0.62
+    unison_values[12] = 0.04
+    unison_values[13] = 0.29333335161209106
+    unison_values[14] = 0.3920000493526459
+    patch.add(
+        module(
+            5,
+            "TriggerFish-Elements",
+            "TfUnisonOscillator",
+            (29, 1),
+            values=unison_values,
+        )
+    )
+
+    bass_voice_values = [*DEFAULT_PARAMS["Tf4072VoiceCore"]]
+    bass_voice_values[0] = 3.0938026905059814
+    bass_voice_values[1] = 0.4920482337474823
+    bass_voice_values[2] = 10.387954711914062
+    bass_voice_values[3] = 0.55
+    bass_voice_values[7] = 0.9
+    bass_voice_values[9] = math.log10(0.025)
+    bass_voice_values[10] = math.log10(1.8)
+    bass_voice_values[11] = 0.12
+    bass_voice_values[12] = math.log10(0.65)
+    bass_voice_values[13] = 0.0
+    bass_voice_values[14] = 0.25
+    bass_voice_values[15] = math.log10(0.015)
+    bass_voice_values[16] = math.log10(0.5)
+    bass_voice_values[17] = 0.85
+    bass_voice_values[18] = math.log10(0.6)
+    bass_voice_values[19] = 0.0
+    patch.add(
+        module(
+            6,
+            "TriggerFish-Elements",
+            "Tf4072VoiceCore",
+            (41, 1),
+            values=bass_voice_values,
+        )
+    )
+
+    wavefold_values = [*DEFAULT_PARAMS["TfWavefoldOscillator"]]
+    wavefold_values[2] = 0.28
+    wavefold_values[3] = 0.5012047290802002
+    wavefold_values[4] = 0.08
+    wavefold_values[10] = 1.0  # Hinge character
+    wavefold_values[11] = 0.58
+    wavefold_values[12] = 0.40800002217292786
+    wavefold_values[13] = 0.49066662788391113
+    wavefold_values[14] = 0.5093333721160889
     patch.add(
         module(
             7,
             "TriggerFish-Elements",
+            "TfWavefoldOscillator",
+            (65, 1),
+            values=wavefold_values,
+        )
+    )
+
+    arpeggio_voice_values = [*DEFAULT_PARAMS["Tf4072VoiceCore"]]
+    arpeggio_voice_values[0] = 0.6673828959465027
+    arpeggio_voice_values[1] = 0.0
+    arpeggio_voice_values[2] = 3.5975842475891113
+    arpeggio_voice_values[3] = 0.5493977069854736
+    arpeggio_voice_values[4] = 0.8789158463478088
+    arpeggio_voice_values[7] = 1.0
+    arpeggio_voice_values[8] = 0.7283129692077637
+    arpeggio_voice_values[9] = math.log10(0.004)
+    arpeggio_voice_values[10] = 0.04110236465930939
+    arpeggio_voice_values[11] = 0.08
+    arpeggio_voice_values[12] = math.log10(0.16)
+    arpeggio_voice_values[13] = 0.0
+    arpeggio_voice_values[14] = 0.35
+    arpeggio_voice_values[15] = math.log10(0.002)
+    arpeggio_voice_values[16] = 0.043807897716760635
+    arpeggio_voice_values[17] = 0.12
+    arpeggio_voice_values[18] = math.log10(0.15)
+    arpeggio_voice_values[19] = 0.0
+    patch.add(
+        module(
+            8,
+            "TriggerFish-Elements",
+            "Tf4072VoiceCore",
+            (77, 1),
+            values=arpeggio_voice_values,
+        )
+    )
+
+    patch.add(module(9, "TriggerFish-Elements", "TfScenePack4", (85, 0)))
+
+    reverb_values = [*DEFAULT_PARAMS["TfReverb"]]
+    # Superlush, with a deliberately darker 3 kHz wet high cut. LEVEL remains
+    # a separate output trim, matching the preset menu's behaviour.
+    reverb_values[0] = 0.78
+    reverb_values[1] = 0.55
+    reverb_values[2] = 0.112
+    reverb_values[3] = 0.50
+    reverb_values[4] = 0.32
+    reverb_values[5] = 0.50
+    reverb_values[6] = 0.68
+    reverb_values[7] = 0.84
+    reverb_values[8] = 0.26
+    reverb_values[9] = 1.0
+    reverb_values[10] = 1.0
+    reverb_values[11] = 0.75
+    reverb_values[12] = 0.75
+    reverb_values[13] = 0.4580135308
+    reverb_values[14] = math.log(3.0) / math.log(20.0)
+    reverb_values[15] = 0.40
+    reverb_values[16] = -6.0
+    reverb_values[17] = 0.45
+    for source in range(1, 8):
+        reverb_values[18 + 2 * (source - 1)] = 0.50
+        reverb_values[19 + 2 * (source - 1)] = 0.32
+    patch.add(
+        module(
+            10,
+            "TriggerFish-Elements",
             "TfReverb",
-            (65, 0),
+            (91, 0),
             values=reverb_values,
         )
     )
-    patch.add(audio(8, (86, 0)))
-    patch.add(scope(9, (94, 0)))
+    patch.add(audio(11, (107, 0)))
+    patch.add(scope(12, (117, 0)))
 
-    patch.cable(2, 0, 4, 1)  # low sine -> source 1 level
-    patch.cable(3, 2, 5, 1)  # higher saw -> source 2 level
-    patch.cable(4, 0, 6, 0)
-    patch.cable(5, 0, 6, 1)
-    patch.cable(6, 0, 7, 0)
-    patch.cable(7, 0, 8, 0)
-    patch.cable(7, 1, 8, 1)
-    patch.cable(6, 0, 9, 0)
-    patch.cable(7, 0, 9, 1)
-    patch.cable(7, 1, 9, 2)
+    for sequencer_id in (3, 4):
+        patch.cable(2, 0, sequencer_id, 0)  # quarter-note master clock
+        patch.cable(2, 2, sequencer_id, 1)  # shared reset
+        patch.cable(2, 1, sequencer_id, 2)  # shared run/pause gate
+
+    patch.cable(3, 0, 5, 0)  # bass pitch -> Unison Oscillator
+    patch.cable(3, 0, 6, 2)  # bass pitch -> 4072 cutoff tracking
+    patch.cable(3, 1, 6, 6)  # bass gate -> envelopes
+    patch.cable(3, 2, 6, 7)  # bass trigger -> envelope retrigger
+    patch.cable(5, 0, 6, 0)  # unison saw/sub mix -> 4072 filter
+    patch.cable(6, 1, 9, 0)  # enveloped bass -> source 1
+
+    patch.cable(4, 0, 7, 0)  # arpeggio pitch -> folding oscillator
+    patch.cable(4, 0, 8, 2)  # arpeggio pitch -> 4072 cutoff tracking
+    patch.cable(4, 1, 8, 6)  # arpeggio gate -> envelopes
+    patch.cable(4, 2, 8, 7)  # arpeggio trigger -> envelope retrigger
+    patch.cable(4, 5, 8, 3)  # slow CV1 triangle -> filter modulation
+    patch.cable(7, 1, 8, 0)  # folded oscillator -> 4072 filter
+    patch.cable(8, 1, 9, 1)  # enveloped arpeggio -> source 2
+
+    patch.cable(9, 0, 10, 0)
+    patch.cable(10, 0, 11, 0)
+    patch.cable(10, 1, 11, 1)
+    patch.cable(9, 0, 12, 0)
+    patch.cable(10, 0, 12, 1)
+    patch.cable(10, 1, 12, 2)
     patch.write("test-room-reverb-two-sources.vcv")
 
 
@@ -1037,7 +1253,6 @@ if __name__ == "__main__":
     generate_slop4_patch()
     generate_vdpo_patch()
     generate_303_voice_patch()
-    generate_room_reverb_patch()
     generate_two_source_reverb_patch()
     generate_prog_sequencer_303_patch()
     generate_4072_voice_patch()
