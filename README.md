@@ -427,8 +427,8 @@ Its language is inspired by TidalCycles, Gibber, and other live-coding and
 pattern-sequencing systems. It is intended to make musical ideas quick to type,
 combine, and reshape during live coding or conventional sequencing.
 
-Prog Sequencer is currently in beta. Its language and feature set may change
-as musical workflows are refined.
+Prog Sequencer is currently in beta. Its syntax, semantics, and feature set are
+subject to change as musical workflows are refined.
 
 Double-click selects a word and triple-click selects a complete row. Rack
 requires every module to be exactly one 3U row high, but the module context
@@ -581,8 +581,7 @@ CV1-CV3 use the same rate and sparse-lane rules and support `step`, `linear`,
 version; continuous modes use free score-time lanes.
 
 During playback, heatmap cursors show the active arrangement term and every
-independently advancing lane. The context menu offers Linear or Smoothstep
-cursor travel. See the
+independently advancing lane. See the
 [complete Prog Sequencer reference](docs/TfProgSequencer-reference.md) for all
 syntax, additional musical examples, and current limits.
 

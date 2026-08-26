@@ -47,6 +47,11 @@ constexpr const char *DefaultSource = R"(riff = sequence {
 play riff
 )";
 
+constexpr int ArrangementCursorPulseBeats = 4;
+constexpr const char *ProgSequencerDocumentationUrl =
+    "https://github.com/JTriggerFish/TriggerFish-VCV/blob/master/docs/"
+    "TfProgSequencer-reference.md";
+
 constexpr int LanguageVersion = 1;
 
 std::uint64_t packSpan(const tfseq::SourceSpan &span) noexcept {
@@ -130,10 +135,7 @@ struct TfProgSequencer : Module {
       activeCvLineSpans{};
   std::array<std::atomic<float>, tfseq::CvLaneCount> visibleCvValues{};
   std::atomic<int> panelWidthHp{30};
-  std::atomic<tfui::CursorTravelCurve> cursorMotionMode{
-      tfui::CursorTravelCurve::Linear};
   std::atomic<tfui::HeatmapPalette> editorHeatmap{tfui::HeatmapPalette::Magma};
-  std::atomic<int> arrangementCursorClocksPerPulse{4};
   std::atomic<bool> editorRunEnabled{true};
 
   dsp::SchmittTrigger clockTrigger;
@@ -332,15 +334,9 @@ struct TfProgSequencer : Module {
     json_object_set_new(
         root, "panelWidthHp",
         json_integer(panelWidthHp.load(std::memory_order_relaxed)));
-    json_object_set_new(root, "cursorMotionMode",
-                        json_integer(static_cast<int>(
-                            cursorMotionMode.load(std::memory_order_relaxed))));
     json_object_set_new(root, "editorHeatmap",
                         json_integer(static_cast<int>(
                             editorHeatmap.load(std::memory_order_relaxed))));
-    json_object_set_new(root, "arrangementCursorClocksPerPulse",
-                        json_integer(arrangementCursorClocksPerPulse.load(
-                            std::memory_order_relaxed)));
     return root;
   }
 
@@ -357,30 +353,11 @@ struct TfProgSequencer : Module {
             validPanelWidth(static_cast<int>(json_integer_value(widthJson))),
             std::memory_order_relaxed);
     }
-    if (json_t *motionJson = json_object_get(root, "cursorMotionMode")) {
-      if (json_is_integer(motionJson)) {
-        const auto value = json_integer_value(motionJson);
-        cursorMotionMode.store(
-            value == static_cast<int>(tfui::CursorTravelCurve::Smoothstep)
-                ? tfui::CursorTravelCurve::Smoothstep
-                : tfui::CursorTravelCurve::Linear,
-            std::memory_order_relaxed);
-      }
-    }
     if (json_t *heatmapJson = json_object_get(root, "editorHeatmap")) {
       if (json_is_integer(heatmapJson)) {
         editorHeatmap.store(tfui::heatmapPaletteFromInt(static_cast<int>(
                                 json_integer_value(heatmapJson))),
                             std::memory_order_relaxed);
-      }
-    }
-    if (json_t *divisionJson =
-            json_object_get(root, "arrangementCursorClocksPerPulse")) {
-      if (json_is_integer(divisionJson)) {
-        const int value = static_cast<int>(json_integer_value(divisionJson));
-        arrangementCursorClocksPerPulse.store(
-            value == 1 || value == 2 || value == 4 || value == 8 ? value : 4,
-            std::memory_order_relaxed);
       }
     }
     if (json_t *sourceJson = json_object_get(root, "source")) {
@@ -601,10 +578,8 @@ struct TfProgSequencer : Module {
       cursorSpans[lane].store(packed, std::memory_order_relaxed);
       bool pulse = true;
       if (lane == static_cast<std::size_t>(tfseq::CursorLane::Sequence)) {
-        const int clocksPerPulse =
-            arrangementCursorClocksPerPulse.load(std::memory_order_relaxed);
         const auto group = tfui::arrangementCursorGroup(
-            event.beat - programStartBeat, clocksPerPulse);
+            event.beat - programStartBeat, ArrangementCursorPulseBeats);
         pulse = group != lastArrangementCursorGroup ||
                 packed != lastArrangementCursorSpan;
         lastArrangementCursorGroup = group;
@@ -2264,11 +2239,10 @@ struct TfSequenceEditor : app::LedDisplayTextField {
           for (auto &bloom : blooms)
             drawCursorBloom(args, bloom, now);
         }
-        const auto travelCurve =
-            module->cursorMotionMode.load(std::memory_order_relaxed);
         for (auto &motions : cursorMotions) {
           for (auto &motion : motions)
-            drawCursorMotion(args, motion, now, travelCurve);
+            drawCursorMotion(args, motion, now,
+                             tfui::CursorTravelCurve::Linear);
         }
         bndSetFont(APP->window->uiFont->handle);
       }
@@ -2318,7 +2292,8 @@ struct TfSequenceStatus : Widget {
   }
 
   std::string statusText() const {
-    std::string status = module ? module->compileMessage : "PROG SEQUENCER";
+    std::string status =
+        module ? module->compileMessage : "PROG SEQUENCER BETA";
     if (!module)
       return status;
     const auto transport =
@@ -2514,6 +2489,10 @@ struct TfProgSequencerWidget : ModuleWidget {
     if (!prog)
       return;
     menu->addChild(new MenuSeparator);
+    menu->addChild(createMenuItem("Prog Sequencer documentation", "", []() {
+      system::openBrowser(ProgSequencerDocumentationUrl);
+    }));
+    menu->addChild(new MenuSeparator);
     menu->addChild(createMenuLabel("Editor width"));
     for (const int width : {22, 30, 38}) {
       menu->addChild(createCheckMenuItem(
@@ -2541,38 +2520,6 @@ struct TfProgSequencerWidget : ModuleWidget {
           },
           [=]() {
             prog->editorHeatmap.store(palette, std::memory_order_relaxed);
-          }));
-    }
-    menu->addChild(new MenuSeparator);
-    menu->addChild(createMenuLabel("Cursor travel"));
-    for (const auto mode : {tfui::CursorTravelCurve::Linear,
-                            tfui::CursorTravelCurve::Smoothstep}) {
-      const char *label =
-          mode == tfui::CursorTravelCurve::Linear ? "Linear" : "Smoothstep";
-      menu->addChild(createCheckMenuItem(
-          label, "",
-          [=]() {
-            return prog->cursorMotionMode.load(std::memory_order_relaxed) ==
-                   mode;
-          },
-          [=]() {
-            prog->cursorMotionMode.store(mode, std::memory_order_relaxed);
-          }));
-    }
-    menu->addChild(new MenuSeparator);
-    menu->addChild(createMenuLabel("Arrangement cursor pulse"));
-    for (const int clocks : {1, 2, 4, 8}) {
-      menu->addChild(createCheckMenuItem(
-          clocks == 1 ? "Every clock"
-                      : rack::string::f("Every %d clocks", clocks),
-          "",
-          [=]() {
-            return prog->arrangementCursorClocksPerPulse.load(
-                       std::memory_order_relaxed) == clocks;
-          },
-          [=]() {
-            prog->arrangementCursorClocksPerPulse.store(
-                clocks, std::memory_order_relaxed);
           }));
     }
   }

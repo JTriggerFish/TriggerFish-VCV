@@ -109,6 +109,13 @@ def test_prog_sequencer_has_three_valid_3u_widths_with_outlined_runtime_text():
     assert "change->oldCursor = previousCursor" in module_source
     assert "change->newCursor = cursor" in module_source
     assert "restoredEditorCursor.exchange(-1" in module_source
+    assert 'createMenuItem("Prog Sequencer documentation"' in module_source
+    assert "TfProgSequencer-reference.md" in module_source
+    assert "Cursor travel" not in module_source
+    assert "Arrangement cursor pulse" not in module_source
+    assert "cursorMotionMode" not in module_source
+    assert "arrangementCursorClocksPerPulse" not in module_source
+    assert "tfui::CursorTravelCurve::Linear" in module_source
     assert screw_positions(module_source, 450.0, 380.0) == ()
     assert centered_component_specs("TfProgSequencer", module_source, 450.0) == (
         ("PJ301MPort", 409.0, 65.0),
@@ -134,6 +141,7 @@ def test_prog_sequencer_has_three_valid_3u_widths_with_outlined_runtime_text():
         assert not runtime.findall(f".//{SVG}text")
         labels = {node.text: node for node in source.findall(f".//{SVG}text")}
         assert labels["TRIGGERFISH"].attrib["y"] == labels["PROG SEQUENCER"].attrib["y"]
+        assert labels["BETA"].attrib["y"] == labels["PROG SEQUENCER"].attrib["y"]
         center = int(width) - 27
         left, right = center - 14, center + 14
         assert (labels["CLOCK"].attrib["x"], labels["RESET"].attrib["x"]) == (

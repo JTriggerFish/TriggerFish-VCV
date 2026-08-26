@@ -40,10 +40,10 @@ inline float cvTraceZeroFraction(CvTracePolarity polarity) noexcept {
 }
 
 inline std::int64_t arrangementCursorGroup(double relativeClockBeat,
-                                           int clocksPerPulse) noexcept {
+                                           int beatsPerPulse) noexcept {
   const double group =
       std::floor(std::max(0.0, relativeClockBeat) /
-                 static_cast<double>(std::max(1, clocksPerPulse)));
+                 static_cast<double>(std::max(1, beatsPerPulse)));
   if (group >= static_cast<double>(std::numeric_limits<std::int64_t>::max()))
     return std::numeric_limits<std::int64_t>::max();
   return static_cast<std::int64_t>(group);

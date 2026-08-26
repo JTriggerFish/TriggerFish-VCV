@@ -13,8 +13,9 @@ and structural variations should be possible without copying or manually
 editing every step. The syntax is designed for improvising, sequencing, and
 reshaping material while it plays.
 
-Prog Sequencer is currently in beta. Its language and feature set may change
-as musical workflows are refined; check this reference when upgrading.
+Prog Sequencer is currently in beta. Its syntax, semantics, and feature set are
+subject to change as musical workflows are refined; check this reference when
+upgrading.
 
 ## Contents
 
@@ -142,9 +143,10 @@ cable, which identifies one unambiguous Transport even in a larger patch.
 
 Double-click selects a word and triple-click selects a complete row. The usual
 text-field selection, clipboard, and navigation controls remain available.
-The module context menu offers the perceptually uniform Magma, Inferno, Plasma,
-Viridis, and Cividis heatmaps, plus black-based CRT Green, CRT Blue, CRT Yellow,
-and CRT Red phosphor-style ramps. The choice is stored with the patch.
+The module context menu links directly to this reference. It also offers the
+perceptually uniform Magma, Inferno, Plasma, Viridis, and Cividis heatmaps, plus
+black-based CRT Green, CRT Blue, CRT Yellow, and CRT Red phosphor-style ramps.
+The heatmap choice is stored with the patch.
 
 Each active `cv1`, `cv2`, or `cv3` line displays a six-second scrolling trace
 of that lane's output in the unused space to the right of its text. The fixed
