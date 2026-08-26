@@ -348,7 +348,7 @@
       "version": "2.4.0",
       "params": [],
       "data": {
-        "source": "acid = sequence {\n  subdiv 16\n  tonic D#@2\n  scale minor\n  notes ^1 1!3 ^5 7 ^1 ~ 1 ~ ^8 >1, ~ 1 >^1, >1\n  velocity .5\n  gate .5\n  glide .5\n}\n\niv = acid |> modulate_degree 4 |> octave -1\nv  = acid |> modulate_degree 5 |> octave -1 |> scale major\nsong = acid * 8 + iv * 4 + v * 4\nplay song\n",
+        "source": "acid = sequence {\n  subdiv 16n\n  tonic D#@2\n  scale minor\n  notes ^1 1!3 ^5 7 ^1 ~ 1 ~ ^8 >1, ~ 1 >^1, >1\n  velocity .5\n  gate .5\n  glide .5\n}\n\niv = acid |> modulate_degree 4 |> octave -1\nv  = acid |> modulate_degree 5 |> octave -1 |> scale major\nsong = acid * 8 + iv * 4 + v * 4\nplay song\n",
         "languageVersion": 1
       },
       "pos": [

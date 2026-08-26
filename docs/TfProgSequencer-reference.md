@@ -21,6 +21,7 @@ as musical workflows are refined; check this reference when upgrading.
 - [Quick start](#quick-start)
 - [Editing and execution](#editing-and-execution)
 - [Clock and shared transport](#clock-and-shared-transport)
+- [Musical time values](#musical-time-values)
 - [Program structure](#program-structure)
 - [Notes and pitch](#notes-and-pitch)
   - [Scale degrees](#scale-degrees)
@@ -35,6 +36,7 @@ as musical workflows are refined; check this reference when upgrading.
 - [Numerical lanes](#numerical-lanes)
   - [Aligning a lane to Notes](#aligning-a-lane-to-notes)
 - [CV1, CV2, and CV3](#cv1-cv2-and-cv3)
+  - [CV envelopes](#cv-envelopes)
 - [Transforms](#transforms)
   - [Structural and pitch transforms](#structural-and-pitch-transforms)
   - [Timing transforms](#timing-transforms)
@@ -53,7 +55,7 @@ as musical workflows are refined; check this reference when upgrading.
 
 ```text
 riff = sequence {
-  subdiv 8
+  subdiv 8n
   tonic D@3
   scale dorian
   notes 1 2 ^3{stacc} 4 5{quiet} >6 7{ten} _
@@ -67,7 +69,7 @@ play song
 ```
 
 The Clock input uses a fixed 24 PPQN transport signal. Twenty-four pulses
-advance one quarter-note beat. `subdiv 8` makes an unsuffixed note an eighth
+advance one quarter-note beat. `subdiv 8n` makes an unsuffixed note an eighth
 note (`1/2` beat), so the eight-step Notes pass lasts four quarter-note beats.
 Ordinary auxiliary lanes keep their own cycle lengths across repeated Notes
 passes. Use `...` to attach values to the beginning or end, or both edges of
@@ -146,17 +148,19 @@ and CRT Red phosphor-style ramps. The choice is stored with the patch.
 
 Each active `cv1`, `cv2`, or `cv3` line displays a six-second scrolling trace
 of that lane's output in the unused space to the right of its text. The fixed
-vertical range is -5 V to +5 V, with 0 V at the centre. The line and its subtle
-phosphor glow use the selected heatmap. If the program text leaves less than
-42 pixels on that row, the trace is hidden rather than drawn over the source;
-widen the module or shorten the line to reveal it. The trace is capped at the
-width of 12 editor characters so it remains a compact lane indicator.
+vertical range is -5 V to +5 V. Positive-only traces place 0 V at the bottom,
+negative-only traces place it at the top, and bipolar traces place it at the
+centre. The line and its subtle phosphor glow use the selected heatmap. If the
+program text leaves less than 42 pixels on that row, the trace is hidden rather
+than drawn over the source; widen the module or shorten the line to reveal it.
+The trace is capped at the width of 12 editor characters so it remains a
+compact lane indicator.
 
 ## Clock and shared transport
 
 Prog Sequencer interprets CLOCK as a fixed 24-pulse-per-quarter-note transport
-stream. Score time is still written in quarter-note beats: `subdiv 4` produces
-quarter notes, `subdiv 8` eighth notes, and `subdiv 16` sixteenth notes. The
+stream. Score time is still written in quarter-note beats: `subdiv 4n` produces
+quarter notes, `subdiv 8n` eighth notes, and `subdiv 16n` sixteenth notes. The
 additional clock edges provide timing resolution and rapid period acquisition;
 program speed continues to follow quarter-note score time. An external clock
 source must therefore be configured for 24 PPQN.
@@ -190,6 +194,41 @@ Ctrl+Shift+Backspace requests Stop. The keyboard request changes only the
 connected Transport; its Clock, Run, and Reset outputs remain the source of
 synchronization for the sequencers.
 
+## Musical time values
+
+Tempo-relative durations have an explicit note-value form:
+
+| Literal | Duration in quarter-note beats |
+| --- | ---: |
+| `1n` | 4; whole note |
+| `2n` | 2; half note |
+| `4n` | 1; quarter note |
+| `8n` | 1/2; eighth note |
+| `16n` | 1/4; sixteenth note |
+| `32n` | 1/8; thirty-second note |
+
+Append `d` for a dotted value or `t` for a triplet value. For example, `8nd`
+is a dotted eighth lasting 3/4 beat, while `8nt` is an eighth-note triplet
+lasting 1/3 beat. Denominators are powers of two from 1 through 128.
+
+`subdiv` always takes a note value. Straight, dotted, and triplet steps are
+therefore written directly:
+
+```text
+subdiv 16n   // sixteenth-note steps
+subdiv 8nd   // dotted-eighth steps
+subdiv 8nt   // eighth-note triplet steps
+```
+
+Other tempo-relative controls accept either note values or quarter-note beats.
+Thus `16n` and `1/4` have the same duration, while the explicit note form often
+reads more naturally in a musical program. Bare values retain beat arithmetic:
+`1` is one quarter-note beat and `3/2` is one and a half beats.
+
+Gate, Slide, Offset, `early`, and `late` also accept `ms`. Envelope segments
+additionally accept seconds with `s`. A signed note value such as `-16n` is
+valid where signed timing is meaningful, including Offset.
+
 ## Program structure
 
 A sequence has one `notes` lane, optional settings, and optional numerical or
@@ -198,10 +237,10 @@ when it supplies an independent repeating pattern or an external CV signal.
 
 ```text
 name = sequence {
-  subdiv 16
+  subdiv 16n
   tonic C@4
   scale minor
-  glide 1/4
+  glide 16n
   notes 1 ^3{stacc} 5 >7 8{ten}
   cv1 0 5 2 |> interp smooth
 }
@@ -235,10 +274,10 @@ Settings do not cycle:
 
 | Setting | Meaning | Default |
 | --- | --- | --- |
-| `subdiv` | denominator of an unsuffixed note (`4/N` beats) | `4` |
+| `subdiv` | note value of an unsuffixed note | `4n` |
 | `tonic` | tonal centre and optional default octave | `C@4` |
 | `scale` | scale used by degrees and Roman chords | `major` |
-| `glide` | default slide time in beats | `1/4` |
+| `glide` | default slide time in beats or note values | `16n` |
 
 One complete top-level Notes pass is the sequence boundary. Its actual elapsed
 length follows the default subdivision, explicit duration suffixes, the
@@ -472,8 +511,8 @@ notes 1{vel=.95} 3{gate=12ms}
 | `stacc` | Gate preset `.25` |
 | `ten` | Gate preset `.95` |
 | `vel=VALUE` | note-local base Velocity from `0` to `1`; dynamic modifiers still apply |
-| `gate=VALUE` | Gate fraction `0..1` or non-negative `ms` |
-| `slide=VALUE` | slide time in beats or `ms`; valid only on `>` |
+| `gate=VALUE` | Gate fraction `0..1`, note value, or non-negative `ms` |
+| `slide=VALUE` | slide time in beats, note values, or `ms`; valid only on `>` |
 | `len=VALUE` | positive base-slot multiplier; the explicit form of a duration suffix |
 
 `len` can also set a rest's span, as in `~{len=3/2}`. The other attributes
@@ -546,9 +585,9 @@ Numerical lanes loop independently unless aligned with `...`:
 notes    1 2 3 4 5 6 7 8
 octave   3 4 3
 velocity .72 .55
-duration 1 1 3/2
-gate     .8 .4 .6
-slide    . 80ms
+duration 4n 4n 4nd
+gate     .8 .4 16n
+slide    . 80ms 32n
 ratchet  1 1 2
 offset   -10ms!2 +8ms
 ```
@@ -561,11 +600,11 @@ Gate articulation, duration, slides, ratchets, and octave marks.
 | --- | --- | --- | --- |
 | `octave` | absolute integer octave | octave declared by `tonic` | pitched events |
 | `velocity`, `vel` | `0..1` | `.72` | pitched events |
-| `duration`, `dur` | positive incoming-clock beats or fraction | `4/subdiv` beats | notes and rests |
-| `gate` | `0..1` or non-negative `ms` | `.8` | pitched events |
-| `slide` | non-negative beats/fraction or `ms` | `glide` | pitched events |
+| `duration`, `dur` | positive beats or note values | subdivision step | notes and rests |
+| `gate` | `0..1`, note values, or non-negative `ms` | `.8` | pitched events |
+| `slide` | non-negative beats, note values, or `ms` | `glide` | pitched events |
 | `ratchet` | positive integer | `1` | pitched events |
-| `offset` | signed beats/fraction or `ms` | on-grid | score time |
+| `offset` | signed beats, note values, or `ms` | on-grid | score time |
 
 `.` consumes a lane position while inheriting the normal value. `.1` is the
 number one tenth. `.!3` repeats the default across three positions.
@@ -586,7 +625,7 @@ notes 1 2 3 4 5 6 7 8
 notes 1 2 3 4 ; 5 6 7 8
 ```
 
-This is especially useful with `subdiv 16`, where groups of four terms make
+This is especially useful with `subdiv 16n`, where groups of four terms make
 the beats visible. Semicolons work in Notes, numerical, and CV patterns. They
 must occur between terms; they are neither barlines nor statement terminators.
 
@@ -653,6 +692,84 @@ value. Leading defaults look backward through the repeating lane.
 
 Free CV lanes accept `|> rate R`. Edge-aligned CV supports `step` only.
 
+### CV envelopes
+
+A CV output can generate an AD, AR, or ADSR envelope from the Notes events.
+The short form uses the envelope as the complete CV signal:
+
+```text
+notes 1 3 5 7
+cv1 env ad
+cv2 env ar 10ms 400ms depth 3
+cv3 env adsr 5ms 200ms .4 600ms depth 2 curve .25
+```
+
+An envelope can also be added to a constant or sequenced CV lane. This is
+useful for placing a transient sweep over a slower cutoff or timbre contour:
+
+```text
+cv1 0 .5 1 .5 |> interp smooth
+  |> add env ad 5ms 300ms depth .8
+
+cv2 1 |> add env ad . 16n depth 2
+```
+
+The parameter order follows the envelope name:
+
+| Form | Positional parameters |
+| --- | --- |
+| `env ad` | attack, decay |
+| `env ar` | attack, release |
+| `env adsr` | attack, decay, sustain, release |
+
+Trailing parameters may be omitted. A `.` keeps the default at an earlier
+position. Note values such as `16n`, `8nd`, and `8nt` follow standard musical
+durations. Times ending in `ms` or `s` use elapsed time. Bare numbers and
+fractions use quarter-note beats, so `1/4` and `16n` have equal duration.
+Sustain is a proportion from 0 to 1.
+
+| Option | Meaning | Default |
+| --- | --- | --- |
+| `depth V` | signed peak voltage; a negative value inverts the envelope | `5` |
+| `curve C` | segment shape from linear at `-1` through increasingly analogue-like curvature at `0` and `1` | `0` |
+| `follow velocity` | scale the peak by the resolved note Velocity | disabled |
+| `follow vel` | concise alias for `follow velocity` | disabled |
+| `accent M` | additionally multiply accented attacks by `M` | `1` |
+
+The time defaults are 5 ms attack, 300 ms AD decay, 300 ms AR release, and
+5 ms / 250 ms / 0.5 / 300 ms for ADSR. `depth`, `curve`, `follow`, and
+`accent` may follow the positional parameters in any order. One envelope is
+available on each CV lane, and `add env` is the final operation in that lane's
+pipeline. The result is left unclamped, allowing deliberate voltage ranges and
+signed modulation.
+
+AD begins on every attack, including ratchets, and completes independently of
+the note gate. AR begins when the gate rises, holds its peak while the gate is
+high, and releases when the gate falls. ADSR begins on an attack, moves to its
+sustain level, and releases with the gate. A new AD or ADSR attack starts from
+the current voltage, which keeps rapid retriggers continuous. Ties preserve the
+current gate and slides introduce no new attack. Rests and sounded-note misses
+release gate-controlled envelopes; a `??` omission creates no event.
+
+Chords drive one envelope from their first logical voice. The peak captured at
+each attack is
+
+```text
+depth * (resolved Velocity when follow is enabled, otherwise 1)
+      * (accent multiplier on an accented attack, otherwise 1).
+```
+
+The resolved Velocity already includes the built-in effect of `^`, `^^`,
+`quiet`, and the Velocity lane. `accent M` supplies an additional timbral lift
+when desired. Pausing freezes the envelope at its current voltage. Stop and
+reset clear it. If the clock disappears while transport remains active, a
+held gate is released and the envelope completes against the most recently
+measured tempo or elapsed time.
+
+The inline CV sparkline displays the final output voltage. Envelope-only lanes
+therefore show the envelope, while additive lanes show the base CV and envelope
+combined. Editing the row preserves its existing trace history.
+
 ## Transforms
 
 Pipelines transform a lane, a sequence, or an arrangement:
@@ -677,7 +794,7 @@ Transform scope is explicit:
 | --- | --- |
 | Notes lane | `rev`, `rotate`, and pitch transforms |
 | Numerical lane | `rev`, `rotate`, `rate` |
-| CV lane | numerical-lane transforms plus `interp` |
+| CV lane | numerical-lane transforms plus `interp` and a final `add env` |
 | Complete sequence/arrangement | `rev`, `rotate`, pitch, scale, and timing transforms |
 
 `rate` and `interp` are lane-local. `fast`, `slow`, `swing`, `early`, and
@@ -787,10 +904,10 @@ ties and slides do not cross between different sections.
 
 ```text
 bass = sequence {
-  subdiv 16
+  subdiv 16n
   tonic E@2
   scale minor
-  glide 1/8
+  glide 32n
   notes ^1 1!2 x1 [5 6] >b7{stacc} ~ 1{ten} 3?0.35
 }
 
@@ -812,21 +929,21 @@ changing structure. No auxiliary lane is needed.
 
 ```text
 verse = sequence {
-  subdiv 8
+  subdiv 8n
   tonic D@3
   scale minor
   notes 1 3 4 ^5{stacc} 1' 7 5 4
 }
 
 chorus = sequence {
-  subdiv 4
+  subdiv 4n
   tonic Bb@3
   scale major
   notes I_2{ten} V_2{ten} vi_2{ten} IV_2{ten}
 }
 
 fill = sequence {
-  subdiv 16
+  subdiv 16n
   tonic D@3
   scale harmonic_minor
   notes [5 6 7] ^8*2 ~ V7
@@ -845,7 +962,7 @@ different lengths without padding them to a shared grid.
 
 ```text
 melody = sequence {
-  subdiv 16
+  subdiv 16n
   tonic A@3
   scale minor_pentatonic
   notes $u{1,10}(5,8) $n{5,1.25}(3,8,2)
@@ -864,7 +981,7 @@ pass rotates the prepared structure.
 
 ```text
 texture = sequence {
-  subdiv 8
+  subdiv 8n
   tonic D@3
   scale dorian
   notes 1{ten} [3 5] 7{quiet} <8 6>
@@ -885,7 +1002,7 @@ groove = sequence {
   notes [1 5] 3 [4 6 8] 5
   offset -7ms 4ms 0 |> rate 1/2
 }
-|> swing .58 1/8
+|> swing .58 32n
 |> early random 3ms
 
 seed 99
@@ -959,13 +1076,31 @@ closing brace and a pipeline continuation may begin subsequent lines.
 
 ```text
 sequence-line ::= setting-line | notes-line | scalar-line | cv-line
-setting-line  ::= "subdiv" POSITIVE_INTEGER |
+setting-line  ::= "subdiv" positive-note-value |
                   "tonic" named-pitch ["@" SIGNED_INTEGER] |
                   "scale" SCALE_NAME |
-                  "glide" NONNEGATIVE_NUMBER
+                  "glide" nonnegative-time
 notes-line    ::= "notes" note-pattern pipeline*
 scalar-line   ::= scalar-lane scalar-pattern pipeline*
-cv-line       ::= ("cv1" | "cv2" | "cv3") scalar-pattern pipeline*
+cv-line       ::= cv-name envelope-source |
+                  cv-name scalar-pattern cv-pipeline*
+cv-name       ::= "cv1" | "cv2" | "cv3"
+cv-pipeline   ::= pipeline | "|>" "add" envelope-source
+
+envelope-source ::= "env" envelope-shape envelope-option*
+envelope-shape  ::= "ad" [env-time-or-default [env-time-or-default]] |
+                    "ar" [env-time-or-default [env-time-or-default]] |
+                    "adsr" [env-time-or-default
+                      [env-time-or-default
+                        [sustain-or-default [env-time-or-default]]]]
+env-time-or-default ::= envelope-time | "."
+sustain-or-default  ::= PROBABILITY | "."
+envelope-time       ::= positive-note-value |
+                        NONNEGATIVE_NUMBER ["ms" | "s"]
+envelope-option     ::= "depth" NUMBER |
+                        "curve" NUMBER |
+                        "follow" ("velocity" | "vel") |
+                        "accent" NONNEGATIVE_NUMBER
 
 scalar-lane   ::= "octave" | "velocity" | "vel" |
                   "duration" | "dur" | "gate" | "slide" |
@@ -992,7 +1127,7 @@ A pipeline following the closing brace transforms the complete sequence:
 riff = sequence {
   notes 1 2 3 4
 }
-|> swing .58 1/8
+|> swing .58 32n
 |> sometimes .25 (rotate 1)
 ```
 
@@ -1085,7 +1220,10 @@ pattern-separator ::= SPACE | [SPACE] ";" [SPACE]
 random-scalar  ::= "$u{" value "," value "}" |
                    "$n{" value "," value "}"
 
-value               ::= NUMBER ["ms"]
+value               ::= NUMBER ["ms"] | note-value
+note-value          ::= ["+" | "-"] NOTE_DENOMINATOR ("nd" | "nt" | "n")
+positive-note-value ::= ["+"] NOTE_DENOMINATOR ("nd" | "nt" | "n")
+nonnegative-time    ::= positive-note-value | NONNEGATIVE_NUMBER
 NUMBER              ::= SIGNED_INTEGER "/" POSITIVE_INTEGER | DECIMAL
 DECIMAL             ::= ["+" | "-"]
                         (DIGITS ["." DIGITS] | "." DIGITS)
@@ -1094,6 +1232,7 @@ UNSIGNED_INTEGER    ::= DIGITS
 POSITIVE_INTEGER    ::= NONZERO_DIGIT {DIGIT}
 POSITIVE_NUMBER     ::= NUMBER whose value is greater than zero
 NONNEGATIVE_NUMBER  ::= NUMBER whose value is at least zero
+NOTE_DENOMINATOR    ::= a power of two from 1 to 128
 PROBABILITY         ::= NUMBER whose value is from zero to one
 DIGITS              ::= DIGIT {DIGIT}
 DIGIT               ::= "0" | NONZERO_DIGIT
@@ -1108,11 +1247,17 @@ Presence probability is restricted to top-level events, rests, and complete
 top-level groups, and cannot accompany a Euclidean suffix. A Notes pass must
 contain at least one element whose presence is guaranteed. Bare `?` and `??`
 suffixes mean probability `0.5`. `NUMBER` may be an integer, decimal, or
-fraction where the surrounding feature permits it. Millisecond
-units are accepted by Gate, Slide, Offset, timing transforms, and the
-corresponding random forms. CV values are volts and omit a unit. Settings and
-duration spans use incoming-clock beats or dimensionless values as described
-below.
+fraction where the surrounding feature permits it. A note value uses a
+power-of-two denominator from 1 through 128 and the suffix `n`, `nd`, or `nt`.
+`subdiv` requires a positive note value. Millisecond units are accepted by
+Gate, Slide, Offset, timing transforms, and the corresponding random forms. CV
+values are volts and omit a unit. Settings and duration spans use score beats,
+note values, or dimensionless values as described above.
+
+An envelope time without a unit is measured in quarter-note beats.
+Envelope curve values range from -1 to 1, and ADSR sustain values range from
+zero to one. An envelope-only CV line accepts no pipeline. On a scalar CV line,
+`add env` is unconditional, appears once, and closes the pipeline.
 
 Scalar patterns contain flat values rather than note groups. `.` consumes a
 position and inherits that lane's normal value. One ellipsis may occur at an

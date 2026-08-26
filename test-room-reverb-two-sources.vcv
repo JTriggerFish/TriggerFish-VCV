@@ -14,7 +14,7 @@
       "version": "2.6.6",
       "params": [],
       "data": {
-        "text": "TriggerFish musical two-source Room Reverb test\n\nAt 96 BPM, two independent Prog Sequencers play an interlocking D-Dorian texture. Source 1 is a slow two-saw Unison Oscillator bass with a centred sub oscillator, analogue drift, and long 4072 filter and amplifier envelopes. Source 2 is a louder, driven descending folded arpeggio with a shorter, brighter 4072 voice whose cutoff follows a slow 18-beat bipolar CV triangle across the four-beat note phrase.\n\nThe shared Transport drives Clock, Run, and Reset into both sequencers. RESTART plays from beat zero, PAUSE preserves the current position, PLAY continues it, and STOP returns to zero. Both voices therefore remain synchronized through every action.\n\nScene Pack 4 keeps the voices as two independent room sources. Room Reverb uses the Superlush scene with its wet high cut lowered to 3 kHz. Drag their numbered amber markers to audition position, early reflections, and the late-field handoff; disconnect either Scene Pack input to confirm that only its marker disappears. The scope shows the packed sources and stereo result. Select an output device in Audio-8, then start with monitor volume low."
+        "text": "TriggerFish musical two-source Room Reverb test\n\nAt 96 BPM, two independent Prog Sequencers play an interlocking D-Dorian texture. Source 1 is a slow two-saw Unison Oscillator bass with a centred sub oscillator, analogue drift, and long 4072 filter and amplifier envelopes. Source 2 is a louder, driven descending folded arpeggio with a shorter, brighter 4072 voice. Its cutoff follows a slow 18-beat bipolar CV triangle across the four-beat note phrase, while a per-note AD envelope animates the wavefolder depth.\n\nThe shared Transport drives Clock, Run, and Reset into both sequencers. RESTART plays from beat zero, PAUSE preserves the current position, PLAY continues it, and STOP returns to zero. Both voices therefore remain synchronized through every action.\n\nScene Pack 4 keeps the voices as two independent room sources. Room Reverb uses the Superlush scene with its wet high cut lowered to 3 kHz. Drag their numbered amber markers to audition position, early reflections, and the late-field handoff; disconnect either Scene Pack input to confirm that only its marker disappears. The scope shows the packed sources and stereo result. Select an output device in Audio-8, then start with monitor volume low."
       },
       "pos": [
         -11,
@@ -63,7 +63,7 @@
       "version": "2.4.0",
       "params": [],
       "data": {
-        "source": "bass = sequence {\n  subdiv 2\n  tonic D@1\n  scale dorian\n  notes 1_2 7_2 4_2 5 7\n  gate .96\n}\n\nplay bass\n",
+        "source": "bass = sequence {\n  subdiv 2n\n  tonic D@1\n  scale dorian\n  notes 1_2 7_2 4_2 5 7\n  gate .96\n}\n\nplay bass\n",
         "languageVersion": 1
       },
       "pos": [
@@ -78,7 +78,7 @@
       "version": "2.4.0",
       "params": [],
       "data": {
-        "source": "arpeggio = sequence {\n  subdiv 16\n  tonic D@4\n  scale dorian\n  notes 3' 1' 5 3 ; 1' 5 3 1 ; 2' 7 5 2 ; 7 5 2 1\n  gate .52\n  cv1 4 -4 |> interp linear |> rate 1/9\n}\n\nplay arpeggio\n",
+        "source": "arpeggio = sequence {\n  subdiv 16n\n  tonic D@4\n  scale dorian\n  notes 3' 1' 5 3 ; 1' 5 3 1 ; 2' 7 5 2 ; 7 5 2 1\n  gate .52\n  cv1 4 -4 |> interp linear |> rate 1/9\n  cv2 env ad 5ms 16n depth 2 curve 0\n}\n\nplay arpeggio\n",
         "languageVersion": 1,
         "editorHeatmap": 5
       },
@@ -323,7 +323,7 @@
         },
         {
           "id": 7,
-          "value": 0.0
+          "value": 0.75
         },
         {
           "id": 8,
@@ -835,67 +835,75 @@
     },
     {
       "id": 1017,
-      "outputModuleId": 7,
-      "outputId": 1,
-      "inputModuleId": 8,
-      "inputId": 0,
+      "outputModuleId": 4,
+      "outputId": 6,
+      "inputModuleId": 7,
+      "inputId": 3,
       "color": "#7a3ec8"
     },
     {
       "id": 1018,
-      "outputModuleId": 8,
+      "outputModuleId": 7,
       "outputId": 1,
-      "inputModuleId": 9,
-      "inputId": 1,
+      "inputModuleId": 8,
+      "inputId": 0,
       "color": "#f3374b"
     },
     {
       "id": 1019,
-      "outputModuleId": 9,
-      "outputId": 0,
-      "inputModuleId": 10,
-      "inputId": 0,
+      "outputModuleId": 8,
+      "outputId": 1,
+      "inputModuleId": 9,
+      "inputId": 1,
       "color": "#ffcc00"
     },
     {
       "id": 1020,
-      "outputModuleId": 10,
+      "outputModuleId": 9,
       "outputId": 0,
-      "inputModuleId": 11,
+      "inputModuleId": 10,
       "inputId": 0,
       "color": "#0c8e15"
     },
     {
       "id": 1021,
       "outputModuleId": 10,
-      "outputId": 1,
+      "outputId": 0,
       "inputModuleId": 11,
-      "inputId": 1,
+      "inputId": 0,
       "color": "#0986ad"
     },
     {
       "id": 1022,
-      "outputModuleId": 9,
-      "outputId": 0,
-      "inputModuleId": 12,
-      "inputId": 0,
+      "outputModuleId": 10,
+      "outputId": 1,
+      "inputModuleId": 11,
+      "inputId": 1,
       "color": "#c91847"
     },
     {
       "id": 1023,
-      "outputModuleId": 10,
+      "outputModuleId": 9,
       "outputId": 0,
       "inputModuleId": 12,
-      "inputId": 1,
+      "inputId": 0,
       "color": "#7a3ec8"
     },
     {
       "id": 1024,
       "outputModuleId": 10,
+      "outputId": 0,
+      "inputModuleId": 12,
+      "inputId": 1,
+      "color": "#f3374b"
+    },
+    {
+      "id": 1025,
+      "outputModuleId": 10,
       "outputId": 1,
       "inputModuleId": 12,
       "inputId": 2,
-      "color": "#f3374b"
+      "color": "#ffcc00"
     }
   ]
 }

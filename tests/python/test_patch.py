@@ -357,7 +357,7 @@ def test_smoke_patches_use_triggerfish_parameter_defaults(name):
         elif name == "reverb_two_sources":
             musical_overrides = {
                 "TfUnisonOscillator": {2, 7, 8, 9, 11, 12, 13, 14},
-                "TfWavefoldOscillator": {2, 3, 4, 10, 11, 12, 13, 14},
+                "TfWavefoldOscillator": {2, 3, 4, 7, 10, 11, 12, 13, 14},
                 "Tf4072VoiceCore": {
                     0,
                     1,
@@ -609,7 +609,7 @@ def test_prog_303_replaces_foundry_with_the_concise_program():
     assert modules(patch, "VCMixer") == []
 
     source = sequencer["data"]["source"]
-    assert "subdiv 16" in source
+    assert "subdiv 16n" in source
     assert "notes ^1 1!3 ^5 7 ^1 ~ 1 ~ ^8 >1, ~ 1 >^1, >1" in source
     assert "glide .5" in source
     assert sequencer["data"]["languageVersion"] == 1
@@ -762,7 +762,7 @@ def test_two_source_reverb_patch_builds_two_independently_sequenced_voices():
 
     bass_source = bass_sequencer["data"]["source"]
     assert "tonic D@1" in bass_source
-    assert "subdiv 2" in bass_source
+    assert "subdiv 2n" in bass_source
     assert "scale dorian" in bass_source
     assert "notes 1_2 7_2 4_2 5 7" in bass_source
     assert "~" not in bass_source
@@ -787,8 +787,10 @@ def test_two_source_reverb_patch_builds_two_independently_sequenced_voices():
     assert "tonic D@4" in arpeggio_source
     assert "notes 3' 1' 5 3 ; 1' 5 3 1 ; 2' 7 5 2 ; 7 5 2 1" in arpeggio_source
     assert "cv1 4 -4 |> interp linear |> rate 1/9" in arpeggio_source
+    assert "cv2 env ad 5ms 16n depth 2 curve 0" in arpeggio_source
     assert arpeggio_sequencer["data"]["editorHeatmap"] == 5
     assert param_values(wavefolder)[3] == pytest.approx(0.5012047290802002)
+    assert param_values(wavefolder)[7] == pytest.approx(0.75)
     assert param_values(wavefolder)[10] == 1.0
     assert param_values(wavefolder)[12] == pytest.approx(0.40800002217292786)
     assert param_values(wavefolder)[13] == pytest.approx(0.49066662788391113)
@@ -807,6 +809,7 @@ def test_two_source_reverb_patch_builds_two_independently_sequenced_voices():
     assert has_cable(patch, arpeggio_sequencer["id"], 1, arpeggio_voice["id"], 6)
     assert has_cable(patch, arpeggio_sequencer["id"], 2, arpeggio_voice["id"], 7)
     assert has_cable(patch, arpeggio_sequencer["id"], 5, arpeggio_voice["id"], 3)
+    assert has_cable(patch, arpeggio_sequencer["id"], 6, wavefolder["id"], 3)
     assert has_cable(patch, arpeggio_voice["id"], 1, scene_pack["id"], 1)
 
     assert has_cable(patch, scene_pack["id"], 0, reverb["id"], 0)

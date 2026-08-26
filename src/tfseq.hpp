@@ -143,6 +143,7 @@ struct ArticulationAtom {
   bool hasGate = false;
   float gate = 0.f;
   bool gateMilliseconds = false;
+  bool gateNoteValue = false;
   bool hasSlide = false;
   float slide = 0.f;
   bool slideMilliseconds = false;
@@ -169,11 +170,36 @@ struct ScalarItem {
   RandomDistribution randomDistribution = RandomDistribution::None;
   bool isDefault = false;
   bool isMilliseconds = false;
+  bool isNoteValue = false;
   bool randomInteger = false;
   SourceSpan span;
 };
 
 enum class CvInterpolation { Step, Linear, Smooth, Power };
+
+enum class CvEnvelopeMode { Ad, Ar, Adsr };
+enum class CvEnvelopeComposition { Replace, Add };
+enum class CvEnvelopeTimeUnit { Seconds, Beats };
+
+struct CvEnvelopeTime {
+  double value = 0.0;
+  CvEnvelopeTimeUnit unit = CvEnvelopeTimeUnit::Seconds;
+};
+
+struct CvEnvelopeSpec {
+  bool enabled = false;
+  CvEnvelopeMode mode = CvEnvelopeMode::Ad;
+  CvEnvelopeComposition composition = CvEnvelopeComposition::Replace;
+  CvEnvelopeTime attack{0.005, CvEnvelopeTimeUnit::Seconds};
+  CvEnvelopeTime decay{0.300, CvEnvelopeTimeUnit::Seconds};
+  CvEnvelopeTime release{0.300, CvEnvelopeTimeUnit::Seconds};
+  float sustain = 0.5f;
+  float depth = 5.f;
+  float curve = 0.f;
+  bool followVelocity = false;
+  float accentMultiplier = 1.f;
+  SourceSpan span;
+};
 
 enum class LaneAlignment { Free, Left, Right, Edges };
 
@@ -203,7 +229,7 @@ struct Transform {
   int integer = 0;
   double number = 0.0;
   // Zero selects the event's own subdivision. A positive value supplies an
-  // explicit grid in incoming-clock beats (for example 1/8 or 1/16).
+  // explicit grid in incoming-clock beats.
   double swingSubdivisionBeats = 0.0;
   bool randomAmount = false;
   TimeUnit timeUnit = TimeUnit::Beats;
@@ -225,7 +251,7 @@ struct Sequence {
   std::uint64_t stableId = 0;
   std::string name;
   SourceSpan nameSpan;
-  int subdivision = 4;
+  double subdivisionBeats = 1.0;
   float glideBeats = 0.25f;
   Scale scale;
   std::vector<PitchItem> notes;
@@ -241,6 +267,7 @@ struct Sequence {
   std::array<CvInterpolation, CvLaneCount> cvInterpolation{
       CvInterpolation::Step, CvInterpolation::Step, CvInterpolation::Step};
   std::array<double, CvLaneCount> cvPower{1.0, 1.0, 1.0};
+  std::array<CvEnvelopeSpec, CvLaneCount> cvEnvelope{};
   std::array<std::vector<Transform>,
              static_cast<std::size_t>(CursorLane::Count)>
       transforms;
@@ -345,6 +372,7 @@ struct RuntimeEvent {
   float velocity = 0.72f;
   float accent = 0.f;
   float gateFraction = 0.8f;
+  float gateBeats = -1.f;
   float gateMilliseconds = -1.f;
   float gateCapMilliseconds = -1.f;
   float slideBeats = 0.25f;
@@ -360,6 +388,7 @@ struct RuntimeEvent {
       CvInterpolation::Step, CvInterpolation::Step, CvInterpolation::Step};
   std::array<float, CvLaneCount> cvPower{1.f, 1.f, 1.f};
   std::array<double, CvLaneCount> cvTargetBeat{};
+  std::array<CvEnvelopeSpec, CvLaneCount> cvEnvelope{};
   std::array<SourceSpan, static_cast<std::size_t>(CursorLane::Count)> cursors{};
 };
 

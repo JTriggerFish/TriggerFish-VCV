@@ -8,6 +8,36 @@
 namespace tfui {
 
 enum class CursorTravelCurve { Linear, Smoothstep };
+enum class CvTracePolarity { Positive, Negative, Bipolar };
+
+inline CvTracePolarity cvTracePolarity(float minimum, float maximum,
+                                       float epsilon = 1e-4f) noexcept {
+  if (minimum >= -epsilon)
+    return CvTracePolarity::Positive;
+  if (maximum <= epsilon)
+    return CvTracePolarity::Negative;
+  return CvTracePolarity::Bipolar;
+}
+
+inline float cvTraceVerticalFraction(float value, CvTracePolarity polarity,
+                                     float voltageRange) noexcept {
+  if (!(voltageRange > 0.f) || !std::isfinite(value))
+    return 1.f;
+  if (polarity == CvTracePolarity::Positive)
+    return 1.f - std::clamp(value / voltageRange, 0.f, 1.f);
+  if (polarity == CvTracePolarity::Negative)
+    return std::clamp(-value / voltageRange, 0.f, 1.f);
+  const float normalized = std::clamp(value / voltageRange, -1.f, 1.f);
+  return 0.5f * (1.f - normalized);
+}
+
+inline float cvTraceZeroFraction(CvTracePolarity polarity) noexcept {
+  if (polarity == CvTracePolarity::Positive)
+    return 1.f;
+  if (polarity == CvTracePolarity::Negative)
+    return 0.f;
+  return 0.5f;
+}
 
 inline std::int64_t arrangementCursorGroup(double relativeClockBeat,
                                            int clocksPerPulse) noexcept {

@@ -38,10 +38,10 @@ Circuit-modelled sound generators and processors, plus pitch utilities for VCV R
 
 | Module | Handling | Output voice count |
 | --- | --- | --- |
-| Slop | Monophonic; reads channel 1 of `1V/OCT` | One |
-| Slop 4 | Four independent monophonic signal paths | One per output jack |
-| VDPO | Monophonic; reads channel 1 of each input | One |
-| VCA | Monophonic; reads channel 1 of each input | One |
+| Slop | Polyphonic, with shared hum and independent drift per channel | Channel count of `1V/OCT`, up to 16 |
+| Slop 4 | Four polyphonic oscillator paths, with instrument-wide hum/common drift and independent drift per channel and oscillator | Each output follows its corresponding input, up to 16 |
+| VDPO | Fully polyphonic, with independent oscillator and resampling state per voice; mono inputs are broadcast | Widest connected input, up to 16 |
+| VCA | Fully polyphonic, with independent nonlinear, resampling, and DC-rejection state per voice; mono inputs are broadcast | Widest connected input, up to 16 |
 | 303 Oscillator | Fully polyphonic, with independent DSP state per voice; mono inputs are broadcast | Widest connected input, up to 16 |
 | 303 Voice Core | Fully polyphonic, with independent filter, envelope, accent, and VCA state; mono controls are broadcast | Channel count of `IN`, up to 16 |
 | 4072 Voice Core | Fully polyphonic, with independent filter, dual-envelope, and VCA state; mono controls are broadcast | Widest connected input, up to 16 |
@@ -58,12 +58,17 @@ Circuit-modelled sound generators and processors, plus pitch utilities for VCV R
 
 Slop adds slow pitch drift and 60 Hz power-supply hum to a 1 V/octave signal.
 The drift can be proportional, measured in cents, or linear, measured in hertz.
-The tracking control also allows small oscillator-tracking errors to be modelled.
+On a polyphonic cable, hum remains common to the instrument while every channel
+has its own drift process. The tracking control also allows small
+oscillator-tracking errors to be modelled.
 
-Slop 4 applies shared proportional drift and hum to four independent monophonic
-paths, then adds a separate linear drift to each voice. This produces coherent
-ensemble motion with stable beating across the keyboard. Each path has its own
-tracking trim.
+Slop 4 treats each Rack polyphonic channel as one synthesizer voice and its four
+paths as four oscillators within that voice. Proportional thermal drift and hum
+are shared by the complete instrument; linear drift is independent for every
+voice/oscillator pair. This produces coherent ensemble motion together with
+evolving voice-to-voice and oscillator beating. Each path retains its own
+tracking trim, and each output follows the channel count of its corresponding
+input.
 
 ### VDPO
 
@@ -357,7 +362,8 @@ own Prog Sequencer and shaped by a 4072 voice. Scene Pack 4 preserves them as
 independent left/right room-plan sources for auditioning the spatial direct,
 early, and late fields with a musical input. The patch uses Superlush with a
 3 kHz wet high cut; arpeggio CV1 drives an 18-beat bipolar cutoff triangle
-across the four-beat note phrase. One Transport supplies Clock, Run, and Reset
+across the four-beat note phrase, and CV2 sends a per-note AD envelope to the
+wavefolder Fold input. One Transport supplies Clock, Run, and Reset
 to both sequencers so all transport operations act on them together.
 
 ### Transport
@@ -413,7 +419,9 @@ error.
 While it plays, a soft highlight and progress underline remain on the active
 note, rest, or tie. The RUN light flashes on each quarter beat, and each
 active CV lane can show a six-second scrolling trace with a fixed -5 V to +5 V
-range in the free space to the right of its source line.
+range in the free space to the right of its source line. A CV lane can generate
+an AD, AR, or ADSR envelope on its own, or add one to a sequenced CV contour;
+the trace follows the final combined voltage.
 
 Its language is inspired by TidalCycles, Gibber, and other live-coding and
 pattern-sequencing systems. It is intended to make musical ideas quick to type,
@@ -430,15 +438,15 @@ compact right-side I/O strip at every width.
 
 ```text
 riff = sequence {
-  subdiv 16
+  subdiv 16n
   tonic D@3
   scale dorian
-  glide 1/8
+  glide 32n
   notes ^1 1!2 x1 [3 4] >5{stacc} ~ 6{quiet} 7{ten}
 }
 
 fill = sequence {
-  subdiv 16
+  subdiv 16n
   tonic D@3
   scale harmonic_minor
   notes [5 6 7] ^8*2 ~ V7
@@ -452,6 +460,11 @@ play song
 `riff` and `fill` are independently defined sequences with their own musical
 settings and lengths. The `song` assignment arranges complete passes of both;
 an arrangement can freely mix independent sections with derived variations.
+
+`subdiv` uses standard musical note values: `4n` is a quarter note, `8n` an
+eighth, and `16n` a sixteenth. Append `d` for dotted values and `t` for
+triplets, as in `8nd` and `8nt`. Other tempo-relative controls accept the same
+notation or bare quarter-note beats.
 
 Articulation normally lives on the note itself. `^3` and `^^3` assert Accent
 and raise Velocity to their two built-in emphasis levels. Velocity is a
@@ -495,7 +508,7 @@ melody. Named sections
 concatenate with `+` and repeat with `*`. `1!4` repeats a note in its lane, and
 `.!3` repeats a sparse default.
 `gate .5` holds Gate for half the event; only `_` is a semantic tie.
-`glide .8` slews a `>` target for .8 incoming-clock beats, capped by that
+`glide .8` slews a `>` target for .8 quarter-note beats, capped by that
 target event's span.
 
 `//` begins a line comment and can quickly shorten a lane while retaining the
@@ -546,20 +559,21 @@ Whole-sequence timing transformations are explicitly quantified:
 ```text
 groove = riff
   |> fast 2
-  |> swing .58 1/8
-  |> late 1/32
+  |> swing .58 32n
+  |> late 128n
   |> early random 6ms
 ```
 
 `slow 3/2` is also valid. Swing `.5` is straight; larger values give the first
 member of each equal subdivision pair more of the pair. With no second argument
-the event subdivision supplies the grid; an explicit `1/8`, `1/16`, or other
-positive incoming-clock fraction selects it directly. `early` and `late`
-accept beat fractions or `ms`, and `random AMOUNT` chooses a deterministic
+the event subdivision supplies the grid. Explicit grids and other
+tempo-relative times accept note values such as `8n`, `16nd`, and `8nt`, while
+bare numbers remain quarter-note beats. `early` and `late` also accept `ms`,
+and `random AMOUNT` chooses a deterministic
 amount from zero to the stated maximum. Subdivision density can already vary
 with note groups such as `[1 2] [3 4 5]`. When a separate rhythmic cycle is
 deliberate, independent `ratchet` and `duration` lanes are also available. A
-patternable `offset` lane accepts signed beat fractions or `ms`; negative
+patternable `offset` lane accepts signed beats, note values, or `ms`; negative
 values are early and positive values late. Its optional numeric `rate`, as in
 `offset -10ms!2 8ms |> rate 1/2`, changes only that lane's score-time phase.
 CV1-CV3 use the same rate and sparse-lane rules and support `step`, `linear`,

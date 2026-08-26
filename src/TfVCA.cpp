@@ -2,6 +2,7 @@
 #include "tfdsp/rail.hpp"
 
 #include <memory>
+#include <array>
 #include <algorithm>
 #include <cmath>
 #include "plugin.hpp"
@@ -47,14 +48,17 @@ struct TfVCA : Module
 	float _normalisedHighPassCv;
 	float _normalisedHighPassAudio;
 
-	std::unique_ptr<::VCA_TransistorCore<tfdsp::X2Resampler_Order7>> _vcaTransi;
-
-	tfdsp::FirstOrderHighPassZdf<float> _cvHighPass{};
-	tfdsp::FirstOrderHighPassZdf<float> _audioHighPass{};
+	using Vca = ::VCA_TransistorCore<tfdsp::X2Resampler_Order7>;
+	std::array<std::unique_ptr<Vca>, PORT_MAX_CHANNELS> _vcaTransi{};
+	std::array<tfdsp::FirstOrderHighPassZdf<float>, PORT_MAX_CHANNELS>
+		_cvHighPass{};
+	std::array<tfdsp::FirstOrderHighPassZdf<float>, PORT_MAX_CHANNELS>
+		_audioHighPass{};
+	int _activeChannels{};
 
 	//----------------------------------------------------------------
 
-	TfVCA() : _vcaTransi(std::make_unique<::VCA_TransistorCore<tfdsp::X2Resampler_Order7>>(tfdsp::CreateX2Resampler_Chebychev7))
+	TfVCA()
 	{
 		config(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS);
 		configParam(TfVCA::LIN_INPUT_LEVEL, 0.0f, 1.0f, 1.0f, "Linear CV amount", "%", 0.0f, 100.0f);
@@ -69,6 +73,8 @@ struct TfVCA : Module
 		configOutput(MAIN_OUTPUT, "Audio");
 		configLight(CV_LIGHT, "CV level");
 		configBypass(AUDIO_INPUT, MAIN_OUTPUT);
+		for (auto& vca : _vcaTransi)
+			vca = std::make_unique<Vca>(tfdsp::CreateX2Resampler_Chebychev7);
 
 		//_resampler = tfdsp::CreateX2Resampler_Butterworth5();
 		float gSampleRate = APP->engine->getSampleRate();
@@ -89,7 +95,8 @@ const float TfVCA::_maxCvBleed = 1.41f * std::pow(10.f, -20.f / 20);
 
 void TfVCA::init(float sampleRate)
 {
-	_vcaTransi->SetSampleRate(sampleRate);
+	for (auto& vca : _vcaTransi)
+		vca->SetSampleRate(sampleRate);
 
 	_normalisedHighPassCv = _cvBleedHighPassF / (0.5f * sampleRate);
 	_normalisedHighPassAudio = _audioHighPassF / (0.5f * sampleRate);
@@ -97,57 +104,77 @@ void TfVCA::init(float sampleRate)
 
 void TfVCA::process(const ProcessArgs &args)
 {
-	//float deltaTime = args.sampleTime;
+	const int channels = std::clamp(std::max({
+		inputs[AUDIO_INPUT].getChannels(),
+		inputs[LIN_CV_INPUT].getChannels(),
+		inputs[EXP_CV_INPUT].getChannels(), 1}), 1, PORT_MAX_CHANNELS);
+	for (int channel = channels; channel < _activeChannels; ++channel)
+	{
+		_vcaTransi[channel]->Reset();
+		_cvHighPass[channel].Reset();
+		_audioHighPass[channel].Reset();
+	}
+	_activeChannels = channels;
+	outputs[MAIN_OUTPUT].setChannels(channels);
 
 	float driveGain = params[DRIVE].getValue();
 	constexpr float audioRenorm = 5.0f;
 	driveGain /= audioRenorm;
-
-	const float audioInput = inputs[AUDIO_INPUT].getVoltage();
-	float audio = (std::isfinite(audioInput) ? audioInput : 0.0f) * driveGain;
-	//VCA cv should be unipolar between 0 and 10, normalise to 0 to 1.
-	//If no input plugged in then pass zero.
-	const float linearInput = inputs[LIN_CV_INPUT].getNormalVoltage(0.f);
-	const float exponentialInput = inputs[EXP_CV_INPUT].getNormalVoltage(0.f);
-	const float linearCv = std::isfinite(linearInput) ? linearInput / 10.f *
-		params[LIN_INPUT_LEVEL].getValue() : 0.0f;
-	const float exponentialCv = std::isfinite(exponentialInput) ?
-		exponentialInput / 10.f * params[EXP_INPUT_LEVEL].getValue() : 0.0f;
-
+	const float linearAmount = params[LIN_INPUT_LEVEL].getValue();
+	const float exponentialAmount = params[EXP_INPUT_LEVEL].getValue();
 	const float expBase = params[EXP_CV_BASE].getValue();
 
 	// Compensate most of the drive-induced level change. This makes DRIVE
 	// primarily a saturation control; OUTPUT_LEVEL remains the volume control.
 	auto finalGain = std::min(100.0f, (1.0f + driveGain) / (0.00001f + driveGain));
 	finalGain *= params[OUTPUT_LEVEL].getValue();
+	const float bleedAmount = params[CV_BLEED].getValue() * _maxCvBleed;
+	float maximumControl = 0.0f;
+	for (int channel = 0; channel < channels; ++channel)
+	{
+		auto finiteInput = [&](InputIds input)
+		{
+			const float value = inputs[input].getPolyVoltage(channel);
+			return std::isfinite(value) ? value : 0.0f;
+		};
+		float audio = finiteInput(AUDIO_INPUT) * driveGain;
+		// VCA CV is unipolar 0--10 V and unpatched inputs contribute zero.
+		const float linearCv = finiteInput(LIN_CV_INPUT) / 10.0f * linearAmount;
+		const float exponentialCv = finiteInput(EXP_CV_INPUT) / 10.0f *
+			exponentialAmount;
 
-	//VCA core
-	audio = _vcaTransi->StepControls(audio, linearCv, exponentialCv, expBase,
-		finalGain);
-	const float reconstructedCv = _vcaTransi->LastControl();
+		audio = _vcaTransi[channel]->StepControls(audio, linearCv,
+			exponentialCv, expBase, finalGain);
+		const float reconstructedCv = _vcaTransi[channel]->LastControl();
+		maximumControl = std::max(maximumControl, reconstructedCv);
 
-	// CV bleed follows the reconstructed control path so exponential audio-rate
-	// modulation cannot introduce host-rate images directly at the output.
-	const float cvBleed = _cvHighPass(reconstructedCv, _normalisedHighPassCv) *
-		params[CV_BLEED].getValue() * _maxCvBleed;
+		// CV bleed follows the reconstructed control path so exponential
+		// audio-rate modulation cannot introduce host-rate images directly.
+		const float cvBleed = _cvHighPass[channel](reconstructedCv,
+			_normalisedHighPassCv) * bleedAmount;
+		// Reject DC that remains after the nonlinear and resampled path.
+		audio = _audioHighPass[channel](audio, _normalisedHighPassAudio);
 
-	//DC rejection in case there is some DC offset due to aliasing
-	audio = _audioHighPass(audio, _normalisedHighPassAudio);
+		const float output = static_cast<float>(
+			tfdsp::RackOutputAdapter::ProcessPostDecimation(audio + cvBleed));
+		outputs[MAIN_OUTPUT].setVoltage(std::isfinite(output) ? output : 0.0f,
+			channel);
+	}
 
-	const float output = static_cast<float>(
-		tfdsp::RackOutputAdapter::ProcessPostDecimation(audio + cvBleed));
-	outputs[MAIN_OUTPUT].setVoltage(std::isfinite(output) ? output : 0.0f);
-
-	//Deal with input monitoring lights
-	lights[CV_LIGHT].setSmoothBrightness(std::max(0.f, reconstructedCv),
+	// The single panel LED reports the loudest active voice control.
+	lights[CV_LIGHT].setSmoothBrightness(std::max(0.0f, maximumControl),
 		args.sampleTime);
 }
 void TfVCA::onReset(const ResetEvent& event)
 {
 	Module::onReset(event);
-	_vcaTransi->Reset();
-	_cvHighPass.Reset();
-	_audioHighPass.Reset();
+	for (int channel = 0; channel < PORT_MAX_CHANNELS; ++channel)
+	{
+		_vcaTransi[channel]->Reset();
+		_cvHighPass[channel].Reset();
+		_audioHighPass[channel].Reset();
+	}
+	_activeChannels = 0;
 }
 void TfVCA::onSampleRateChange(const SampleRateChangeEvent& event)
 {

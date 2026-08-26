@@ -1,6 +1,7 @@
 #include "plugin.hpp"
 #include "tfseq.hpp"
 #include "tfseq_editor.hpp"
+#include "tfseq_envelope.hpp"
 #include "tfseq_parser.hpp"
 #include "tftransport.hpp"
 #include "tfui_animation.hpp"
@@ -35,7 +36,7 @@ NVGcolor editorColor(tfui::HeatmapPalette palette, float intensity) noexcept {
 }
 
 constexpr const char *DefaultSource = R"(riff = sequence {
-  subdiv 8
+  subdiv 8n
   tonic C@4
   scale minor
   notes 1 x2 3{quiet} _ [>4 ^5{stacc}] 6*3 ~ 8{ten}
@@ -155,6 +156,7 @@ struct TfProgSequencer : Module {
   std::array<OutputVoiceState, tfseq::MaximumPolyphony> outputVoices{};
   struct CvOutputState {
     float value = 0.f;
+    float output = 0.f;
     float from = 0.f;
     float target = 0.f;
     double beginBeat = 0.0;
@@ -162,6 +164,10 @@ struct TfProgSequencer : Module {
     float power = 1.f;
     bool initialized = false;
     tfseq::CvInterpolation interpolation = tfseq::CvInterpolation::Step;
+    tfseq::CvEnvelopeSpec envelopeSpec;
+    tfseq::CvEnvelopeEngine envelope;
+    float envelopePeak = 0.f;
+    bool envelopeTriggerPending = false;
   };
   std::array<CvOutputState, tfseq::CvLaneCount> cvOutputs{};
   std::size_t outputVoiceCount = 1;
@@ -618,6 +624,12 @@ struct TfProgSequencer : Module {
         auto &state = cvOutputs[index];
         state.interpolation = event.cvInterpolation[index];
         state.power = event.cvPower[index];
+        state.envelopeSpec = event.cvEnvelope[index];
+        if (tfseq::CvEnvelopeTriggers(event.kind)) {
+          state.envelopePeak = tfseq::CvEnvelopePeak(
+              state.envelopeSpec, event.velocity, event.accent > 0.f);
+          state.envelopeTriggerPending = true;
+        }
         if (state.interpolation == tfseq::CvInterpolation::Step) {
           state.value = event.cvValue[index];
           state.from = state.value;
@@ -669,11 +681,13 @@ struct TfProgSequencer : Module {
     auto &voice = outputVoices[voiceIndex];
     voice.velocity = event.velocity * 10.f;
     voice.accent = event.accent * 10.f;
-    voice.gateHigh = event.gateFraction > 0.f;
     double gateDuration =
-        event.gateMilliseconds >= 0.f && periodKnown && periodSamples > 0.0
+        event.gateBeats >= 0.f
+            ? event.gateBeats
+        : event.gateMilliseconds >= 0.f && periodKnown && periodSamples > 0.0
             ? event.gateMilliseconds * 0.001 * sampleRateHz / periodSamples
             : event.spanBeats * event.gateFraction;
+    voice.gateHigh = gateDuration > 0.0;
     if (event.gateCapMilliseconds >= 0.f && periodKnown &&
         periodSamples > 0.0) {
       gateDuration = std::min(gateDuration, event.gateCapMilliseconds * 0.001 *
@@ -877,16 +891,26 @@ struct TfProgSequencer : Module {
       if (state.interpolation == tfseq::CvInterpolation::Step ||
           state.endBeat <= state.beginBeat) {
         state.value = state.target;
-        continue;
+      } else {
+        float amount = static_cast<float>((phase - state.beginBeat) /
+                                          (state.endBeat - state.beginBeat));
+        amount = std::clamp(amount, 0.f, 1.f);
+        if (state.interpolation == tfseq::CvInterpolation::Smooth)
+          amount = amount * amount * (3.f - 2.f * amount);
+        else if (state.interpolation == tfseq::CvInterpolation::Power)
+          amount = std::pow(amount, state.power);
+        state.value = state.from + (state.target - state.from) * amount;
       }
-      float amount = static_cast<float>((phase - state.beginBeat) /
-                                        (state.endBeat - state.beginBeat));
-      amount = std::clamp(amount, 0.f, 1.f);
-      if (state.interpolation == tfseq::CvInterpolation::Smooth)
-        amount = amount * amount * (3.f - 2.f * amount);
-      else if (state.interpolation == tfseq::CvInterpolation::Power)
-        amount = std::pow(amount, state.power);
-      state.value = state.from + (state.target - state.from) * amount;
+      if (running) {
+        const double beatDelta =
+            periodKnown && periodSamples > 0.0 ? 1.0 / periodSamples : 0.0;
+        const float envelope = state.envelope.process(
+            outputVoices[0].gateHigh, state.envelopeTriggerPending,
+            state.envelopePeak, state.envelopeSpec, args.sampleTime, beatDelta);
+        state.envelopeTriggerPending = false;
+        state.output =
+            tfseq::CvEnvelopeOutput(state.value, envelope, state.envelopeSpec);
+      }
     }
 
     for (const auto output : {PITCH_OUTPUT, GATE_OUTPUT, TRIGGER_OUTPUT,
@@ -910,8 +934,8 @@ struct TfProgSequencer : Module {
         CV1_OUTPUT, CV2_OUTPUT, CV3_OUTPUT};
     for (std::size_t index = 0; index < cvOutputIds.size(); ++index) {
       outputs[cvOutputIds[index]].setChannels(1);
-      outputs[cvOutputIds[index]].setVoltage(cvOutputs[index].value);
-      visibleCvValues[index].store(cvOutputs[index].value,
+      outputs[cvOutputIds[index]].setVoltage(cvOutputs[index].output);
+      visibleCvValues[index].store(cvOutputs[index].output,
                                    std::memory_order_relaxed);
     }
     const bool transportActive = running && activeProgram;
@@ -1519,14 +1543,32 @@ struct TfSequenceEditor : app::LedDisplayTextField {
     if (!plot.valid)
       return;
 
+    const auto count = cvTraceCount[lane];
+    const auto first =
+        (cvTraceWrite[lane] + CvTraceCapacity - count) % CvTraceCapacity;
+    float minimum = std::numeric_limits<float>::infinity();
+    float maximum = -std::numeric_limits<float>::infinity();
+    for (std::size_t offset = 0; offset < count; ++offset) {
+      const auto &sample = cvTraces[lane][(first + offset) % CvTraceCapacity];
+      const double age = now - sample.sampledAt;
+      if (age < 0.0 || age > CvTraceWindowSeconds ||
+          !std::isfinite(sample.value))
+        continue;
+      minimum = std::min(minimum, sample.value);
+      maximum = std::max(maximum, sample.value);
+    }
+    if (!std::isfinite(minimum) || !std::isfinite(maximum))
+      return;
+    const auto polarity = tfui::cvTracePolarity(minimum, maximum);
+
     auto coordinates = [&](const CvTraceSample &sample) {
       const double age = std::max(0.0, now - sample.sampledAt);
       const float x =
           plot.x +
           plot.width * static_cast<float>(1.0 - age / CvTraceWindowSeconds);
-      const float normalized =
-          std::clamp(sample.value / CvTraceVoltageRange, -1.f, 1.f);
-      const float y = plot.y + 0.5f * plot.height * (1.f - normalized);
+      const float y = plot.y + plot.height * tfui::cvTraceVerticalFraction(
+                                                 sample.value, polarity,
+                                                 CvTraceVoltageRange);
       return Vec(x, y);
     };
 
@@ -1536,15 +1578,14 @@ struct TfSequenceEditor : app::LedDisplayTextField {
     NVGcolor zero = heatmapColor(0.22f);
     zero.a = 0.20f;
     nvgBeginPath(args.vg);
-    nvgMoveTo(args.vg, plot.x, plot.y + 0.5f * plot.height);
-    nvgLineTo(args.vg, plot.x + plot.width, plot.y + 0.5f * plot.height);
+    const float zeroY =
+        plot.y + plot.height * tfui::cvTraceZeroFraction(polarity);
+    nvgMoveTo(args.vg, plot.x, zeroY);
+    nvgLineTo(args.vg, plot.x + plot.width, zeroY);
     nvgStrokeWidth(args.vg, 0.6f);
     nvgStrokeColor(args.vg, zero);
     nvgStroke(args.vg);
 
-    const auto count = cvTraceCount[lane];
-    const auto first =
-        (cvTraceWrite[lane] + CvTraceCapacity - count) % CvTraceCapacity;
     auto strokeTrace = [&](float width, float intensity, float alpha) {
       bool started = false;
       nvgBeginPath(args.vg);

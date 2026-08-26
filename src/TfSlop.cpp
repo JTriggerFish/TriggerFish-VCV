@@ -1,4 +1,6 @@
 #include <memory>
+#include <array>
+#include <algorithm>
 #include <cmath>
 #include "plugin.hpp"
 #include "components.hpp"
@@ -42,9 +44,11 @@ struct TfSlop : Module
 	static constexpr double _tau{60.0}; //Time constant ( average decay time) in seconds
 	static constexpr double _sigmaCents{0.2 / 12};
 	static constexpr double _sigmaHz{2};
-	tfdsp::InterpolatedOrnsteinUhlenbeck _ou{};
+	std::array<tfdsp::InterpolatedOrnsteinUhlenbeck,
+		PORT_MAX_CHANNELS> _ou{};
 	float _prevDetuneMode{};
 	float _sampleRate{44100.0f};
+	int _activeChannels{};
 
 	//----------------------------------------------------------------
 
@@ -79,7 +83,8 @@ void TfSlop::init(float sampleRate)
 	_sampleRate = sampleRate;
 	_humOscillator.SetFrequency(_humFreq, sampleRate);
 	const double sigma = params[DETUNE_MODE].getValue() < 0 ? _sigmaHz : _sigmaCents;
-	_ou.Configure(sampleRate, _tau, sigma);
+	for (auto& process : _ou)
+		process.Configure(sampleRate, _tau, sigma);
 	_prevDetuneMode = params[DETUNE_MODE].getValue();
 }
 
@@ -87,25 +92,35 @@ void TfSlop::process(const ProcessArgs &args)
 {
 	if (_prevDetuneMode != params[DETUNE_MODE].getValue())
 	{
-		_ou.Reset();
 		const double sigma = params[DETUNE_MODE].getValue() < 0 ? _sigmaHz : _sigmaCents;
-		_ou.Configure(args.sampleRate, _tau, sigma);
+		for (auto& process : _ou)
+		{
+			process.Reset();
+			process.Configure(args.sampleRate, _tau, sigma);
+		}
 		_prevDetuneMode = params[DETUNE_MODE].getValue();
 	}
-	const float input = inputs[VOCT_INPUT].getVoltage();
-	float voct = (std::isfinite(input) ? input : 0.0f) * params[TRACK_SCALING].getValue();
+	const int channels = std::clamp(std::max(
+		inputs[VOCT_INPUT].getChannels(), 1), 1, PORT_MAX_CHANNELS);
+	for (int channel = channels; channel < _activeChannels; ++channel)
+		_ou[channel].Reset();
+	_activeChannels = channels;
+	outputs[VOCT_OUTPUT].setChannels(channels);
 
-	float hum = _maxHum * params[HUM_LEVEL].getValue() * _humOscillator.Step();
-	float drift = params[DRIFT_LEVEL].getValue() * _ou.Step(_rng);
-
-	voct = voct + hum;
-
-	if (params[DETUNE_MODE].getValue() < 0) //Hz i.e linear detune mode
-		outputs[VOCT_OUTPUT].setVoltage(static_cast<float>(tfdsp::detune::linear(voct, drift)));
-	else //Cents i.e proportional detune mode
+	const float tracking = params[TRACK_SCALING].getValue();
+	const float hum = _maxHum * params[HUM_LEVEL].getValue() *
+		_humOscillator.Step();
+	const float driftDepth = params[DRIFT_LEVEL].getValue();
+	const bool linearDrift = params[DETUNE_MODE].getValue() < 0;
+	for (int channel = 0; channel < channels; ++channel)
 	{
-		const double output = voct + drift;
-		outputs[VOCT_OUTPUT].setVoltage(std::isfinite(output) ? static_cast<float>(output) : 0.0f);
+		const float input = inputs[VOCT_INPUT].getPolyVoltage(channel);
+		const double voct = (std::isfinite(input) ? input : 0.0f) * tracking + hum;
+		const double drift = driftDepth * _ou[channel].Step(_rng);
+		const double output = linearDrift ?
+			tfdsp::detune::linear(voct, drift) : voct + drift;
+		outputs[VOCT_OUTPUT].setVoltage(std::isfinite(output) ?
+			static_cast<float>(output) : 0.0f, channel);
 	}
 }
 void TfSlop::onSampleRateChange(const SampleRateChangeEvent& event)
@@ -116,7 +131,9 @@ void TfSlop::onReset(const ResetEvent& event)
 {
 	Module::onReset(event);
 	_humOscillator.Reset();
-	_ou.Reset();
+	for (auto& process : _ou)
+		process.Reset();
+	_activeChannels = 0;
 	init(_sampleRate);
 }
 

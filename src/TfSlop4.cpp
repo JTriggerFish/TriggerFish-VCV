@@ -1,5 +1,6 @@
 #include <memory>
 #include <array>
+#include <algorithm>
 #include <cmath>
 #include "plugin.hpp"
 #include "components.hpp"
@@ -53,7 +54,9 @@ struct TfSlop4 : Module
 	static constexpr double _sigmaCents{0.1 / 12};
 	static constexpr double _sigmaHz{1.5};
 	tfdsp::InterpolatedOrnsteinUhlenbeck _ouCommon{};
-	std::array<tfdsp::InterpolatedOrnsteinUhlenbeck, 4> _ouIndividual{};
+	std::array<std::array<tfdsp::InterpolatedOrnsteinUhlenbeck, 4>,
+		PORT_MAX_CHANNELS> _ouIndividual{};
+	std::array<int, 4> _activeChannels{};
 	float _sampleRate{44100.0f};
 
 	//----------------------------------------------------------------
@@ -94,32 +97,47 @@ void TfSlop4::init(float sampleRate)
 	_sampleRate = sampleRate;
 	_humOscillator.SetFrequency(_humFreq, sampleRate);
 	_ouCommon.Configure(sampleRate, _tau, _sigmaCents);
-	for (auto& process : _ouIndividual)
-		process.Configure(sampleRate, _tau, _sigmaHz);
+	for (auto& voice : _ouIndividual)
+		for (auto& process : voice)
+			process.Configure(sampleRate, _tau, _sigmaHz);
 }
 
 void TfSlop4::process(const ProcessArgs &args)
 {
-	std::array<float, 4> voct;
-	for (int i = 0; i < 4; ++i)
+	const float hum = _maxHum * params[HUM_LEVEL].getValue() *
+		_humOscillator.Step();
+
+	// Hum and proportional thermal drift belong to the whole instrument, so
+	// every oscillator in every polyphonic voice receives the same motion.
+	const float driftCommon = params[COMMON_DRIFT_LEVEL].getValue() *
+		_ouCommon.Step(_rng);
+	const float individualDepth = params[INDIVIDUAL_DRIFT_LEVEL].getValue();
+
+	for (int oscillator = 0; oscillator < 4; ++oscillator)
 	{
-		//NOTE! : the parameters that are replicated for each input are put at the beginning to make life easier in loops
-		//careful not to add parameters before these in the enum !
-		const float input = inputs[i].getVoltage();
-		voct[i] = (std::isfinite(input) ? input : 0.0f) * params[i].getValue();
-	}
+		const int channels = std::clamp(std::max(
+			inputs[oscillator].getChannels(), 1), 1, PORT_MAX_CHANNELS);
+		for (int channel = channels; channel < _activeChannels[oscillator];
+			++channel)
+			_ouIndividual[channel][oscillator].Reset();
+		_activeChannels[oscillator] = channels;
+		outputs[oscillator].setChannels(channels);
 
-	float hum = _maxHum * params[HUM_LEVEL].getValue() * _humOscillator.Step();
-
-	//The common drift operates in cents
-	float driftCommon = params[COMMON_DRIFT_LEVEL].getValue() * _ouCommon.Step(_rng);
-
-	for (int i = 0; i < 4; ++i)
-	{
-		//The individual drifts operate in hz for linear detuning
-		double v = voct[i] + hum + driftCommon;
-		double drift = params[INDIVIDUAL_DRIFT_LEVEL].getValue() * _ouIndividual[i].Step(_rng);
-		outputs[i].setVoltage(tfdsp::detune::linear(v, drift));
+		for (int channel = 0; channel < channels; ++channel)
+		{
+			// Replicated tracking parameters deliberately occupy the first four
+			// IDs, matching their input and output lane IDs.
+			const float input = inputs[oscillator].getPolyVoltage(channel);
+			const double voct = (std::isfinite(input) ? input : 0.0f) *
+				params[oscillator].getValue() + hum + driftCommon;
+			// Each physical oscillator in each polyphonic voice has its own
+			// correction error and therefore its own linear-Hz drift process.
+			const double drift = individualDepth *
+				_ouIndividual[channel][oscillator].Step(_rng);
+			const double output = tfdsp::detune::linear(voct, drift);
+			outputs[oscillator].setVoltage(std::isfinite(output) ?
+				static_cast<float>(output) : 0.0f, channel);
+		}
 	}
 }
 void TfSlop4::onSampleRateChange(const SampleRateChangeEvent& event)
@@ -131,8 +149,10 @@ void TfSlop4::onReset(const ResetEvent& event)
 	Module::onReset(event);
 	_humOscillator.Reset();
 	_ouCommon.Reset();
-	for (auto& process : _ouIndividual)
-		process.Reset();
+	for (auto& voice : _ouIndividual)
+		for (auto& process : voice)
+			process.Reset();
+	_activeChannels.fill(0);
 	init(_sampleRate);
 }
 

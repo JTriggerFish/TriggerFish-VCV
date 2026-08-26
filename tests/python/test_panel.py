@@ -69,6 +69,7 @@ def test_prog_sequencer_has_three_valid_3u_widths_with_outlined_runtime_text():
     assert "status->requiredHeight" in module_source
     assert "cvTraceLineSpan" in module_source
     assert "drawCvTrace(args, lane, now, span, sourcePositionsCurrent)" in module_source
+    assert "visibleCvValues[index].store(cvOutputs[index].output" in module_source
     assert "stateTransferOrder" in runtime_source
     assert "activationCheckpointBeat" in module_source
     assert "activationNextStepBeat" in module_source
@@ -848,6 +849,47 @@ def test_legacy_panel_coordinate_expressions_are_resolved():
         }
         for control_id, position in expected.items():
             assert positions[control_id] == position
+
+
+def test_legacy_pitch_and_vca_modules_expose_polyphonic_state_and_routing():
+    slop = (ROOT / "src" / "TfSlop.cpp").read_text(encoding="utf-8")
+    slop4 = (ROOT / "src" / "TfSlop4.cpp").read_text(encoding="utf-8")
+    vdpo = (ROOT / "src" / "TfVDPO.cpp").read_text(encoding="utf-8")
+    vca = (ROOT / "src" / "TfVCA.cpp").read_text(encoding="utf-8")
+
+    # Slop mirrors its pitch cable. Hum is stepped once per frame, while drift
+    # is indexed by channel so voices do not wobble as one rigid chord.
+    assert "PORT_MAX_CHANNELS> _ou{};" in slop
+    assert "inputs[VOCT_INPUT].getChannels()" in slop
+    assert "outputs[VOCT_OUTPUT].setChannels(channels);" in slop
+    assert "inputs[VOCT_INPUT].getPolyVoltage(channel)" in slop
+    assert "_ou[channel].Step(_rng)" in slop
+
+    # Slop4 retains one instrument-wide common process and adds a distinct
+    # process for every Rack voice / oscillator-lane pair. Each lane keeps its
+    # own input channel count instead of silently expanding sibling lanes.
+    assert "PORT_MAX_CHANNELS> _ouIndividual{};" in slop4
+    assert "_ouCommon.Step(_rng)" in slop4
+    assert "inputs[oscillator].getChannels()" in slop4
+    assert "outputs[oscillator].setChannels(channels);" in slop4
+    assert "inputs[oscillator].getPolyVoltage(channel)" in slop4
+    assert "_ouIndividual[channel][oscillator].Step(_rng)" in slop4
+
+    # VDPO and VCA establish voice count from their widest input, broadcast
+    # mono inputs, and own nonlinear/filter state for every possible channel.
+    assert "std::array<std::unique_ptr<Oscillator>, PORT_MAX_CHANNELS>" in vdpo
+    assert "inputs[DAMPING_INPUT].getChannels(), 1}" in vdpo
+    assert "getPolyVoltage(channel)" in vdpo
+    assert "outputs[OUTPUT].setChannels(channels);" in vdpo
+    assert "_vdpHq[channel]->StepLogAngularFrequency" in vdpo
+
+    assert "std::array<std::unique_ptr<Vca>, PORT_MAX_CHANNELS>" in vca
+    assert vca.count("PORT_MAX_CHANNELS>") >= 3
+    assert "inputs[EXP_CV_INPUT].getChannels(), 1}" in vca
+    assert "getPolyVoltage(channel)" in vca
+    assert "outputs[MAIN_OUTPUT].setChannels(channels);" in vca
+    assert "_vcaTransi[channel]->StepControls" in vca
+    assert "maximumControl = std::max(maximumControl, reconstructedCv);" in vca
 
 
 def test_scene_pack_panel_preview_covers_every_control_and_runtime_text_is_outlined():

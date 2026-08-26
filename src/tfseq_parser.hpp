@@ -81,6 +81,9 @@ struct Lane {
   enum class Kind { Notes, Scalar, Cv, Setting };
   Token name;
   Pattern pattern;
+  std::vector<Token> envelopeArguments;
+  SourceSpan envelopeSpan;
+  bool envelopeOnly = false;
   std::vector<Pipeline> pipelines;
   Kind kind = Kind::Scalar;
 };

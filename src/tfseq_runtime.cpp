@@ -408,9 +408,11 @@ double Scalar(const std::vector<ScalarItem> &items, std::uint64_t &cursor,
                std::uint64_t structuralCellCount = 0,
                std::size_t alignmentSplit = 0,
                SourceSpan alignmentSpan = {}, bool *milliseconds = nullptr,
-               double scoreBeat = 0.0) noexcept {
+               double scoreBeat = 0.0, bool *noteValue = nullptr) noexcept {
   if (milliseconds)
     *milliseconds = false;
+  if (noteValue)
+    *noteValue = false;
   if (items.empty())
     return fallback;
   const bool phaseRate = std::any_of(
@@ -435,6 +437,8 @@ double Scalar(const std::vector<ScalarItem> &items, std::uint64_t &cursor,
     span = item.span;
     if (milliseconds)
       *milliseconds = item.isMilliseconds;
+    if (noteValue)
+      *noteValue = item.isNoteValue;
     randomKey ^= MixRandom(cycle);
     return item.isDefault ? fallback
                           : SampleScalarItem(item, seed, randomKey, salt);
@@ -453,6 +457,8 @@ double Scalar(const std::vector<ScalarItem> &items, std::uint64_t &cursor,
   span = item.span;
   if (milliseconds)
     *milliseconds = item.isMilliseconds;
+  if (noteValue)
+    *noteValue = item.isNoteValue;
   return item.isDefault ? fallback
                         : SampleScalarItem(item, seed, randomKey, salt);
 }
@@ -938,7 +944,7 @@ StepEvents Runtime::next(double beat) noexcept {
                                    [](const ArticulationAtom &atom) {
                                      return atom.kind == ArticulationKind::Tie;
                                    });
-  const double defaultDuration = 4.0 / sequence->subdivision;
+  const double defaultDuration = sequence->subdivisionBeats;
   double baseDuration =
       state.lastBaseDuration > 0.0 ? state.lastBaseDuration : defaultDuration;
   if (!tieOnly) {
@@ -1092,8 +1098,11 @@ StepEvents Runtime::next(double beat) noexcept {
         event.cvTargetBeat[cvIndex] = cv[cvIndex].targetBeat;
         event.cvInterpolation[cvIndex] = sequence->cvInterpolation[cvIndex];
         event.cvPower[cvIndex] = static_cast<float>(sequence->cvPower[cvIndex]);
+        event.cvEnvelope[cvIndex] = sequence->cvEnvelope[cvIndex];
         const auto lane = CvCursorLane(cvIndex);
-        event.cursors[static_cast<std::size_t>(lane)] = cv[cvIndex].span;
+        event.cursors[static_cast<std::size_t>(lane)] =
+            cv[cvIndex].span.valid() ? cv[cvIndex].span
+                                     : sequence->cvEnvelope[cvIndex].span;
       }
     };
     std::array<SourceSpan, 5> suppressedLaneSpans{};
@@ -1234,6 +1243,7 @@ StepEvents Runtime::next(double beat) noexcept {
     else if (atom.gateArticulation == GateArticulation::Tenuto)
       gateDefault = 0.95f;
     bool gateMilliseconds = false;
+    bool gateNoteValue = false;
     float gate = static_cast<float>(
         Scalar(sequence->gate, state.gate,
                sequence->transforms[static_cast<std::size_t>(CursorLane::Gate)],
@@ -1244,7 +1254,7 @@ StepEvents Runtime::next(double beat) noexcept {
                    ->alignmentSplits[static_cast<std::size_t>(CursorLane::Gate)],
                sequence
                    ->alignmentSpans[static_cast<std::size_t>(CursorLane::Gate)],
-               &gateMilliseconds, cycleBeat));
+               &gateMilliseconds, cycleBeat, &gateNoteValue));
     bool slideMilliseconds = false;
     float slide = static_cast<float>(Scalar(
         sequence->slide, state.slide,
@@ -1268,6 +1278,7 @@ StepEvents Runtime::next(double beat) noexcept {
     if (atom.hasGate) {
       gate = atom.gate;
       gateMilliseconds = atom.gateMilliseconds;
+      gateNoteValue = atom.gateNoteValue;
     }
     if (atom.hasSlide) {
       slide = atom.slide;
@@ -1389,6 +1400,7 @@ StepEvents Runtime::next(double beat) noexcept {
         event.velocity = std::clamp(velocity, 0.f, 1.f);
         event.accent = std::clamp(effectiveAccent, 0.f, 1.f);
         event.gateFraction = std::clamp(gateFraction, 0.f, 1.f);
+        event.gateBeats = gateNoteValue ? gate : -1.f;
         event.gateMilliseconds = gateMilliseconds ? gate : -1.f;
         event.gateCapMilliseconds = atom.ghost ? 20.f : -1.f;
         event.slideBeats = slide;

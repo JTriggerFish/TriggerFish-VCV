@@ -242,7 +242,7 @@ def module_preview_markup(module_name: str) -> str:
         return ""
     lines = (
         "riff = sequence {",
-        "  subdiv 8",
+        "  subdiv 8n",
         "  tonic C@4",
         "  scale minor",
         "  notes 1 x2 3{quiet} _ [>4 ^5{stacc}] 6*3 ~ 8{ten}",

@@ -882,11 +882,53 @@ bool EuclideanHit(int cell, int pulses, int steps, int rotation) {
   return (static_cast<std::int64_t>(source) * pulses) % steps < pulses;
 }
 
-bool ParseScalarWithUnit(const Token &token, double &value, bool &milliseconds) {
+enum class ValueUnit { Plain, Milliseconds, NoteValue };
+
+bool ParseNoteValue(const std::string &text, double &beats) {
+  std::size_t suffixLength = 0;
+  double multiplier = 1.0;
+  if (text.size() > 2 && text.compare(text.size() - 2, 2, "nd") == 0) {
+    suffixLength = 2;
+    multiplier = 1.5;
+  } else if (text.size() > 2 &&
+             text.compare(text.size() - 2, 2, "nt") == 0) {
+    suffixLength = 2;
+    multiplier = 2.0 / 3.0;
+  } else if (text.size() > 1 && text.back() == 'n') {
+    suffixLength = 1;
+  } else {
+    return false;
+  }
+  const std::string denominatorText =
+      text.substr(0, text.size() - suffixLength);
+  if (denominatorText.empty())
+    return false;
+  errno = 0;
+  char *end = nullptr;
+  const auto denominator = std::strtoll(denominatorText.c_str(), &end, 10);
+  if (errno == ERANGE || end != denominatorText.c_str() + denominatorText.size() ||
+      denominator == 0 ||
+      denominator == std::numeric_limits<long long>::min())
+    return false;
+  const auto magnitude = static_cast<std::uint64_t>(
+      denominator < 0 ? -denominator : denominator);
+  if (magnitude > 128 || (magnitude & (magnitude - 1)) != 0)
+    return false;
+  beats = std::copysign(4.0 * multiplier / static_cast<double>(magnitude),
+                        static_cast<double>(denominator));
+  return std::isfinite(beats);
+}
+
+bool ParseScalarWithUnit(const Token &token, double &value, ValueUnit &unit) {
   std::string text = token.text;
-  milliseconds = text.size() >= 2 && text.substr(text.size() - 2) == "ms";
-  if (milliseconds)
+  unit = ValueUnit::Plain;
+  if (text.size() >= 2 && text.substr(text.size() - 2) == "ms") {
+    unit = ValueUnit::Milliseconds;
     text.resize(text.size() - 2);
+  } else if (ParseNoteValue(text, value)) {
+    unit = ValueUnit::NoteValue;
+    return true;
+  }
   return ParseNumber(text, value) && std::isfinite(value);
 }
 
@@ -933,8 +975,8 @@ bool ApplyEventAttributes(const syntax::PatternNode &node,
       return false;
     }
     double value = 0.0;
-    bool milliseconds = false;
-    if (!ParseScalarWithUnit(attribute.value, value, milliseconds)) {
+    ValueUnit unit = ValueUnit::Plain;
+    if (!ParseScalarWithUnit(attribute.value, value, unit)) {
       diagnostic = Error(attribute.value.span, "invalid event attribute value");
       return false;
     }
@@ -944,28 +986,29 @@ bool ApplyEventAttributes(const syntax::PatternNode &node,
                            "len duplicates the event duration suffix");
         return false;
       }
-      if (milliseconds || value <= 0.0) {
+      if (unit != ValueUnit::Plain || value <= 0.0) {
         diagnostic = Error(attribute.value.span,
-                           "len must be a positive beat value");
+                           "len must be a positive span multiplier");
         return false;
       }
       durationWeight = value;
     } else if (name == "vel" && !rest) {
-      if (milliseconds || value < 0.0 || value > 1.0) {
+      if (unit != ValueUnit::Plain || value < 0.0 || value > 1.0) {
         diagnostic = Error(attribute.value.span, "vel must be from 0 to 1");
         return false;
       }
       atom.hasVelocity = true;
       atom.velocity = static_cast<float>(value);
     } else if (name == "gate" && !rest) {
-      if (value < 0.0 || (!milliseconds && value > 1.0)) {
+      if (value < 0.0 || (unit == ValueUnit::Plain && value > 1.0)) {
         diagnostic = Error(attribute.value.span,
-                           "gate must be 0..1 or non-negative ms");
+                           "gate must be 0..1 or a non-negative time");
         return false;
       }
       atom.hasGate = true;
       atom.gate = static_cast<float>(value);
-      atom.gateMilliseconds = milliseconds;
+      atom.gateMilliseconds = unit == ValueUnit::Milliseconds;
+      atom.gateNoteValue = unit == ValueUnit::NoteValue;
     } else if (name == "slide" && !rest) {
       if (node.slidePrefix.text.empty()) {
         diagnostic = Error(attribute.name.span,
@@ -979,7 +1022,7 @@ bool ApplyEventAttributes(const syntax::PatternNode &node,
       }
       atom.hasSlide = true;
       atom.slide = static_cast<float>(value);
-      atom.slideMilliseconds = milliseconds;
+      atom.slideMilliseconds = unit == ValueUnit::Milliseconds;
     }
   }
   if (seen.count("stacc") != 0 && seen.count("ten") != 0) {
@@ -1015,11 +1058,11 @@ bool ParseNodeDurationWeight(const syntax::PatternNode &node, double &weight,
                          "len duplicates the event duration suffix");
       return false;
     }
-    bool milliseconds = false;
-    if (!ParseScalarWithUnit(attribute.value, weight, milliseconds) ||
-        milliseconds || weight <= 0.0) {
+    ValueUnit unit = ValueUnit::Plain;
+    if (!ParseScalarWithUnit(attribute.value, weight, unit) ||
+        unit != ValueUnit::Plain || weight <= 0.0) {
       diagnostic = Error(attribute.value.span,
-                         "len must be a positive beat value");
+                         "len must be a positive span multiplier");
       return false;
     }
   }
@@ -1459,19 +1502,20 @@ bool ParseScalars(const syntax::Pattern &pattern,
                            "random scalar requires exactly two values");
         return false;
       }
-      bool firstMilliseconds = false;
-      bool secondMilliseconds = false;
+      ValueUnit firstUnit = ValueUnit::Plain;
+      ValueUnit secondUnit = ValueUnit::Plain;
       if (!ParseScalarWithUnit(node->arguments[0], item.randomFirst,
-                               firstMilliseconds) ||
+                               firstUnit) ||
           !ParseScalarWithUnit(node->arguments[1], item.randomSecond,
-                               secondMilliseconds) ||
-          firstMilliseconds != secondMilliseconds) {
+                               secondUnit) ||
+          firstUnit != secondUnit) {
         diagnostic = Error(
             source.span,
             "random scalar values must be finite and use matching units");
         return false;
       }
-      item.isMilliseconds = firstMilliseconds;
+      item.isMilliseconds = firstUnit == ValueUnit::Milliseconds;
+      item.isNoteValue = firstUnit == ValueUnit::NoteValue;
       if (node->atom.text == "u") {
         item.randomDistribution = ScalarItem::RandomDistribution::Uniform;
         if (item.randomFirst > item.randomSecond) {
@@ -1493,20 +1537,16 @@ bool ParseScalars(const syntax::Pattern &pattern,
     } else if (node->atom.text == ".") {
       item.isDefault = true;
     } else {
-      std::string number = node->atom.text;
-      if (number.size() >= 2 && number.substr(number.size() - 2) == "ms") {
-        item.isMilliseconds = true;
-        number.resize(number.size() - 2);
-      }
-      if (!number.empty() && number.front() == '.')
-        number.insert(number.begin(), '0');
+      ValueUnit unit = ValueUnit::Plain;
       double parsed = 0.0;
-      if (!ParseNumber(number, parsed)) {
+      if (!ParseScalarWithUnit(node->atom, parsed, unit)) {
         diagnostic = Error(source.span, "invalid " + lane + " value '" +
                                             node->atom.text + "'");
         return false;
       }
       item.value = parsed;
+      item.isMilliseconds = unit == ValueUnit::Milliseconds;
+      item.isNoteValue = unit == ValueUnit::NoteValue;
     }
     if (!item.isDefault &&
         item.randomDistribution == ScalarItem::RandomDistribution::None &&
@@ -1518,6 +1558,12 @@ bool ParseScalars(const syntax::Pattern &pattern,
     if (!item.isDefault && item.isMilliseconds && lane != "gate" &&
         lane != "slide" && lane != "offset") {
       diagnostic = Error(source.span, lane + " does not accept milliseconds");
+      return false;
+    }
+    if (!item.isDefault && item.isNoteValue && lane != "duration" &&
+        lane != "dur" && lane != "gate" && lane != "slide" &&
+        lane != "offset") {
+      diagnostic = Error(source.span, lane + " does not accept note values");
       return false;
     }
     const bool random =
@@ -1533,13 +1579,13 @@ bool ParseScalars(const syntax::Pattern &pattern,
     };
     if (!item.isDefault &&
         (lane == "velocity" || lane == "vel" ||
-         (lane == "gate" && !item.isMilliseconds)) &&
+         (lane == "gate" && !item.isMilliseconds && !item.isNoteValue)) &&
         (validationLow < 0.0 || validationHigh > 1.0)) {
       diagnostic = Error(source.span, lane + " must be from 0 to 1");
       return false;
     }
     if (lane == "velocity" || lane == "vel" ||
-        (lane == "gate" && !item.isMilliseconds))
+        (lane == "gate" && !item.isMilliseconds && !item.isNoteValue))
       setRandomDomain(0.0, 1.0);
     if (!item.isDefault && (lane == "duration" || lane == "dur") &&
         (validationLow <= 0.0 || validationHigh <= 0.0)) {
@@ -1549,12 +1595,14 @@ bool ParseScalars(const syntax::Pattern &pattern,
     if (lane == "duration" || lane == "dur")
       setRandomDomain(1.0e-9, std::numeric_limits<double>::infinity());
     if (!item.isDefault &&
-        ((lane == "gate" && item.isMilliseconds) || lane == "slide") &&
+        ((lane == "gate" && (item.isMilliseconds || item.isNoteValue)) ||
+         lane == "slide") &&
         (validationLow < 0.0 || validationHigh < 0.0)) {
       diagnostic = Error(source.span, lane + " must be non-negative");
       return false;
     }
-    if ((lane == "gate" && item.isMilliseconds) || lane == "slide")
+    if ((lane == "gate" && (item.isMilliseconds || item.isNoteValue)) ||
+        lane == "slide")
       setRandomDomain(0.0, std::numeric_limits<double>::infinity());
     if (!item.isDefault && lane == "ratchet" &&
         (validationLow < 1.0 || validationHigh < 1.0 ||
@@ -1670,13 +1718,12 @@ bool ParseSeed(const Token &token, std::uint64_t &value) {
 }
 
 bool ParseTimeAmount(const Token &token, double &amount, TimeUnit &unit) {
-  std::string number = token.text;
-  unit = TimeUnit::Beats;
-  if (number.size() > 2 && number.compare(number.size() - 2, 2, "ms") == 0) {
-    unit = TimeUnit::Milliseconds;
-    number.resize(number.size() - 2);
-  }
-  return ParseNumber(number, amount) && amount >= 0.0;
+  ValueUnit parsedUnit = ValueUnit::Plain;
+  if (!ParseScalarWithUnit(token, amount, parsedUnit) || amount < 0.0)
+    return false;
+  unit = parsedUnit == ValueUnit::Milliseconds ? TimeUnit::Milliseconds
+                                                : TimeUnit::Beats;
+  return true;
 }
 
 enum class TransformArgumentKind {
@@ -1811,12 +1858,15 @@ bool ParseTransform(const syntax::Pipeline &pipeline, Transform &transform,
                   "from .5 up to but not including 1");
       return false;
     }
+    ValueUnit subdivisionUnit = ValueUnit::Plain;
     if (arguments.size() == 2 &&
-        (!ParseNumber(arguments[1].text, transform.swingSubdivisionBeats) ||
+        (!ParseScalarWithUnit(arguments[1], transform.swingSubdivisionBeats,
+                              subdivisionUnit) ||
+         subdivisionUnit == ValueUnit::Milliseconds ||
          transform.swingSubdivisionBeats <= 0.0)) {
       diagnostic =
           Error(arguments[1].span,
-                "swing subdivision must be a positive incoming-clock fraction");
+                "swing subdivision must be a positive beat or note value");
       return false;
     }
     return true;
@@ -1835,7 +1885,8 @@ bool ParseTransform(const syntax::Pipeline &pipeline, Transform &transform,
                          transform.timeUnit)) {
       diagnostic = Error(
           arguments[amountIndex].span,
-          operation + " requires a non-negative beat fraction or ms amount");
+          operation +
+              " requires a non-negative beat, note value, or ms amount");
       return false;
     }
     return true;
@@ -1920,11 +1971,205 @@ std::string LaneText(const syntax::Lane &lane) {
 }
 
 SourceSpan LaneValueSpan(const syntax::Lane &lane) {
+  if (lane.envelopeOnly)
+    return lane.envelopeSpan;
   if (lane.pattern.steps.empty())
     return lane.name.span;
   auto span = lane.pattern.steps.front().span;
   span.end = lane.pattern.steps.back().span.end;
   return span;
+}
+
+bool ParseEnvelopeTime(const Token &token, CvEnvelopeTime &time,
+                       Diagnostic &diagnostic) {
+  std::string number = token.text;
+  if (number.size() > 1 && number.back() == 's' &&
+      !(number.size() > 2 && number.compare(number.size() - 2, 2, "ms") == 0)) {
+    number.resize(number.size() - 1);
+    double value = 0.0;
+    if (!ParseNumber(number, value) || value < 0.0 || !std::isfinite(value)) {
+      diagnostic = Error(token.span,
+                         "envelope time must be a non-negative duration");
+      return false;
+    }
+    time = {value, CvEnvelopeTimeUnit::Seconds};
+    return true;
+  }
+  double value = 0.0;
+  ValueUnit parsedUnit = ValueUnit::Plain;
+  if (!ParseScalarWithUnit(token, value, parsedUnit) || value < 0.0) {
+    diagnostic =
+        Error(token.span, "envelope time must be a non-negative duration such "
+                          "as 5ms, .3s, 16n, or 1/4 beats");
+    return false;
+  }
+  const auto unit = parsedUnit == ValueUnit::Milliseconds
+                        ? CvEnvelopeTimeUnit::Seconds
+                        : CvEnvelopeTimeUnit::Beats;
+  const double scale =
+      parsedUnit == ValueUnit::Milliseconds ? 0.001 : 1.0;
+  time = {value * scale, unit};
+  return true;
+}
+
+bool ParseCvEnvelope(const std::vector<Token> &arguments,
+                     CvEnvelopeComposition composition, const SourceSpan &span,
+                     CvEnvelopeSpec &spec, Diagnostic &diagnostic) {
+  if (arguments.empty()) {
+    diagnostic = Error(span, "env requires ad, ar, or adsr");
+    return false;
+  }
+
+  CvEnvelopeSpec parsed;
+  parsed.enabled = true;
+  parsed.composition = composition;
+  parsed.span = span;
+  std::size_t positionalCount = 0;
+  if (arguments[0].text == "ad") {
+    parsed.mode = CvEnvelopeMode::Ad;
+  } else if (arguments[0].text == "ar") {
+    parsed.mode = CvEnvelopeMode::Ar;
+  } else if (arguments[0].text == "adsr") {
+    parsed.mode = CvEnvelopeMode::Adsr;
+    parsed.decay = {0.250, CvEnvelopeTimeUnit::Seconds};
+  } else {
+    diagnostic =
+        Error(arguments[0].span, "envelope mode must be ad, ar, or adsr");
+    return false;
+  }
+
+  bool depthSeen = false;
+  bool curveSeen = false;
+  bool followSeen = false;
+  bool accentSeen = false;
+  bool optionsStarted = false;
+  auto requireValue = [&](std::size_t index, const char *option) {
+    if (index + 1 < arguments.size())
+      return true;
+    diagnostic =
+        Error(arguments[index].span, std::string(option) + " requires a value");
+    return false;
+  };
+  for (std::size_t index = 1; index < arguments.size();) {
+    const auto &argument = arguments[index];
+    if (argument.text == "depth") {
+      optionsStarted = true;
+      if (depthSeen || !requireValue(index, "depth")) {
+        if (depthSeen)
+          diagnostic = Error(argument.span, "depth may be specified once");
+        return false;
+      }
+      double value = 0.0;
+      if (!ParseNumber(arguments[index + 1].text, value) ||
+          !std::isfinite(value) ||
+          std::abs(value) > std::numeric_limits<float>::max()) {
+        diagnostic =
+            Error(arguments[index + 1].span, "depth requires a finite voltage");
+        return false;
+      }
+      parsed.depth = static_cast<float>(value);
+      depthSeen = true;
+      index += 2;
+      continue;
+    }
+    if (argument.text == "curve") {
+      optionsStarted = true;
+      if (curveSeen || !requireValue(index, "curve")) {
+        if (curveSeen)
+          diagnostic = Error(argument.span, "curve may be specified once");
+        return false;
+      }
+      double value = 0.0;
+      if (!ParseNumber(arguments[index + 1].text, value) || value < -1.0 ||
+          value > 1.0) {
+        diagnostic =
+            Error(arguments[index + 1].span, "curve must be between -1 and 1");
+        return false;
+      }
+      parsed.curve = static_cast<float>(value);
+      curveSeen = true;
+      index += 2;
+      continue;
+    }
+    if (argument.text == "follow") {
+      optionsStarted = true;
+      if (followSeen || !requireValue(index, "follow")) {
+        if (followSeen)
+          diagnostic = Error(argument.span, "follow may be specified once");
+        return false;
+      }
+      const auto &value = arguments[index + 1];
+      if (value.text != "velocity" && value.text != "vel") {
+        diagnostic =
+            Error(value.span, "follow currently accepts velocity or vel");
+        return false;
+      }
+      parsed.followVelocity = true;
+      followSeen = true;
+      index += 2;
+      continue;
+    }
+    if (argument.text == "accent") {
+      optionsStarted = true;
+      if (accentSeen || !requireValue(index, "accent")) {
+        if (accentSeen)
+          diagnostic = Error(argument.span, "accent may be specified once");
+        return false;
+      }
+      double value = 0.0;
+      if (!ParseNumber(arguments[index + 1].text, value) || value < 0.0 ||
+          value > std::numeric_limits<float>::max()) {
+        diagnostic = Error(arguments[index + 1].span,
+                           "accent requires a non-negative finite multiplier");
+        return false;
+      }
+      parsed.accentMultiplier = static_cast<float>(value);
+      accentSeen = true;
+      index += 2;
+      continue;
+    }
+
+    if (optionsStarted) {
+      diagnostic =
+          Error(argument.span,
+                "envelope times and sustain precede its named options");
+      return false;
+    }
+    const std::size_t maximumPositionals =
+        parsed.mode == CvEnvelopeMode::Adsr ? 4 : 2;
+    if (positionalCount >= maximumPositionals) {
+      diagnostic = Error(argument.span, "too many envelope parameters");
+      return false;
+    }
+    if (argument.text != ".") {
+      if (parsed.mode == CvEnvelopeMode::Adsr && positionalCount == 2) {
+        double sustain = 0.0;
+        if (!ParseNumber(argument.text, sustain) || sustain < 0.0 ||
+            sustain > 1.0) {
+          diagnostic =
+              Error(argument.span, "ADSR sustain must be between 0 and 1");
+          return false;
+        }
+        parsed.sustain = static_cast<float>(sustain);
+      } else {
+        CvEnvelopeTime *time = &parsed.attack;
+        if (parsed.mode == CvEnvelopeMode::Ad)
+          time = positionalCount == 0 ? &parsed.attack : &parsed.decay;
+        else if (parsed.mode == CvEnvelopeMode::Ar)
+          time = positionalCount == 0 ? &parsed.attack : &parsed.release;
+        else if (positionalCount == 1)
+          time = &parsed.decay;
+        else if (positionalCount == 3)
+          time = &parsed.release;
+        if (!ParseEnvelopeTime(argument, *time, diagnostic))
+          return false;
+      }
+    }
+    ++positionalCount;
+    ++index;
+  }
+  spec = parsed;
+  return true;
 }
 
 bool ParsePipelines(const std::vector<syntax::Pipeline> &pipelines,
@@ -1967,7 +2212,34 @@ bool ParsePipelines(const std::vector<syntax::Pipeline> &pipelines,
 bool ParseCvPipelines(const std::vector<syntax::Pipeline> &pipelines,
                       Sequence &sequence, std::size_t cvIndex,
                       CursorLane target, Diagnostic &diagnostic) {
-  for (const auto &pipeline : pipelines) {
+  for (std::size_t pipelineIndex = 0; pipelineIndex < pipelines.size();
+       ++pipelineIndex) {
+    const auto &pipeline = pipelines[pipelineIndex];
+    if (pipeline.operation.text == "add") {
+      if (sequence.cvEnvelope[cvIndex].enabled) {
+        diagnostic = Error(pipeline.operation.span,
+                           "a CV lane can contain one envelope");
+        return false;
+      }
+      if (pipeline.condition != syntax::Pipeline::Condition::Always ||
+          pipeline.arguments.empty() ||
+          pipeline.arguments.front().text != "env") {
+        diagnostic = Error(pipeline.operation.span,
+                           "add requires an unconditional env expression");
+        return false;
+      }
+      if (pipelineIndex + 1 != pipelines.size()) {
+        diagnostic = Error(pipelines[pipelineIndex + 1].operation.span,
+                           "add env must be the final CV pipeline operation");
+        return false;
+      }
+      std::vector<Token> arguments(pipeline.arguments.begin() + 1,
+                                   pipeline.arguments.end());
+      if (!ParseCvEnvelope(arguments, CvEnvelopeComposition::Add, pipeline.span,
+                           sequence.cvEnvelope[cvIndex], diagnostic))
+        return false;
+      continue;
+    }
     if (pipeline.operation.text != "interp") {
       if (!ParsePipelines({pipeline},
                           sequence.transforms[static_cast<std::size_t>(target)],
@@ -2243,7 +2515,7 @@ bool PrepareWorkspaces(CompiledProgram &program, Diagnostic &diagnostic) {
     }
     maximumEvents = std::max(maximumEvents, sequenceMaximum);
 
-    const double defaultDuration = 4.0 / sequence.subdivision;
+    const double defaultDuration = sequence.subdivisionBeats;
     double shortestDurationLaneValue = defaultDuration;
     for (const auto &item : sequence.duration) {
       const double value =
@@ -2434,16 +2706,32 @@ CompileResult CompileDocument(const syntax::Document &document) {
       }
       const CursorLane parsedLane = laneSpec->cursorLane;
 
-      if (laneSpec->valueKind == LaneValueKind::Subdivision) {
-        double subdivision = 0.0;
-        if (!ParseNumber(laneValue, subdivision) || subdivision <= 0.0 ||
-            std::floor(subdivision) != subdivision ||
-            subdivision > std::numeric_limits<int>::max()) {
-          result.diagnostic =
-              Error(valueSpan, "subdiv must be a positive integer");
+      if (isCv && lane.envelopeOnly) {
+        if (!lane.pipelines.empty()) {
+          result.diagnostic = Error(
+              lane.pipelines.front().span,
+              "an envelope-only CV lane does not accept pipeline operations");
           return result;
         }
-        sequence.subdivision = static_cast<int>(subdivision);
+        if (!ParseCvEnvelope(lane.envelopeArguments,
+                             CvEnvelopeComposition::Replace, lane.envelopeSpan,
+                             sequence.cvEnvelope[cvIndex], result.diagnostic))
+          return result;
+        continue;
+      }
+
+      if (laneSpec->valueKind == LaneValueKind::Subdivision) {
+        double subdivisionBeats = 0.0;
+        ValueUnit unit = ValueUnit::Plain;
+        const Token token{laneValue, valueSpan};
+        if (!ParseScalarWithUnit(token, subdivisionBeats, unit) ||
+            unit != ValueUnit::NoteValue || subdivisionBeats <= 0.0) {
+          result.diagnostic = Error(
+              valueSpan,
+              "subdiv requires a note value such as 16n, 8nt, or 8nd");
+          return result;
+        }
+        sequence.subdivisionBeats = subdivisionBeats;
         continue;
       }
       if (laneSpec->valueKind == LaneValueKind::Tonic) {
@@ -2466,11 +2754,14 @@ CompileResult CompileDocument(const syntax::Document &document) {
       }
       if (laneSpec->valueKind == LaneValueKind::Glide) {
         double glide = 0.0;
-        if (!ParseNumber(laneValue, glide) || glide < 0.0 ||
+        ValueUnit unit = ValueUnit::Plain;
+        const Token token{laneValue, valueSpan};
+        if (!ParseScalarWithUnit(token, glide, unit) ||
+            unit == ValueUnit::Milliseconds || glide < 0.0 ||
             glide > std::numeric_limits<float>::max()) {
           result.diagnostic = Error(
               valueSpan,
-              "glide must be a non-negative value in the supported range");
+              "glide must be a non-negative beat or note value");
           return result;
         }
         sequence.glideBeats = static_cast<float>(glide);

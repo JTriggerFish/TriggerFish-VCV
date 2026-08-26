@@ -1,5 +1,6 @@
 #include "models/VdpSplitOscillator.hpp"
 #include <memory>
+#include <array>
 #include <algorithm>
 #include <cmath>
 #include "plugin.hpp"
@@ -39,7 +40,9 @@ struct TfVDPO : Module
 	// Four-times oversampling suppresses aliases from the nonlinear limit cycle.
 	// The structure-aware split integrator uses cheap adaptive substeps only in
 	// the stiff high-damping/high-frequency corner.
-	VdpSplitOscillator<tfdsp::X4Resampler_Order7> _vdpHq{tfdsp::CreateX4Resampler_Cheby7};
+	using Oscillator = VdpSplitOscillator<tfdsp::X4Resampler_Order7>;
+	std::array<std::unique_ptr<Oscillator>, PORT_MAX_CHANNELS> _vdpHq{};
+	int _activeChannels{};
 
 	//----------------------------------------------------------------
 
@@ -57,6 +60,9 @@ struct TfVDPO : Module
 		configInput(AUDIO_INPUT, "Audio");
 		configInput(DAMPING_INPUT, "Damping modulation");
 		configOutput(OUTPUT, "Audio");
+		for (auto& oscillator : _vdpHq)
+			oscillator = std::make_unique<Oscillator>(
+				tfdsp::CreateX4Resampler_Cheby7);
 		//configParam(TfVDPO::HQ_MODE, -1.0f, 1.0f, -1.0f, "");
 		//_resampler = tfdsp::CreateX2Resampler_Butterworth5();
 		float gSampleRate = APP->engine->getSampleRate();
@@ -76,38 +82,56 @@ struct TfVDPO : Module
 void TfVDPO::init(float sampleRate)
 {
 	//_vdp.SetSampleRate(sampleRate);
-	_vdpHq.SetSampleRate(sampleRate);
+	for (auto& oscillator : _vdpHq)
+		oscillator->SetSampleRate(sampleRate);
 }
 
 void TfVDPO::process(const ProcessArgs &args)
 {
-	const float audioInput = inputs[AUDIO_INPUT].getVoltage();
-	const float pitchInput = inputs[VOCT_INPUT].getVoltage();
-	const float dampingInput = inputs[DAMPING_INPUT].getVoltage();
-	const float x = (std::isfinite(audioInput) ? audioInput : 0.0f) * params[INPUT_GAIN].getValue();
-	const double vOct = (std::isfinite(pitchInput) ? pitchInput : 0.0f) *
-		params[VOCT_SCALING].getValue() + params[FREQ].getValue();
-	const double mu = params[DAMPING].getValue() +
-		params[DAMPING_ATTENUVERT].getValue() *
-		(std::isfinite(dampingInput) ? dampingInput : 0.0f);
-	const double log2AngularFrequency =
-		std::log2(2.0 * tfdsp::PI * dsp::FREQ_C4) + vOct;
+	const int channels = std::clamp(std::max({
+		inputs[VOCT_INPUT].getChannels(),
+		inputs[AUDIO_INPUT].getChannels(),
+		inputs[DAMPING_INPUT].getChannels(), 1}), 1, PORT_MAX_CHANNELS);
+	for (int channel = channels; channel < _activeChannels; ++channel)
+		_vdpHq[channel]->Reset();
+	_activeChannels = channels;
+	outputs[OUTPUT].setChannels(channels);
 
-	//TODO: menu item for low quality, leave high quality by default for now.
+	const double inputGain = params[INPUT_GAIN].getValue();
+	const double pitchScaling = params[VOCT_SCALING].getValue();
+	const double pitchOffset = params[FREQ].getValue();
+	const double damping = params[DAMPING].getValue();
+	const double dampingAmount = params[DAMPING_ATTENUVERT].getValue();
+	const double outputLevel = params[LEVEL].getValue();
+	const double log2C4AngularFrequency =
+		std::log2(2.0 * tfdsp::PI * dsp::FREQ_C4);
 
-	//auto y = params[HQ_MODE].getValue() > 0 ?
-	//_vdpHq.Step(double(x), double(mu), double(2 * tfdsp::PI * freq))
-	//: _vdp.Step(double(x), double(mu), double(2 * tfdsp::PI * freq));
-	auto y = _vdpHq.StepLogAngularFrequency(double(x), mu,
-		log2AngularFrequency);
+	for (int channel = 0; channel < channels; ++channel)
+	{
+		auto finiteInput = [&](InputIds input)
+		{
+			const float value = inputs[input].getPolyVoltage(channel);
+			return std::isfinite(value) ? static_cast<double>(value) : 0.0;
+		};
+		const double x = finiteInput(AUDIO_INPUT) * inputGain;
+		const double vOct = finiteInput(VOCT_INPUT) * pitchScaling + pitchOffset;
+		const double mu = damping + dampingAmount * finiteInput(DAMPING_INPUT);
+		const double log2AngularFrequency = log2C4AngularFrequency + vOct;
 
-	const float output = y * params[LEVEL].getValue();
-	outputs[OUTPUT].setVoltage(std::isfinite(output) ? output : 0.0f);
+		// TODO: menu item for low quality; leave high quality by default.
+		const double y = _vdpHq[channel]->StepLogAngularFrequency(x, mu,
+			log2AngularFrequency);
+		const float output = static_cast<float>(y * outputLevel);
+		outputs[OUTPUT].setVoltage(std::isfinite(output) ? output : 0.0f,
+			channel);
+	}
 }
 void TfVDPO::onReset(const ResetEvent& event)
 {
 	Module::onReset(event);
-	_vdpHq.Reset();
+	for (auto& oscillator : _vdpHq)
+		oscillator->Reset();
+	_activeChannels = 0;
 }
 void TfVDPO::onSampleRateChange(const SampleRateChangeEvent& event)
 {

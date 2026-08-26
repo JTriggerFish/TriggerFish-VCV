@@ -1,5 +1,6 @@
 #include "tfseq.hpp"
 #include "tfseq_editor.hpp"
+#include "tfseq_envelope.hpp"
 #include "tfseq_parser.hpp"
 #include "tfui_animation.hpp"
 #include "tfui_colormap.hpp"
@@ -141,6 +142,29 @@ void heatmapMapsScalarIntensity() {
 }
 
 void cursorAnimationIsFrameIndependentAndTempoBounded() {
+  check(tfui::cvTracePolarity(0.f, 5.f) == tfui::CvTracePolarity::Positive &&
+            close(tfui::cvTraceVerticalFraction(
+                      0.f, tfui::CvTracePolarity::Positive, 5.f),
+                  1.f) &&
+            close(tfui::cvTraceVerticalFraction(
+                      5.f, tfui::CvTracePolarity::Positive, 5.f),
+                  0.f) &&
+            close(tfui::cvTraceZeroFraction(tfui::CvTracePolarity::Positive),
+                  1.f),
+        "a positive CV trace places zero on the text-row baseline");
+  check(tfui::cvTracePolarity(-5.f, 0.f) == tfui::CvTracePolarity::Negative &&
+            close(tfui::cvTraceVerticalFraction(
+                      0.f, tfui::CvTracePolarity::Negative, 5.f),
+                  0.f) &&
+            close(tfui::cvTraceVerticalFraction(
+                      -5.f, tfui::CvTracePolarity::Negative, 5.f),
+                  1.f),
+        "a negative CV trace places zero at the top of the row");
+  check(tfui::cvTracePolarity(-1.f, 1.f) == tfui::CvTracePolarity::Bipolar &&
+            close(tfui::cvTraceVerticalFraction(
+                      0.f, tfui::CvTracePolarity::Bipolar, 5.f),
+                  .5f),
+        "a bipolar CV trace retains its centred zero axis");
   check(tfui::arrangementCursorGroup(0.0, 4) == 0 &&
             tfui::arrangementCursorGroup(3.999, 4) == 0 &&
             tfui::arrangementCursorGroup(4.0, 4) == 1,
@@ -1190,7 +1214,7 @@ play a
 
 void transformByCycleAndArrange() {
   const std::string source = R"(a = sequence {
-  subdiv 8
+  subdiv 8n
   notes 1 2 |> every 2 rev
 }
 b = sequence {
@@ -1452,7 +1476,7 @@ play forms
         "documented rhythm forms: " + rhythmForms.diagnostic.message);
 
   const auto quickStart = tfseq::Compile(R"(riff = sequence {
-  subdiv 8
+  subdiv 8n
   tonic D@3
   scale dorian
   notes 1 2 ^3{stacc} 4 5{quiet} >6 7{ten} _
@@ -1466,14 +1490,14 @@ play song
         "quick-start reference example: " + quickStart.diagnostic.message);
 
   const auto readme = tfseq::Compile(R"(riff = sequence {
-  subdiv 16
+  subdiv 16n
   tonic D@3
   scale dorian
-  glide 1/8
+  glide 32n
   notes ^1 1!2 x1 [3 4] >5{stacc} ~ 6{quiet} 7{ten}
 }
 fill = sequence {
-  subdiv 16
+  subdiv 16n
   tonic D@3
   scale harmonic_minor
   notes [5 6 7] ^8*2 ~ V7
@@ -1486,10 +1510,10 @@ play song
         "README reference example: " + readme.diagnostic.message);
 
   const auto bass = tfseq::Compile(R"(bass = sequence {
-  subdiv 16
+  subdiv 16n
   tonic E@2
   scale minor
-  glide 1/8
+  glide 32n
   notes ^1 1!2 x1 [5 6] >b7{stacc} ~ 1{ten} 3?0.35
 }
 fill = bass |> rotate 2 |> every 2 rev
@@ -1501,19 +1525,19 @@ play song
         "bass reference example: " + bass.diagnostic.message);
 
   const auto sections = tfseq::Compile(R"(verse = sequence {
-  subdiv 8
+  subdiv 8n
   tonic D@3
   scale minor
   notes 1 3 4 ^5{stacc} 1' 7 5 4
 }
 chorus = sequence {
-  subdiv 4
+  subdiv 4n
   tonic Bb@3
   scale major
   notes I_2{ten} V_2{ten} vi_2{ten} IV_2{ten}
 }
 fill = sequence {
-  subdiv 16
+  subdiv 16n
   tonic D@3
   scale harmonic_minor
   notes [5 6 7] ^8*2 ~ V7
@@ -1525,7 +1549,7 @@ play song
         "multi-section reference example: " + sections.diagnostic.message);
 
   const auto generative = tfseq::Compile(R"(melody = sequence {
-  subdiv 16
+  subdiv 16n
   tonic A@3
   scale minor_pentatonic
   notes $u{1,10}(5,8) $n{5,1.25}(3,8,2)
@@ -1538,7 +1562,7 @@ play melody
         "generative reference example: " + generative.diagnostic.message);
 
   const auto cv = tfseq::Compile(R"(texture = sequence {
-  subdiv 8
+  subdiv 8n
   tonic D@3
   scale dorian
   notes 1{ten} [3 5] 7{quiet} <8 6>
@@ -1939,7 +1963,7 @@ play same
 
 void settingLanePipelinesAreNeverIgnored() {
   const auto cycle = tfseq::Compile(R"(a = sequence {
-  subdiv 8 |> fast 2
+  subdiv 8n |> fast 2
   notes 1
 }
 play a
@@ -2562,7 +2586,7 @@ play a
   }
 
   const auto polyrhythmic = tfseq::Compile(R"(arpeggio = sequence {
-  subdiv 16
+  subdiv 16n
   tonic D@4
   scale dorian
   notes 3' 1' 5 3 ; 1' 5 3 1 ; 2' 7 5 2 ; 7 5 2 1
@@ -2629,11 +2653,209 @@ play a
   }
 }
 
+void cvEnvelopesCompileAndRun() {
+  const auto compiled = tfseq::Compile(R"(a = sequence {
+  notes ^1 2
+  velocity .5
+  cv1 env ad
+  cv2 env ar 32n . depth -2 curve -1 follow vel accent 1.5
+  cv3 1 2 |> interp linear |> add env adsr . . . . depth 3
+}
+play a
+)");
+  check(static_cast<bool>(compiled), compiled.diagnostic.message);
+  if (compiled) {
+    tfseq::Runtime runtime;
+    runtime.setProgram(compiled.program.get());
+    const auto events = runtime.next(0.0);
+    check(events.count == 1, "the first note emits one event");
+    if (events.count == 1) {
+      const auto &event = events.events[0];
+      const auto &ad = event.cvEnvelope[0];
+      const auto &ar = event.cvEnvelope[1];
+      const auto &adsr = event.cvEnvelope[2];
+      check(ad.enabled && ad.mode == tfseq::CvEnvelopeMode::Ad &&
+                ad.composition == tfseq::CvEnvelopeComposition::Replace &&
+                close(static_cast<float>(ad.attack.value), .005f) &&
+                close(static_cast<float>(ad.decay.value), .3f) &&
+                close(ad.depth, 5.f),
+            "AD shorthand receives the documented defaults");
+      check(
+          ar.enabled && ar.mode == tfseq::CvEnvelopeMode::Ar &&
+              ar.attack.unit == tfseq::CvEnvelopeTimeUnit::Beats &&
+              close(static_cast<float>(ar.attack.value), .125f) &&
+              close(static_cast<float>(ar.release.value), .3f) &&
+              close(ar.depth, -2.f) && close(ar.curve, -1.f) &&
+              ar.followVelocity && close(ar.accentMultiplier, 1.5f),
+          "AR accepts beat time, skipped defaults, signed depth, and dynamics");
+      check(adsr.enabled && adsr.mode == tfseq::CvEnvelopeMode::Adsr &&
+                adsr.composition == tfseq::CvEnvelopeComposition::Add &&
+                close(static_cast<float>(adsr.decay.value), .25f) &&
+                close(adsr.sustain, .5f) && close(adsr.depth, 3.f) &&
+                event.cvInterpolation[2] == tfseq::CvInterpolation::Linear,
+            "an additive ADSR preserves the base lane and its interpolation");
+      check(close(tfseq::CvEnvelopeOutput(1.25f, 2.f, adsr), 3.25f) &&
+                close(tfseq::CvEnvelopeOutput(1.25f, 2.f, ad), 2.f),
+            "the emitted and displayed CV uses the final composed signal");
+      check(close(tfseq::CvEnvelopePeak(ar, event.velocity, event.accent > 0.f),
+                  -2.64f),
+            "velocity and accent scale the captured signed peak");
+    }
+  }
+
+  check(!tfseq::Compile(R"(a = sequence {
+  notes 1
+  cv1 env adsr 5ms 20ms 2 100ms
+}
+play a
+)"),
+        "ADSR sustain outside zero to one is rejected");
+  check(!tfseq::Compile(R"(a = sequence {
+  notes 1
+  cv1 0 |> add env ad |> interp linear
+}
+play a
+)"),
+        "add env remains the final CV operation");
+  check(!tfseq::Compile(R"(a = sequence {
+  notes 1
+  cv1 env wobble
+}
+play a
+)"),
+        "unknown envelope modes are rejected");
+}
+
+void cvEnvelopeEngineHasMusicalGateSemantics() {
+  check(tfseq::CvEnvelopeTriggers(tfseq::EventKind::Attack) &&
+            !tfseq::CvEnvelopeTriggers(tfseq::EventKind::Slide) &&
+            !tfseq::CvEnvelopeTriggers(tfseq::EventKind::Tie) &&
+            !tfseq::CvEnvelopeTriggers(tfseq::EventKind::Rest),
+        "attacks and ratchet attacks trigger envelopes while legato events "
+        "preserve them");
+  tfseq::CvEnvelopeSpec ad;
+  ad.enabled = true;
+  ad.mode = tfseq::CvEnvelopeMode::Ad;
+  ad.attack = {.1, tfseq::CvEnvelopeTimeUnit::Seconds};
+  ad.decay = {.2, tfseq::CvEnvelopeTimeUnit::Seconds};
+  ad.curve = -1.f;
+  tfseq::CvEnvelopeEngine engine;
+  engine.process(true, true, 5.f, ad, 0.0, 0.0);
+  check(close(engine.process(true, false, 5.f, ad, .05, 0.0), 2.5f),
+        "linear attack reaches its midpoint at half its duration");
+  engine.process(true, true, 4.f, ad, 0.0, 0.0);
+  check(close(engine.process(true, false, 4.f, ad, .05, 0.0), 3.25f),
+        "AD retriggers continuously from its current voltage");
+  check(close(engine.process(false, false, 4.f, ad, .05, 0.0), 4.f),
+        "AD reaches its peak independently of gate length");
+  check(close(engine.process(false, false, 4.f, ad, .1, 0.0), 2.f),
+        "AD decay follows attack using the same exact segment law");
+
+  tfseq::CvEnvelopeSpec ar = ad;
+  ar.mode = tfseq::CvEnvelopeMode::Ar;
+  ar.release = {.2, tfseq::CvEnvelopeTimeUnit::Seconds};
+  engine.reset();
+  engine.process(true, true, 5.f, ar, .1, 0.0);
+  check(close(engine.value(), 5.f), "AR attacks when its gate rises");
+  engine.process(true, true, 2.f, ar, .05, 0.0);
+  check(close(engine.value(), 5.f),
+        "AR ignores retriggers while its gate is held");
+  engine.process(false, false, 2.f, ar, .1, 0.0);
+  check(close(engine.value(), 2.5f), "AR releases from its held voltage");
+
+  tfseq::CvEnvelopeSpec adsr = ad;
+  adsr.mode = tfseq::CvEnvelopeMode::Adsr;
+  adsr.attack = {0.0, tfseq::CvEnvelopeTimeUnit::Seconds};
+  adsr.decay = {.1, tfseq::CvEnvelopeTimeUnit::Beats};
+  adsr.sustain = .4f;
+  adsr.release = {.2, tfseq::CvEnvelopeTimeUnit::Seconds};
+  engine.reset();
+  engine.process(true, true, 5.f, adsr, 0.0, 0.0);
+  check(close(engine.process(true, false, 5.f, adsr, 0.0, .1), 2.f),
+        "ADSR supports tempo-relative decay and holds its sustain level");
+  check(close(engine.process(true, false, 5.f, adsr, 0.0, 0.0), 2.f),
+        "zero elapsed time freezes an active envelope");
+  engine.process(false, false, 5.f, adsr, .1, 0.0);
+  check(close(engine.value(), 1.f), "ADSR gate fall begins release");
+  engine.reset();
+  check(close(engine.value(), 0.f), "transport reset clears envelope voltage");
+}
+
+void musicalNoteValuesAreSharedAcrossTimeControls() {
+  const auto compiled = tfseq::Compile(R"(a = sequence {
+  subdiv 8nt
+  glide 16n
+  notes 1 >2{slide=32n,gate=16n}
+  duration 8nd
+  gate 16n
+  slide 32n
+  offset -16n
+  cv1 env ad 32n 16nd
+}
+|> swing .6 16n
+|> late 32n
+play a
+)");
+  check(static_cast<bool>(compiled), compiled.diagnostic.message);
+  if (compiled) {
+    const auto &sequence = compiled.program->semantic().sequences.front();
+    check(close(static_cast<float>(sequence.subdivisionBeats), 1.f / 3.f) &&
+              close(sequence.glideBeats, .25f),
+          "triplet subdivision and glide note values convert to beats");
+    check(close(static_cast<float>(sequence.duration[0].value), .75f) &&
+              sequence.duration[0].isNoteValue &&
+              close(static_cast<float>(sequence.gate[0].value), .25f) &&
+              sequence.gate[0].isNoteValue &&
+              close(static_cast<float>(sequence.slide[0].value), .125f) &&
+              sequence.slide[0].isNoteValue &&
+              close(static_cast<float>(sequence.offset[0].value), -.25f) &&
+              sequence.offset[0].isNoteValue,
+          "duration, gate, slide, and signed offset share note-value parsing");
+    const auto &envelope = sequence.cvEnvelope[0];
+    check(envelope.attack.unit == tfseq::CvEnvelopeTimeUnit::Beats &&
+              close(static_cast<float>(envelope.attack.value), .125f) &&
+              close(static_cast<float>(envelope.decay.value), .375f),
+          "envelope segments accept straight and dotted note values");
+    const auto &transforms =
+        sequence.transforms[static_cast<std::size_t>(tfseq::CursorLane::Sequence)];
+    const auto swing = std::find_if(
+        transforms.begin(), transforms.end(), [](const tfseq::Transform &value) {
+          return value.kind == tfseq::TransformKind::Swing;
+        });
+    const auto late = std::find_if(
+        transforms.begin(), transforms.end(), [](const tfseq::Transform &value) {
+          return value.kind == tfseq::TransformKind::Late;
+        });
+    check(swing != transforms.end() &&
+              close(static_cast<float>(swing->swingSubdivisionBeats), .25f) &&
+              late != transforms.end() && close(static_cast<float>(late->number), .125f),
+          "swing grids and timing offsets accept note values");
+
+    tfseq::Runtime runtime;
+    runtime.setProgram(compiled.program.get());
+    const auto first = runtime.next(0.0);
+    check(first.count == 1 && close(first.events[0].gateBeats, .25f) &&
+              first.events[0].gateMilliseconds < 0.f,
+          "a note-valued gate reaches runtime as an absolute beat duration");
+  }
+
+  check(!tfseq::Compile(
+            "a = sequence {\n notes 1\n velocity 16n\n}\nplay a\n"),
+        "velocity rejects musical time units");
+  check(!tfseq::Compile("a = sequence {\n notes 1\n cv1 16n\n}\nplay a\n"),
+        "ordinary CV values remain volts");
+  check(!tfseq::Compile(
+            "a = sequence {\n notes 1{len=16n}\n}\nplay a\n"),
+        "len remains a structural span multiplier");
+}
+
 void unsafeNumericInputsAreDiagnostics() {
-  check(!tfseq::Compile("a = sequence {\n subdiv 0\n notes 1\n}\nplay a\n"),
+  check(!tfseq::Compile("a = sequence {\n subdiv 0n\n notes 1\n}\nplay a\n"),
         "zero subdivision is rejected");
-  check(!tfseq::Compile("a = sequence {\n subdiv 7/2\n notes 1\n}\nplay a\n"),
-        "fractional subdivision denominators are rejected");
+  check(!tfseq::Compile("a = sequence {\n subdiv 3n\n notes 1\n}\nplay a\n"),
+        "non-standard subdivision denominators are rejected");
+  check(!tfseq::Compile("a = sequence {\n subdiv 16\n notes 1\n}\nplay a\n"),
+        "subdiv requires an explicit note-value unit");
   check(!tfseq::Compile("a = sequence {\n cycle 8\n notes 1\n}\nplay a\n"),
         "the fixed wall-clock cycle setting is not part of the language");
   check(!tfseq::Compile("seed .5\n"),
@@ -2698,6 +2920,9 @@ int main() {
   patternExpansionUsesAddressableLimits();
   euclideanTimingAndCvLanesHaveScoreTimeSemantics();
   timingPreparationCoversEarlyLookaheadAndMilliseconds();
+  cvEnvelopesCompileAndRun();
+  cvEnvelopeEngineHasMusicalGateSemantics();
+  musicalNoteValuesAreSharedAcrossTimeControls();
   unsafeNumericInputsAreDiagnostics();
   if (failures != 0)
     std::cerr << failures << " text sequencer test(s) failed\n";

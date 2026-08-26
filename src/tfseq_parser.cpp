@@ -26,7 +26,8 @@ constexpr const char *Grammar = R"PEG(
 
   NotesLane    <- H NotesLaneName S NotePattern (H Pipeline)* H Comment? LineEnd
   ScalarLane   <- H ScalarLaneName S ScalarPattern (H Pipeline)* H Comment? LineEnd
-  CvLane       <- H CvLaneName S ScalarPattern (H Pipeline)* H Comment? LineEnd
+  CvLane       <- H CvLaneName S (EnvelopeSource / ScalarPattern)
+                  (H Pipeline)* H Comment? LineEnd
   SettingLine  <- H SettingName S SettingValue H Comment? LineEnd
   NotesLaneName  <- < 'notes' >
   ScalarLaneName <- < 'octave' / 'velocity' / 'vel' /
@@ -129,9 +130,12 @@ constexpr const char *Grammar = R"PEG(
   Default         <- < '.' !'.' >
   PatternSeparator <- H ';' H / S
 
+  EnvelopeSource   <- 'env' (S EnvelopeArgument)*
+  EnvelopeArgument <- < (!HChar !Pipe !CommentStart !Newline .)+ >
+
   SettingValue    <- < ScalarValue / PitchValue / Identifier >
   ScalarValue     <- Number Unit?
-  Unit            <- 'ms'
+  Unit            <- 'ms' / 'nt' / 'nd' / 'n'
   Number          <- SignedInteger '/' PositiveInteger / Decimal
   Decimal         <- Sign? ([0-9]+ ('.' [0-9]+)? / '.' [0-9]+)
   SignedInteger   <- Sign? UnsignedInteger
@@ -503,7 +507,14 @@ Lane ReadLane(const Ast &node, Diagnostic &diagnostic) {
   } else if (node->name == "CvLane") {
     lane.kind = Lane::Kind::Cv;
     lane.name = AstToken(FirstChildNamed(node, "CvLaneName"));
-    lane.pattern = ReadScalarPattern(FirstChildNamed(node, "ScalarPattern"));
+    if (const auto envelope = FirstChildNamed(node, "EnvelopeSource")) {
+      lane.envelopeOnly = true;
+      lane.envelopeSpan = Span(envelope);
+      for (const auto &argument : ChildrenNamed(envelope, "EnvelopeArgument"))
+        lane.envelopeArguments.push_back(AstToken(argument));
+    } else {
+      lane.pattern = ReadScalarPattern(FirstChildNamed(node, "ScalarPattern"));
+    }
   } else if (node->name == "SettingLine") {
     lane.kind = Lane::Kind::Setting;
     lane.name = AstToken(FirstChildNamed(node, "SettingName"));

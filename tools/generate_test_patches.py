@@ -695,7 +695,7 @@ def generate_prog_sequencer_303_patch() -> None:
             )
 
     program = """acid = sequence {
-  subdiv 16
+  subdiv 16n
   tonic D#@2
   scale minor
   notes ^1 1!3 ^5 7 ^1 ~ 1 ~ ^8 >1, ~ 1 >^1, >1
@@ -831,8 +831,9 @@ def generate_two_source_reverb_patch() -> None:
             "Oscillator bass with a centred sub oscillator, analogue drift, "
             "and long 4072 filter and amplifier envelopes. Source 2 is a "
             "louder, driven descending folded arpeggio with a shorter, "
-            "brighter 4072 voice whose cutoff follows a slow 18-beat bipolar "
-            "CV triangle across the four-beat note phrase.\n\n"
+            "brighter 4072 voice. Its cutoff follows a slow 18-beat bipolar "
+            "CV triangle across the four-beat note phrase, while a per-note "
+            "AD envelope animates the wavefolder depth.\n\n"
             "The shared Transport drives Clock, Run, and Reset into both "
             "sequencers. RESTART plays from beat zero, PAUSE preserves the "
             "current position, PLAY continues it, and STOP returns to zero. "
@@ -861,7 +862,7 @@ def generate_two_source_reverb_patch() -> None:
     )
 
     bass_program = """bass = sequence {
-  subdiv 2
+  subdiv 2n
   tonic D@1
   scale dorian
   notes 1_2 7_2 4_2 5 7
@@ -871,12 +872,13 @@ def generate_two_source_reverb_patch() -> None:
 play bass
 """
     arpeggio_program = """arpeggio = sequence {
-  subdiv 16
+  subdiv 16n
   tonic D@4
   scale dorian
   notes 3' 1' 5 3 ; 1' 5 3 1 ; 2' 7 5 2 ; 7 5 2 1
   gate .52
   cv1 4 -4 |> interp linear |> rate 1/9
+  cv2 env ad 5ms 16n depth 2 curve 0
 }
 
 play arpeggio
@@ -956,6 +958,7 @@ play arpeggio
     wavefold_values[2] = 0.28
     wavefold_values[3] = 0.5012047290802002
     wavefold_values[4] = 0.08
+    wavefold_values[7] = 0.75  # CV2 AD adds a 0.3 fold-depth sweep at 2 V
     wavefold_values[10] = 1.0  # Hinge character
     wavefold_values[11] = 0.58
     wavefold_values[12] = 0.40800002217292786
@@ -1039,7 +1042,7 @@ play arpeggio
     patch.add(scope(12, (117, 0)))
 
     for sequencer_id in (3, 4):
-        patch.cable(2, 0, sequencer_id, 0)  # quarter-note master clock
+        patch.cable(2, 0, sequencer_id, 0)  # fixed 24 PPQN master clock
         patch.cable(2, 2, sequencer_id, 1)  # shared reset
         patch.cable(2, 1, sequencer_id, 2)  # shared run/pause gate
 
@@ -1055,6 +1058,7 @@ play arpeggio
     patch.cable(4, 1, 8, 6)  # arpeggio gate -> envelopes
     patch.cable(4, 2, 8, 7)  # arpeggio trigger -> envelope retrigger
     patch.cable(4, 5, 8, 3)  # slow CV1 triangle -> filter modulation
+    patch.cable(4, 6, 7, 3)  # per-note CV2 AD -> wavefolder Fold modulation
     patch.cable(7, 1, 8, 0)  # folded oscillator -> 4072 filter
     patch.cable(8, 1, 9, 1)  # enveloped arpeggio -> source 2
 
