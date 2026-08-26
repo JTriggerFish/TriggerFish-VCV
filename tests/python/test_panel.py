@@ -111,6 +111,15 @@ def test_prog_sequencer_has_three_valid_3u_widths_with_outlined_runtime_text():
     assert "restoredEditorCursor.exchange(-1" in module_source
     assert 'createMenuItem("Prog Sequencer documentation"' in module_source
     assert "TfProgSequencer-reference.md" in module_source
+    assert 'createSubmenuItem("Examples"' in module_source
+    assert 'createSubmenuItem("Editor"' in module_source
+    assert 'createSubmenuItem("Width"' in module_source
+    assert 'createSubmenuItem("Heatmap"' in module_source
+    assert '"Acid bassline"' in module_source
+    assert '"Slow bassline"' in module_source
+    assert '"Descending arpeggio"' in module_source
+    assert 'TfProgSequencerSourceChange("load sequencer example")' in module_source
+    assert '"EXAMPLE LOADED - Ctrl+. to evaluate"' in module_source
     assert "Cursor travel" not in module_source
     assert "Arrangement cursor pulse" not in module_source
     assert "cursorMotionMode" not in module_source

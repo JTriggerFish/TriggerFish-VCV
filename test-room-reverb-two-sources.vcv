@@ -25,7 +25,7 @@
       "id": 2,
       "plugin": "TriggerFish-Elements",
       "model": "TfTransport",
-      "version": "2.4.0",
+      "version": "2.5.0",
       "params": [
         {
           "id": 0,
@@ -60,7 +60,7 @@
       "id": 3,
       "plugin": "TriggerFish-Elements",
       "model": "TfProgSequencer",
-      "version": "2.4.0",
+      "version": "2.5.0",
       "params": [],
       "data": {
         "source": "bass = sequence {\n  subdiv 2n\n  tonic D@1\n  scale dorian\n  notes 1_2 7_2 4_2 5 7\n  gate .96\n}\n\nplay bass\n",
@@ -75,7 +75,7 @@
       "id": 4,
       "plugin": "TriggerFish-Elements",
       "model": "TfProgSequencer",
-      "version": "2.4.0",
+      "version": "2.5.0",
       "params": [],
       "data": {
         "source": "arpeggio = sequence {\n  subdiv 16n\n  tonic D@4\n  scale dorian\n  notes 3' 1' 5 3 ; 1' 5 3 1 ; 2' 7 5 2 ; 7 5 2 1\n  gate .52\n  cv1 4 -4 |> interp linear |> rate 1/9\n  cv2 env ad 5ms 16n depth 2 curve 0\n}\n\nplay arpeggio\n",
@@ -91,7 +91,7 @@
       "id": 5,
       "plugin": "TriggerFish-Elements",
       "model": "TfUnisonOscillator",
-      "version": "2.4.0",
+      "version": "2.5.0",
       "params": [
         {
           "id": 0,
@@ -179,7 +179,7 @@
       "id": 6,
       "plugin": "TriggerFish-Elements",
       "model": "Tf4072VoiceCore",
-      "version": "2.4.0",
+      "version": "2.5.0",
       "params": [
         {
           "id": 0,
@@ -291,7 +291,7 @@
       "id": 7,
       "plugin": "TriggerFish-Elements",
       "model": "TfWavefoldOscillator",
-      "version": "2.4.0",
+      "version": "2.5.0",
       "params": [
         {
           "id": 0,
@@ -371,7 +371,7 @@
       "id": 8,
       "plugin": "TriggerFish-Elements",
       "model": "Tf4072VoiceCore",
-      "version": "2.4.0",
+      "version": "2.5.0",
       "params": [
         {
           "id": 0,
@@ -483,7 +483,7 @@
       "id": 9,
       "plugin": "TriggerFish-Elements",
       "model": "TfScenePack4",
-      "version": "2.4.0",
+      "version": "2.5.0",
       "params": [],
       "pos": [
         85,
@@ -494,7 +494,7 @@
       "id": 10,
       "plugin": "TriggerFish-Elements",
       "model": "TfReverb",
-      "version": "2.4.0",
+      "version": "2.5.0",
       "params": [
         {
           "id": 0,

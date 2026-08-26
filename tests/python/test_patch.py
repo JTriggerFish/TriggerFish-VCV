@@ -257,12 +257,12 @@ def test_release_version_is_consistent_across_build_metadata():
     assert triggerfish_lock["version"] == PLUGIN_VERSION
 
 
-def test_current_release_has_the_declared_copyleft_license_boundary():
+def test_current_version_respects_the_declared_copyleft_license_boundary():
     manifest = json.loads((ROOT / "plugin.json").read_text(encoding="utf-8"))
     license_text = (ROOT / "LICENSE.txt").read_text(encoding="utf-8")
     notice = (ROOT / "NOTICE.md").read_text(encoding="utf-8")
 
-    assert PLUGIN_VERSION == "2.4.0"
+    assert tuple(map(int, PLUGIN_VERSION.split("."))) >= (2, 4, 0)
     assert manifest["license"] == "GPL-3.0-or-later"
     assert "GNU GENERAL PUBLIC LICENSE" in license_text
     assert "Version 3, 29 June 2007" in license_text

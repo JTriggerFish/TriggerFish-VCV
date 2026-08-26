@@ -47,6 +47,46 @@ constexpr const char *DefaultSource = R"(riff = sequence {
 play riff
 )";
 
+constexpr const char *AcidBasslineExample = R"(acid = sequence {
+  subdiv 16n
+  tonic D#@2
+  scale minor
+  notes ^1 1!3 ^5 7 ^1 ~ 1 ~ ^8 >1, ~ 1 >^1, >1
+  velocity .5
+  gate .5
+  glide .5
+}
+
+iv = acid |> modulate_degree 4 |> octave -1
+v  = acid |> modulate_degree 5 |> octave -1 |> scale major
+song = acid * 8 + iv * 4 + v * 4
+play song
+)";
+
+constexpr const char *SlowBasslineExample = R"(bass = sequence {
+  subdiv 2n
+  tonic D@1
+  scale dorian
+  notes 1_2 7_2 4_2 5 7
+  gate .96
+}
+
+play bass
+)";
+
+constexpr const char *DescendingArpeggioExample = R"(arpeggio = sequence {
+  subdiv 16n
+  tonic D@4
+  scale dorian
+  notes 3' 1' 5 3 ; 1' 5 3 1 ; 2' 7 5 2 ; 7 5 2 1
+  gate .52
+  cv1 4 -4 |> interp linear |> rate 1/9
+  cv2 env ad 5ms 16n depth 2 curve 0
+}
+
+play arpeggio
+)";
+
 constexpr int ArrangementCursorPulseBeats = 4;
 constexpr const char *ProgSequencerDocumentationUrl =
     "https://github.com/JTriggerFish/TriggerFish-VCV/blob/master/docs/"
@@ -933,7 +973,10 @@ struct TfProgSequencerSourceChange : history::ModuleAction {
   int newCursor = 0;
   int newSelection = 0;
 
-  TfProgSequencerSourceChange() { name = "edit sequencer program"; }
+  explicit TfProgSequencerSourceChange(
+      const std::string &actionName = "edit sequencer program") {
+    name = actionName;
+  }
 
   void apply(const std::string &source, int cursor, int selection) {
     if (!APP || !APP->scene || !APP->scene->rack)
@@ -1175,6 +1218,26 @@ struct TfSequenceEditor : app::LedDisplayTextField {
     selection = edit.selection;
     cursor = edit.cursor;
     synchronizeEditedSource(previousCursor, previousSelection);
+  }
+
+  void loadExample(const std::string &example) {
+    if (!module || example == module->source)
+      return;
+    auto *change =
+        new TfProgSequencerSourceChange("load sequencer example");
+    change->moduleId = module->id;
+    change->oldSource = module->source;
+    change->newSource = example;
+    change->oldCursor = cursor;
+    change->oldSelection = selection;
+    change->newCursor = 0;
+    change->newSelection = 0;
+    module->restoreEditedSource(example, 0, 0);
+    module->compileMessage = "EXAMPLE LOADED - Ctrl+. to evaluate";
+    if (APP && APP->history && module->id >= 0)
+      APP->history->push(change);
+    else
+      delete change;
   }
 
   static bool sameSpan(const tfseq::SourceSpan &left,
@@ -2492,36 +2555,56 @@ struct TfProgSequencerWidget : ModuleWidget {
     menu->addChild(createMenuItem("Prog Sequencer documentation", "", []() {
       system::openBrowser(ProgSequencerDocumentationUrl);
     }));
-    menu->addChild(new MenuSeparator);
-    menu->addChild(createMenuLabel("Editor width"));
-    for (const int width : {22, 30, 38}) {
-      menu->addChild(createCheckMenuItem(
-          rack::string::f("%d HP", width), "",
-          [=]() {
-            return prog->panelWidthHp.load(std::memory_order_relaxed) == width;
-          },
-          [=]() {
-            prog->panelWidthHp.store(width, std::memory_order_relaxed);
+    menu->addChild(createSubmenuItem("Examples", "", [=](Menu *examplesMenu) {
+      for (const auto &example :
+           {std::make_pair("Acid bassline", AcidBasslineExample),
+            std::make_pair("Slow bassline", SlowBasslineExample),
+            std::make_pair("Descending arpeggio",
+                           DescendingArpeggioExample)}) {
+        examplesMenu->addChild(createMenuItem(
+            example.first, "", [=]() { editor->loadExample(example.second); }));
+      }
+    }));
+    menu->addChild(createSubmenuItem("Editor", "", [=](Menu *editorMenu) {
+      editorMenu->addChild(
+          createSubmenuItem("Width", "", [=](Menu *widthMenu) {
+            for (const int width : {22, 30, 38}) {
+              widthMenu->addChild(createCheckMenuItem(
+                  rack::string::f("%d HP", width), "",
+                  [=]() {
+                    return prog->panelWidthHp.load(std::memory_order_relaxed) ==
+                           width;
+                  },
+                  [=]() {
+                    prog->panelWidthHp.store(width, std::memory_order_relaxed);
+                  }));
+            }
           }));
-    }
-    menu->addChild(new MenuSeparator);
-    menu->addChild(createMenuLabel("Editor heatmap"));
-    for (const auto palette :
-         {tfui::HeatmapPalette::Magma, tfui::HeatmapPalette::Inferno,
-          tfui::HeatmapPalette::Plasma, tfui::HeatmapPalette::Viridis,
-          tfui::HeatmapPalette::Cividis, tfui::HeatmapPalette::CrtGreen,
-          tfui::HeatmapPalette::CrtBlue, tfui::HeatmapPalette::CrtYellow,
-          tfui::HeatmapPalette::CrtRed}) {
-      menu->addChild(createCheckMenuItem(
-          tfui::heatmapPaletteName(palette), "",
-          [=]() {
-            return prog->editorHeatmap.load(std::memory_order_relaxed) ==
-                   palette;
-          },
-          [=]() {
-            prog->editorHeatmap.store(palette, std::memory_order_relaxed);
+      editorMenu->addChild(
+          createSubmenuItem("Heatmap", "", [=](Menu *heatmapMenu) {
+            for (const auto palette :
+                 {tfui::HeatmapPalette::Magma,
+                  tfui::HeatmapPalette::Inferno,
+                  tfui::HeatmapPalette::Plasma,
+                  tfui::HeatmapPalette::Viridis,
+                  tfui::HeatmapPalette::Cividis,
+                  tfui::HeatmapPalette::CrtGreen,
+                  tfui::HeatmapPalette::CrtBlue,
+                  tfui::HeatmapPalette::CrtYellow,
+                  tfui::HeatmapPalette::CrtRed}) {
+              heatmapMenu->addChild(createCheckMenuItem(
+                  tfui::heatmapPaletteName(palette), "",
+                  [=]() {
+                    return prog->editorHeatmap.load(
+                               std::memory_order_relaxed) == palette;
+                  },
+                  [=]() {
+                    prog->editorHeatmap.store(palette,
+                                              std::memory_order_relaxed);
+                  }));
+            }
           }));
-    }
+    }));
   }
 };
 

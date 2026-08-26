@@ -143,8 +143,12 @@ cable, which identifies one unambiguous Transport even in a larger patch.
 
 Double-click selects a word and triple-click selects a complete row. The usual
 text-field selection, clipboard, and navigation controls remain available.
-The module context menu links directly to this reference. It also offers the
-perceptually uniform Magma, Inferno, Plasma, Viridis, and Cividis heatmaps, plus
+The module context menu links directly to this reference. Its Examples submenu
+can load an Acid bassline, Slow bassline, or Descending arpeggio program into
+the editor. Loading replaces the current draft and participates in Rack undo;
+the active program continues until the example is evaluated. The Editor
+submenu contains the width and heatmap controls. Heatmaps include the
+perceptually uniform Magma, Inferno, Plasma, Viridis, and Cividis ramps, plus
 black-based CRT Green, CRT Blue, CRT Yellow, and CRT Red phosphor-style ramps.
 The heatmap choice is stored with the patch.
 
