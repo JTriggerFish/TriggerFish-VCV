@@ -194,7 +194,8 @@ def test_transport_panel_exposes_one_precise_fixed_rate_master_clock():
         "RUN_OUTPUT",
         "RESET_OUTPUT",
     }
-    assert 'string::f("%.2f BPM"' in source
+    assert "rack::string::f(" in source
+    assert '"%.2f BPM"' in source
     assert "nvgFontSize(args.vg, 9.f)" in source
     assert "NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE" in source
     assert "tempoParam->createContextMenu()" in source
