@@ -100,8 +100,9 @@ struct TfTempoDisplay : app::LedDisplayChoice {
   app::ParamWidget *tempoParam = nullptr;
 
   void step() override {
-    text = module ? string::f("%.2f BPM",
-                              module->params[TfTransport::TEMPO].getValue())
+    text = module ? rack::string::f(
+                        "%.2f BPM",
+                        module->params[TfTransport::TEMPO].getValue())
                   : "120.00 BPM";
     app::LedDisplayChoice::step();
   }
