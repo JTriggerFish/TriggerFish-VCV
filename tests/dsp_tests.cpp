@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <iostream>
@@ -11,6 +12,7 @@
 #include "models/ArpEnvelope.hpp"
 #include "models/Arp4072Filter.hpp"
 #include "models/DiodeLadderFilter.hpp"
+#include "models/ElectricPiano.hpp"
 #include "tfdsp/rail.hpp"
 #include "models/Transistor1PoleIntegrator.hpp"
 #include "models/Tb303Voice.hpp"
@@ -73,6 +75,257 @@ namespace
 
 int main()
 {
+	{
+		tfdsp::ElectricPianoControls controls;
+		tfdsp::ElectricPianoVoice softVoice;
+		tfdsp::ElectricPianoVoice hardVoice;
+		softVoice.SetSampleRate(48000.0);
+		hardVoice.SetSampleRate(48000.0);
+		double softEnergy = 0.0;
+		double hardEnergy = 0.0;
+		bool finite = true;
+		for (int sample = 0; sample < 24000; ++sample)
+		{
+			const double gate = sample < 12000 ? 10.0 : 0.0;
+			const double soft = softVoice.Step(0.0, gate, 0.18, false, controls);
+			const double hard = hardVoice.Step(0.0, gate, 1.0, false, controls);
+			finite = finite && std::isfinite(soft) && std::isfinite(hard);
+			if (sample < 4800)
+			{
+				softEnergy += soft * soft;
+				hardEnergy += hard * hard;
+			}
+		}
+		Check(finite, "electric piano voice remains finite through strike and release");
+		Check(softEnergy > 1.0e-8,
+			"electric piano soft strike produces audible energy");
+		Check(hardEnergy > 2.0 * softEnergy,
+			"electric piano velocity increases note energy dynamically");
+
+		const auto lowKey = tfdsp::MakeElectricPianoKeyProfile(-3.0);
+		const auto middleKey = tfdsp::MakeElectricPianoKeyProfile(0.0);
+		const auto highKey = tfdsp::MakeElectricPianoKeyProfile(3.0);
+		Check(lowKey.modalMassRatio > middleKey.modalMassRatio &&
+			middleKey.modalMassRatio > highKey.modalMassRatio &&
+			lowKey.displacementPerImpulse > middleKey.displacementPerImpulse &&
+			middleKey.displacementPerImpulse > highKey.displacementPerImpulse &&
+			lowKey.pickupSensitivity > middleKey.pickupSensitivity &&
+			middleKey.pickupSensitivity > highKey.pickupSensitivity,
+			"electric piano key model derives displacement from modal mass and pitch");
+		Check(tfdsp::ElectricPianoModeBandlimitGain(0.31 * 48000.0,
+			48000.0) == 1.0 &&
+			tfdsp::ElectricPianoModeBandlimitGain(0.385 * 48000.0,
+				48000.0) > 0.0 &&
+			tfdsp::ElectricPianoModeBandlimitGain(0.385 * 48000.0,
+				48000.0) < 1.0 &&
+			tfdsp::ElectricPianoModeBandlimitGain(0.45 * 48000.0,
+				48000.0) == 0.0,
+			"electric piano high modes taper smoothly before Nyquist");
+
+		auto silentControls = controls;
+		silentControls.mechanics = 0.0;
+		tfdsp::ElectricPianoVoice zeroVelocityVoice;
+		zeroVelocityVoice.SetSampleRate(48000.0);
+		double zeroVelocityEnergy = 0.0;
+		for (int sample = 0; sample < 4096; ++sample)
+		{
+			const double output = zeroVelocityVoice.Step(0.0, 10.0, 0.0,
+				false, silentControls);
+			zeroVelocityEnergy += output * output;
+		}
+		Check(zeroVelocityEnergy < 1.0e-20,
+			"electric piano zero velocity produces no hammer or tine excitation");
+
+		constexpr std::array<double, 6> TestVelocities{
+			0.03, 0.08, 0.18, 0.38, 0.68, 1.0};
+		std::array<double, TestVelocities.size()> velocityEnergies{};
+		for (std::size_t index = 0; index < TestVelocities.size(); ++index)
+		{
+			tfdsp::ElectricPianoVoice voice;
+			voice.SetSampleRate(48000.0);
+			for (int sample = 0; sample < 4800; ++sample)
+			{
+				const double output = voice.Step(0.0, 10.0,
+					TestVelocities[index], false, silentControls);
+				velocityEnergies[index] += output * output;
+			}
+		}
+		Check(std::is_sorted(velocityEnergies.begin(), velocityEnergies.end()) &&
+			std::adjacent_find(velocityEnergies.begin(), velocityEnergies.end(),
+				[](double first, double second) { return !(second > first); }) ==
+				velocityEnergies.end(),
+			"electric piano output energy rises monotonically across velocity");
+
+		auto farPickupControls = silentControls;
+		auto nearPickupControls = silentControls;
+		farPickupControls.gap = 0.0;
+		nearPickupControls.gap = 1.0;
+		tfdsp::ElectricPianoVoice farPickupVoice;
+		tfdsp::ElectricPianoVoice nearPickupVoice;
+		farPickupVoice.SetSampleRate(48000.0);
+		nearPickupVoice.SetSampleRate(48000.0);
+		double farPickupEnergy = 0.0;
+		double nearPickupEnergy = 0.0;
+		for (int sample = 0; sample < 4800; ++sample)
+		{
+			const double farOutput = farPickupVoice.Step(0.0, 10.0, 0.3,
+				false, farPickupControls);
+			const double nearOutput = nearPickupVoice.Step(0.0, 10.0, 0.3,
+				false, nearPickupControls);
+			farPickupEnergy += farOutput * farOutput;
+			nearPickupEnergy += nearOutput * nearOutput;
+		}
+		Check(nearPickupEnergy > 2.0 * farPickupEnergy,
+			"electric piano pickup gap changes physical sensitivity as well as curvature");
+
+		tfdsp::ElectricPianoVoice restruckVoice;
+		restruckVoice.SetSampleRate(48000.0);
+		for (int sample = 0; sample < 1200; ++sample)
+			restruckVoice.Step(0.0, 10.0, 1.0, false, silentControls);
+		restruckVoice.Step(0.0, 0.0, 0.0, false, silentControls);
+		restruckVoice.Step(0.0, 10.0, 0.0, false, silentControls);
+		Check(restruckVoice.Energy() > 1.0e-6,
+			"electric piano restrike preserves existing tine motion and adds an impulse");
+
+		auto quietControls = controls;
+		quietControls.mechanics = 0.0;
+		tfdsp::ElectricPianoVoice bentVoice;
+		tfdsp::ElectricPianoVoice referenceVoice;
+		bentVoice.SetSampleRate(48000.0);
+		referenceVoice.SetSampleRate(48000.0);
+		bentVoice.SetNoiseSeed(0x2468aceu);
+		referenceVoice.SetNoiseSeed(0x2468aceu);
+		double preBendDifference = 0.0;
+		double postBendDifference = 0.0;
+		for (int sample = 0; sample < 4096; ++sample)
+		{
+			const double bentPitch = sample < 2048 ? 0.0 : 1.0;
+			const double bent = bentVoice.Step(bentPitch, 10.0, 0.8, false,
+				quietControls);
+			const double reference = referenceVoice.Step(0.0, 10.0, 0.8,
+				false, quietControls);
+			const double difference = bent - reference;
+			if (sample < 2048)
+				preBendDifference += difference * difference;
+			else
+				postBendDifference += difference * difference;
+		}
+		Check(preBendDifference < 1.0e-20 && postBendDifference > 1.0e-5,
+			"electric piano retunes an individual held voice when its pitch changes");
+
+		tfdsp::ElectricPianoVoice editedVoice;
+		tfdsp::ElectricPianoVoice unchangedVoice;
+		editedVoice.SetSampleRate(48000.0);
+		unchangedVoice.SetSampleRate(48000.0);
+		double liveControlDifference = 0.0;
+		for (int sample = 0; sample < 4096; ++sample)
+		{
+			auto editedControls = quietControls;
+			if (sample >= 2048)
+			{
+				editedControls.body = 0.1;
+				editedControls.bell = 0.9;
+				editedControls.gap = 0.9;
+				editedControls.tone = 0.2;
+			}
+			const double edited = editedVoice.Step(0.0, 10.0, 0.8, false,
+				editedControls);
+			const double unchanged = unchangedVoice.Step(0.0, 10.0, 0.8,
+				false, quietControls);
+			if (sample >= 2048)
+			{
+				const double difference = edited - unchanged;
+				liveControlDifference += difference * difference;
+			}
+		}
+		Check(liveControlDifference > 1.0e-5,
+			"electric piano cached timbre coefficients follow live controls");
+
+		std::array<tfdsp::ElectricPianoVoice, 16> chordVoices;
+		for (std::size_t voice = 0; voice < chordVoices.size(); ++voice)
+		{
+			chordVoices[voice].SetSampleRate(48000.0);
+			chordVoices[voice].SetNoiseSeed(
+				0x13579bdu + static_cast<std::uint32_t>(voice));
+		}
+		double chordPeak = 0.0;
+		bool chordFinite = true;
+		std::array<double, 16> keyboardEnergies{};
+		for (int sample = 0; sample < 24000; ++sample)
+		{
+			double chord = 0.0;
+			for (std::size_t voice = 0; voice < chordVoices.size(); ++voice)
+			{
+				const double pitch = -3.0 + 6.0 *
+					static_cast<double>(voice) / 15.0;
+				const double voiceOutput = chordVoices[voice].Step(pitch, 10.0,
+					0.75, false, controls);
+				chord += voiceOutput;
+				keyboardEnergies[voice] += voiceOutput * voiceOutput;
+			}
+			chordFinite = chordFinite && std::isfinite(chord);
+			chordPeak = std::max(chordPeak, std::abs(chord));
+		}
+		Check(chordFinite && chordPeak > 1.0e-4,
+			"electric piano renders a finite audible 16-voice keyboard span");
+		Check(*std::min_element(keyboardEnergies.begin(),
+			keyboardEnergies.end()) > 1.0e-8,
+			"electric piano keeps every tested key audible across six octaves");
+		Check(*std::max_element(keyboardEnergies.begin(),
+			keyboardEnergies.end()) < 2.0 * *std::min_element(
+				keyboardEnergies.begin(), keyboardEnergies.end()),
+			"electric piano reference pickup curve keeps equal-velocity key levels balanced");
+
+		tfdsp::ElectricPianoVoice releasedVoice;
+		releasedVoice.SetSampleRate(48000.0);
+		double earlyReleaseEnergy = 0.0;
+		double lateReleaseEnergy = 0.0;
+		for (int sample = 0; sample < 48000; ++sample)
+		{
+			const double gate = sample < 2400 ? 10.0 : 0.0;
+			const double output = releasedVoice.Step(-1.0, gate, 0.8, false,
+				controls);
+			if (sample >= 2400 && sample < 4800)
+				earlyReleaseEnergy += output * output;
+			if (sample >= 43200)
+				lateReleaseEnergy += output * output;
+		}
+		Check(lateReleaseEnergy < 1.0e-4 * earlyReleaseEnergy,
+			"electric piano damper silences a released note");
+
+		tfdsp::ElectricPianoVoice sustainedVoice;
+		tfdsp::ElectricPianoVoice dampedVoice;
+		sustainedVoice.SetSampleRate(48000.0);
+		dampedVoice.SetSampleRate(48000.0);
+		for (int sample = 0; sample < 18000; ++sample)
+		{
+			const double gate = sample < 2400 ? 10.0 : 0.0;
+			sustainedVoice.Step(-1.0, gate, 0.8, sample >= 2400,
+				silentControls);
+			dampedVoice.Step(-1.0, gate, 0.8, false, silentControls);
+		}
+		Check(sustainedVoice.Energy() > 100.0 * dampedVoice.Energy(),
+			"electric piano sustain pedal prevents damper contact after key release");
+		const double heldPedalEnergy = sustainedVoice.Energy();
+		for (int sample = 0; sample < 24000; ++sample)
+			sustainedVoice.Step(-1.0, 0.0, 0.0, false, silentControls);
+		Check(sustainedVoice.Energy() < 1.0e-3 * heldPedalEnergy,
+			"electric piano pedal release applies the damper to sustained notes");
+
+		tfdsp::ElectricPianoAmplifier amplifier;
+		amplifier.SetSampleRate(48000.0);
+		double amplifierPeak = 0.0;
+		for (int sample = 0; sample < 48000; ++sample)
+		{
+			const double input = 16.0 * std::sin(
+				2.0 * tfdsp::PI * 220.0 * sample / 48000.0);
+			amplifierPeak = std::max(amplifierPeak,
+				std::abs(amplifier.Step(input, 1.0)));
+		}
+		Check(std::isfinite(amplifierPeak) && amplifierPeak < 2.0,
+			"electric piano shared amplifier overload remains bounded");
+	}
+
 	using DiscreteGradient2::Tanh;
 	Check(std::isfinite(Tanh<double, 1>::Value(1000.0, 999.0)),
 		"stable log(cosh) discrete gradient stays finite");

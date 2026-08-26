@@ -1,0 +1,255 @@
+{
+  "version": "2.6.6",
+  "path": "",
+  "zoom": 0.82,
+  "gridOffset": [
+    -1,
+    -0.1
+  ],
+  "modules": [
+    {
+      "id": 1,
+      "plugin": "Core",
+      "model": "Notes",
+      "version": "2.6.6",
+      "params": [],
+      "data": {
+        "text": "TriggerFish Electric Piano playable prototype\n\nSelect MIDI and audio devices, then play from a velocity-sensitive keyboard. MIDI-CV is set to 16-channel polyphonic mode; pitch, gate, and velocity feed the instrument directly.\n\nStart with TOUCH and DYNAMICS to match your controller. BODY, BELL, and HAMMER shape the strike; COUPLING sets interaction between the tine and tone-bar modes. TONE and GAP move the nonlinear pickup response. DECAY and RELEASE shape the tine and damper, MECHANICS adds key noise, and DRIVE overloads the shared amplifier. DIRECT POLY bypasses that final amp.\n\nThe -6 dB master protects the first listen. PEDAL accepts a gate; patch your preferred MIDI CC-to-CV module there for sustain."
+      },
+      "pos": [
+        0,
+        0
+      ]
+    },
+    {
+      "id": 2,
+      "plugin": "Core",
+      "model": "MIDIToCVInterface",
+      "version": "2.6.6",
+      "params": [],
+      "data": {
+        "channels": 16,
+        "pwRange": 2,
+        "midi": {
+          "driver": -1,
+          "channel": -1
+        }
+      },
+      "pos": [
+        17,
+        0
+      ]
+    },
+    {
+      "id": 3,
+      "plugin": "TriggerFish-Elements",
+      "model": "TfElectricPiano",
+      "version": "2.5.0",
+      "params": [
+        {
+          "id": 0,
+          "value": 0.5
+        },
+        {
+          "id": 1,
+          "value": 0.75
+        },
+        {
+          "id": 2,
+          "value": 0.62
+        },
+        {
+          "id": 3,
+          "value": 0.52
+        },
+        {
+          "id": 4,
+          "value": 0.58
+        },
+        {
+          "id": 5,
+          "value": 0.52
+        },
+        {
+          "id": 6,
+          "value": 0.55
+        },
+        {
+          "id": 7,
+          "value": 0.48
+        },
+        {
+          "id": 8,
+          "value": 0.58
+        },
+        {
+          "id": 9,
+          "value": 0.24
+        },
+        {
+          "id": 10,
+          "value": 0.18
+        },
+        {
+          "id": 11,
+          "value": 0.32
+        }
+      ],
+      "pos": [
+        29,
+        0
+      ]
+    },
+    {
+      "id": 4,
+      "plugin": "Fundamental",
+      "model": "VCMixer",
+      "version": "2.6.4",
+      "params": [
+        {
+          "id": 0,
+          "value": 0.5011872336
+        },
+        {
+          "id": 1,
+          "value": 0.7
+        },
+        {
+          "id": 2,
+          "value": 0.0
+        },
+        {
+          "id": 3,
+          "value": 0.0
+        },
+        {
+          "id": 4,
+          "value": 0.0
+        }
+      ],
+      "data": {
+        "chExp": false,
+        "mixExp": false
+      },
+      "pos": [
+        45,
+        0
+      ]
+    },
+    {
+      "id": 5,
+      "plugin": "Fundamental",
+      "model": "VCMixer",
+      "version": "2.6.4",
+      "params": [
+        {
+          "id": 0,
+          "value": 0.5011872336
+        },
+        {
+          "id": 1,
+          "value": 0.7
+        },
+        {
+          "id": 2,
+          "value": 0.0
+        },
+        {
+          "id": 3,
+          "value": 0.0
+        },
+        {
+          "id": 4,
+          "value": 0.0
+        }
+      ],
+      "data": {
+        "chExp": false,
+        "mixExp": false
+      },
+      "pos": [
+        54,
+        0
+      ]
+    },
+    {
+      "id": 6,
+      "plugin": "Core",
+      "model": "AudioInterface",
+      "version": "2.6.6",
+      "params": [],
+      "data": {
+        "audio": {
+          "driver": -1,
+          "sampleRate": 48000,
+          "blockSize": 256,
+          "inputOffset": 0,
+          "outputOffset": 0
+        },
+        "dcFilter": true
+      },
+      "pos": [
+        63,
+        0
+      ]
+    }
+  ],
+  "cables": [
+    {
+      "id": 1000,
+      "outputModuleId": 2,
+      "outputId": 0,
+      "inputModuleId": 3,
+      "inputId": 0,
+      "color": "#f3374b"
+    },
+    {
+      "id": 1001,
+      "outputModuleId": 2,
+      "outputId": 1,
+      "inputModuleId": 3,
+      "inputId": 1,
+      "color": "#ffcc00"
+    },
+    {
+      "id": 1002,
+      "outputModuleId": 2,
+      "outputId": 2,
+      "inputModuleId": 3,
+      "inputId": 2,
+      "color": "#0c8e15"
+    },
+    {
+      "id": 1003,
+      "outputModuleId": 3,
+      "outputId": 1,
+      "inputModuleId": 4,
+      "inputId": 1,
+      "color": "#0986ad"
+    },
+    {
+      "id": 1004,
+      "outputModuleId": 3,
+      "outputId": 2,
+      "inputModuleId": 5,
+      "inputId": 1,
+      "color": "#c91847"
+    },
+    {
+      "id": 1005,
+      "outputModuleId": 4,
+      "outputId": 0,
+      "inputModuleId": 6,
+      "inputId": 0,
+      "color": "#7a3ec8"
+    },
+    {
+      "id": 1006,
+      "outputModuleId": 5,
+      "outputId": 0,
+      "inputModuleId": 6,
+      "inputId": 1,
+      "color": "#f3374b"
+    }
+  ]
+}

@@ -43,6 +43,7 @@ Run the usual tasks from PowerShell:
 .\dev.ps1 smoke-prog-303 # Replace Foundry with Prog Sequencer in the 303 patch
 .\dev.ps1 smoke-reverb-two-sources # Open the musical two-source reverb patch
 .\dev.ps1 smoke-4072   # Install and open the MIDI-playable 4072 voice patch
+.\dev.ps1 smoke-electric-piano # Open the 16-voice velocity-sensitive EP patch
 .\dev.ps1 smoke-wavefold # Install and open the Wavefold Oscillator patch
 .\dev.ps1 smoke-unison # Install and open the Unison Oscillator patch
 .\dev.ps1 smoke-scene-pack4 # Install and open the Scene Pack 4 patch
@@ -177,6 +178,12 @@ both programs aligned. The scope shows the packed input and stereo result.
 oscillator to 4072 Voice Core, with MIDI pitch tracking both oscillator and
 filter and MIDI gate driving the two internal envelopes.
 
+[test-electric-piano.vcv](test-electric-piano.vcv) is the early playable
+Electric Piano calibration patch. Core MIDI-CV runs in 16-channel mode and
+routes pitch, gate, and velocity into the instrument; two -6 dB master channels
+feed the audio interface. Add a MIDI CC-to-CV mapping to `PEDAL` when testing
+sustain behaviour.
+
 [test-wavefold-oscillator.vcv](test-wavefold-oscillator.vcv) is a MIDI-playable
 Wavefold Oscillator patch exposing the oscillator and folded outputs together.
 
@@ -187,8 +194,8 @@ Unison Oscillator patch exposing its mono and stereo mixes.
 oscillators into Scene Pack 4, sends its single packed polyphonic output through
 Room Reverb, and exposes the packed source bundle plus stereo result on a scope.
 
-The Slop4, VDPO, 4072, Wavefold, Unison, Scene Pack, Prog-303, and musical
-reverb patches use Rack Core, Fundamental, and TriggerFish modules. The
+The Slop4, VDPO, 4072, Electric Piano, Wavefold, Unison, Scene Pack, Prog-303,
+and musical reverb patches use Rack Core, Fundamental, and TriggerFish modules. The
 Foundry-based 303 patch additionally uses Impromptu Modular.
 Their final stereo masters are set to -6 dB. `dev.ps1 smoke` remains an alias
 for `dev.ps1 smoke-vdpo`.

@@ -16,6 +16,7 @@ param(
         "smoke-prog-303",
         "smoke-reverb-two-sources",
         "smoke-4072",
+        "smoke-electric-piano",
         "smoke-wavefold",
         "smoke-unison",
         "smoke-scene-pack4",
@@ -214,6 +215,12 @@ switch ($Command) {
                 throw "TfScenePack4 panel generation failed with exit code $LASTEXITCODE."
             }
             & uv run python tools/svg_text_to_paths.py `
+                "res-src/TfElectricPiano.svg" "res/TfElectricPiano.svg" `
+                --font $panelFont
+            if ($LASTEXITCODE -ne 0) {
+                throw "TfElectricPiano panel generation failed with exit code $LASTEXITCODE."
+            }
+            & uv run python tools/svg_text_to_paths.py `
                 "res-src/TfReverb.svg" "res/TfReverb.svg" `
                 --font $panelFont
             if ($LASTEXITCODE -ne 0) {
@@ -267,6 +274,7 @@ switch ($Command) {
         Start-SmokePatch "test-room-reverb-two-sources.vcv"
     }
     "smoke-4072" { Start-SmokePatch "test-4072-voice.vcv" }
+    "smoke-electric-piano" { Start-SmokePatch "test-electric-piano.vcv" }
     "smoke-wavefold" { Start-SmokePatch "test-wavefold-oscillator.vcv" }
     "smoke-unison" {
         Start-SmokePatch "test-unison-oscillator.vcv" `

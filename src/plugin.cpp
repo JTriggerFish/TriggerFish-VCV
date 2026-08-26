@@ -22,6 +22,7 @@ void init(Plugin *p)
 	p->addModel(modelTf303VoiceCore);
 	p->addModel(modelTf303Oscillator);
 	p->addModel(modelTf4072VoiceCore);
+	p->addModel(modelTfElectricPiano);
 	p->addModel(modelTfWavefoldOscillator);
 	p->addModel(modelTfUnisonOscillator);
 	p->addModel(modelTfScenePack4);

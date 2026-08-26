@@ -84,6 +84,17 @@
       ]
     },
     {
+      "slug": "TfElectricPiano",
+      "name": "Electric Piano",
+      "description": "Sample-free polyphonic modal electric piano with velocity-sensitive tines, nonlinear pickups, and a shared amplifier",
+      "manualUrl": "https://github.com/JTriggerFish/TriggerFish-VCV#electric-piano",
+      "tags": [
+        "Synth voice",
+        "Polyphonic",
+        "Physical modeling"
+      ]
+    },
+    {
       "slug": "TfWavefoldOscillator",
       "name": "Wavefold Oscillator",
       "description": "Alive sine/triangle oscillator with Hinge, Lockhart, and Serge wavefolders",

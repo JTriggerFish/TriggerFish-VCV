@@ -83,6 +83,20 @@ DEFAULT_PARAMS = {
         0.0,
         1.0,
     ],
+    "TfElectricPiano": [
+        0.5,
+        0.75,
+        0.62,
+        0.52,
+        0.58,
+        0.52,
+        0.55,
+        0.48,
+        0.58,
+        0.24,
+        0.18,
+        0.32,
+    ],
     "TfWavefoldOscillator": [
         0.0,
         0.0,
@@ -203,13 +217,17 @@ def notes(module_id: int, text: str, pos: tuple[int, int] = (0, 0)) -> dict:
     return module(module_id, "Core", "Notes", pos, data={"text": text})
 
 
-def midi(module_id: int, pos: tuple[int, int]) -> dict:
+def midi(module_id: int, pos: tuple[int, int], *, channels: int = 1) -> dict:
     return module(
         module_id,
         "Core",
         "MIDIToCVInterface",
         pos,
-        data={"channels": 1, "pwRange": 2, "midi": {"driver": -1, "channel": -1}},
+        data={
+            "channels": channels,
+            "pwRange": 2,
+            "midi": {"driver": -1, "channel": -1},
+        },
     )
 
 
@@ -1102,6 +1120,41 @@ def generate_4072_voice_patch() -> None:
     patch.write("test-4072-voice.vcv")
 
 
+def generate_electric_piano_patch() -> None:
+    patch = Patch(zoom=0.82, grid_offset=(-1, -0.1))
+    patch.add(
+        notes(
+            1,
+            "TriggerFish Electric Piano playable prototype\n\n"
+            "Select MIDI and audio devices, then play from a velocity-sensitive "
+            "keyboard. MIDI-CV is set to 16-channel polyphonic mode; pitch, gate, "
+            "and velocity feed the instrument directly.\n\n"
+            "Start with TOUCH and DYNAMICS to match your controller. BODY, BELL, "
+            "and HAMMER shape the strike; COUPLING sets interaction between the "
+            "tine and tone-bar modes. TONE and GAP move the nonlinear pickup "
+            "response. DECAY and RELEASE shape "
+            "the tine and damper, MECHANICS adds key noise, and DRIVE overloads "
+            "the shared amplifier. DIRECT POLY bypasses that final amp.\n\n"
+            "The -6 dB master protects the first listen. PEDAL accepts a gate; "
+            "patch your preferred MIDI CC-to-CV module there for sustain.",
+        )
+    )
+    patch.add(midi(2, (17, 0), channels=16))
+    patch.add(module(3, "TriggerFish-Elements", "TfElectricPiano", (29, 0)))
+    patch.add(mixer(4, (45, 0), (0.5011872336, 0.7, 0.0, 0.0, 0.0)))
+    patch.add(mixer(5, (54, 0), (0.5011872336, 0.7, 0.0, 0.0, 0.0)))
+    patch.add(audio(6, (63, 0)))
+
+    patch.cable(2, 0, 3, 0)  # MIDI pitch -> 1V/oct
+    patch.cable(2, 1, 3, 1)  # MIDI gate -> key gate
+    patch.cable(2, 2, 3, 2)  # MIDI velocity -> strike velocity
+    patch.cable(3, 1, 4, 1)  # shared amplifier left -> left master
+    patch.cable(3, 2, 5, 1)  # shared amplifier right -> right master
+    patch.cable(4, 0, 6, 0)
+    patch.cable(5, 0, 6, 1)
+    patch.write("test-electric-piano.vcv")
+
+
 def generate_wavefold_patch() -> None:
     patch = Patch(zoom=0.78, grid_offset=(-1, -0.1))
     patch.add(
@@ -1260,6 +1313,7 @@ if __name__ == "__main__":
     generate_two_source_reverb_patch()
     generate_prog_sequencer_303_patch()
     generate_4072_voice_patch()
+    generate_electric_piano_patch()
     generate_wavefold_patch()
     generate_unison_patch()
     generate_scene_pack4_patch()

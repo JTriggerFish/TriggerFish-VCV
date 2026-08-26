@@ -17,6 +17,7 @@ PATCH_PATHS = {
     "prog_303": ROOT / "test-prog-sequencer-303.vcv",
     "reverb_two_sources": ROOT / "test-room-reverb-two-sources.vcv",
     "4072_voice": ROOT / "test-4072-voice.vcv",
+    "electric_piano": ROOT / "test-electric-piano.vcv",
     "wavefold": ROOT / "test-wavefold-oscillator.vcv",
     "unison": ROOT / "test-unison-oscillator.vcv",
     "scene_pack": ROOT / "test-scene-pack4.vcv",
@@ -146,6 +147,20 @@ EXPECTED_DEFAULTS = {
         22: 1.0,
         23: 0.0,
         24: 1.0,
+    },
+    "TfElectricPiano": {
+        0: 0.5,
+        1: 0.75,
+        2: 0.62,
+        3: 0.52,
+        4: 0.58,
+        5: 0.52,
+        6: 0.55,
+        7: 0.48,
+        8: 0.58,
+        9: 0.24,
+        10: 0.18,
+        11: 0.32,
     },
     "TfWavefoldOscillator": {
         0: 0.0,
@@ -325,6 +340,7 @@ def test_smoke_patches_collectively_contain_every_triggerfish_module():
         "Tf303VoiceCore",
         "Tf303Oscillator",
         "Tf4072VoiceCore",
+        "TfElectricPiano",
         "TfWavefoldOscillator",
         "TfUnisonOscillator",
         "TfScenePack4",
@@ -452,6 +468,42 @@ def test_smoke_patch_does_not_name_local_hardware(name):
         assert "deviceName" not in midi_module["data"]["midi"]
     assert audio["data"]["audio"]["driver"] == -1
     assert "deviceName" not in audio["data"]["audio"]
+
+
+def test_electric_piano_patch_is_16_voice_velocity_playable():
+    patch = load_patch("electric_piano")
+    midi_module = modules(patch, "MIDIToCVInterface")[0]
+    piano = modules(patch, "TfElectricPiano")[0]
+
+    assert midi_module["data"]["channels"] == 16
+    assert has_cable(patch, midi_module["id"], 0, piano["id"], 0)
+    assert has_cable(patch, midi_module["id"], 1, piano["id"], 1)
+    assert has_cable(patch, midi_module["id"], 2, piano["id"], 2)
+    assert {
+        cable["outputId"]
+        for cable in patch["cables"]
+        if cable["outputModuleId"] == piano["id"]
+    } == {1, 2}
+
+
+def test_electric_piano_exposes_physical_coupling_and_preserves_tails():
+    module_source = (ROOT / "src" / "TfElectricPiano.cpp").read_text(encoding="utf-8")
+    model_source = (ROOT / "src" / "models" / "ElectricPiano.hpp").read_text(
+        encoding="utf-8"
+    )
+
+    assert "COUPLING" in module_source
+    assert "controls.coupling" in model_source
+    assert "MakeElectricPianoKeyProfile" in model_source
+    assert "displacementPerImpulse" in model_source
+    assert "PreserveVoiceAsTail" in module_source
+    assert "PickupOversamplingFactor" in model_source
+
+    preserve_tail = module_source.split("void PreserveVoiceAsTail", 1)[1].split(
+        "tfdsp::ElectricPianoControls Controls", 1
+    )[0]
+    assert "std::swap" in preserve_tail
+    assert "CreateVoice()" not in preserve_tail
 
 
 @pytest.mark.parametrize("name", PATCH_PATHS)

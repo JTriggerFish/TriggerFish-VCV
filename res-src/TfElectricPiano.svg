@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="380" viewBox="0 0 240 380">
+  <rect width="240" height="380" fill="#cecece"/>
+
+  <g stroke="#45595a" fill="none" opacity="0.13">
+    <path d="M18 224 H194" stroke-width="5"/>
+    <path d="M194 213 V235" stroke-width="8"/>
+    <path d="M194 224 H226" stroke-width="2"/>
+    <circle cx="226" cy="224" r="7" stroke-width="3"/>
+    <path d="M18 232 H135" stroke-width="2"/>
+  </g>
+
+  <g font-family="DejaVu Sans, sans-serif" text-anchor="middle" fill="#1f1f1f">
+    <text x="120" y="14" font-size="10" font-weight="bold" letter-spacing="1.1">TRIGGERFISH</text>
+    <text x="120" y="24" font-size="7.4" font-weight="bold" letter-spacing="1.1">ELECTRIC PIANO</text>
+
+    <g font-size="5.4" font-weight="bold">
+      <text x="30" y="43">TOUCH</text>
+      <text x="86" y="43">DYNAMICS</text>
+      <text x="142" y="43">BODY</text>
+      <text x="198" y="43">BELL</text>
+      <text x="30" y="100">COUPLING</text>
+      <text x="86" y="100">HAMMER</text>
+      <text x="142" y="100">TONE</text>
+      <text x="198" y="100">GAP</text>
+      <text x="30" y="157">DECAY</text>
+      <text x="86" y="157">RELEASE</text>
+      <text x="142" y="157">MECHANICS</text>
+      <text x="198" y="157">DRIVE</text>
+    </g>
+
+    <text x="120" y="207" font-size="5.2" font-weight="bold" letter-spacing="1">TINE / TONE BAR / PICKUP</text>
+
+    <g font-size="5" font-weight="bold">
+      <text x="28" y="253">1V/OCT</text>
+      <text x="74" y="253">GATE</text>
+      <text x="120" y="253">VELOCITY</text>
+      <text x="166" y="253">PEDAL</text>
+      <text x="212" y="253">TONE CV</text>
+    </g>
+    <g font-size="5.4" font-weight="bold">
+      <text x="61" y="313">DIRECT POLY</text>
+      <text x="120" y="313">LEFT</text>
+      <text x="179" y="313">RIGHT</text>
+    </g>
+  </g>
+
+  <g stroke-width="0.45">
+    <rect x="38" y="315" width="46" height="48" rx="8" fill="#858585" stroke="#666"/>
+    <rect x="97" y="315" width="46" height="48" rx="8" fill="#545454" stroke="#2e2e2e"/>
+    <rect x="156" y="315" width="46" height="48" rx="8" fill="#545454" stroke="#2e2e2e"/>
+  </g>
+</svg>

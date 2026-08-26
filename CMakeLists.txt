@@ -52,6 +52,7 @@ if(EXISTS "${RACK_SDK_DIR}/include/rack.hpp")
 		src/Tf303VoiceCore.cpp
 		src/Tf303Oscillator.cpp
 		src/Tf4072VoiceCore.cpp
+		src/TfElectricPiano.cpp
 		src/TfWavefoldOscillator.cpp
 		src/TfUnisonOscillator.cpp
 		src/TfScenePack4.cpp

@@ -19,13 +19,13 @@ Circuit-modelled sound generators and processors, plus pitch utilities for VCV R
   </tr>
   <tr>
     <td align="center"><a href="#4072-voice-core"><img src="doc/Tf4072VoiceCore.png" height="260" alt="4072 Voice Core module"><br><strong>4072 Voice Core</strong></a></td>
+    <td align="center"><a href="#electric-piano"><img src="doc/TfElectricPiano.png" height="260" alt="Electric Piano module"><br><strong>Electric Piano</strong></a></td>
     <td align="center"><a href="#wavefold-oscillator"><img src="doc/TfWavefoldOscillator.png" height="260" alt="Wavefold Oscillator module"><br><strong>Wavefold Oscillator</strong></a></td>
-    <td align="center"><a href="#unison-oscillator"><img src="doc/TfUnisonOscillator.png" height="260" alt="Unison Oscillator module"><br><strong>Unison Oscillator</strong></a></td>
   </tr>
   <tr>
+    <td align="center"><a href="#unison-oscillator"><img src="doc/TfUnisonOscillator.png" height="260" alt="Unison Oscillator module"><br><strong>Unison Oscillator</strong></a></td>
     <td align="center"><a href="#scene-pack-4"><img src="doc/TfScenePack4.png" height="260" alt="Scene Pack 4 module"><br><strong>Scene Pack 4</strong></a></td>
     <td align="center"><a href="#room-reverb"><img src="doc/TfReverb.png" height="260" alt="Room Reverb module"><br><strong>Room Reverb</strong></a></td>
-    <td></td>
   </tr>
   <tr>
     <td align="center"><a href="#transport"><img src="doc/TfTransport.png" height="260" alt="Transport module"><br><strong>Transport</strong></a></td>
@@ -45,6 +45,7 @@ Circuit-modelled sound generators and processors, plus pitch utilities for VCV R
 | 303 Oscillator | Fully polyphonic, with independent DSP state per voice; mono inputs are broadcast | Widest connected input, up to 16 |
 | 303 Voice Core | Fully polyphonic, with independent filter, envelope, accent, and VCA state; mono controls are broadcast | Channel count of `IN`, up to 16 |
 | 4072 Voice Core | Fully polyphonic, with independent filter, dual-envelope, and VCA state; mono controls are broadcast | Widest connected input, up to 16 |
+| Electric Piano | Sixteen independent modal tine/pickup note channels, sixteen internal release-tail slots, and one shared nonlinear amplifier | Widest pitch, gate, or velocity input, up to 16; `DIRECT POLY` preserves the originating channels |
 | Wavefold Oscillator | Fully polyphonic, with independent oscillator, folder, and resampling state; mono controls are broadcast | Widest connected input, up to 16 |
 | Unison Oscillator | Fully polyphonic, with an independent oscillator stack and drift state per channel; mono controls are broadcast | Widest connected input, up to 16 |
 | Scene Pack 4 | Concatenates four mono/poly source bundles in jack order | One polyphonic audio output, up to 8 channels |
@@ -53,6 +54,50 @@ Circuit-modelled sound generators and processors, plus pitch utilities for VCV R
 | Prog Sequencer | Polyphonic chord-capable program with independently cycling control lanes and optional Notes-pass edge alignment | Up to 16 pitch/gate/trigger/velocity/accent channels plus CV1-CV3 |
 
 ## Modules
+
+### Electric Piano
+
+Electric Piano is a sample-free, velocity-sensitive instrument voice loosely
+inspired by a Rhodes Mk1. Each note combines coupled fundamental modes, a
+short-lived inharmonic bell spectrum, procedural hammer and damper noise, and a
+nonlinear magnetic-pickup response. The sixteen pickup voices then meet in one
+shared asymmetric amplifier, so chords overload differently from isolated
+notes.
+
+The resonator state represents displacement. An initial cantilever-scaling
+profile derives modal mass and displacement-per-impulse from each key's exact
+pitch, while a separate per-key pickup-sensitivity curve balances small-signal
+level without removing the larger displacement of low tines. Repeated strikes
+add impulses to existing motion. When a Rack MIDI channel is reassigned, its
+released note moves into one of sixteen internal tail slots instead of being
+silenced or retuned.
+
+- **Touch** curves incoming 0–10 V velocity to suit the controller, while
+  **Dynamics** sets how strongly velocity changes loudness.
+- **Body**, **Bell**, and **Hammer** balance the sustained tine/tone-bar body,
+  the bright initial partials, and strike hardness. **Coupling** changes the
+  frequency split, excitation, and pickup contribution of the coupled tine and
+  tone-bar modes.
+- **Tone** voices the pickup and its high-frequency rolloff. **Gap** changes
+  virtual pickup proximity and therefore both level and nonlinearity. `TONE CV`
+  accepts polyphonic modulation at 10% of the knob range per volt.
+- **Decay** scales natural modal decay, **Release** controls damper speed, and
+  **Mechanics** adds synthesized hammer and key-release noise. `PEDAL` holds
+  released notes while its gate is high.
+- **Drive** controls the post-sum amplifier. `DIRECT POLY` exposes each raw
+  pickup on its own channel; `LEFT` and `RIGHT` expose the shared amplifier
+  (the initial prototype is dual mono).
+
+The default curves vary spectrum and decay by velocity and keyboard position.
+There is no dedicated bark detector or bass enhancement: low-note bark must
+arise from the resonator motion, nonlinear magnetic pickup, and shared
+amplifier. Its presence and onset are therefore calibration evidence for the
+physical model rather than a directly imposed feature.
+
+The magnetic pickup and shared amplifier nonlinearities run at 4x sample rate.
+High resonator modes taper smoothly before Nyquist, and live timbre/decay
+controls use short smoothing so calibration changes do not create misleading
+clicks.
 
 ### Slop and Slop 4
 
