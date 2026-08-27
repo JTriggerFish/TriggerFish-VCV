@@ -94,6 +94,11 @@ if(BUILD_TESTING)
 	target_link_libraries(triggerfish_early_reflections_benchmark PRIVATE
 		triggerfish_dsp)
 
+	add_executable(triggerfish_electric_piano_benchmark EXCLUDE_FROM_ALL
+		tests/electric_piano_benchmark.cpp)
+	target_link_libraries(triggerfish_electric_piano_benchmark PRIVATE
+		triggerfish_dsp)
+
 	add_executable(triggerfish_listener_position_analysis EXCLUDE_FROM_ALL
 		tools/analyze_listener_position.cpp)
 	target_link_libraries(triggerfish_listener_position_analysis PRIVATE

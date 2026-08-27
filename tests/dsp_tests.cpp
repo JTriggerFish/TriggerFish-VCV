@@ -99,6 +99,23 @@ namespace
 int main()
 {
 	{
+		double maximumTanhError = 0.0;
+		double maximumFalloffRelativeError = 0.0;
+		for (int index = 0; index <= 20000; ++index)
+		{
+			const double argument = -10.0 + 20.0 * index / 20000.0;
+			maximumTanhError = std::max(maximumTanhError, std::abs(
+				tfdsp::TanhPade76(argument) - std::tanh(argument)));
+			const double radius = 0.5 + 1.5 * index / 20000.0;
+			const double reference = std::pow(radius, -1.3);
+			maximumFalloffRelativeError = std::max(maximumFalloffRelativeError,
+				std::abs(tfdsp::PowNegative1p3(radius) - reference) / reference);
+		}
+		Check(maximumTanhError < 1.1e-4,
+			"electric piano pickup tanh approximation stays below its error bound");
+		Check(maximumFalloffRelativeError < 5.7e-5,
+			"electric piano pickup radial approximation stays below its error bound");
+
 		tfdsp::ElectricPianoControls controls;
 		tfdsp::ElectricPianoVoice softVoice;
 		tfdsp::ElectricPianoVoice hardVoice;
@@ -454,6 +471,28 @@ int main()
 		}
 		Check(preBendDifference < 1.0e-20 && postBendDifference > 1.0e-5,
 			"electric piano retunes an individual held voice when its pitch changes");
+
+		tfdsp::ElectricPianoVoice fmVoice;
+		tfdsp::ElectricPianoVoice fixedPitchVoice;
+		fmVoice.SetSampleRate(48000.0);
+		fixedPitchVoice.SetSampleRate(48000.0);
+		fmVoice.SetNoiseSeed(0x13579bdu);
+		fixedPitchVoice.SetNoiseSeed(0x13579bdu);
+		double fmDifference = 0.0;
+		bool fmFinite = true;
+		for (int sample = 0; sample < 8192; ++sample)
+		{
+			const double pitchModulation = 0.02 * std::sin(
+				2.0 * tfdsp::PI * 5.0 * sample / 48000.0);
+			const double modulated = fmVoice.Step(pitchModulation, 10.0, 0.8,
+				false, quietControls);
+			const double fixed = fixedPitchVoice.Step(0.0, 10.0, 0.8, false,
+				quietControls);
+			fmDifference += (modulated - fixed) * (modulated - fixed);
+			fmFinite = fmFinite && std::isfinite(modulated);
+		}
+		Check(fmFinite && fmDifference > 1.0e-6,
+			"electric piano preserves continuous per-sample pitch modulation");
 
 		tfdsp::ElectricPianoVoice editedVoice;
 		tfdsp::ElectricPianoVoice unchangedVoice;

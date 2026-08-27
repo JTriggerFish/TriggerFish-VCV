@@ -218,9 +218,32 @@ the tested range; junction-limited samples continue through checked refinement.
 The power-stage solve now always rechecks KCL after its first correction: the
 old unconditional acceptance left an absolute error that was small near the
 rails but disproportionate on quiet high notes. The regression suite records
-zero rejected solutions from small signal through calibrated overload. A new
-whole-module CPU benchmark is still required now that the former linear tone
-reduction has been removed and the power residual is explicitly verified.
+zero rejected solutions from small signal through calibrated overload.
+
+## Real-time cost and modulation readiness
+
+`tests/electric_piano_benchmark.cpp` measures one rendered second of a fixed
+voice, sixteen fixed voices, sixteen voices plus the shared amplifier, and
+sixteen continuously pitch-modulated voices. It is a repeatable development
+microbenchmark rather than a Rack CPU-meter claim.
+
+The four-times-oversampled pickup remains intact. Its two magnetic edges share
+one radial falloff calculation, and the remaining `tanh` and fractional-power
+evaluations use bounded approximations with explicit regression limits of
+`1.1e-4` absolute and `5.7e-5` relative respectively. On the release-Clang
+benchmark used during this pass, sixteen fixed voices fell from about 213 ms to
+110 ms per rendered second. Adding the shared nonlinear amplifier currently
+takes the complete sixteen-voice path to about 247 ms on that same machine.
+These figures are comparative only and will vary with compiler and processor.
+
+Pitch is deliberately not cached per strike. A pitch-only update recomputes
+modal angles, band limits and the state-preserving velocity transform every
+sample, while reusing pitch-invariant coupled-fork eigenvectors and decay radii.
+This reduced the benchmark's sixteen-voice continuously modulated case from
+about 382 ms to 189 ms without freezing or control-rating pitch. Future pitch
+CV/FM can therefore remain sample-accurate; other modulation targets should be
+classified similarly by whether they affect oscillator angle, decay, coupling,
+or pickup geometry.
 
 ## Figure 11-9 power modules and shared supply
 

@@ -10,6 +10,7 @@
 #include "models/PetersonPowerAmplifier.hpp"
 #include "models/PetersonPreAmplifier.hpp"
 #include "models/PetersonTonePreAmplifier.hpp"
+#include "tfdsp/approx.hpp"
 #include "tfdsp/sampleRate.hpp"
 
 namespace tfdsp
@@ -388,8 +389,7 @@ public:
 				pickupHorizontalOffset_ + horizontalPositions(index), pickupGap_);
 			const double emf = gradient[0] * verticalVelocities(index) +
 				gradient[1] * horizontalVelocities(index);
-			const double pickup = 0.135 * keyPickupSensitivity_ *
-				pickupAlignmentGain_ * inverseReferenceGradient_ * emf;
+			const double pickup = pickupVoltageScale_ * emf;
 			pickupValues(index) = std::clamp(pickup, -12.0, 12.0) +
 				mechanicalSignal;
 		}
@@ -675,6 +675,8 @@ private:
 			std::max(1.0e-6, proximityMagnitude), 0.85);
 		pickupAlignmentGain_ = std::clamp(ReferenceGradientMagnitude() /
 			std::max(1.0e-6, alignmentMagnitude) * proximityGain, 0.40, 5.0);
+		pickupVoltageScale_ = 0.135 * keyPickupSensitivity_ *
+			pickupAlignmentGain_ * inverseReferenceGradient_;
 		const double cutoff = std::min(0.42 * sampleRate_, 16500.0);
 		pickupLowPassCoefficient_ = 1.0 - std::exp(
 			-TwoPi * cutoff / sampleRate_);
@@ -700,20 +702,18 @@ private:
 			fundamental != cachedFundamental_ || damped != cachedDamped_;
 		if (!stateChange && !controlTick)
 			return;
-		if (!coefficientsDirty_ && fundamental == cachedFundamental_ &&
-			damped == cachedDamped_ && decay == cachedDecay_ &&
-			bell == cachedBell_ && coupling == cachedCoupling_ &&
-			release == cachedRelease_)
+		const bool couplingChanged = coefficientsDirty_ ||
+			coupling != cachedCoupling_;
+		const bool frequencyChanged = coefficientsDirty_ ||
+			fundamental != cachedFundamental_ || couplingChanged;
+		const bool decayChanged = coefficientsDirty_ ||
+			damped != cachedDamped_ || decay != cachedDecay_ ||
+			bell != cachedBell_ || couplingChanged || release != cachedRelease_;
+		if (!frequencyChanged && !decayChanged)
 			return;
 
-		const double releaseSeconds = 0.012 * std::pow(100.0, release);
-		const double decayScale = std::pow(4.0, 2.0 * (decay - 0.5));
-		const double bellDecay = 0.82 + 0.38 * bell;
-		frequencyVelocityScale_ = fundamental /
-			ElectricPianoReferenceFrequency;
-
 		const bool transformCoupledState = coupledForkInitialized_ &&
-			(fundamental != cachedFundamental_ || coupling != cachedCoupling_) &&
+			frequencyChanged &&
 			modeAngularFrequency_[0] > 0.0 && modeAngularFrequency_[1] > 0.0;
 		double oldTinePosition = 0.0;
 		double oldToneBarPosition = 0.0;
@@ -733,35 +733,74 @@ private:
 			}
 		}
 
-		const auto coupledFork = MakeElectricPianoCoupledForkProfile(coupling,
-			keyPosition_);
 		const double keyboardDecayScale = 1.18 - 0.50 * keyPosition_;
-		// Material loss is small. Most fundamental loss occurs when an
-		// unbalanced fork drives its resilient mounting block and harp. The
-		// support coordinate has been analytically reduced into the reaction
-		// factors above; anti-phase tine/bar motion cancels that force and raises
-		// Q, while an isolated tine rings briefly. The keyboard term represents
-		// increasing mounting loss toward the short, stiff treble assemblies.
-		const double intrinsicForkLifetime = IntrinsicForkDecaySeconds *
-			keyboardDecayScale;
-		const double supportLossRate = 0.45 + 3.55 * keyPosition_;
-		for (std::size_t index = 0; index < modes_.size(); ++index)
+		if (couplingChanged)
 		{
-			if (index < 2)
+			// Coupled-fork eigenvectors and support reaction depend on Coupling and
+			// key geometry, but not instantaneous pitch. Cache them so future FM only
+			// updates oscillator angles and the state-preserving velocity transform.
+			const auto coupledFork = MakeElectricPianoCoupledForkProfile(coupling,
+				keyPosition_);
+			for (std::size_t index = 0; index < 2; ++index)
 			{
 				modeRatio_[index] = coupledFork.frequencyRatios[index];
 				coupledToneBarRatio_[index] =
 					coupledFork.toneBarDisplacementRatios[index];
+				coupledSupportLossFactor_[index] =
+					coupledFork.supportReactionLossFactors[index];
 				modeInverseMass_[index] =
 					coupledFork.inverseModalMassRatios[index] /
 					std::max(1.0e-9, tineModalMass_);
 				contactModeShape_[index] = 0.82;
 			}
-			else if (index == 2)
-				modeRatio_[index] = 1.0018 +
-					0.0010 * (keyPosition_ - 0.5);
-			else
+			modeRatio_[2] = 1.0018 + 0.0010 * (keyPosition_ - 0.5);
+			for (std::size_t index = 3; index < modes_.size(); ++index)
 				modeRatio_[index] = KeyboardModeRatio(index, keyPosition_);
+		}
+
+		if (decayChanged)
+		{
+			const double releaseSeconds = 0.012 * std::pow(100.0, release);
+			const double decayScale = std::pow(4.0, 2.0 * (decay - 0.5));
+			const double bellDecay = 0.82 + 0.38 * bell;
+			// Material loss is small. Most fundamental loss occurs when an
+			// unbalanced fork drives its resilient mounting block and harp. The
+			// support coordinate has been analytically reduced into the reaction
+			// factors above; anti-phase tine/bar motion cancels that force and raises
+			// Q, while an isolated tine rings briefly. The keyboard term represents
+			// increasing mounting loss toward the short, stiff treble assemblies.
+			const double intrinsicForkLifetime = IntrinsicForkDecaySeconds *
+				keyboardDecayScale;
+			const double supportLossRate = 0.45 + 3.55 * keyPosition_;
+			for (std::size_t index = 0; index < modes_.size(); ++index)
+			{
+				double lifetime;
+				if (index < 2)
+				{
+					const double lossRate = 1.0 / intrinsicForkLifetime +
+						supportLossRate * coupledSupportLossFactor_[index];
+					lifetime = decayScale / std::max(1.0e-9, lossRate);
+				}
+				else
+					lifetime = HigherModeBaseDecaySeconds[index - 2] *
+						decayScale * keyboardDecayScale;
+				if (index >= 3)
+					lifetime *= bellDecay;
+				if (damped)
+					lifetime = std::min(lifetime, releaseSeconds *
+						(index >= 3 ? 0.55 : 1.0));
+				modeRadius_[index] = std::exp(-1.0 /
+					(std::max(0.002, lifetime) * sampleRate_));
+				modeSubstepRadius_[index] = std::exp(-1.0 /
+					(std::max(0.002, lifetime) * sampleRate_ *
+						static_cast<double>(ContactOversamplingFactor)));
+			}
+		}
+
+		frequencyVelocityScale_ = fundamental /
+			ElectricPianoReferenceFrequency;
+		for (std::size_t index = 0; index < modes_.size(); ++index)
+		{
 			const double frequency = fundamental * modeRatio_[index];
 			const double normalizedFrequency = frequency / sampleRate_;
 			modeBandlimitGain_[index] = ElectricPianoModeBandlimitGain(
@@ -777,35 +816,14 @@ private:
 				modeAngularFrequency_[index] = 0.0;
 				continue;
 			}
-			double lifetime;
-			if (index < 2)
-			{
-				const double lossRate = 1.0 / intrinsicForkLifetime +
-					supportLossRate *
-					coupledFork.supportReactionLossFactors[index];
-				lifetime = decayScale / std::max(1.0e-9, lossRate);
-			}
-			else
-				lifetime = HigherModeBaseDecaySeconds[index - 2] * decayScale *
-					keyboardDecayScale;
-			if (index >= 3)
-				lifetime *= bellDecay;
-			if (damped)
-				lifetime = std::min(lifetime, releaseSeconds *
-					(index >= 3 ? 0.55 : 1.0));
-			const double radius = std::exp(-1.0 /
-				(std::max(0.002, lifetime) * sampleRate_));
 			const double angle = TwoPi * frequency / sampleRate_;
-			modeRealCoefficient_[index] = radius * std::cos(angle);
-			modeImaginaryCoefficient_[index] = radius * std::sin(angle);
-			const double substepRadius = std::exp(-1.0 /
-				(std::max(0.002, lifetime) * sampleRate_ *
-					static_cast<double>(ContactOversamplingFactor)));
+			modeRealCoefficient_[index] = modeRadius_[index] * std::cos(angle);
+			modeImaginaryCoefficient_[index] = modeRadius_[index] * std::sin(angle);
 			const double substepAngle = angle /
 				static_cast<double>(ContactOversamplingFactor);
-			modeSubstepRealCoefficient_[index] = substepRadius *
+			modeSubstepRealCoefficient_[index] = modeSubstepRadius_[index] *
 				std::cos(substepAngle);
-			modeSubstepImaginaryCoefficient_[index] = substepRadius *
+			modeSubstepImaginaryCoefficient_[index] = modeSubstepRadius_[index] *
 				std::sin(substepAngle);
 			modeAngularFrequency_[index] = TwoPi * frequency;
 		}
@@ -1019,23 +1037,25 @@ private:
 			HorizontalFieldScale * horizontal * horizontal + GapRegularization);
 		const double radialDerivative = HorizontalFieldScale * horizontal /
 			std::max(1.0e-9, radialDistance);
+		// Both pole edges share the same radial falloff. This fractional power is
+		// one of the dominant steady-state costs because the pickup is evaluated
+		// four times per sample for every voice; calculate it once per field point.
+		const double radialFalloff = PowNegative1p3(radialDistance);
 
 		double verticalGradient = 0.0;
 		double radialGradient = 0.0;
 		auto accumulateEdge = [&](double edgePosition, double weight,
 			double edgeRadius)
 		{
-			constexpr double FieldFalloff = 1.30;
 			constexpr double GapBroadening = 0.180;
 			const double width = edgeRadius + GapBroadening * radialDistance;
 			const double inverseWidth = 1.0 / std::max(1.0e-9, width);
 			const double displacement = vertical - edgePosition;
 			const double argument = displacement * inverseWidth;
-			const double transition = std::tanh(argument);
+			const double transition = TanhPade76(argument);
 			const double transitionDerivative = 1.0 -
 				transition * transition;
-			const double amplitude = weight * std::pow(radialDistance,
-				-FieldFalloff);
+			const double amplitude = weight * radialFalloff;
 			verticalGradient += amplitude * transitionDerivative * inverseWidth;
 			const double amplitudeDerivative = -FieldFalloff * amplitude /
 				std::max(1.0e-9, radialDistance);
@@ -1068,6 +1088,7 @@ private:
 	}
 
 	static constexpr double TwoPi = 6.283185307179586476925286766559;
+	static constexpr double FieldFalloff = 1.30;
 	static constexpr double TineDisplacementScale = 0.56;
 	static constexpr int ContactOversamplingFactor = 16;
 	static constexpr double MinimumHammerContactVelocity = 1.0;
@@ -1093,8 +1114,10 @@ private:
 	std::array<Mode, 8> modes_{};
 	std::array<double, 8> modeRealCoefficient_{};
 	std::array<double, 8> modeImaginaryCoefficient_{};
+	std::array<double, 8> modeRadius_{};
 	std::array<double, 8> modeSubstepRealCoefficient_{};
 	std::array<double, 8> modeSubstepImaginaryCoefficient_{};
+	std::array<double, 8> modeSubstepRadius_{};
 	std::array<double, 8> modeAngularFrequency_{};
 	std::array<double, 8> modeOutputWeight_{};
 	std::array<double, 8> modeHorizontalWeight_{};
@@ -1104,6 +1127,7 @@ private:
 	std::array<double, 8> contactModeShape_{};
 	std::array<double, 8> modeInverseMass_{};
 	std::array<double, 2> coupledToneBarRatio_{};
+	std::array<double, 2> coupledSupportLossFactor_{};
 	double sampleRate_ = 48000.0;
 	double latchedVelocity_{};
 	double keyPosition_ = 0.5;
@@ -1118,6 +1142,7 @@ private:
 	double pickupHorizontalOffset_ = ReferencePickupHorizontal;
 	double inverseReferenceGradient_ = 1.0 / ReferenceGradientMagnitude();
 	double pickupAlignmentGain_ = 1.0;
+	double pickupVoltageScale_{};
 	double mechanicsLevel_{};
 	double hammerNoiseColour_ = 0.5;
 	double hammerNoiseDecay_ = 0.9979;
