@@ -16,7 +16,7 @@ struct TfElectricPiano : Module
 {
 	enum ParamIds
 	{
-		TOUCH,
+		VELOCITY_CURVE,
 		DYNAMICS,
 		BODY,
 		BELL,
@@ -72,23 +72,23 @@ struct TfElectricPiano : Module
 	TfElectricPiano()
 	{
 		config(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS);
-		configParam(TOUCH, 0.0f, 1.0f, 0.5f, "Keyboard touch", "%", 0.0f,
-			100.0f);
-		configParam(DYNAMICS, 0.0f, 1.0f, 0.75f, "Velocity dynamics", "%",
+		configParam(VELOCITY_CURVE, 0.0f, 1.0f, 0.5f, "Velocity curve", "%",
+			0.0f, 100.0f);
+		configParam(DYNAMICS, 0.0f, 1.0f, 1.0f, "Velocity dynamics", "%",
 			0.0f, 100.0f);
 		configParam(BODY, 0.0f, 1.0f, 0.62f, "Tine and tone-bar body", "%",
 			0.0f, 100.0f);
 		configParam(BELL, 0.0f, 1.0f, 0.52f, "Inharmonic bell", "%", 0.0f,
 			100.0f);
-		configParam(COUPLING, 0.0f, 1.0f, 0.58f,
-			"Tine and tone-bar coupling", "%", 0.0f, 100.0f);
-		configParam(HAMMER, 0.0f, 1.0f, 0.52f, "Hammer hardness", "%", 0.0f,
-			100.0f);
-		configParam(TONE, 0.0f, 1.0f, 0.55f, "Pickup voicing", "%", 0.0f,
-			100.0f);
+		configParam(COUPLING, 0.0f, 1.0f, 0.50f,
+			"Tine/tone-bar common-base coupling", "%", 0.0f, 100.0f);
+		configParam(HAMMER, 0.0f, 1.0f, 0.52f,
+			"Hammer hardness (applies on the next strike)", "%", 0.0f, 100.0f);
+		configParam(TONE, 0.0f, 1.0f, 0.55f, "Pickup tine alignment", "%",
+			0.0f, 100.0f);
 		configParam(GAP, 0.0f, 1.0f, 0.48f, "Pickup proximity", "%", 0.0f,
 			100.0f);
-		configParam(DECAY, 0.0f, 1.0f, 0.58f, "Natural decay", "%", 0.0f,
+		configParam(DECAY, 0.0f, 1.0f, 0.50f, "Natural decay", "%", 0.0f,
 			100.0f);
 		configParam(RELEASE, 0.0f, 1.0f, 0.24f, "Damper release", "%", 0.0f,
 			100.0f);
@@ -101,7 +101,7 @@ struct TfElectricPiano : Module
 		configInput(GATE_INPUT, "Key gate");
 		configInput(VELOCITY_INPUT, "Strike velocity (0V to 10V)");
 		configInput(PEDAL_INPUT, "Sustain pedal gate");
-		configInput(TONE_INPUT, "Polyphonic pickup voicing CV");
+		configInput(TONE_INPUT, "Polyphonic pickup tine-alignment CV");
 		configOutput(DIRECT_OUTPUT, "Individual pickup direct polyphonic audio");
 		configOutput(LEFT_OUTPUT, "Shared amplifier left audio");
 		configOutput(RIGHT_OUTPUT, "Shared amplifier right audio");
@@ -174,7 +174,7 @@ struct TfElectricPiano : Module
 	tfdsp::ElectricPianoControls Controls()
 	{
 		tfdsp::ElectricPianoControls controls;
-		controls.touch = params[TOUCH].getValue();
+		controls.velocityCurve = params[VELOCITY_CURVE].getValue();
 		controls.dynamics = params[DYNAMICS].getValue();
 		controls.body = params[BODY].getValue();
 		controls.bell = params[BELL].getValue();
@@ -309,7 +309,7 @@ struct TfElectricPianoWidget : ModuleWidget
 			RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
 
 		addParam(createParam<TfCvKnob>(Vec(16.0f, 48.0f), module,
-			TfElectricPiano::TOUCH));
+			TfElectricPiano::VELOCITY_CURVE));
 		addParam(createParam<TfCvKnob>(Vec(72.0f, 48.0f), module,
 			TfElectricPiano::DYNAMICS));
 		addParam(createParam<TfCvKnob>(Vec(128.0f, 48.0f), module,

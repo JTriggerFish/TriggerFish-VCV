@@ -58,35 +58,54 @@ Circuit-modelled sound generators and processors, plus pitch utilities for VCV R
 ### Electric Piano
 
 Electric Piano is a sample-free, velocity-sensitive instrument voice loosely
-inspired by a Rhodes Mk1. Each note combines coupled fundamental modes, a
-short-lived inharmonic bell spectrum, procedural hammer and damper noise, and a
-nonlinear magnetic-pickup response. The sixteen pickup voices then meet in one
-shared asymmetric amplifier, so chords overload differently from isolated
-notes.
+inspired by a Rhodes Mk1. A finite-mass hammer is coupled bidirectionally to a
+modal tine/tone-bar system through a Hunt-Crossley contact law. Compression and
+relative hammer/tine velocity determine force and hysteretic loss at every
+oversample, so contact duration, rebound, and modal energy distribution emerge
+from the collision rather than from a prescribed brightness envelope. Two
+transverse tine coordinates then traverse a finite-pole magnetic-flux field.
+The sixteen pickup voices meet in one shared, stateful amplifier, so chords
+compress and overload differently from isolated notes.
 
 The resonator state represents displacement. An initial cantilever-scaling
-profile derives modal mass and displacement-per-impulse from each key's exact
-pitch, while a separate per-key pickup-sensitivity curve balances small-signal
-level without removing the larger displacement of low tines. Repeated strikes
-add impulses to existing motion. When a Rack MIDI channel is reassigned, its
-released note moves into one of sixteen internal tail slots instead of being
-silenced or retuned.
+profile derives modal mass from each key's exact pitch; modal mass and frequency
+together determine displacement per impulse. A separate per-key pickup-
+sensitivity curve balances small-signal level without removing the larger
+displacement of low tines. Repeated strikes add impulses to existing motion.
+When a Rack MIDI channel is reassigned, its released note moves into one of
+sixteen internal tail slots instead of being silenced or retuned.
 
-- **Touch** curves incoming 0–10 V velocity to suit the controller, while
-  **Dynamics** sets how strongly velocity changes loudness.
-- **Body**, **Bell**, and **Hammer** balance the sustained tine/tone-bar body,
-  the bright initial partials, and strike hardness. **Coupling** changes the
-  frequency split, excitation, and pickup contribution of the coupled tine and
-  tone-bar modes.
-- **Tone** voices the pickup and its high-frequency rolloff. **Gap** changes
-  virtual pickup proximity and therefore both level and nonlinearity. `TONE CV`
-  accepts polyphonic modulation at 10% of the knob range per volt.
+- **Vel Curve** curves incoming 0–10 V velocity to suit the controller, while
+  **Dynamics** sets the range of physical hammer speed. That speed changes both
+  loudness and timbre through the coupled collision and pickup excursion. Its
+  default is the full incoming range; reduce it only for a less dynamic
+  controller response. An inaudible sub-MIDI hammer-speed floor treats tiny
+  positive CV residue as zero before contact begins; active collisions are never
+  ended by an elapsed-time cutoff.
+- **Body** and **Bell** balance the coupled fundamental body and the signed,
+  short-lived inharmonic modes. **Hammer** changes neoprene stiffness,
+  hysteretic loss, and contact duration rather than directly boosting Bell or
+  treble; as a strike property, changes apply to newly played notes. **Coupling**
+  changes the common-base stiffness of a genuine two-coordinate tine/tone-bar
+  system. Its normal-mode frequencies, hammer projections, modal masses, decay,
+  and tine pickup motion are derived together. Weak coupling lets the tine drive
+  energy into the lossy mounting block; strong anti-phase tine/bar motion cancels
+  that reaction, raising Q and adding a short tone-bar sub-fundamental bloom.
+  This changes body and sustain rather than crossfading levels.
+- **Tone** changes the tine's vertical alignment to the pickup pole and hence
+  the balance of fundamental and curvature-generated harmonics. **Gap** changes
+  front-to-back pickup proximity and therefore both level and dynamic response.
+  `TONE CV` accepts polyphonic modulation at 10% of the knob range per volt.
 - **Decay** scales natural modal decay, **Release** controls damper speed, and
-  **Mechanics** adds synthesized hammer and key-release noise. `PEDAL` holds
-  released notes while its gate is high.
-- **Drive** controls the post-sum amplifier. `DIRECT POLY` exposes each raw
-  pickup on its own channel; `LEFT` and `RIGHT` expose the shared amplifier
-  (the initial prototype is dual mono).
+  **Mechanics** ranges from a clean pickup sound to deliberately emphasized,
+  differentiated keybed, key-release, and damper events. The calibrated default
+  remains subordinate to the pitched voice. `PEDAL` holds released notes while
+  its gate is high.
+- **Drive** controls level into the post-sum electronics. The amplifier combines
+  harp/load voicing, asymmetric feedback saturation, level-dependent supply
+  recovery, and restrained cabinet filtering rather than a static waveshaper.
+  `DIRECT POLY` exposes each pickup channel; `LEFT` and `RIGHT` expose the shared
+  amplified output (currently dual mono).
 
 The default curves vary spectrum and decay by velocity and keyboard position.
 There is no dedicated bark detector or bass enhancement: low-note bark must
@@ -95,9 +114,9 @@ amplifier. Its presence and onset are therefore calibration evidence for the
 physical model rather than a directly imposed feature.
 
 The magnetic pickup and shared amplifier nonlinearities run at 4x sample rate.
-High resonator modes taper smoothly before Nyquist, and live timbre/decay
-controls use short smoothing so calibration changes do not create misleading
-clicks.
+High resonator modes taper smoothly before Nyquist. Live timbre controls use
+short smoothing; Decay uses a slower transition and staggered control-rate
+coefficient updates so polyphonic adjustment remains continuous and inexpensive.
 
 ### Slop and Slop 4
 

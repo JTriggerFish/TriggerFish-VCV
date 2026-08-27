@@ -14,7 +14,7 @@
       "version": "2.6.6",
       "params": [],
       "data": {
-        "text": "TriggerFish Electric Piano playable prototype\n\nSelect MIDI and audio devices, then play from a velocity-sensitive keyboard. MIDI-CV is set to 16-channel polyphonic mode; pitch, gate, and velocity feed the instrument directly.\n\nStart with TOUCH and DYNAMICS to match your controller. BODY, BELL, and HAMMER shape the strike; COUPLING sets interaction between the tine and tone-bar modes. TONE and GAP move the nonlinear pickup response. DECAY and RELEASE shape the tine and damper, MECHANICS adds key noise, and DRIVE overloads the shared amplifier. DIRECT POLY bypasses that final amp.\n\nThe -6 dB master protects the first listen. PEDAL accepts a gate; patch your preferred MIDI CC-to-CV module there for sustain."
+        "text": "TriggerFish Electric Piano playable prototype\n\nSelect MIDI and audio devices, then play from a velocity-sensitive keyboard. MIDI-CV is set to 16-channel polyphonic mode; pitch, gate, and velocity feed the instrument directly.\n\nStart with VEL CURVE and DYNAMICS to match your controller. BODY and BELL balance the resonances, HAMMER changes physical tip stiffness, and COUPLING moves from a short isolated tine to a sustained common-base tuning fork. TONE changes vertical tine/pickup alignment; GAP changes pickup proximity and dynamic response. DECAY scales the natural tine/tone-bar ring time; RELEASE sets damper speed. MECHANICS adds synchronized key noise, and DRIVE overloads the shared amplifier. DIRECT POLY bypasses that final amp.\n\nThe -6 dB master protects the first listen. PEDAL accepts a gate; patch your preferred MIDI CC-to-CV module there for sustain."
       },
       "pos": [
         0,
@@ -52,7 +52,7 @@
         },
         {
           "id": 1,
-          "value": 0.75
+          "value": 1.0
         },
         {
           "id": 2,
@@ -64,7 +64,7 @@
         },
         {
           "id": 4,
-          "value": 0.58
+          "value": 0.5
         },
         {
           "id": 5,
@@ -80,7 +80,7 @@
         },
         {
           "id": 8,
-          "value": 0.58
+          "value": 0.5
         },
         {
           "id": 9,

@@ -71,6 +71,27 @@ namespace
 		}
 		return std::hypot(real, imaginary) / signal.size();
 	}
+
+	double WindowedHarmonicMagnitude(const std::vector<double>& signal,
+		double normalizedFrequency, std::size_t begin, std::size_t end)
+	{
+		constexpr double TwoPi = 6.283185307179586476925286766559;
+		begin = std::min(begin, signal.size());
+		end = std::clamp(end, begin, signal.size());
+		if (begin == end)
+			return 0.0;
+		double real = 0.0;
+		double imaginary = 0.0;
+		for (std::size_t index = begin; index < end; ++index)
+		{
+			const double angle = TwoPi * normalizedFrequency *
+				static_cast<double>(index - begin);
+			real += signal[index] * std::cos(angle);
+			imaginary -= signal[index] * std::sin(angle);
+		}
+		return std::hypot(real, imaginary) /
+			static_cast<double>(end - begin);
+	}
 }
 
 int main()
@@ -105,13 +126,19 @@ int main()
 		const auto lowKey = tfdsp::MakeElectricPianoKeyProfile(-3.0);
 		const auto middleKey = tfdsp::MakeElectricPianoKeyProfile(0.0);
 		const auto highKey = tfdsp::MakeElectricPianoKeyProfile(3.0);
+		auto displacementPerImpulse = [](const auto& key)
+		{
+			return 1.0 / (key.modalMassRatio * key.fundamentalHz);
+		};
 		Check(lowKey.modalMassRatio > middleKey.modalMassRatio &&
 			middleKey.modalMassRatio > highKey.modalMassRatio &&
-			lowKey.displacementPerImpulse > middleKey.displacementPerImpulse &&
-			middleKey.displacementPerImpulse > highKey.displacementPerImpulse &&
+			displacementPerImpulse(lowKey) >
+				displacementPerImpulse(middleKey) &&
+			displacementPerImpulse(middleKey) >
+				displacementPerImpulse(highKey) &&
 			lowKey.pickupSensitivity > middleKey.pickupSensitivity &&
-			middleKey.pickupSensitivity > highKey.pickupSensitivity,
-			"electric piano key model derives displacement from modal mass and pitch");
+			highKey.pickupSensitivity > middleKey.pickupSensitivity,
+			"electric piano key model separates mechanical impedance from per-key pickup calibration");
 		Check(tfdsp::ElectricPianoModeBandlimitGain(0.31 * 48000.0,
 			48000.0) == 1.0 &&
 			tfdsp::ElectricPianoModeBandlimitGain(0.385 * 48000.0,
@@ -121,6 +148,195 @@ int main()
 			tfdsp::ElectricPianoModeBandlimitGain(0.45 * 48000.0,
 				48000.0) == 0.0,
 			"electric piano high modes taper smoothly before Nyquist");
+
+		const auto isolatedFork = tfdsp::MakeElectricPianoCoupledForkProfile(
+			0.0, middleKey.keyboardPosition);
+		const auto factoryFork = tfdsp::MakeElectricPianoCoupledForkProfile(
+			controls.coupling, middleKey.keyboardPosition);
+		const auto coupledFork = tfdsp::MakeElectricPianoCoupledForkProfile(
+			1.0, middleKey.keyboardPosition);
+		Check(std::abs(controls.coupling - 0.5) < 1.0e-12,
+			"electric piano Coupling defaults to the calibrated control midpoint");
+		auto modalCompleteness = [](const auto& profile)
+		{
+			return profile.inverseModalMassRatios[0] +
+				profile.inverseModalMassRatios[1];
+		};
+		auto massOrthogonality = [](const auto& profile)
+		{
+			return 1.0 + profile.toneBarModalMassRatio *
+				profile.toneBarDisplacementRatios[0] *
+				profile.toneBarDisplacementRatios[1];
+		};
+		Check(std::abs(modalCompleteness(isolatedFork) - 1.0) < 1.0e-9 &&
+			std::abs(modalCompleteness(factoryFork) - 1.0) < 1.0e-9 &&
+			std::abs(modalCompleteness(coupledFork) - 1.0) < 1.0e-9 &&
+			std::abs(massOrthogonality(factoryFork)) < 1.0e-9,
+			"electric piano coupled-fork eigenvectors conserve tine impulse and are mass orthogonal");
+		Check(coupledFork.frequencyRatios[0] <
+			factoryFork.frequencyRatios[0] &&
+			factoryFork.frequencyRatios[0] < isolatedFork.frequencyRatios[0] &&
+			coupledFork.inverseModalMassRatios[0] >
+				2.0 * factoryFork.inverseModalMassRatios[0] &&
+			factoryFork.inverseModalMassRatios[0] >
+				10.0 * isolatedFork.inverseModalMassRatios[0],
+			"electric piano Coupling increases tone-bar hybridization and normal-mode separation");
+		Check(isolatedFork.supportReactionLossFactors[1] >
+			3.0 * factoryFork.supportReactionLossFactors[1] &&
+			factoryFork.supportReactionLossFactors[1] >
+			20.0 * coupledFork.supportReactionLossFactors[1],
+			"electric piano tone bar cancels lossy common-support reaction at strong coupling");
+		for (double sampleRate : {8000.0, 44100.0, 96000.0, 192000.0})
+		{
+			tfdsp::ElectricPianoVoice rateVoice;
+			rateVoice.SetSampleRate(sampleRate);
+			auto stressedControls = controls;
+			stressedControls.hammer = 1.0;
+			stressedControls.gap = 1.0;
+			double peak = 0.0;
+			bool rateFinite = true;
+			const int samples = static_cast<int>(0.12 * sampleRate);
+			for (int sample = 0; sample < samples; ++sample)
+			{
+				const double output = rateVoice.Step(1.0, 10.0, 1.0, false,
+					stressedControls);
+				rateFinite = rateFinite && std::isfinite(output);
+				peak = std::max(peak, std::abs(output));
+			}
+			Check(rateFinite && peak > 1.0e-5 && peak < 12.0,
+				"electric piano compliant contact and pickup remain stable across sample rates");
+		}
+
+		// Continuous Rack CV can contain tiny positive residue far below MIDI's
+		// minimum nonzero velocity. It must not start a long, inaudible 16x
+		// collision, while a strike immediately above the calibrated hammer-speed
+		// floor must still run to natural separation.
+		bool subThresholdIsSilent = true;
+		bool thresholdContactsComplete = true;
+		bool thresholdOutputIsNonzero = true;
+		double minimumThresholdDuration =
+			std::numeric_limits<double>::infinity();
+		double maximumThresholdDuration = 0.0;
+		for (double sampleRate : {8000.0, 44100.0, 48000.0, 96000.0, 192000.0})
+		{
+			auto thresholdControls = controls;
+			thresholdControls.hammer = 0.0;
+			thresholdControls.mechanics = 0.0;
+			tfdsp::ElectricPianoVoice belowThresholdVoice;
+			tfdsp::ElectricPianoVoice aboveThresholdVoice;
+			belowThresholdVoice.SetSampleRate(sampleRate);
+			aboveThresholdVoice.SetSampleRate(sampleRate);
+			double belowThresholdEnergy = 0.0;
+			for (int sample = 0; sample < 128; ++sample)
+			{
+				const double output = belowThresholdVoice.Step(-3.0, 10.0,
+					0.0010, false, thresholdControls);
+				belowThresholdEnergy += output * output;
+			}
+			subThresholdIsSilent = subThresholdIsSilent &&
+				belowThresholdEnergy < 1.0e-20 &&
+				!belowThresholdVoice.ContactActive() &&
+				belowThresholdVoice.ContactAge() == 0.0;
+
+			bool contactStarted = false;
+			bool contactCompleted = false;
+			double aboveThresholdEnergy = 0.0;
+			const int limit = static_cast<int>(std::ceil(0.100 * sampleRate));
+			for (int sample = 0; sample < limit; ++sample)
+			{
+				const double output = aboveThresholdVoice.Step(-3.0, 10.0,
+					0.0011, false, thresholdControls);
+				aboveThresholdEnergy += output * output;
+				contactStarted = contactStarted ||
+					aboveThresholdVoice.ContactActive();
+				if (contactStarted && !aboveThresholdVoice.ContactActive())
+				{
+					contactCompleted = true;
+					break;
+				}
+			}
+			const double duration = aboveThresholdVoice.ContactAge();
+			minimumThresholdDuration = std::min(minimumThresholdDuration,
+				duration);
+			maximumThresholdDuration = std::max(maximumThresholdDuration,
+				duration);
+			thresholdContactsComplete = thresholdContactsComplete &&
+				contactStarted && contactCompleted;
+			thresholdOutputIsNonzero = thresholdOutputIsNonzero &&
+				aboveThresholdEnergy > 1.0e-12;
+		}
+		Check(subThresholdIsSilent && thresholdContactsComplete &&
+			thresholdOutputIsNonzero &&
+			maximumThresholdDuration - minimumThresholdDuration < 0.00020,
+			"electric piano rejects inaudible velocity residue without truncating a valid collision");
+
+		// Contact must end by physical separation throughout the supported range.
+		// This grid includes the soft bass combinations that previously reached
+		// an arbitrary 12 ms cutoff while the hammer was still compressed.
+		constexpr std::array<double, 5> ContactSampleRates{
+			8000.0, 44100.0, 48000.0, 96000.0, 192000.0};
+		constexpr std::array<double, 5> ContactPitches{
+			-6.0, -3.0, 0.0, 3.0, 6.0};
+		constexpr std::array<double, 3> ContactHardnesses{0.0, 0.52, 1.0};
+		constexpr std::array<double, 5> ContactVelocities{
+			1.0 / 127.0, 0.03, 0.10, 0.30, 1.0};
+		bool allContactsComplete = true;
+		bool contactDurationsAreRateInvariant = true;
+		double longestContact = 0.0;
+		for (double pitch : ContactPitches)
+		{
+			for (double hardness : ContactHardnesses)
+			{
+				for (double velocity : ContactVelocities)
+				{
+					double minimumDuration =
+						std::numeric_limits<double>::infinity();
+					double maximumDuration = 0.0;
+					for (double sampleRate : ContactSampleRates)
+					{
+						auto contactControls = controls;
+						contactControls.mechanics = 0.0;
+						contactControls.hammer = hardness;
+						tfdsp::ElectricPianoVoice contactVoice;
+						contactVoice.SetSampleRate(sampleRate);
+						bool finiteContact = true;
+						bool completed = false;
+						const int limit = static_cast<int>(
+							std::ceil(0.050 * sampleRate));
+						for (int sample = 0; sample < limit; ++sample)
+						{
+							const double output = contactVoice.Step(pitch, 10.0,
+								velocity, false, contactControls);
+							finiteContact = finiteContact && std::isfinite(output);
+							if (!contactVoice.ContactActive())
+							{
+								completed = true;
+								break;
+							}
+						}
+						const double duration = contactVoice.ContactAge();
+						minimumDuration = std::min(minimumDuration, duration);
+						maximumDuration = std::max(maximumDuration, duration);
+						longestContact = std::max(longestContact, duration);
+						for (int sample = 0; sample < 64; ++sample)
+							contactVoice.Step(pitch, 10.0, velocity, false,
+								contactControls);
+						allContactsComplete = allContactsComplete && finiteContact &&
+							completed && !contactVoice.ContactActive();
+					}
+					contactDurationsAreRateInvariant =
+						contactDurationsAreRateInvariant &&
+						maximumDuration - minimumDuration < 0.00020;
+				}
+			}
+		}
+		if (!(allContactsComplete && contactDurationsAreRateInvariant &&
+			longestContact < 0.045))
+			std::cerr << "electric piano longest physical contact " <<
+				longestContact << " seconds\n";
+		Check(allContactsComplete && contactDurationsAreRateInvariant &&
+			longestContact < 0.045,
+			"electric piano hammer separates naturally and consistently across its full control range");
 
 		auto silentControls = controls;
 		silentControls.mechanics = 0.0;
@@ -133,7 +349,8 @@ int main()
 				false, silentControls);
 			zeroVelocityEnergy += output * output;
 		}
-		Check(zeroVelocityEnergy < 1.0e-20,
+		Check(zeroVelocityEnergy < 1.0e-20 &&
+			!zeroVelocityVoice.ContactActive(),
 			"electric piano zero velocity produces no hammer or tine excitation");
 
 		constexpr std::array<double, 6> TestVelocities{
@@ -179,13 +396,31 @@ int main()
 			"electric piano pickup gap changes physical sensitivity as well as curvature");
 
 		tfdsp::ElectricPianoVoice restruckVoice;
+		tfdsp::ElectricPianoVoice zeroRetriggerVoice;
 		restruckVoice.SetSampleRate(48000.0);
+		zeroRetriggerVoice.SetSampleRate(48000.0);
 		for (int sample = 0; sample < 1200; ++sample)
+		{
 			restruckVoice.Step(0.0, 10.0, 1.0, false, silentControls);
+			zeroRetriggerVoice.Step(0.0, 10.0, 1.0, false, silentControls);
+		}
 		restruckVoice.Step(0.0, 0.0, 0.0, false, silentControls);
-		restruckVoice.Step(0.0, 10.0, 0.0, false, silentControls);
-		Check(restruckVoice.Energy() > 1.0e-6,
-			"electric piano restrike preserves existing tine motion and adds an impulse");
+		zeroRetriggerVoice.Step(0.0, 0.0, 0.0, false, silentControls);
+		double retriggerDifference = 0.0;
+		double zeroRetriggerEnergy = 0.0;
+		for (int sample = 0; sample < 2048; ++sample)
+		{
+			const double restruck = restruckVoice.Step(0.0, 10.0, 0.65,
+				false, silentControls);
+			const double unchanged = zeroRetriggerVoice.Step(0.0, 10.0, 0.0,
+				false, silentControls);
+			const double difference = restruck - unchanged;
+			retriggerDifference += difference * difference;
+			zeroRetriggerEnergy += unchanged * unchanged;
+		}
+		Check(zeroRetriggerVoice.Energy() > 1.0e-6 &&
+			retriggerDifference > 0.10 * zeroRetriggerEnergy,
+			"electric piano restrike preserves existing tine motion and applies a new physical collision");
 
 		auto quietControls = controls;
 		quietControls.mechanics = 0.0;
@@ -241,6 +476,98 @@ int main()
 		Check(liveControlDifference > 1.0e-5,
 			"electric piano cached timbre coefficients follow live controls");
 
+		auto weakCouplingControls = quietControls;
+		auto strongCouplingControls = quietControls;
+		weakCouplingControls.coupling = 0.0;
+		strongCouplingControls.coupling = 1.0;
+		tfdsp::ElectricPianoVoice weakCouplingVoice;
+		tfdsp::ElectricPianoVoice strongCouplingVoice;
+		weakCouplingVoice.SetSampleRate(48000.0);
+		strongCouplingVoice.SetSampleRate(48000.0);
+		std::vector<double> weakCouplingSignal(48000);
+		std::vector<double> strongCouplingSignal(48000);
+		for (std::size_t sample = 0; sample < weakCouplingSignal.size(); ++sample)
+		{
+			weakCouplingSignal[sample] = weakCouplingVoice.Step(0.0, 10.0,
+				0.85, false, weakCouplingControls);
+			strongCouplingSignal[sample] = strongCouplingVoice.Step(0.0, 10.0,
+				0.85, false, strongCouplingControls);
+		}
+		auto couplingDifference = [&](std::size_t begin, std::size_t end)
+		{
+			double weakEnergy = 0.0;
+			double strongEnergy = 0.0;
+			double cross = 0.0;
+			for (std::size_t sample = begin; sample < end; ++sample)
+			{
+				weakEnergy += weakCouplingSignal[sample] *
+					weakCouplingSignal[sample];
+				strongEnergy += strongCouplingSignal[sample] *
+					strongCouplingSignal[sample];
+				cross += weakCouplingSignal[sample] *
+					strongCouplingSignal[sample];
+			}
+			const double gain = cross / std::max(1.0e-20, strongEnergy);
+			double residualEnergy = 0.0;
+			for (std::size_t sample = begin; sample < end; ++sample)
+			{
+				const double residual = weakCouplingSignal[sample] -
+					gain * strongCouplingSignal[sample];
+				residualEnergy += residual * residual;
+			}
+			return std::array<double, 2>{
+				std::sqrt(residualEnergy / std::max(1.0e-20, weakEnergy)),
+				10.0 * std::log10(std::max(1.0e-20,
+					strongEnergy / weakEnergy))};
+		};
+		const auto couplingAttack = couplingDifference(0, 2400);
+		const auto couplingSustain = couplingDifference(12000, 48000);
+		Check(couplingAttack[0] > 0.12 && couplingSustain[0] > 0.22 &&
+			std::abs(couplingAttack[1]) < 1.0 && couplingSustain[1] > 3.0,
+			"electric piano Coupling audibly changes support loss and two-body evolution without acting as attack gain");
+
+		tfdsp::ElectricPianoVoice sweptCouplingVoice;
+		tfdsp::ElectricPianoVoice fixedCouplingVoice;
+		sweptCouplingVoice.SetSampleRate(48000.0);
+		fixedCouplingVoice.SetSampleRate(48000.0);
+		double sweptCouplingDifference = 0.0;
+		double fixedCouplingEnergy = 0.0;
+		double preSweepStep = 0.0;
+		double duringSweepStep = 0.0;
+		double previousSweptOutput = 0.0;
+		for (int sample = 0; sample < 24000; ++sample)
+		{
+			auto sweptControls = weakCouplingControls;
+			if (sample >= 4096)
+				sweptControls.coupling = 1.0;
+			const double sweptOutput = sweptCouplingVoice.Step(0.0, 10.0, 0.85,
+				false, sweptControls);
+			const double fixedOutput = fixedCouplingVoice.Step(0.0, 10.0, 0.85,
+				false, weakCouplingControls);
+			if (sample > 2048 && sample < 4096)
+				preSweepStep = std::max(preSweepStep,
+					std::abs(sweptOutput - previousSweptOutput));
+			if (sample >= 4096 && sample < 6144)
+				duringSweepStep = std::max(duringSweepStep,
+					std::abs(sweptOutput - previousSweptOutput));
+			if (sample >= 8192)
+			{
+				const double difference = sweptOutput - fixedOutput;
+				sweptCouplingDifference += difference * difference;
+				fixedCouplingEnergy += fixedOutput * fixedOutput;
+			}
+			previousSweptOutput = sweptOutput;
+		}
+		if (!(sweptCouplingDifference > 0.10 * fixedCouplingEnergy &&
+			duringSweepStep < 1.5 * preSweepStep))
+			std::cerr << "electric piano live Coupling difference ratio " <<
+				sweptCouplingDifference / std::max(1.0e-20, fixedCouplingEnergy) <<
+				" step ratio " << duringSweepStep /
+				std::max(1.0e-20, preSweepStep) << '\n';
+		Check(sweptCouplingDifference > 0.10 * fixedCouplingEnergy &&
+			duringSweepStep < 1.5 * preSweepStep,
+			"electric piano live Coupling sweep preserves state while audibly changing a held note");
+
 		std::array<tfdsp::ElectricPianoVoice, 16> chordVoices;
 		for (std::size_t voice = 0; voice < chordVoices.size(); ++voice)
 		{
@@ -271,10 +598,369 @@ int main()
 		Check(*std::min_element(keyboardEnergies.begin(),
 			keyboardEnergies.end()) > 1.0e-8,
 			"electric piano keeps every tested key audible across six octaves");
-		Check(*std::max_element(keyboardEnergies.begin(),
-			keyboardEnergies.end()) < 2.0 * *std::min_element(
-				keyboardEnergies.begin(), keyboardEnergies.end()),
+		const double minimumKeyboardEnergy = *std::min_element(
+			keyboardEnergies.begin(), keyboardEnergies.end());
+		const double maximumKeyboardEnergy = *std::max_element(
+			keyboardEnergies.begin(), keyboardEnergies.end());
+		if (!(maximumKeyboardEnergy < 2.0 * minimumKeyboardEnergy))
+			std::cerr << "electric piano keyboard energy ratio: " <<
+				maximumKeyboardEnergy / minimumKeyboardEnergy << '\n';
+		Check(maximumKeyboardEnergy < 2.0 * minimumKeyboardEnergy,
 			"electric piano reference pickup curve keeps equal-velocity key levels balanced");
+
+		auto softHammerControls = silentControls;
+		auto hardHammerControls = silentControls;
+		softHammerControls.hammer = 0.0;
+		hardHammerControls.hammer = 1.0;
+		tfdsp::ElectricPianoVoice softHammerVoice;
+		tfdsp::ElectricPianoVoice defaultHammerVoice;
+		tfdsp::ElectricPianoVoice hardHammerVoice;
+		softHammerVoice.SetSampleRate(48000.0);
+		defaultHammerVoice.SetSampleRate(48000.0);
+		hardHammerVoice.SetSampleRate(48000.0);
+		std::vector<double> softHammerSignal(4096);
+		std::vector<double> defaultHammerSignal(4096);
+		std::vector<double> hardHammerSignal(4096);
+		for (std::size_t sample = 0; sample < softHammerSignal.size(); ++sample)
+		{
+			softHammerSignal[sample] = softHammerVoice.Step(0.0, 10.0, 0.72,
+				false, softHammerControls);
+			defaultHammerSignal[sample] = defaultHammerVoice.Step(0.0, 10.0,
+				0.72, false, silentControls);
+			hardHammerSignal[sample] = hardHammerVoice.Step(0.0, 10.0, 0.72,
+				false, hardHammerControls);
+		}
+		const double fundamentalBin = tfdsp::ElectricPianoReferenceFrequency /
+			48000.0;
+		const double middleKeyboardPosition = (60.0 - 28.0) / 72.0;
+		const double firstAttackRatio = 6.267 *
+			(1.0 + (1.0 - 2.0 * middleKeyboardPosition) * 0.035);
+		const double bellBin = firstAttackRatio * fundamentalBin;
+		auto attackBrightness = [&](const std::vector<double>& signal)
+		{
+			return WindowedHarmonicMagnitude(signal, bellBin, 0, 2048) /
+				std::max(1.0e-12, WindowedHarmonicMagnitude(signal,
+					fundamentalBin, 0, 2048));
+		};
+		const double softHammerBrightness = attackBrightness(softHammerSignal);
+		const double defaultHammerBrightness = attackBrightness(
+			defaultHammerSignal);
+		const double hardHammerBrightness = attackBrightness(hardHammerSignal);
+		Check(hardHammerBrightness > 1.35 * softHammerBrightness,
+			"electric piano hammer hardness changes compliant-contact brightness");
+		Check(defaultHammerBrightness > 0.025 &&
+			defaultHammerBrightness < 0.080 && hardHammerBrightness < 0.14,
+			"electric piano attack mode has an audible non-metallic absolute level");
+
+		double minimumKeyboardAttack = std::numeric_limits<double>::infinity();
+		double maximumKeyboardAttack = 0.0;
+		for (double pitch : {-2.0, -1.0, 0.0, 1.0})
+		{
+			const double keyboardPosition = std::clamp(
+				(60.0 + 12.0 * pitch - 28.0) / 72.0, 0.0, 1.0);
+			const double fundamental = tfdsp::ElectricPianoReferenceFrequency *
+				std::exp2(pitch) / 48000.0;
+			const double attack = 6.267 *
+				(1.0 + (1.0 - 2.0 * keyboardPosition) * 0.035) * fundamental;
+			tfdsp::ElectricPianoVoice voice;
+			voice.SetSampleRate(48000.0);
+			std::vector<double> signal(2048);
+			for (double& output : signal)
+				output = voice.Step(pitch, 10.0, 0.72, false, silentControls);
+			const double brightness = HarmonicMagnitude(signal, attack) /
+				std::max(1.0e-12, HarmonicMagnitude(signal, fundamental));
+			minimumKeyboardAttack = std::min(minimumKeyboardAttack, brightness);
+			maximumKeyboardAttack = std::max(maximumKeyboardAttack, brightness);
+		}
+		Check(minimumKeyboardAttack > 0.018 && maximumKeyboardAttack < 0.18,
+			"electric piano contact-generated first attack mode survives across the keyboard");
+
+		auto nonlinearControls = silentControls;
+		tfdsp::ElectricPianoVoice lowVelocityPickupVoice;
+		tfdsp::ElectricPianoVoice highVelocityPickupVoice;
+		lowVelocityPickupVoice.SetSampleRate(48000.0);
+		highVelocityPickupVoice.SetSampleRate(48000.0);
+		std::vector<double> lowVelocityPickupSignal(16000);
+		std::vector<double> highVelocityPickupSignal(16000);
+		for (std::size_t sample = 0; sample < lowVelocityPickupSignal.size(); ++sample)
+		{
+			lowVelocityPickupSignal[sample] = lowVelocityPickupVoice.Step(0.0,
+				10.0, 0.18, false, nonlinearControls);
+			highVelocityPickupSignal[sample] = highVelocityPickupVoice.Step(0.0,
+				10.0, 1.0, false, nonlinearControls);
+		}
+		auto lateHarmonicRatio = [&](const std::vector<double>& signal,
+			double harmonic)
+		{
+			return WindowedHarmonicMagnitude(signal, harmonic * fundamentalBin,
+				6000, signal.size()) / std::max(1.0e-12,
+				WindowedHarmonicMagnitude(signal, fundamentalBin, 6000,
+					signal.size()));
+		};
+		const double lowSecond = lateHarmonicRatio(lowVelocityPickupSignal, 2.0);
+		const double highSecond = lateHarmonicRatio(highVelocityPickupSignal, 2.0);
+		const double lowThird = lateHarmonicRatio(lowVelocityPickupSignal, 3.0);
+		const double highThird = lateHarmonicRatio(highVelocityPickupSignal, 3.0);
+		if (!(highSecond > 3.0 * lowSecond && highSecond > 0.055 &&
+			highSecond < 0.18 && highThird > 8.0 * lowThird &&
+			highThird > 0.0074 && highThird < 0.10))
+			std::cerr << "electric piano pickup ratios low/high H2 " <<
+				lowSecond << "/" << highSecond << " H3 " << lowThird <<
+				"/" << highThird << '\n';
+		Check(highSecond > 3.0 * lowSecond && highSecond > 0.055 &&
+			highSecond < 0.18 && highThird > 8.0 * lowThird &&
+			highThird > 0.0074 && highThird < 0.10,
+			"electric piano finite-pole pickup develops progressive bark with velocity");
+
+		// Exercise the velocities musicians actually play, not only the endpoints.
+		// A coupled hammer changes both contact bandwidth and pickup excursion, so
+		// attack-mode and low-harmonic ratios should rise throughout the range.
+		constexpr std::array<double, 6> TimbreVelocities{
+			0.25, 0.40, 0.55, 0.70, 0.85, 1.0};
+		std::array<double, TimbreVelocities.size()> secondHarmonics{};
+		std::array<double, TimbreVelocities.size()> thirdHarmonics{};
+		std::array<double, TimbreVelocities.size()> attackRatios{};
+		for (std::size_t velocityIndex = 0;
+			velocityIndex < TimbreVelocities.size(); ++velocityIndex)
+		{
+			tfdsp::ElectricPianoVoice voice;
+			voice.SetSampleRate(48000.0);
+			std::vector<double> signal(16000);
+			for (double& output : signal)
+				output = voice.Step(0.0, 10.0,
+					TimbreVelocities[velocityIndex], false, nonlinearControls);
+			const double fundamental = WindowedHarmonicMagnitude(signal,
+				fundamentalBin, 6000, signal.size());
+			secondHarmonics[velocityIndex] = WindowedHarmonicMagnitude(signal,
+				2.0 * fundamentalBin, 6000, signal.size()) /
+				std::max(1.0e-12, fundamental);
+			thirdHarmonics[velocityIndex] = WindowedHarmonicMagnitude(signal,
+				3.0 * fundamentalBin, 6000, signal.size()) /
+				std::max(1.0e-12, fundamental);
+			attackRatios[velocityIndex] = WindowedHarmonicMagnitude(signal,
+				bellBin, 0, 2048) / std::max(1.0e-12,
+					WindowedHarmonicMagnitude(signal, fundamentalBin, 0, 2048));
+		}
+		Check(std::is_sorted(secondHarmonics.begin(), secondHarmonics.end()) &&
+			secondHarmonics.back() > 2.5 * secondHarmonics.front() &&
+			std::is_sorted(thirdHarmonics.begin(), thirdHarmonics.end()) &&
+			thirdHarmonics.back() > 8.0 * thirdHarmonics.front() &&
+			std::is_sorted(attackRatios.begin(), attackRatios.end()) &&
+			attackRatios.back() > 2.0 * attackRatios.front(),
+			"electric piano timbre grows continuously across playable velocities");
+
+		auto darkToneControls = nonlinearControls;
+		auto brightToneControls = nonlinearControls;
+		darkToneControls.tone = 0.0;
+		brightToneControls.tone = 1.0;
+		tfdsp::ElectricPianoVoice darkToneVoice;
+		tfdsp::ElectricPianoVoice brightToneVoice;
+		darkToneVoice.SetSampleRate(48000.0);
+		brightToneVoice.SetSampleRate(48000.0);
+		std::vector<double> darkToneSignal(16000);
+		std::vector<double> brightToneSignal(16000);
+		for (std::size_t sample = 0; sample < darkToneSignal.size(); ++sample)
+		{
+			darkToneSignal[sample] = darkToneVoice.Step(0.0, 10.0, 0.85,
+				false, darkToneControls);
+			brightToneSignal[sample] = brightToneVoice.Step(0.0, 10.0, 0.85,
+				false, brightToneControls);
+		}
+		const double darkFirst = HarmonicMagnitude(darkToneSignal, bellBin) /
+			std::max(1.0e-12, HarmonicMagnitude(darkToneSignal, fundamentalBin));
+		const double brightFirst = HarmonicMagnitude(brightToneSignal, bellBin) /
+			std::max(1.0e-12, HarmonicMagnitude(brightToneSignal, fundamentalBin));
+		const double darkFundamental = WindowedHarmonicMagnitude(darkToneSignal,
+			fundamentalBin, 6000, darkToneSignal.size());
+		const double brightFundamental = WindowedHarmonicMagnitude(
+			brightToneSignal, fundamentalBin, 6000, brightToneSignal.size());
+		const double darkSecond = WindowedHarmonicMagnitude(darkToneSignal,
+			2.0 * fundamentalBin, 6000, darkToneSignal.size()) /
+			std::max(1.0e-12, darkFundamental);
+		const double brightSecond = WindowedHarmonicMagnitude(brightToneSignal,
+			2.0 * fundamentalBin, 6000, brightToneSignal.size()) /
+			std::max(1.0e-12, brightFundamental);
+		const double darkThird = WindowedHarmonicMagnitude(darkToneSignal,
+			3.0 * fundamentalBin, 6000, darkToneSignal.size()) /
+			std::max(1.0e-12, darkFundamental);
+		const double brightThird = WindowedHarmonicMagnitude(brightToneSignal,
+			3.0 * fundamentalBin, 6000, brightToneSignal.size()) /
+			std::max(1.0e-12, brightFundamental);
+		if (!(brightFirst > 0.80 * darkFirst && brightFirst < 1.30 * darkFirst &&
+			brightSecond > 8.0 * darkSecond && brightThird > 1.6 * darkThird))
+			std::cerr << "electric piano Tone ratios attack dark/bright " <<
+				darkFirst << "/" << brightFirst << " H2 " << darkSecond <<
+				"/" << brightSecond << " H3 " << darkThird << "/" <<
+				brightThird << '\n';
+		Check(brightFirst > 0.80 * darkFirst && brightFirst < 1.30 * darkFirst &&
+			brightSecond > 8.0 * darkSecond &&
+			brightThird > 1.6 * darkThird,
+			"electric piano Tone changes physical pickup alignment and harmonic balance");
+
+		auto amplify = [&](const std::vector<double>& direct)
+		{
+			tfdsp::ElectricPianoAmplifier testAmplifier;
+			testAmplifier.SetSampleRate(48000.0);
+			std::vector<double> amplified(direct.size());
+			for (std::size_t sample = 0; sample < direct.size(); ++sample)
+				amplified[sample] = testAmplifier.Step(5.0 * direct[sample],
+					controls.drive);
+			return amplified;
+		};
+		auto levelMatchedResidual = [](const std::vector<double>& first,
+			const std::vector<double>& second, std::size_t end)
+		{
+			end = std::min({end, first.size(), second.size()});
+			double firstEnergy = 0.0;
+			double secondEnergy = 0.0;
+			double cross = 0.0;
+			for (std::size_t sample = 0; sample < end; ++sample)
+			{
+				firstEnergy += first[sample] * first[sample];
+				secondEnergy += second[sample] * second[sample];
+				cross += first[sample] * second[sample];
+			}
+			const double gain = cross / std::max(1.0e-20, secondEnergy);
+			double residualEnergy = 0.0;
+			for (std::size_t sample = 0; sample < end; ++sample)
+			{
+				const double residual = first[sample] - gain * second[sample];
+				residualEnergy += residual * residual;
+			}
+			return std::sqrt(residualEnergy /
+				std::max(1.0e-20, firstEnergy));
+		};
+		const auto darkToneAmplified = amplify(darkToneSignal);
+		const auto brightToneAmplified = amplify(brightToneSignal);
+		const auto softHammerAmplified = amplify(softHammerSignal);
+		const auto hardHammerAmplified = amplify(hardHammerSignal);
+		Check(levelMatchedResidual(darkToneAmplified, brightToneAmplified,
+			2048) > 0.32,
+			"electric piano Tone extremes remain distinct through the shared amplifier");
+		Check(levelMatchedResidual(softHammerAmplified, hardHammerAmplified,
+			2048) > 0.48,
+			"electric piano Hammer extremes remain distinct through the shared amplifier");
+
+		// TONE is a live pickup adjustment. Verify an isolated full-range sweep on
+		// an already sounding note, independent of the note-latched HAMMER state.
+		tfdsp::ElectricPianoVoice sweptToneVoice;
+		tfdsp::ElectricPianoVoice fixedToneVoice;
+		sweptToneVoice.SetSampleRate(48000.0);
+		fixedToneVoice.SetSampleRate(48000.0);
+		auto sweptControls = silentControls;
+		auto fixedControls = silentControls;
+		sweptControls.tone = 0.0;
+		fixedControls.tone = 0.0;
+		for (int sample = 0; sample < 4096; ++sample)
+		{
+			sweptToneVoice.Step(0.0, 10.0, 0.8, false, sweptControls);
+			fixedToneVoice.Step(0.0, 10.0, 0.8, false, fixedControls);
+		}
+		sweptControls.tone = 1.0;
+		double sweptDifferenceEnergy = 0.0;
+		double fixedToneEnergy = 0.0;
+		for (int sample = 0; sample < 4096; ++sample)
+		{
+			const double swept = sweptToneVoice.Step(0.0, 10.0, 0.8, false,
+				sweptControls);
+			const double fixed = fixedToneVoice.Step(0.0, 10.0, 0.8, false,
+				fixedControls);
+			if (sample >= 1024)
+			{
+				const double difference = swept - fixed;
+				sweptDifferenceEnergy += difference * difference;
+				fixedToneEnergy += fixed * fixed;
+			}
+		}
+		Check(sweptDifferenceEnergy > 0.10 * fixedToneEnergy,
+			"electric piano Tone sweep audibly changes an active note");
+
+		tfdsp::ElectricPianoVoice mechanicalVoice;
+		tfdsp::ElectricPianoVoice noMechanicalVoice;
+		mechanicalVoice.SetSampleRate(48000.0);
+		noMechanicalVoice.SetSampleRate(48000.0);
+		mechanicalVoice.SetNoiseSeed(0x77112233u);
+		noMechanicalVoice.SetNoiseSeed(0x77112233u);
+		double dryVoiceEnergy = 0.0;
+		double mechanicalDifferenceEnergy = 0.0;
+		for (int sample = 0; sample < 4800; ++sample)
+		{
+			const double withMechanics = mechanicalVoice.Step(0.0, 10.0, 0.72,
+				false, controls);
+			const double withoutMechanics = noMechanicalVoice.Step(0.0, 10.0,
+				0.72, false, silentControls);
+			dryVoiceEnergy += withoutMechanics * withoutMechanics;
+			const double difference = withMechanics - withoutMechanics;
+			mechanicalDifferenceEnergy += difference * difference;
+		}
+		Check(mechanicalDifferenceEnergy < 0.025 * dryVoiceEnergy,
+			"electric piano default mechanics remain subordinate to the pitched voice");
+
+		// The factory decay setting is the unscaled physical calibration. Longer
+		// settings must preserve modal energy, rather than acting as an output
+		// envelope or changing the damper release.
+		Check(std::abs(tfdsp::ElectricPianoControls{}.decay - 0.5) < 1.0e-12,
+			"electric piano Decay defaults to the neutral modal-lifetime scale");
+		auto shortDecayControls = silentControls;
+		auto longDecayControls = silentControls;
+		shortDecayControls.decay = 0.0;
+		longDecayControls.decay = 1.0;
+		tfdsp::ElectricPianoVoice shortDecayVoice;
+		tfdsp::ElectricPianoVoice longDecayVoice;
+		shortDecayVoice.SetSampleRate(48000.0);
+		longDecayVoice.SetSampleRate(48000.0);
+		for (int sample = 0; sample < 24000; ++sample)
+		{
+			shortDecayVoice.Step(0.0, 10.0, 0.8,
+				false, shortDecayControls);
+			longDecayVoice.Step(0.0, 10.0, 0.8,
+				false, longDecayControls);
+		}
+		Check(longDecayVoice.Energy() > 2.0 * shortDecayVoice.Energy(),
+			"electric piano Decay scales the natural loss of sounding modes");
+
+		// Independent random carriers used to put each note's mechanical peak at
+		// an arbitrary time. The resonant impact is now event-synchronous; seeds
+		// alter only the small noise texture.
+		std::array<double, 6> mechanicsCentroids{};
+		std::array<double, 6> mechanicsPeaks{};
+		for (std::size_t event = 0; event < mechanicsCentroids.size(); ++event)
+		{
+			auto wetControls = controls;
+			auto dryControls = controls;
+			wetControls.mechanics = 1.0;
+			dryControls.mechanics = 0.0;
+			tfdsp::ElectricPianoVoice wetVoice;
+			tfdsp::ElectricPianoVoice dryVoice;
+			const auto seed = 0x1234567u +
+				static_cast<std::uint32_t>(7919 * event);
+			wetVoice.SetNoiseSeed(seed);
+			dryVoice.SetNoiseSeed(seed);
+			wetVoice.SetSampleRate(48000.0);
+			dryVoice.SetSampleRate(48000.0);
+			double weightedEnergy = 0.0;
+			double totalEnergy = 0.0;
+			for (int sample = 0; sample < 240; ++sample)
+			{
+				const double mechanical = wetVoice.Step(0.0, 10.0, 0.8,
+					false, wetControls) - dryVoice.Step(0.0, 10.0, 0.8,
+					false, dryControls);
+				const double eventEnergy = mechanical * mechanical;
+				weightedEnergy += static_cast<double>(sample) * eventEnergy;
+				totalEnergy += eventEnergy;
+				mechanicsPeaks[event] = std::max(mechanicsPeaks[event],
+					std::abs(mechanical));
+			}
+			mechanicsCentroids[event] = weightedEnergy /
+				std::max(1.0e-20, totalEnergy);
+		}
+		const auto mechanicsCentroidRange = std::minmax_element(
+			mechanicsCentroids.begin(), mechanicsCentroids.end());
+		const auto mechanicsPeakRange = std::minmax_element(
+			mechanicsPeaks.begin(), mechanicsPeaks.end());
+		Check(*mechanicsCentroidRange.second - *mechanicsCentroidRange.first < 4.0 &&
+			*mechanicsPeakRange.second < 1.10 * *mechanicsPeakRange.first,
+			"electric piano polyphonic mechanics start consistently at each key event");
 
 		tfdsp::ElectricPianoVoice releasedVoice;
 		releasedVoice.SetSampleRate(48000.0);
@@ -324,6 +1010,37 @@ int main()
 		}
 		Check(std::isfinite(amplifierPeak) && amplifierPeak < 2.0,
 			"electric piano shared amplifier overload remains bounded");
+
+		tfdsp::ElectricPianoAmplifier referenceAmplifier;
+		tfdsp::ElectricPianoAmplifier stressedAmplifier;
+		referenceAmplifier.SetSampleRate(48000.0);
+		stressedAmplifier.SetSampleRate(48000.0);
+		double referenceEarlyEnergy = 0.0;
+		double stressedEarlyEnergy = 0.0;
+		double referenceLateEnergy = 0.0;
+		double stressedLateEnergy = 0.0;
+		for (int sample = 0; sample < 18000; ++sample)
+		{
+			const double phase = 2.0 * tfdsp::PI * 220.0 * sample / 48000.0;
+			const double probe = 0.08 * std::sin(phase);
+			const double stressedInput = sample >= 2000 && sample < 6000 ?
+				8.0 * std::sin(phase) : probe;
+			const double reference = referenceAmplifier.Step(probe, 0.75);
+			const double stressed = stressedAmplifier.Step(stressedInput, 0.75);
+			if (sample >= 6100 && sample < 7600)
+			{
+				referenceEarlyEnergy += reference * reference;
+				stressedEarlyEnergy += stressed * stressed;
+			}
+			if (sample >= 16000)
+			{
+				referenceLateEnergy += reference * reference;
+				stressedLateEnergy += stressed * stressed;
+			}
+		}
+		Check(stressedEarlyEnergy < 0.90 * referenceEarlyEnergy &&
+			stressedLateEnergy > stressedEarlyEnergy,
+			"electric piano shared amplifier has level-dependent recovery memory");
 	}
 
 	using DiscreteGradient2::Tanh;

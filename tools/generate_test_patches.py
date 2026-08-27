@@ -85,14 +85,14 @@ DEFAULT_PARAMS = {
     ],
     "TfElectricPiano": [
         0.5,
-        0.75,
+        1.0,
         0.62,
         0.52,
-        0.58,
+        0.50,
         0.52,
         0.55,
         0.48,
-        0.58,
+        0.50,
         0.24,
         0.18,
         0.32,
@@ -1129,11 +1129,14 @@ def generate_electric_piano_patch() -> None:
             "Select MIDI and audio devices, then play from a velocity-sensitive "
             "keyboard. MIDI-CV is set to 16-channel polyphonic mode; pitch, gate, "
             "and velocity feed the instrument directly.\n\n"
-            "Start with TOUCH and DYNAMICS to match your controller. BODY, BELL, "
-            "and HAMMER shape the strike; COUPLING sets interaction between the "
-            "tine and tone-bar modes. TONE and GAP move the nonlinear pickup "
-            "response. DECAY and RELEASE shape "
-            "the tine and damper, MECHANICS adds key noise, and DRIVE overloads "
+            "Start with VEL CURVE and DYNAMICS to match your controller. BODY and "
+            "BELL balance the resonances, HAMMER changes physical tip stiffness, "
+            "and COUPLING moves from a short isolated tine to a sustained "
+            "common-base tuning fork. "
+            "TONE changes vertical tine/pickup alignment; "
+            "GAP changes pickup proximity and dynamic response. DECAY scales the "
+            "natural tine/tone-bar ring time; RELEASE sets damper speed. MECHANICS "
+            "adds synchronized key noise, and DRIVE overloads "
             "the shared amplifier. DIRECT POLY bypasses that final amp.\n\n"
             "The -6 dB master protects the first listen. PEDAL accepts a gate; "
             "patch your preferred MIDI CC-to-CV module there for sustain.",

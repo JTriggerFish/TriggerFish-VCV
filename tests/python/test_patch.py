@@ -150,14 +150,14 @@ EXPECTED_DEFAULTS = {
     },
     "TfElectricPiano": {
         0: 0.5,
-        1: 0.75,
+        1: 1.0,
         2: 0.62,
         3: 0.52,
-        4: 0.58,
+        4: 0.50,
         5: 0.52,
         6: 0.55,
         7: 0.48,
-        8: 0.58,
+        8: 0.50,
         9: 0.24,
         10: 0.18,
         11: 0.32,
@@ -486,18 +486,11 @@ def test_electric_piano_patch_is_16_voice_velocity_playable():
     } == {1, 2}
 
 
-def test_electric_piano_exposes_physical_coupling_and_preserves_tails():
+def test_electric_piano_exposes_coupling_and_preserves_tails():
     module_source = (ROOT / "src" / "TfElectricPiano.cpp").read_text(encoding="utf-8")
-    model_source = (ROOT / "src" / "models" / "ElectricPiano.hpp").read_text(
-        encoding="utf-8"
-    )
 
     assert "COUPLING" in module_source
-    assert "controls.coupling" in model_source
-    assert "MakeElectricPianoKeyProfile" in model_source
-    assert "displacementPerImpulse" in model_source
     assert "PreserveVoiceAsTail" in module_source
-    assert "PickupOversamplingFactor" in model_source
 
     preserve_tail = module_source.split("void PreserveVoiceAsTail", 1)[1].split(
         "tfdsp::ElectricPianoControls Controls", 1
