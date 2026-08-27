@@ -14,6 +14,13 @@
 
 struct TfElectricPiano : Module
 {
+	// Model/Rack boundary gains are kept explicit. The amplifier converts its
+	// input to physical volts internally; see ModelInputToCircuitVolts() and the
+	// voltage-domain regression in tests/dsp_tests.cpp.
+	static constexpr double DirectPickupToRackGain = 20.0;
+	static constexpr double PickupSumToAmplifierGain = 5.0;
+	static constexpr double AmplifierModelToRackGain = 5.0;
+
 	enum ParamIds
 	{
 		VELOCITY_CURVE,
@@ -23,11 +30,16 @@ struct TfElectricPiano : Module
 		COUPLING,
 		HAMMER,
 		TONE,
-		GAP,
+		PROXIMITY,
 		DECAY,
 		RELEASE,
 		MECHANICS,
 		DRIVE,
+		OUTPUT_VOLUME,
+		AMPLIFIER_BASS,
+		AMPLIFIER_TREBLE,
+		VIBRATO_SPEED,
+		VIBRATO_INTENSITY,
 		NUM_PARAMS
 	};
 
@@ -65,6 +77,8 @@ struct TfElectricPiano : Module
 		PORT_MAX_CHANNELS> voices;
 	std::array<TailVoice, PORT_MAX_CHANNELS> tails;
 	tfdsp::ElectricPianoAmplifier amplifier;
+	int amplifierQuietSamples = 0;
+	bool amplifierSleeping = false;
 	int activeChannels{};
 	double sampleRate = 48000.0;
 	std::uint32_t seedSequence = 1;
@@ -86,7 +100,7 @@ struct TfElectricPiano : Module
 			"Hammer hardness (applies on the next strike)", "%", 0.0f, 100.0f);
 		configParam(TONE, 0.0f, 1.0f, 0.55f, "Pickup tine alignment", "%",
 			0.0f, 100.0f);
-		configParam(GAP, 0.0f, 1.0f, 0.48f, "Pickup proximity", "%", 0.0f,
+		configParam(PROXIMITY, 0.0f, 1.0f, 0.48f, "Pickup proximity", "%", 0.0f,
 			100.0f);
 		configParam(DECAY, 0.0f, 1.0f, 0.50f, "Natural decay", "%", 0.0f,
 			100.0f);
@@ -96,6 +110,16 @@ struct TfElectricPiano : Module
 			0.0f, 100.0f);
 		configParam(DRIVE, 0.0f, 1.0f, 0.32f, "Shared amplifier drive", "%",
 			0.0f, 100.0f);
+		configParam(OUTPUT_VOLUME, 0.0f, 1.0f, 0.50f,
+			"Amplifier output volume", "%", 0.0f, 100.0f);
+		configParam(AMPLIFIER_BASS, 0.0f, 1.0f, 0.50f,
+			"Peterson preamplifier bass", "%", 0.0f, 100.0f);
+		configParam(AMPLIFIER_TREBLE, 0.0f, 1.0f, 0.50f,
+			"Peterson preamplifier treble", "%", 0.0f, 100.0f);
+		configParam(VIBRATO_SPEED, 0.0f, 1.0f, 0.32f,
+			"Suitcase vibrato speed", "%", 0.0f, 100.0f);
+		configParam(VIBRATO_INTENSITY, 0.0f, 1.0f, 0.0f,
+			"Suitcase vibrato intensity", "%", 0.0f, 100.0f);
 
 		configInput(VOCT_INPUT, "Pitch (1V/octave)");
 		configInput(GATE_INPUT, "Key gate");
@@ -140,6 +164,8 @@ struct TfElectricPiano : Module
 			tail.active = false;
 		}
 		amplifier.Reset();
+		amplifierQuietSamples = 0;
+		amplifierSleeping = false;
 		activeChannels = 0;
 	}
 
@@ -181,11 +207,16 @@ struct TfElectricPiano : Module
 		controls.coupling = params[COUPLING].getValue();
 		controls.hammer = params[HAMMER].getValue();
 		controls.tone = params[TONE].getValue();
-		controls.gap = params[GAP].getValue();
+		controls.proximity = params[PROXIMITY].getValue();
 		controls.decay = params[DECAY].getValue();
 		controls.release = params[RELEASE].getValue();
 		controls.mechanics = params[MECHANICS].getValue();
 		controls.drive = params[DRIVE].getValue();
+		controls.outputVolume = params[OUTPUT_VOLUME].getValue();
+		controls.amplifierBass = params[AMPLIFIER_BASS].getValue();
+		controls.amplifierTreble = params[AMPLIFIER_TREBLE].getValue();
+		controls.vibratoSpeed = params[VIBRATO_SPEED].getValue();
+		controls.vibratoIntensity = params[VIBRATO_INTENSITY].getValue();
 		return controls;
 	}
 
@@ -226,9 +257,13 @@ struct TfElectricPiano : Module
 			const double renderedPitch = gate < 1.0 &&
 				!voices[channel]->GateHigh() && voices[channel]->IsAudible() ?
 				voices[channel]->NotePitch() : inputPitch;
-			const double pickup = voices[channel]->Step(
-				renderedPitch, gate,
-				velocity, sustain, controls);
+			double pickup = 0.0;
+			if (gate >= 1.0 || voices[channel]->GateHigh() ||
+				voices[channel]->IsAudible())
+			{
+				pickup = voices[channel]->Step(renderedPitch, gate,
+					velocity, sustain, controls);
+			}
 			pickupSum += pickup;
 			directPickups[channel] += pickup;
 		}
@@ -264,19 +299,45 @@ struct TfElectricPiano : Module
 		for (int channel = 0; channel < directChannels; ++channel)
 		{
 			const double directVoltage = tfdsp::RackOutputAdapter::
-				ProcessPostDecimation(20.0 * directPickups[channel]);
+				ProcessPostDecimation(DirectPickupToRackGain *
+					directPickups[channel]);
 			outputs[DIRECT_OUTPUT].setVoltage(
 				static_cast<float>(directVoltage), channel);
 		}
 
 		outputs[LEFT_OUTPUT].setChannels(1);
 		outputs[RIGHT_OUTPUT].setChannels(1);
-		const double amplified = amplifier.Step(5.0 * pickupSum,
-			baseControls.drive);
-		const float output = static_cast<float>(tfdsp::RackOutputAdapter::
-			ProcessPostDecimation(5.0 * amplified));
-		outputs[LEFT_OUTPUT].setVoltage(output);
-		outputs[RIGHT_OUTPUT].setVoltage(output);
+		bool anyVoiceAudible = false;
+		for (int channel = 0; channel < channels; ++channel)
+			anyVoiceAudible = anyVoiceAudible || voices[channel]->IsAudible();
+		for (const auto& tail : tails)
+			anyVoiceAudible = anyVoiceAudible ||
+				(tail.active && tail.voice->IsAudible());
+		if (!anyVoiceAudible && std::abs(pickupSum) < 1.0e-12)
+		{
+			++amplifierQuietSamples;
+			const int sleepThreshold = std::max(1,
+				static_cast<int>(0.25 * sampleRate));
+			if (!amplifierSleeping && amplifierQuietSamples >= sleepThreshold)
+			{
+				amplifier.Reset();
+				amplifierSleeping = true;
+			}
+		}
+		else
+		{
+			amplifierQuietSamples = 0;
+			amplifierSleeping = false;
+		}
+		const auto amplified = amplifierSleeping ?
+			std::array<double, 2>{0.0, 0.0} :
+			amplifier.Step(PickupSumToAmplifierGain * pickupSum, baseControls);
+		const float left = static_cast<float>(tfdsp::RackOutputAdapter::
+			ProcessPostDecimation(AmplifierModelToRackGain * amplified[0]));
+		const float right = static_cast<float>(tfdsp::RackOutputAdapter::
+			ProcessPostDecimation(AmplifierModelToRackGain * amplified[1]));
+		outputs[LEFT_OUTPUT].setVoltage(left);
+		outputs[RIGHT_OUTPUT].setVoltage(right);
 	}
 
 	void onReset(const ResetEvent& event) override
@@ -323,7 +384,7 @@ struct TfElectricPianoWidget : ModuleWidget
 		addParam(createParam<TfCvKnob>(Vec(128.0f, 105.0f), module,
 			TfElectricPiano::TONE));
 		addParam(createParam<TfCvKnob>(Vec(184.0f, 105.0f), module,
-			TfElectricPiano::GAP));
+			TfElectricPiano::PROXIMITY));
 		addParam(createParam<TfCvKnob>(Vec(16.0f, 162.0f), module,
 			TfElectricPiano::DECAY));
 		addParam(createParam<TfCvKnob>(Vec(72.0f, 162.0f), module,
@@ -332,6 +393,16 @@ struct TfElectricPianoWidget : ModuleWidget
 			TfElectricPiano::MECHANICS));
 		addParam(createParam<TfCvKnob>(Vec(184.0f, 162.0f), module,
 			TfElectricPiano::DRIVE));
+		addParam(createParam<TfCvKnob>(Vec(8.0f, 219.0f), module,
+			TfElectricPiano::OUTPUT_VOLUME));
+		addParam(createParam<TfCvKnob>(Vec(57.0f, 219.0f), module,
+			TfElectricPiano::AMPLIFIER_BASS));
+		addParam(createParam<TfCvKnob>(Vec(106.0f, 219.0f), module,
+			TfElectricPiano::AMPLIFIER_TREBLE));
+		addParam(createParam<TfCvKnob>(Vec(155.0f, 219.0f), module,
+			TfElectricPiano::VIBRATO_SPEED));
+		addParam(createParam<TfCvKnob>(Vec(204.0f, 219.0f), module,
+			TfElectricPiano::VIBRATO_INTENSITY));
 
 		addInput(createInput<PJ301MPort>(Vec(16.0f, 259.0f), module,
 			TfElectricPiano::VOCT_INPUT));

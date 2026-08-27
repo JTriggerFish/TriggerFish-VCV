@@ -14,7 +14,7 @@
       "version": "2.6.6",
       "params": [],
       "data": {
-        "text": "TriggerFish Electric Piano playable prototype\n\nSelect MIDI and audio devices, then play from a velocity-sensitive keyboard. MIDI-CV is set to 16-channel polyphonic mode; pitch, gate, and velocity feed the instrument directly.\n\nStart with VEL CURVE and DYNAMICS to match your controller. BODY and BELL balance the resonances, HAMMER changes physical tip stiffness, and COUPLING moves from a short isolated tine to a sustained common-base tuning fork. TONE changes vertical tine/pickup alignment; GAP changes pickup proximity and dynamic response. DECAY scales the natural tine/tone-bar ring time; RELEASE sets damper speed. MECHANICS adds synchronized key noise, and DRIVE overloads the shared amplifier. DIRECT POLY bypasses that final amp.\n\nThe -6 dB master protects the first listen. PEDAL accepts a gate; patch your preferred MIDI CC-to-CV module there for sustain."
+        "text": "TriggerFish Electric Piano playable prototype\n\nSelect MIDI and audio devices, then play from a velocity-sensitive keyboard. MIDI-CV is set to 16-channel polyphonic mode; pitch, gate, and velocity feed the instrument directly.\n\nStart with VEL CURVE and DYNAMICS to match your controller. BODY and BELL balance the resonances, HAMMER changes physical tip stiffness, and COUPLING moves from a short isolated tine to a sustained common-base tuning fork. TONE changes vertical tine/pickup alignment; PROXIMITY changes pickup distance and dynamic response. DECAY scales the natural tine/tone-bar ring time; RELEASE sets damper speed. MECHANICS adds synchronized key noise. DRIVE controls level-compensated amplifier overload; OUTPUT sets post-amp level, AMP BASS and AMP TREBLE shape the Peterson preamp, and VIB SPEED/INT control stereo Suitcase panning. DIRECT POLY bypasses that final amp.\n\nThe stereo output mixers are set to unity gain. PEDAL accepts a gate; patch your preferred MIDI CC-to-CV module there for sustain."
       },
       "pos": [
         0,
@@ -93,6 +93,26 @@
         {
           "id": 11,
           "value": 0.32
+        },
+        {
+          "id": 12,
+          "value": 0.5
+        },
+        {
+          "id": 13,
+          "value": 0.5
+        },
+        {
+          "id": 14,
+          "value": 0.5
+        },
+        {
+          "id": 15,
+          "value": 0.32
+        },
+        {
+          "id": 16,
+          "value": 0.0
         }
       ],
       "pos": [
@@ -108,11 +128,11 @@
       "params": [
         {
           "id": 0,
-          "value": 0.5011872336
+          "value": 1.0
         },
         {
           "id": 1,
-          "value": 0.7
+          "value": 1.0
         },
         {
           "id": 2,
@@ -144,11 +164,11 @@
       "params": [
         {
           "id": 0,
-          "value": 0.5011872336
+          "value": 1.0
         },
         {
           "id": 1,
-          "value": 0.7
+          "value": 1.0
         },
         {
           "id": 2,

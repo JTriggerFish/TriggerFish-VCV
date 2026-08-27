@@ -3,9 +3,13 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <complex>
 #include <cstdint>
 #include <memory>
 
+#include "models/PetersonPowerAmplifier.hpp"
+#include "models/PetersonPreAmplifier.hpp"
+#include "models/PetersonTonePreAmplifier.hpp"
 #include "tfdsp/sampleRate.hpp"
 
 namespace tfdsp
@@ -20,11 +24,16 @@ struct ElectricPianoControls
 	double coupling = 0.50;
 	double hammer = 0.52;
 	double tone = 0.55;
-	double gap = 0.48;
+	double proximity = 0.48;
 	double decay = 0.50;
 	double release = 0.24;
 	double mechanics = 0.18;
 	double drive = 0.32;
+	double outputVolume = 0.50;
+	double amplifierBass = 0.50;
+	double amplifierTreble = 0.50;
+	double vibratoSpeed = 0.32;
+	double vibratoIntensity = 0.0;
 };
 
 inline constexpr double ElectricPianoReferenceFrequency =
@@ -135,7 +144,7 @@ inline ElectricPianoKeyProfile MakeElectricPianoKeyProfile(double pitchVolts)
 	return {
 		ElectricPianoReferenceFrequency * frequencyRatio,
 		modalMassRatio,
-		std::pow(frequencyRatio, -0.08) *
+		std::pow(frequencyRatio, -0.09) *
 			(1.0 + std::pow(2.0 * keyboardPosition - 1.0, 2.0)),
 		keyboardPosition};
 }
@@ -153,6 +162,8 @@ inline double ElectricPianoModeBandlimitGain(double frequency,
 	return 1.0 - smoothTaper;
 }
 
+// Provenance, equations, evidence levels and known calibration gaps for every
+// section below are recorded in docs/TfElectricPiano-modelling-notes.md.
 class ElectricPianoVoice
 {
 public:
@@ -498,7 +509,7 @@ private:
 			controlSmoothingCoefficient_);
 		smooth(smoothedControls_.tone, controls.tone,
 			controlSmoothingCoefficient_);
-		smooth(smoothedControls_.gap, controls.gap,
+		smooth(smoothedControls_.proximity, controls.proximity,
 			controlSmoothingCoefficient_);
 		smooth(smoothedControls_.decay, controls.decay,
 			decaySmoothingCoefficient_);
@@ -604,11 +615,12 @@ private:
 	{
 		const double body = Clamp01(controls.body);
 		const double bell = Clamp01(controls.bell);
-		const double gap = Clamp01(controls.gap);
+		const double proximity = Clamp01(controls.proximity);
 		const double tone = Clamp01(controls.tone);
 		const double mechanics = Clamp01(controls.mechanics);
 		if (!timbreDirty_ && body == cachedBodyWeight_ &&
-			bell == cachedBellWeight_ && gap == cachedGap_ && tone == cachedTone_ &&
+			bell == cachedBellWeight_ && proximity == cachedProximity_ &&
+			tone == cachedTone_ &&
 			mechanics == cachedMechanics_)
 			return;
 
@@ -634,19 +646,35 @@ private:
 
 		// The service adjustment called "timbre" is the tine's vertical alignment
 		// to the pickup pole. Moving toward the pole centre suppresses the linear
-		// fundamental relative to curvature-generated harmonics. GAP controls the
-		// independent front-to-back distance and therefore level and dynamics.
-		pickupGap_ = 1.32 - 0.78 * gap;
-		pickupVerticalOffset_ = 0.988 - 0.90 * tone +
-			0.055 * keyPosition_;
+		// fundamental relative to curvature-generated harmonics. PROXIMITY controls
+		// the independent front-to-back distance and therefore magnetic curvature.
+		pickupGap_ = 1.32 - 0.78 * proximity;
+		// At minimum Tone the tine rests close to the primary edge's maximum
+		// gradient. Raising Tone moves it onto one flank, trading odd-harmonic
+		// symmetry for the stronger even/sideband mixture used when voicing a
+		// Rhodes for bite.
+		pickupVerticalOffset_ = 0.34 + 0.22 * tone * tone +
+			0.020 * keyPosition_;
 		pickupHorizontalOffset_ = 0.10 + 0.035 * keyPosition_;
 		const auto alignmentGradient = MagneticFluxGradient(
 			pickupVerticalOffset_, pickupHorizontalOffset_, ReferencePickupGap);
 		const double alignmentMagnitude = std::sqrt(
 			alignmentGradient[0] * alignmentGradient[0] +
 			alignmentGradient[1] * alignmentGradient[1]);
+		const auto proximityGradient = MagneticFluxGradient(
+			pickupVerticalOffset_, pickupHorizontalOffset_, pickupGap_);
+		const double proximityMagnitude = std::sqrt(
+			proximityGradient[0] * proximityGradient[0] +
+			proximityGradient[1] * proximityGradient[1]);
+		// A real service adjustment changes both sensitivity and curvature, but the
+		// uncorrected pole field spans well over 16 dB and turns Proximity into a
+		// second amplifier Drive control. Retaining only a small part of that raw dB
+		// span keeps the adjustment audible while leaving the excursion-dependent
+		// magnetic curvature intact.
+		const double proximityGain = std::pow(alignmentMagnitude /
+			std::max(1.0e-6, proximityMagnitude), 0.85);
 		pickupAlignmentGain_ = std::clamp(ReferenceGradientMagnitude() /
-			std::max(1.0e-6, alignmentMagnitude), 0.50, 4.0);
+			std::max(1.0e-6, alignmentMagnitude) * proximityGain, 0.40, 5.0);
 		const double cutoff = std::min(0.42 * sampleRate_, 16500.0);
 		pickupLowPassCoefficient_ = 1.0 - std::exp(
 			-TwoPi * cutoff / sampleRate_);
@@ -655,7 +683,7 @@ private:
 		mechanicsLevel_ = 0.060 * mechanics * (0.30 + 0.70 * mechanics);
 		cachedBodyWeight_ = body;
 		cachedBellWeight_ = bell;
-		cachedGap_ = gap;
+		cachedProximity_ = proximity;
 		cachedTone_ = tone;
 		cachedMechanics_ = mechanics;
 		timbreDirty_ = false;
@@ -978,30 +1006,48 @@ private:
 	static std::array<double, 2> MagneticFluxGradient(double vertical,
 		double horizontal, double gap)
 	{
-		// Five-point quadrature approximates the finite rounded pole face. This
-		// preserves the inexpensive spatial transfer-function approach while
-		// avoiding the unrealistically sharp curvature of a magnetic point source.
-		constexpr double HorizontalFieldScale = 0.72;
-		constexpr std::array<double, 5> PolePositions{
-			-0.34, -0.17, 0.0, 0.17, 0.34};
-		constexpr std::array<double, 5> PoleWeights{
-			1.0 / 12.0, 3.0 / 12.0, 4.0 / 12.0, 3.0 / 12.0, 1.0 / 12.0};
+		// The Peterson-era pole is not a rounded, symmetric point source. Its two
+		// offset protuberances concentrate flux into a steep transition whose
+		// gradient remains unidirectional across the normal tine excursion. Model
+		// the linked flux as two softened magnetic edges: the narrow primary edge
+		// supplies the harmonic curvature, while the broader return edge gives the
+		// published field models their strong spatial asymmetry. Differentiating
+		// this scalar flux map preserves Faraday's-law consistency in both planes.
+		constexpr double HorizontalFieldScale = 0.62;
+		constexpr double GapRegularization = 0.020;
+		const double radialDistance = std::sqrt(gap * gap +
+			HorizontalFieldScale * horizontal * horizontal + GapRegularization);
+		const double radialDerivative = HorizontalFieldScale * horizontal /
+			std::max(1.0e-9, radialDistance);
+
 		double verticalGradient = 0.0;
-		double horizontalGradient = 0.0;
-		for (std::size_t index = 0; index < PolePositions.size(); ++index)
+		double radialGradient = 0.0;
+		auto accumulateEdge = [&](double edgePosition, double weight,
+			double edgeRadius)
 		{
-			const double verticalDistance = vertical - PolePositions[index];
-			const double squaredDistance = gap * gap +
-				verticalDistance * verticalDistance +
-				HorizontalFieldScale * horizontal * horizontal + 0.018;
-			const double inverseCubedDistance = 1.0 /
-				(squaredDistance * std::sqrt(squaredDistance));
-			verticalGradient += PoleWeights[index] * verticalDistance *
-				inverseCubedDistance;
-			horizontalGradient += PoleWeights[index] * HorizontalFieldScale *
-				horizontal * inverseCubedDistance;
-		}
-		return {verticalGradient, horizontalGradient};
+			constexpr double FieldFalloff = 1.30;
+			constexpr double GapBroadening = 0.180;
+			const double width = edgeRadius + GapBroadening * radialDistance;
+			const double inverseWidth = 1.0 / std::max(1.0e-9, width);
+			const double displacement = vertical - edgePosition;
+			const double argument = displacement * inverseWidth;
+			const double transition = std::tanh(argument);
+			const double transitionDerivative = 1.0 -
+				transition * transition;
+			const double amplitude = weight * std::pow(radialDistance,
+				-FieldFalloff);
+			verticalGradient += amplitude * transitionDerivative * inverseWidth;
+			const double amplitudeDerivative = -FieldFalloff * amplitude /
+				std::max(1.0e-9, radialDistance);
+			const double argumentDerivative = -displacement * GapBroadening *
+				inverseWidth * inverseWidth;
+			radialGradient += amplitudeDerivative * transition + amplitude *
+				transitionDerivative * argumentDerivative;
+		};
+
+		accumulateEdge(0.34, 1.0, 0.030);
+		accumulateEdge(-0.46, 0.20, 0.095);
+		return {verticalGradient, radialGradient * radialDerivative};
 	}
 
 	static double ReferenceGradientMagnitude()
@@ -1028,8 +1074,8 @@ private:
 	static constexpr int PickupOversamplingFactor =
 		X4Resampler_Order7::ResamplingFactor;
 	static constexpr double ReferencePickupGap = 1.32 - 0.78 * 0.48;
-	static constexpr double ReferencePickupVertical = 0.988 - 0.90 * 0.55 +
-		0.055 * ((60.0 - 28.0) / 72.0);
+	static constexpr double ReferencePickupVertical = 0.34 + 0.22 * 0.55 * 0.55 +
+		0.020 * ((60.0 - 28.0) / 72.0);
 	static constexpr double ReferencePickupHorizontal = 0.10 + 0.035 *
 		((60.0 - 28.0) / 72.0);
 	static constexpr std::array<double, 8> ModeRatios{
@@ -1108,7 +1154,7 @@ private:
 	double cachedRelease_{};
 	double cachedBodyWeight_ = -1.0;
 	double cachedBellWeight_ = -1.0;
-	double cachedGap_ = -1.0;
+	double cachedProximity_ = -1.0;
 	double cachedTone_ = -1.0;
 	double cachedMechanics_ = -1.0;
 	std::uint32_t noiseState_ = 0x6d2b79f5u;
@@ -1129,160 +1175,334 @@ private:
 	std::unique_ptr<X4Resampler_Order7> pickupDecimator_;
 };
 
+// Figure 11-8's Q1/Q2 input pair, its Q3/Q4 Darlington active-tone feedback
+// amplifier and Q5 follower, plus Figure 11-9, are nonlinear circuit solves.
+// Only the post-volume vibrato-feed buffer and lamp/LDR routing are reduced;
+// no fitted transfer curve stands in for preamp or power-stage overload. Keep
+// measured-data gaps synchronized with the modelling notes and SPICE references.
 class ElectricPianoAmplifier
 {
 public:
 	ElectricPianoAmplifier()
-		: inputInterpolator_(CreateX4Resampler_Cheby7()),
-		  outputDecimator_(CreateX4Resampler_Cheby7())
+		: inputInterpolator_(CreateX2Resampler_Chebychev7()),
+		  leftOutputDecimator_(CreateX2Resampler_Chebychev7()),
+		  rightOutputDecimator_(CreateX2Resampler_Chebychev7())
 	{
 	}
 
 	void SetSampleRate(double sampleRate)
 	{
 		sampleRate_ = std::clamp(sampleRate, 8000.0, 768000.0);
-		const double rc = 1.0 / (6.2831853071795864769 * 5.0);
-		highPassCoefficient_ = rc / (rc + 1.0 / sampleRate_);
-		inputBassCoefficient_ = OnePoleCoefficient(180.0, sampleRate_);
-		inputBodyCoefficient_ = OnePoleCoefficient(1250.0, sampleRate_);
-		cabinetLowCoefficient_ = OnePoleCoefficient(190.0, sampleRate_);
-		cabinetBodyCoefficient_ = OnePoleCoefficient(1150.0, sampleRate_);
-		cabinetHighCoefficient_ = OnePoleCoefficient(10500.0, sampleRate_);
-		detectorAttackCoefficient_ = 1.0 - std::exp(
-			-1.0 / (0.0035 * sampleRate_));
-		detectorReleaseCoefficient_ = 1.0 - std::exp(
-			-1.0 / (0.140 * sampleRate_));
-		stageSmoothingCoefficient_ = OnePoleCoefficient(10500.0,
-			sampleRate_ * X4Resampler_Order7::ResamplingFactor);
+		const double oversampledRate = sampleRate_ *
+			X2Resampler_Order7::ResamplingFactor;
+		// Figure 11-10 specifies 3000 uF reservoirs. Effective winding,
+		// rectifier and 0.5 Ohm emitter-path resistance determine the fast
+		// droop; recharge is slower than discharge between mains peaks.
+		supplyDischargeCoefficient_ = 1.0 - std::exp(
+			-1.0 / (0.0030 * sampleRate_));
+		supplyRechargeCoefficient_ = 1.0 - std::exp(
+			-1.0 / (0.055 * sampleRate_));
+		for (auto& channel : powerChannels_)
+			channel.circuit.SetSampleRate(oversampledRate);
+		preamp_.SetSampleRate(oversampledRate);
+		tonePreamp_.SetSampleRate(oversampledRate);
 		driveSmoothingCoefficient_ = 1.0 - std::exp(
-			-1.0 / (0.006 * sampleRate_));
+			-1.0 / (0.008 * sampleRate_));
+		controlSmoothingCoefficient_ = 1.0 - std::exp(
+			-1.0 / (0.012 * sampleRate_));
+		vibratoLampCoefficient_ = 1.0 - std::exp(
+			-1.0 / (0.010 * sampleRate_));
 		Reset();
 	}
 
 	void Reset()
 	{
-		previousInput_ = 0.0;
-		previousHighPass_ = 0.0;
-		inputBass_ = 0.0;
-		inputBody_ = 0.0;
-		cabinetLow_ = 0.0;
-		cabinetBody_ = 0.0;
-		cabinetHigh_ = 0.0;
-		detectorEnvelope_ = 0.0;
-		stageMemory_ = 0.0;
+		for (auto& channel : powerChannels_)
+		{
+			channel.circuit.Reset(NominalSupplyRail);
+			channel.supplyCurrent = 0.0;
+		}
+		preamp_.Reset();
+		tonePreamp_.Reset();
+		supplyRail_ = NominalSupplyRail;
+		vibratoPhase_ = 0.0;
+		vibratoLamp_ = 0.0;
 		cachedDrive_ = -1.0;
-		driveInitialized_ = false;
+		controlsInitialized_ = false;
+		rightPowerDormant_ = true;
 		inputInterpolator_->Reset();
-		outputDecimator_->Reset();
+		leftOutputDecimator_->Reset();
+		rightOutputDecimator_->Reset();
 	}
 
-	double Step(double input, double drive)
+	// Small-signal impedance of the electrical speaker equivalent used by the
+	// power-stage solve. This is deliberately public so tests and future fitting
+	// tools can validate the load independently of the nonlinear amplifier.
+	// It is not an acoustic cabinet response.
+	static std::complex<double> ElectricalLoadImpedance(double frequency)
+	{
+		return PetersonPowerAmplifier::ElectricalLoadImpedance(frequency);
+	}
+
+	static double DriveGainForPosition(double drive)
+	{
+		drive = std::clamp(std::isfinite(drive) ? drive : 0.32, 0.0, 1.0);
+		// This is an explicit extension, not a historical Peterson control. The
+		// eased-quadratic dB law keeps the default and middle of the travel in the
+		// clean headroom region, then approaches compression progressively. Its
+		// reciprocal is
+		// applied at Figure 11-8's real interstage volume node, before Figure 11-9:
+		// Drive can exercise the preamp without turning the power amp into the
+		// compensator or making polyphonic peaks hit its rails. No additional
+		// clipper is introduced.
+		// With the complete tone-feedback circuit present, the former smoothstep
+		// law already delivered 20 dB by 70% travel. Simultaneous hard notes then
+		// crossed both preamp headroom boundaries together. A 24 dB eased span
+		// retains a deliberately overdriven end stop while keeping moderate chord
+		// settings out of that abrupt shared overload region. Blending 40% of a
+		// quadratic with 60% smoothstep avoids moving all audible change to the last
+		// few degrees of travel.
+		const double driveShape = drive * drive * (2.2 - 1.2 * drive);
+		const double driveDb = 24.0 * driveShape;
+		return std::pow(10.0, driveDb / 20.0);
+	}
+
+	static double BassPotPositionForControl(double control)
+	{
+		control = std::clamp(std::isfinite(control) ? control : 0.5, 0.0, 1.0);
+		// The historical 100 k linear pot is highly bunched electrically: most
+		// of both cut and boost occurs in the last few degrees at either end.
+		// Preserve its centre and end stops, but use a reverse-quarter-power UI
+		// law so equal panel travel produces a much more even dB trajectory.
+		const double displacement = 2.0 * std::abs(control - 0.5);
+		const double mappedDisplacement = std::sqrt(std::sqrt(displacement));
+		return 0.5 + std::copysign(0.5 * mappedDisplacement,
+			control - 0.5);
+	}
+
+	static double TreblePotPositionForControl(double control)
+	{
+		control = std::clamp(std::isfinite(control) ? control : 0.5, 0.0, 1.0);
+		const double displacement = 2.0 * std::abs(control - 0.5);
+		const double mappedDisplacement = std::pow(displacement, 0.70);
+		return 0.5 + std::copysign(0.5 * mappedDisplacement,
+			control - 0.5);
+	}
+
+	// Explicit circuit/Rack-domain boundary used by calibration tests. The
+	// caller supplies the amplifier's model-domain input (the module currently
+	// feeds five times the summed pickup signal).
+	static double ModelInputToCircuitVolts(double modelInput, double drive)
+	{
+		return InputVoltsPerModelUnit * DriveGainForPosition(drive) * modelInput;
+	}
+
+	static double CircuitPowerOutputToModel(double circuitVolts)
+	{
+		return NominalGain * circuitVolts /
+			(PowerClosedLoopGain * InputVoltsPerModelUnit);
+	}
+
+	double SupplyRailVoltage() const { return supplyRail_; }
+
+	std::array<double, 2> Step(double input,
+		const ElectricPianoControls& controls)
 	{
 		if (!std::isfinite(input))
-			return 0.0;
-		drive = std::clamp(std::isfinite(drive) ? drive : 0.0, 0.0, 1.0);
-		if (!driveInitialized_)
+			input = 0.0;
+		auto control = [](double value, double fallback)
+		{
+			return std::clamp(std::isfinite(value) ? value : fallback, 0.0, 1.0);
+		};
+		const double drive = control(controls.drive, 0.32);
+		const double outputVolume = control(controls.outputVolume, 0.50);
+		const double bass = control(controls.amplifierBass, 0.50);
+		const double treble = control(controls.amplifierTreble, 0.50);
+		const double vibratoSpeed = control(controls.vibratoSpeed, 0.32);
+		const double vibratoIntensity = control(controls.vibratoIntensity, 0.0);
+		if (!controlsInitialized_)
 		{
 			smoothedDrive_ = drive;
-			driveInitialized_ = true;
+			smoothedOutputVolume_ = outputVolume;
+			smoothedBass_ = bass;
+			smoothedTreble_ = treble;
+			smoothedVibratoSpeed_ = vibratoSpeed;
+			smoothedVibratoIntensity_ = vibratoIntensity;
+			controlsInitialized_ = true;
 		}
 		smoothedDrive_ += driveSmoothingCoefficient_ *
 			(drive - smoothedDrive_);
+		smoothedOutputVolume_ += controlSmoothingCoefficient_ *
+			(outputVolume - smoothedOutputVolume_);
+		smoothedBass_ += controlSmoothingCoefficient_ *
+			(bass - smoothedBass_);
+		smoothedTreble_ += controlSmoothingCoefficient_ *
+			(treble - smoothedTreble_);
+		smoothedVibratoSpeed_ += controlSmoothingCoefficient_ *
+			(vibratoSpeed - smoothedVibratoSpeed_);
+		smoothedVibratoIntensity_ += controlSmoothingCoefficient_ *
+			(vibratoIntensity - smoothedVibratoIntensity_);
+		const bool stereoPowerActive = smoothedVibratoIntensity_ > 1.0e-7;
+		if (stereoPowerActive && rightPowerDormant_)
+		{
+			// Both channels have received identical drive while vibrato was off.
+			// Materialize the second circuit state only when stereo routing starts.
+			powerChannels_[1] = powerChannels_[0];
+			rightPowerDormant_ = false;
+		}
+		else if (!stereoPowerActive)
+		{
+			rightPowerDormant_ = true;
+		}
 		if (smoothedDrive_ != cachedDrive_)
 		{
-			gain_ = std::pow(10.0, (-6.0 + 22.0 * smoothedDrive_) / 20.0);
-			bias_ = 0.015 + 0.045 * smoothedDrive_;
-			biasShape_ = AsymmetricSoftClip(bias_);
-			feedback_ = 0.10 + 0.12 * smoothedDrive_;
-			supplySensitivity_ = 0.08 + 0.30 * smoothedDrive_;
+			// The historical volume control did not create an independent clipper.
+			// This extended Drive control raises the signal presented to the preamp;
+			// its small-signal gain is compensated at the real volume node before the
+			// power modules. The eased law is deliberately shallow around the clean
+			// default and steeper through the deliberate upper-range transition.
+			driveGain_ = DriveGainForPosition(smoothedDrive_);
+			makeupGain_ = NominalGain;
 			cachedDrive_ = smoothedDrive_;
 		}
 
-		// Approximate the harp/load and preamplifier frequency response before
-		// overload. A small low-mid lift and restrained top end keep the amplifier
-		// from being used as a broadband distortion pedal.
-		inputBass_ += inputBassCoefficient_ * (input - inputBass_);
-		inputBody_ += inputBodyCoefficient_ * (input - inputBody_);
-		const double highBand = input - inputBody_;
-		const double voicedInput = input + 0.10 * inputBass_ +
-			0.14 * (inputBody_ - inputBass_) - 0.04 * highBand;
-
-		const double level = std::abs(voicedInput);
-		const double detectorCoefficient = level > detectorEnvelope_ ?
-			detectorAttackCoefficient_ : detectorReleaseCoefficient_;
-		detectorEnvelope_ += detectorCoefficient *
-			(level - detectorEnvelope_);
-		const double supply = 1.0 /
-			(1.0 + supplySensitivity_ * detectorEnvelope_);
-
-		const auto inputs = inputInterpolator_->Upsample(voicedInput);
-		Eigen::Array<double, X4Resampler_Order7::ResamplingFactor, 1> outputs;
-		for (int index = 0; index < X4Resampler_Order7::ResamplingFactor; ++index)
+		// Interpolate before Figure 11-8. The complete preamp -> tone -> Figure
+		// 11-9 path runs at 2x; only controls and the slow supply remain at host
+		// rate. The pickup/voice model has its own independent 4x path.
+		const auto inputs = inputInterpolator_->Upsample(input);
+		Eigen::Array<double, X2Resampler_Order7::ResamplingFactor, 1> leftOutputs;
+		Eigen::Array<double, X2Resampler_Order7::ResamplingFactor, 1> rightOutputs;
+		for (int index = 0; index < X2Resampler_Order7::ResamplingFactor; ++index)
 		{
-			const double stageInput = gain_ * supply * inputs(index) + bias_ -
-				feedback_ * stageMemory_;
-			const double nonlinear = AsymmetricSoftClip(stageInput) - biasShape_;
-			stageMemory_ += stageSmoothingCoefficient_ *
-				(nonlinear - stageMemory_);
-			outputs(index) = 0.78 * nonlinear + 0.22 * stageMemory_;
+			// The piano/pickup signal is expressed in model units. Convert it to
+			// the physical voltage presented to the +25 V Peterson input transistor.
+			// Figure 11-8 places that stage before its tone/feedback and volume
+			// sections. Extended Drive is compensated at the pre-power volume node.
+			const double physicalInput = InputVoltsPerModelUnit * inputs(index);
+			// Drive raises the voltage presented to the Figure 11-8 Q1/Q2 circuit.
+			// Its reciprocal is applied at Figure 11-8's volume node below, so the
+			// control changes preamp headroom rather than becoming a volume control.
+			// Q1/Q2 feed the real active feedback network. Do not normalize between
+			// those stages: their physical interstage voltage is what determines when
+			// the Darlington feedback pair and Q5 leave their small-signal region.
+			const double inputStageOutput = preamp_.Step(
+				driveGain_ * physicalInput).voltage;
+			const double toneOutput = tonePreamp_.Step(inputStageOutput,
+				BassPotPositionForControl(smoothedBass_),
+				TreblePotPositionForControl(smoothedTreble_)).voltage;
+			// Figure 11-8 places its 100 kOhm volume control before the channel
+			// output buffers and Figure 11-9. Use that physical node for Drive's
+			// reciprocal gain. Putting the compensation after Figure 11-9 preserved
+			// the output level but still drove chord peaks into the power rails.
+			const double preampOutput = toneOutput /
+				(driveGain_ * NominalFullPreampGain);
+
+			// In Figure 11-8 the optical network routes the preamp signal to two
+			// outputs, each of which feeds its own Figure 11-9 power module. Keep
+			// those power stages independent so their crossover and overload history
+			// follow the channel currents rather than a post-distortion pan law.
+			const double pan = smoothedVibratoIntensity_ * vibratoLamp_;
+			const double leftDrive = std::sqrt(std::max(0.0, 1.0 + pan));
+			const double rightDrive = std::sqrt(std::max(0.0, 1.0 - pan));
+			const double leftVoltage = ProcessPowerModule(preampOutput * leftDrive,
+				powerChannels_[0], supplyRail_);
+			double rightVoltage = leftVoltage;
+			if (stereoPowerActive)
+			{
+				rightVoltage = ProcessPowerModule(preampOutput * rightDrive,
+					powerChannels_[1], supplyRail_);
+			}
+			const double modelScale = makeupGain_ /
+				(PowerClosedLoopGain * InputVoltsPerModelUnit);
+			leftOutputs(index) = modelScale * leftVoltage;
+			rightOutputs(index) = modelScale * rightVoltage;
 		}
-		const double shaped = outputDecimator_->Downsample(outputs);
-		cabinetLow_ += cabinetLowCoefficient_ * (shaped - cabinetLow_);
-		cabinetBody_ += cabinetBodyCoefficient_ * (shaped - cabinetBody_);
-		cabinetHigh_ += cabinetHighCoefficient_ * (shaped - cabinetHigh_);
-		const double cabinet = cabinetHigh_ + 0.08 * cabinetLow_ +
-			0.14 * (cabinetBody_ - cabinetLow_);
-		const double highPassed = highPassCoefficient_ *
-			(previousHighPass_ + cabinet - previousInput_);
-		previousInput_ = cabinet;
-		previousHighPass_ = highPassed;
-		return std::isfinite(highPassed) ? highPassed : 0.0;
+		const double left = leftOutputDecimator_->Downsample(leftOutputs);
+		const double right = rightOutputDecimator_->Downsample(rightOutputs);
+		const double totalCurrent = stereoPowerActive ?
+			powerChannels_[0].supplyCurrent + powerChannels_[1].supplyCurrent :
+			2.0 * powerChannels_[0].supplyCurrent;
+		const double loadedRail = std::clamp(NominalSupplyRail -
+			SupplyResistance * totalCurrent, MinimumSupplyRail,
+			NominalSupplyRail);
+		const double supplyCoefficient = loadedRail < supplyRail_ ?
+			supplyDischargeCoefficient_ : supplyRechargeCoefficient_;
+		supplyRail_ += supplyCoefficient * (loadedRail - supplyRail_);
+
+		const double vibratoFrequency = 1.5 * std::pow(8.0,
+			smoothedVibratoSpeed_);
+		vibratoPhase_ += vibratoFrequency / sampleRate_;
+		if (vibratoPhase_ >= 1.0)
+			vibratoPhase_ -= 1.0;
+		const double sine = std::sin(6.2831853071795864769 * vibratoPhase_);
+		const double lampTarget = std::tanh(1.6 * sine) / std::tanh(1.6);
+		vibratoLamp_ += vibratoLampCoefficient_ *
+			(lampTarget - vibratoLamp_);
+		const double outputGain = 2.0 * smoothedOutputVolume_;
+		return {
+			outputGain * (std::isfinite(left) ? left : 0.0),
+			outputGain * (std::isfinite(right) ? right : 0.0)};
 	}
 
 private:
-	static double OnePoleCoefficient(double frequency, double sampleRate)
+	struct PowerChannel
 	{
-		return 1.0 - std::exp(-6.2831853071795864769 * frequency /
-			sampleRate);
+		PetersonPowerAmplifier circuit;
+		double supplyCurrent{};
+	};
+
+	double ProcessPowerModule(double input, PowerChannel& channel,
+		double supplyRail)
+	{
+		const auto result = channel.circuit.Step(input, supplyRail);
+		channel.supplyCurrent = result.positiveRailCurrent +
+			result.negativeRailCurrent;
+		return result.voltage;
 	}
 
-	static double AsymmetricSoftClip(double value)
-	{
-		if (value >= 0.0)
-			return value / (1.0 + 0.55 * value);
-		return value / (1.0 - 0.72 * value);
-	}
+	// With the module's 5x pickup-sum feed, 0.13 V/model-unit makes a calibrated
+	// hard single note present about 0.42 Vpk to the preamp at maximum Drive.
+	// After nominal preamp-gain normalization, Figure 11-9 retains the existing
+	// voltage calibration while real preamp compression reduces its overload
+	// demand. The default remains in both circuits' feedback-linear range.
+	static constexpr double InputVoltsPerModelUnit = 0.13;
+	static constexpr double PowerClosedLoopGain = 57.0; // 1 + 5.6k / 100
+	// Small-signal gain of Q1/Q2 plus the centred Figure 11-8 nonlinear tone
+	// feedback stage at 250 Hz. This is a unit calibration only: there is no
+	// normalization between the two physical stages, so interstage overload and
+	// gain compression remain in the circuit path.
+	static constexpr double NominalFullPreampGain = 6.3230;
+	static constexpr double NominalSupplyRail = 35.0;
+	static constexpr double MinimumSupplyRail = 27.0;
+	static constexpr double SupplyResistance = 0.72;
+	static constexpr double NominalGain = 1.12;
 
 	double sampleRate_ = 48000.0;
-	double highPassCoefficient_ = 0.9993;
-	double previousInput_{};
-	double previousHighPass_{};
-	double inputBass_{};
-	double inputBody_{};
-	double cabinetLow_{};
-	double cabinetBody_{};
-	double cabinetHigh_{};
-	double detectorEnvelope_{};
-	double stageMemory_{};
+	PetersonPreAmplifier preamp_{};
+	PetersonTonePreAmplifier tonePreamp_{};
+	std::array<PowerChannel, 2> powerChannels_{};
+	double supplyRail_ = NominalSupplyRail;
+	double vibratoPhase_{};
+	double vibratoLamp_{};
 	double cachedDrive_ = -1.0;
 	double smoothedDrive_{};
 	double driveSmoothingCoefficient_ = 0.0035;
-	double inputBassCoefficient_ = 0.023;
-	double inputBodyCoefficient_ = 0.15;
-	double cabinetLowCoefficient_ = 0.025;
-	double cabinetBodyCoefficient_ = 0.14;
-	double cabinetHighCoefficient_ = 0.63;
-	double detectorAttackCoefficient_ = 0.006;
-	double detectorReleaseCoefficient_ = 0.00015;
-	double stageSmoothingCoefficient_ = 0.29;
-	double gain_ = 1.0;
-	double bias_{};
-	double biasShape_{};
-	double feedback_ = 0.1;
-	double supplySensitivity_ = 0.08;
-	bool driveInitialized_{};
-	std::unique_ptr<X4Resampler_Order7> inputInterpolator_;
-	std::unique_ptr<X4Resampler_Order7> outputDecimator_;
+	double controlSmoothingCoefficient_ = 0.002;
+	double vibratoLampCoefficient_ = 0.002;
+	double supplyDischargeCoefficient_ = 0.0069;
+	double supplyRechargeCoefficient_ = 0.00038;
+	double driveGain_ = 1.0;
+	double makeupGain_ = NominalGain;
+	double smoothedOutputVolume_ = 0.50;
+	double smoothedBass_ = 0.50;
+	double smoothedTreble_ = 0.50;
+	double smoothedVibratoSpeed_ = 0.32;
+	double smoothedVibratoIntensity_{};
+	bool controlsInitialized_{};
+	bool rightPowerDormant_{true};
+	std::unique_ptr<X2Resampler_Order7> inputInterpolator_;
+	std::unique_ptr<X2Resampler_Order7> leftOutputDecimator_;
+	std::unique_ptr<X2Resampler_Order7> rightOutputDecimator_;
 };
 
 } // namespace tfdsp

@@ -63,9 +63,12 @@ modal tine/tone-bar system through a Hunt-Crossley contact law. Compression and
 relative hammer/tine velocity determine force and hysteretic loss at every
 oversample, so contact duration, rebound, and modal energy distribution emerge
 from the collision rather than from a prescribed brightness envelope. Two
-transverse tine coordinates then traverse a finite-pole magnetic-flux field.
-The sixteen pickup voices meet in one shared, stateful amplifier, so chords
-compress and overload differently from isolated notes.
+transverse tine coordinates then traverse the steep, asymmetric flux transition
+of the pickup's offset two-protuberance pole. Its unidirectional gradient
+generates the velocity-dependent harmonic ladder and intermodulation sidebands
+without a separate bark waveshaper. The sixteen pickup voices meet in one
+shared, stateful amplifier, so chords interact and compress differently from
+isolated notes.
 
 The resonator state represents displacement. An initial cantilever-scaling
 profile derives modal mass from each key's exact pitch; modal mass and frequency
@@ -93,19 +96,44 @@ sixteen internal tail slots instead of being silenced or retuned.
   that reaction, raising Q and adding a short tone-bar sub-fundamental bloom.
   This changes body and sustain rather than crossfading levels.
 - **Tone** changes the tine's vertical alignment to the pickup pole and hence
-  the balance of fundamental and curvature-generated harmonics. **Gap** changes
-  front-to-back pickup proximity and therefore both level and dynamic response.
+  the balance of fundamental and curvature-generated harmonics. **Proximity**
+  changes front-to-back pickup distance and therefore both level and dynamic
+  response. Its small-signal sensitivity is partly normalized so the control
+  retains magnetic curvature without becoming a second Drive control.
   `TONE CV` accepts polyphonic modulation at 10% of the knob range per volt.
 - **Decay** scales natural modal decay, **Release** controls damper speed, and
   **Mechanics** ranges from a clean pickup sound to deliberately emphasized,
   differentiated keybed, key-release, and damper events. The calibrated default
   remains subordinate to the pitched voice. `PEDAL` holds released notes while
   its gate is high.
-- **Drive** controls level into the post-sum electronics. The amplifier combines
-  harp/load voicing, asymmetric feedback saturation, level-dependent supply
-  recovery, and restrained cabinet filtering rather than a static waveshaper.
-  `DIRECT POLY` exposes each pickup channel; `LEFT` and `RIGHT` expose the shared
-  amplified output (currently dual mono).
+- **Drive** raises level by up to 24 dB into transistor-level solves of the
+  Peterson Figure 11-8 input pair and active tone-feedback amplifier. Its
+  reciprocal is applied at Figure 11-8's
+  real volume node before each Figure 11-9 power module, so level compensation
+  cannot force summed chord peaks into the power rails. The preamp solve contains
+  the selected-2N3392 input devices, Darlington-connected feedback pair, Q5
+  follower, actual three-terminal Bass/Treble controls, and bias/coupling network;
+  the power solve contains the feedback and driver transistors, class-A
+  transformer, both matched PNP germanium output devices, rail paths,
+  capacitors, and reactive speaker current. There is no static amp waveshaper.
+  Bass and Treble therefore alter impedances inside the nonlinear feedback loop
+  rather than driving a synthetic post-EQ. Their panel tapers distribute the
+  electrically bunched linear-pot response more evenly; above centre, Treble
+  progressively parallels the historical 68 kOhm input arm to extend the
+  otherwise modest original boost range. **Output** is a
+  strictly post-amplifier level control. The exact scope and remaining measured-
+  data gaps are recorded in the
+  [modelling notes](docs/TfElectricPiano-modelling-notes.md).
+- The two transformer-driven germanium output stages operate inside their
+  feedback loops and draw current from a shared recovering supply. Each drives
+  a provisional moving-coil electrical load with motional resonance and
+  inductive rise, so load current and back-EMF affect overload. **Vib Speed**
+  spans approximately 1.5–12 Hz
+  and **Vib Int** crossfades
+  from dual mono to equal-power stereo panning; zero intensity is off. Speaker
+  cone radiation and enclosure filtering are deliberately not included.
+  `DIRECT POLY` exposes
+  each pickup channel, while `LEFT` and `RIGHT` expose the shared Suitcase path.
 
 The default curves vary spectrum and decay by velocity and keyboard position.
 There is no dedicated bark detector or bass enhancement: low-note bark must
@@ -113,9 +141,13 @@ arise from the resonator motion, nonlinear magnetic pickup, and shared
 amplifier. Its presence and onset are therefore calibration evidence for the
 physical model rather than a directly imposed feature.
 
-The magnetic pickup and shared amplifier nonlinearities run at 4x sample rate.
-High resonator modes taper smoothly before Nyquist. Live timbre controls use
-short smoothing; Decay uses a slower transition and staggered control-rate
+The resonators run at host sample rate, while hammer/tine contact is integrated
+at 16x during a collision. Tine motion is interpolated around the nonlinear
+magnetic pickup at 4x. The tone-network/Figure 11-9 amplifier chain runs in a
+separate 2x path before decimation; only slow controls, supply
+recovery, and vibrato remain at host rate. High resonator modes
+taper smoothly before Nyquist. Live timbre controls use short smoothing; Decay
+uses a slower transition and staggered control-rate
 coefficient updates so polyphonic adjustment remains continuous and inexpensive.
 
 ### Slop and Slop 4

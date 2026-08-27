@@ -96,6 +96,11 @@ DEFAULT_PARAMS = {
         0.24,
         0.18,
         0.32,
+        0.50,
+        0.50,
+        0.50,
+        0.32,
+        0.0,
     ],
     "TfWavefoldOscillator": [
         0.0,
@@ -1134,18 +1139,20 @@ def generate_electric_piano_patch() -> None:
             "and COUPLING moves from a short isolated tine to a sustained "
             "common-base tuning fork. "
             "TONE changes vertical tine/pickup alignment; "
-            "GAP changes pickup proximity and dynamic response. DECAY scales the "
+            "PROXIMITY changes pickup distance and dynamic response. DECAY scales the "
             "natural tine/tone-bar ring time; RELEASE sets damper speed. MECHANICS "
-            "adds synchronized key noise, and DRIVE overloads "
-            "the shared amplifier. DIRECT POLY bypasses that final amp.\n\n"
-            "The -6 dB master protects the first listen. PEDAL accepts a gate; "
+            "adds synchronized key noise. DRIVE controls level-compensated "
+            "amplifier overload; OUTPUT sets post-amp level, AMP BASS and AMP "
+            "TREBLE shape the Peterson preamp, and VIB SPEED/INT control stereo "
+            "Suitcase panning. DIRECT POLY bypasses that final amp.\n\n"
+            "The stereo output mixers are set to unity gain. PEDAL accepts a gate; "
             "patch your preferred MIDI CC-to-CV module there for sustain.",
         )
     )
     patch.add(midi(2, (17, 0), channels=16))
     patch.add(module(3, "TriggerFish-Elements", "TfElectricPiano", (29, 0)))
-    patch.add(mixer(4, (45, 0), (0.5011872336, 0.7, 0.0, 0.0, 0.0)))
-    patch.add(mixer(5, (54, 0), (0.5011872336, 0.7, 0.0, 0.0, 0.0)))
+    patch.add(mixer(4, (45, 0), (1.0, 1.0, 0.0, 0.0, 0.0)))
+    patch.add(mixer(5, (54, 0), (1.0, 1.0, 0.0, 0.0, 0.0)))
     patch.add(audio(6, (63, 0)))
 
     patch.cable(2, 0, 3, 0)  # MIDI pitch -> 1V/oct

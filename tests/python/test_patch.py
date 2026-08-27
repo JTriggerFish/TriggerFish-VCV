@@ -161,6 +161,11 @@ EXPECTED_DEFAULTS = {
         9: 0.24,
         10: 0.18,
         11: 0.32,
+        12: 0.50,
+        13: 0.50,
+        14: 0.50,
+        15: 0.32,
+        16: 0.0,
     },
     "TfWavefoldOscillator": {
         0: 0.0,
@@ -975,9 +980,36 @@ def test_303_voice_foundry_song_reproduces_gibber_pattern_and_transpositions():
 
 
 @pytest.mark.parametrize("name", PATCH_PATHS)
-def test_smoke_patch_has_quiet_master(name):
+def test_smoke_patch_has_safe_output_gain(name):
     patch = load_patch(name)
     audio = modules(patch, "AudioInterface")[0]
+    if name == "electric_piano":
+        piano = modules(patch, "TfElectricPiano")[0]
+        masters = modules(patch, "VCMixer")
+        assert len(masters) == 2
+        assert all(
+            [param_values(master)[0], param_values(master)[1]] == [1.0, 1.0]
+            for master in masters
+        )
+        piano_routes = [
+            cable
+            for cable in patch["cables"]
+            if cable["outputModuleId"] == piano["id"]
+            and cable["inputModuleId"] in {master["id"] for master in masters}
+        ]
+        assert {cable["outputId"] for cable in piano_routes} == {1, 2}
+        assert {cable["inputId"] for cable in piano_routes} == {1}
+        assert {cable["inputModuleId"] for cable in piano_routes} == {
+            master["id"] for master in masters
+        }
+        routed_inputs = {
+            cable["inputId"]
+            for cable in patch["cables"]
+            if cable["outputModuleId"] in {master["id"] for master in masters}
+            and cable["inputModuleId"] == audio["id"]
+        }
+        assert routed_inputs == {0, 1}
+        return
     if name in {
         "reverb_two_sources",
         "prog_303",
