@@ -514,6 +514,12 @@ public:
 			if (!wasAudible)
 			{
 				newSilentStrike = true;
+				// A dormant voice is not stepped, so its smoothed controls otherwise
+				// remain frozen at the preceding note's values. Re-prime them from the
+				// current panel state before this fresh attack; in particular, do not
+				// spend the next note's transient gliding old pickup/coupling settings
+				// or the slow Decay smoother toward values chosen during silence.
+				controlsInitialized_ = false;
 				// A silent key has no phase history to preserve. The oversampled
 				// modulation controls are primed below, so an already-present DC PM
 				// voltage becomes initial phase rather than a one-sample impulse.
@@ -1064,7 +1070,17 @@ private:
 	{
 		if (!controlsInitialized_)
 		{
-			smoothedControls_ = controls;
+			// Only these continuously active controls are consumed below. Sanitize
+			// them while priming so a non-finite API caller cannot poison the
+			// smoother's persistent state before Clamp01() sees the target.
+			smoothedControls_.body = Clamp01(controls.body);
+			smoothedControls_.bell = Clamp01(controls.bell);
+			smoothedControls_.coupling = Clamp01(controls.coupling);
+			smoothedControls_.tone = Clamp01(controls.tone);
+			smoothedControls_.proximity = Clamp01(controls.proximity);
+			smoothedControls_.decay = Clamp01(controls.decay);
+			smoothedControls_.release = Clamp01(controls.release);
+			smoothedControls_.mechanics = Clamp01(controls.mechanics);
 			controlsInitialized_ = true;
 		}
 		auto smooth = [&](double& current, double target, double coefficient)
@@ -1242,7 +1258,7 @@ private:
 		bool controlTick)
 	{
 		// The nonlinear trajectory normalizer below is deliberately control-rate.
-		// All inputs have already been smoothed at audio rate, and 3 kHz coefficient
+		// All inputs have already been smoothed at audio rate, and 1 kHz coefficient
 		// refresh is far above knob/CV bandwidth; evaluating dozens of field points
 		// for every active voice on every host sample would make this calibration a
 		// significant steady CPU regression while a control is moving.
@@ -1275,6 +1291,7 @@ private:
 		// sensitivity from a 24 dB bass/middle span toward 36 dB at C6 rather than
 		// leaving the same knob effectively dead there. The midpoint remains unity.
 		constexpr double F3Position = (53.0 - 28.0) / 72.0;
+		constexpr double MiddleCPosition = (60.0 - 28.0) / 72.0;
 		constexpr double C6Position = (84.0 - 28.0) / 72.0;
 		const double upperBellLinear = std::clamp(
 			(keyPosition_ - F3Position) / (C6Position - F3Position), 0.0, 1.0);
@@ -1328,7 +1345,6 @@ private:
 		// former 0.60 mm endpoint left the highest keys with little pickup-curvature
 		// sparkle even after the mechanical topology was corrected. This remains a
 		// physical gap change, not a register EQ or output crossfade.
-		constexpr double MiddleCPosition = (60.0 - 28.0) / 72.0;
 		constexpr double TrebleNeutralGapMillimetres = 0.52;
 		const double trebleGapPosition = std::clamp(
 			(keyPosition_ - MiddleCPosition) / (1.0 - MiddleCPosition), 0.0, 1.0);
@@ -1356,11 +1372,31 @@ private:
 		// gradient. Raising Tone moves it onto one flank, trading odd-harmonic
 		// symmetry for the stronger even/sideband mixture used when voicing a
 		// Rhodes for bite.
-		pickupVerticalOffset_ = 0.34 + 0.22 * tone * tone +
+		// In the treble, most inharmonic attack coordinates lie above pickup
+		// bandwidth and raw modal Bell gain cannot create a useful control. Real
+		// Rhodes voicing also changes bell character by moving the pickup vertically
+		// relative to the tine. Add that second physical route only above middle C,
+		// where it smoothly takes over from the mechanical residues. The signed
+		// offset is exactly zero at Bell's calibrated 0.52 default. Trajectory and
+		// alignment normalization below remove the associated broadband level shift,
+		// leaving curvature-generated harmonic balance rather than another VCA.
+		const double pickupBellLinear = std::clamp(
+			(keyPosition_ - MiddleCPosition) /
+				(C6Position - MiddleCPosition), 0.0, 1.0);
+		const double pickupBellBlend = pickupBellLinear * pickupBellLinear *
+			(3.0 - 2.0 * pickupBellLinear);
+		constexpr double PickupBellAlignmentSpanMillimetres = 0.09;
+		const double neutralPickupVerticalOffset = 0.34 + 0.22 * tone * tone +
 			0.020 * keyPosition_;
+		const double minimumPickupVerticalOffset = 0.34 + 0.020 * keyPosition_;
+		const double maximumPickupVerticalOffset = 0.56 + 0.020 * keyPosition_;
+		pickupVerticalOffset_ = std::clamp(neutralPickupVerticalOffset +
+			PickupBellAlignmentSpanMillimetres * pickupBellBlend * (bell - 0.52),
+			minimumPickupVerticalOffset, maximumPickupVerticalOffset);
 		pickupHorizontalOffset_ = 0.10 + 0.035 * keyPosition_;
 		const auto alignmentGradient = MagneticFluxGradient(
-			pickupVerticalOffset_, pickupHorizontalOffset_, ReferencePickupGap);
+			neutralPickupVerticalOffset, pickupHorizontalOffset_,
+			ReferencePickupGap);
 		const double alignmentMagnitude = std::sqrt(
 			alignmentGradient[0] * alignmentGradient[0] +
 			alignmentGradient[1] * alignmentGradient[1]);
@@ -1376,12 +1412,17 @@ private:
 			(0.08 + 0.32 * std::pow(1.0 - keyPosition_, 1.5)) *
 			pickupExcursionScale_;
 		const double referenceTrajectory = MagneticTrajectoryRms(
-			pickupVerticalOffset_, pickupHorizontalOffset_, ReferencePickupGap,
-			nominalExcursionMillimetres);
+			neutralPickupVerticalOffset, pickupHorizontalOffset_,
+			ReferencePickupGap, nominalExcursionMillimetres);
 		const double currentTrajectory = MagneticTrajectoryRms(
 			pickupVerticalOffset_, pickupHorizontalOffset_, pickupGap_,
 			nominalExcursionMillimetres);
-		const double proximityGain = referenceTrajectory /
+		// Compare Bell's shifted observation against the same key's neutral pickup
+		// placement, rather than allowing the shifted placement to establish a new
+		// gain reference. This jointly normalizes Bell and Proximity across the
+		// representative trajectories and prevents extreme Tone/Proximity settings
+		// from turning their interaction into several decibels of hidden gain.
+		const double trajectoryGain = referenceTrajectory /
 			std::max(1.0e-9, currentTrajectory);
 		// Preserve a restrained service-like sensitivity change: the close end may
 		// become at most about 1 dB louder after trajectory normalization, instead
@@ -1393,7 +1434,7 @@ private:
 		const double intentionalSensitivity = std::pow(
 			neutralKeyGap / pickupGap_, 0.08);
 		pickupAlignmentGain_ = std::clamp(ReferenceGradientMagnitude() /
-			std::max(1.0e-6, alignmentMagnitude) * proximityGain *
+			std::max(1.0e-6, alignmentMagnitude) * trajectoryGain *
 			intentionalSensitivity, 0.04, 7.0);
 		pickupVoltageScale_ = 0.130 *
 			ElectricPianoMechanicalTrim::PickupOutput * keyPickupSensitivity_ *
@@ -2744,6 +2785,9 @@ public:
 		vibratoPhase_ = 0.0;
 		vibratoLamp_ = 0.0;
 		cachedDrive_ = -1.0;
+		cachedBass_ = -1.0;
+		cachedTreble_ = -1.0;
+		cachedVibratoSpeed_ = -1.0;
 		controlsInitialized_ = false;
 		rightPowerDormant_ = true;
 		inputInterpolator_->Reset();
@@ -2881,13 +2925,36 @@ public:
 			makeupGain_ = NominalGain;
 			cachedDrive_ = smoothedDrive_;
 		}
-
+		if (smoothedVibratoSpeed_ != cachedVibratoSpeed_)
+		{
+			vibratoFrequency_ = 1.5 * std::pow(8.0, smoothedVibratoSpeed_);
+			cachedVibratoSpeed_ = smoothedVibratoSpeed_;
+		}
+		if (smoothedBass_ != cachedBass_)
+		{
+			bassPotPosition_ = BassPotPositionForControl(smoothedBass_);
+			cachedBass_ = smoothedBass_;
+		}
+		if (smoothedTreble_ != cachedTreble_)
+		{
+			treblePotPosition_ = TreblePotPositionForControl(smoothedTreble_);
+			cachedTreble_ = smoothedTreble_;
+		}
 		// Interpolate before Figure 11-8. The complete preamp -> tone -> Figure
 		// 11-9 path runs at 2x; only controls and the slow supply remain at host
 		// rate. The pickup/voice model has its own independent 4x path.
 		const auto inputs = inputInterpolator_->Upsample(input);
 		Eigen::Array<double, X2Resampler_Order7::ResamplingFactor, 1> leftOutputs;
 		Eigen::Array<double, X2Resampler_Order7::ResamplingFactor, 1> rightOutputs;
+		const double compensatedPreampDenominator =
+			driveGain_ * NominalFullPreampGain;
+		const double pan = smoothedVibratoIntensity_ * vibratoLamp_;
+		const double leftDrive = stereoPowerActive ?
+			std::sqrt(std::max(0.0, 1.0 + pan)) : 1.0;
+		const double rightDrive = stereoPowerActive ?
+			std::sqrt(std::max(0.0, 1.0 - pan)) : 1.0;
+		const double modelScale = makeupGain_ /
+			(PowerClosedLoopGain * InputVoltsPerModelUnit);
 		for (int index = 0; index < X2Resampler_Order7::ResamplingFactor; ++index)
 		{
 			// The piano/pickup signal is expressed in model units. Convert it to
@@ -2904,22 +2971,18 @@ public:
 			const double inputStageOutput = preamp_.Step(
 				driveGain_ * physicalInput).voltage;
 			const double toneOutput = tonePreamp_.Step(inputStageOutput,
-				BassPotPositionForControl(smoothedBass_),
-				TreblePotPositionForControl(smoothedTreble_)).voltage;
+				bassPotPosition_, treblePotPosition_).voltage;
 			// Figure 11-8 places its 100 kOhm volume control before the channel
 			// output buffers and Figure 11-9. Use that physical node for Drive's
 			// reciprocal gain. Putting the compensation after Figure 11-9 preserved
 			// the output level but still drove chord peaks into the power rails.
 			const double preampOutput = toneOutput /
-				(driveGain_ * NominalFullPreampGain);
+				compensatedPreampDenominator;
 
 			// In Figure 11-8 the optical network routes the preamp signal to two
 			// outputs, each of which feeds its own Figure 11-9 power module. Keep
 			// those power stages independent so their crossover and overload history
 			// follow the channel currents rather than a post-distortion pan law.
-			const double pan = smoothedVibratoIntensity_ * vibratoLamp_;
-			const double leftDrive = std::sqrt(std::max(0.0, 1.0 + pan));
-			const double rightDrive = std::sqrt(std::max(0.0, 1.0 - pan));
 			const double leftVoltage = ProcessPowerModule(preampOutput * leftDrive,
 				powerChannels_[0], supplyRail_);
 			double rightVoltage = leftVoltage;
@@ -2928,8 +2991,6 @@ public:
 				rightVoltage = ProcessPowerModule(preampOutput * rightDrive,
 					powerChannels_[1], supplyRail_);
 			}
-			const double modelScale = makeupGain_ /
-				(PowerClosedLoopGain * InputVoltsPerModelUnit);
 			leftOutputs(index) = modelScale * leftVoltage;
 			rightOutputs(index) = modelScale * rightVoltage;
 		}
@@ -2945,11 +3006,12 @@ public:
 			supplyDischargeCoefficient_ : supplyRechargeCoefficient_;
 		supplyRail_ += supplyCoefficient * (loadedRail - supplyRail_);
 
-		const double vibratoFrequency = 1.5 * std::pow(8.0,
-			smoothedVibratoSpeed_);
-		vibratoPhase_ += vibratoFrequency / sampleRate_;
+		vibratoPhase_ += vibratoFrequency_ / sampleRate_;
 		if (vibratoPhase_ >= 1.0)
 			vibratoPhase_ -= 1.0;
+		// Keep the physical lamp/LDR state running while Intensity is down. This
+		// costs one slow nonlinear evaluation but makes enabling Vibrato resume the
+		// continuously evolving oscillator instead of restarting its lamp envelope.
 		const double sine = std::sin(6.2831853071795864769 * vibratoPhase_);
 		const double lampTarget = std::tanh(1.6 * sine) / std::tanh(1.6);
 		vibratoLamp_ += vibratoLampCoefficient_ *
@@ -3001,6 +3063,9 @@ private:
 	double vibratoPhase_{};
 	double vibratoLamp_{};
 	double cachedDrive_ = -1.0;
+	double cachedBass_ = -1.0;
+	double cachedTreble_ = -1.0;
+	double cachedVibratoSpeed_ = -1.0;
 	double smoothedDrive_{};
 	double driveSmoothingCoefficient_ = 0.0035;
 	double controlSmoothingCoefficient_ = 0.002;
@@ -3009,6 +3074,9 @@ private:
 	double supplyRechargeCoefficient_ = 0.00038;
 	double driveGain_ = 1.0;
 	double makeupGain_ = NominalGain;
+	double bassPotPosition_ = 0.5;
+	double treblePotPosition_ = 0.5;
+	double vibratoFrequency_ = 3.0;
 	double smoothedOutputVolume_ = 0.50;
 	double smoothedBass_ = 0.50;
 	double smoothedTreble_ = 0.50;

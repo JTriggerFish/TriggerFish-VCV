@@ -1112,7 +1112,7 @@ int main()
 		// modes remain below pickup bandwidth. Guard a clearly different, level-
 		// matched onset at C4, E5 and E6 without requiring a large RMS change.
 		constexpr std::array<int, 3> BellKeys{60, 76, 88};
-		constexpr std::array<double, 3> MinimumBellResiduals{0.25, 0.10, 0.07};
+		constexpr std::array<double, 3> MinimumBellResiduals{0.25, 0.22, 0.32};
 		for (std::size_t key = 0; key < BellKeys.size(); ++key)
 		{
 			auto lowBellControls = quietControls;
@@ -1123,8 +1123,8 @@ int main()
 			tfdsp::ElectricPianoVoice highBellVoice;
 			lowBellVoice.SetSampleRate(48000.0);
 			highBellVoice.SetSampleRate(48000.0);
-			std::vector<double> lowBellSignal(960);
-			std::vector<double> highBellSignal(960);
+			std::vector<double> lowBellSignal(2048);
+			std::vector<double> highBellSignal(2048);
 			const double pitch = (static_cast<double>(BellKeys[key]) - 60.0) /
 				12.0;
 			for (std::size_t sample = 0; sample < lowBellSignal.size(); ++sample)
@@ -1135,13 +1135,67 @@ int main()
 					false, highBellControls);
 			}
 			const double residual = LevelMatchedResidual(lowBellSignal,
-				highBellSignal, 0, lowBellSignal.size());
-			if (!(residual > MinimumBellResiduals[key]))
+				highBellSignal, 0, 960);
+			double lowBellEnergy = 0.0;
+			double highBellEnergy = 0.0;
+			for (std::size_t sample = 0; sample < 960; ++sample)
+			{
+				lowBellEnergy += lowBellSignal[sample] * lowBellSignal[sample];
+				highBellEnergy += highBellSignal[sample] * highBellSignal[sample];
+			}
+			const double bellLevelChangeDb = 10.0 * std::log10(
+				std::max(1.0e-20, highBellEnergy) /
+				std::max(1.0e-20, lowBellEnergy));
+			if (!(residual > MinimumBellResiduals[key] &&
+				std::abs(bellLevelChangeDb) < 1.8))
 				std::cerr << "electric piano Bell onset residual key " <<
-					BellKeys[key] << " " << residual << '\n';
-			Check(residual > MinimumBellResiduals[key],
-				"electric piano Bell has an audible level-matched onset range through the treble");
+					BellKeys[key] << " " << residual << " level " <<
+					bellLevelChangeDb << " dB\n";
+			Check(residual > MinimumBellResiduals[key] &&
+				std::abs(bellLevelChangeDb) < 1.8,
+				"electric piano Bell has an audible level-matched onset range without becoming another VCA");
 		}
+		double maximumBellInteractionLevelDb = 0.0;
+		bool bellInteractionsFinite = true;
+		for (int midi : {76, 88})
+			for (double tone : {0.0, 1.0})
+				for (double proximity : {0.0, 1.0})
+				{
+					auto lowBellControls = quietControls;
+					auto highBellControls = quietControls;
+					lowBellControls.bell = 0.0;
+					highBellControls.bell = 1.0;
+					lowBellControls.tone = highBellControls.tone = tone;
+					lowBellControls.proximity = highBellControls.proximity =
+						proximity;
+					tfdsp::ElectricPianoVoice lowBellVoice;
+					tfdsp::ElectricPianoVoice highBellVoice;
+					lowBellVoice.SetSampleRate(48000.0);
+					highBellVoice.SetSampleRate(48000.0);
+					double lowEnergy = 0.0;
+					double highEnergy = 0.0;
+					const double pitch = (static_cast<double>(midi) - 60.0) / 12.0;
+					for (int sample = 0; sample < 960; ++sample)
+					{
+						const double low = lowBellVoice.Step(pitch, 10.0, 0.90,
+							false, lowBellControls);
+						const double high = highBellVoice.Step(pitch, 10.0, 0.90,
+							false, highBellControls);
+						bellInteractionsFinite = bellInteractionsFinite &&
+							std::isfinite(low) && std::isfinite(high);
+						lowEnergy += low * low;
+						highEnergy += high * high;
+					}
+					maximumBellInteractionLevelDb = std::max(
+						maximumBellInteractionLevelDb, std::abs(10.0 * std::log10(
+							std::max(1.0e-20, highEnergy) /
+							std::max(1.0e-20, lowEnergy))));
+				}
+		if (!(bellInteractionsFinite && maximumBellInteractionLevelDb < 3.2))
+			std::cerr << "electric piano Bell interaction maximum level " <<
+				maximumBellInteractionLevelDb << " dB\n";
+		Check(bellInteractionsFinite && maximumBellInteractionLevelDb < 3.2,
+			"electric piano Bell remains bounded at extreme Tone and Proximity settings");
 
 		auto weakCouplingControls = quietControls;
 		auto strongCouplingControls = quietControls;
@@ -1883,6 +1937,35 @@ int main()
 		}
 		Check(longDecayVoice.Energy() > 2.0 * shortDecayVoice.Energy(),
 			"electric piano Decay scales the natural loss of sounding modes");
+
+		// Dormant Rack voices are not stepped. Controls edited after their previous
+		// note becomes silent must therefore be re-primed on the next key-down,
+		// rather than spending the new attack smoothing from stale settings. Decay
+		// is the most sensitive probe because its deliberate smoothing time is long.
+		auto dormantControls = silentControls;
+		dormantControls.decay = 0.0;
+		dormantControls.release = 0.0;
+		auto editedDormantControls = dormantControls;
+		editedDormantControls.decay = 1.0;
+		tfdsp::ElectricPianoVoice reusedSilentVoice;
+		reusedSilentVoice.SetSampleRate(48000.0);
+		reusedSilentVoice.Step(0.0, 10.0, 0.8, false, dormantControls);
+		for (int sample = 0; sample < 48000 && reusedSilentVoice.IsAudible();
+			++sample)
+			reusedSilentVoice.Step(0.0, 0.0, 0.0, false, dormantControls);
+		const bool reusedVoiceReachedSilence = !reusedSilentVoice.IsAudible();
+		reusedSilentVoice.Step(0.0, 10.0, 0.8, false,
+			editedDormantControls);
+		tfdsp::ElectricPianoVoice freshEditedVoice;
+		freshEditedVoice.SetSampleRate(48000.0);
+		freshEditedVoice.Step(0.0, 10.0, 0.8, false, editedDormantControls);
+		const double reusedEditedLifetime =
+			reusedSilentVoice.ModeAmplitudeLifetimeSeconds(0);
+		const double freshEditedLifetime =
+			freshEditedVoice.ModeAmplitudeLifetimeSeconds(0);
+		Check(reusedVoiceReachedSilence &&
+			std::abs(reusedEditedLifetime - freshEditedLifetime) < 1.0e-12,
+			"electric piano silent voices snap edited controls before the next attack");
 
 		// Independent random carriers used to put each note's mechanical peak at
 		// an arbitrary time. The resonant impact is now event-synchronous; seeds

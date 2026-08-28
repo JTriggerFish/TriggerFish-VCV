@@ -96,7 +96,9 @@ hammer strike instead of silently retuning the old resonator.
 - **Body** and **Bell** balance the coupled fundamental body and the signed,
   short-lived inharmonic modes. Bell is centred on the calibrated residue and
   has a wider treble span because fewer attack coordinates remain below pickup
-  bandwidth there. **Hammer** changes neoprene stiffness around
+  bandwidth there; above middle C it also follows the real voicing practice of
+  moving the pickup vertically, adding curvature-generated harmonic bell without
+  changing the neutral setup. **Hammer** changes neoprene stiffness around
   the manual's five graduated factory tip zones, and therefore changes contact
   duration and bandwidth rather than directly boosting Bell or treble; as a
   strike property, changes apply to newly played notes. **Strike**
@@ -161,6 +163,9 @@ hammer strike instead of silently retuning the old resonator.
   at full depth and more-negative voltage reverses the three coupled body
   coordinates. **Phase** reaches +/-180 degrees at +/-5 V. A mono cable
   broadcasts to every voice; a polyphonic cable addresses corresponding notes.
+  Mono modulation continues through preserved release tails. When Rack steals
+  a polyphonic channel, the old tail returns smoothly to its unmodulated physical
+  pitch instead of following the replacement note's channel voltage.
   All three modes run at the 4x pickup rate and deliberately leave the short,
   inharmonic impact modes unmodulated; this avoids turning their modal ratios
   into a dissonant sideband cloud while the nonlinear pickup derives the upper

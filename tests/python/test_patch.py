@@ -526,6 +526,8 @@ def test_electric_piano_has_one_polyphonic_pitch_modulation_input():
     assert "linearFrequencyRatio" in module_source
     assert "phaseRadians" in module_source
     assert "getPolyVoltage(channel)" in module_source
+    assert "TailPitchModulation" in module_source
+    assert "inputs[MODULATION_INPUT].getChannels() > 1" in module_source
     assert "RETRIGGER_INPUT" in module_source
     assert "PEDAL_INPUT" in module_source
     assert "STRIKE_POSITION" in module_source

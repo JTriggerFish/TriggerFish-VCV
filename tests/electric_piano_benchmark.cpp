@@ -100,6 +100,38 @@ namespace
 		return {milliseconds, milliseconds / 1000.0, checksum};
 	}
 
+	Measurement MeasureAmplifier(bool vibrato)
+	{
+		tfdsp::ElectricPianoAmplifier amplifier;
+		amplifier.SetSampleRate(SampleRate);
+		tfdsp::ElectricPianoControls controls;
+		controls.vibratoIntensity = vibrato ? 0.65 : 0.0;
+		std::vector<double> input(WarmupSamples + RenderSamples);
+		for (int sample = 0; sample < WarmupSamples + RenderSamples; ++sample)
+		{
+			const double time = static_cast<double>(sample) / SampleRate;
+			input[static_cast<std::size_t>(sample)] =
+				0.11 * std::sin(TwoPi * 110.0 * time) +
+				0.07 * std::sin(TwoPi * 164.81 * time) +
+				0.05 * std::sin(TwoPi * 220.0 * time);
+		}
+		for (int sample = 0; sample < WarmupSamples; ++sample)
+			amplifier.Step(input[static_cast<std::size_t>(sample)], controls);
+
+		double checksum = 0.0;
+		const auto begin = std::chrono::steady_clock::now();
+		for (int sample = 0; sample < RenderSamples; ++sample)
+		{
+			const auto output = amplifier.Step(
+				input[static_cast<std::size_t>(WarmupSamples + sample)], controls);
+			checksum += output[0] + output[1];
+		}
+		const auto end = std::chrono::steady_clock::now();
+		const double milliseconds = std::chrono::duration<double, std::milli>(
+			end - begin).count();
+		return {milliseconds, milliseconds / 1000.0, checksum};
+	}
+
 	template <typename Render>
 	Measurement BestOf(Render&& render)
 	{
@@ -136,6 +168,14 @@ int main()
 	Print("16 voices + shared amp", BestOf([]
 	{
 		return MeasureVoices<16>(ModulationMode::Fixed, true);
+	}));
+	Print("shared amp only", BestOf([]
+	{
+		return MeasureAmplifier(false);
+	}));
+	Print("shared amp, vibrato", BestOf([]
+	{
+		return MeasureAmplifier(true);
 	}));
 	Print("16 voices, pitch modulated", BestOf([]
 	{

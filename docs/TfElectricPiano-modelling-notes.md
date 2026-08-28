@@ -264,9 +264,17 @@ the final anti-alias filtering.
 `Bell = 0.52` is unity gain for the calibrated attack-mode residues. Full panel
 travel spans 24 dB in the bass/middle and grows smoothly to 36 dB by C6, where
 fewer mechanical coordinates remain below pickup bandwidth. The same gain
-tracks their signed transverse pickup weights. This is a sound-design balance
-around the physical default, not a hidden default correction or a broadband
-treble shelf.
+tracks their signed transverse pickup weights. Above middle C, Bell additionally
+moves the pickup's vertical observation point over a 0.09 mm full span, blended
+smoothly to full travel at C6. This is the same physical voicing dimension by
+which a technician changes harmonic bell at the pickup, rather than enormous
+gain on an almost absent treble attack coordinate. The combined Bell/Tone
+position is bounded by Tone's existing physical alignment range. Trajectory
+normalization compares the shifted position with the same key's neutral Bell
+trajectory, so even extreme Tone and Proximity combinations remain bounded.
+This is a sound-design balance around the physical default, not a hidden default
+correction or a broadband treble shelf. The 80-note default render corpus is
+bit-identical because the added offset is exactly zero at 0.52.
 
 `Decay = 0.5` is exactly a unity lifetime multiplier, not a compensating
 envelope setting. At default Coupling, the played upper fork mode has amplitude
@@ -331,7 +339,9 @@ at the 4x pickup rate is checked against direct evaluation to 0.3% relative
 error. Horizontal tine motion changes radial clearance by the chain rule, and
 voltage remains the time derivative of one scalar flux construction.
 
-`Tone` moves the vertical resting alignment; `Proximity` changes the pole gap.
+`Tone` moves the vertical resting alignment; the upper-register part of `Bell`
+makes the smaller bounded movement described above; `Proximity` changes the
+pole gap.
 The gap is in millimetres: the panel covers the manual's 1/8-inch ordinary
 clearance down to the documented 0.020-inch close setting. The neutral per-key
 screw position stays exactly 1.6 mm through middle C, preserving the calibrated
@@ -545,11 +555,23 @@ table replaces each voice's repeated `tanh` and fractional-power field
 evaluations with bilinear interpolation. On the release-Clang
 benchmark used during this pass, one fixed voice takes about 6.6 ms, sixteen
 fixed voices 106 ms, and the complete sixteen-voice/shared-amplifier path
-242 ms per rendered second. Continuously modulated V/oct takes about 203 ms;
+242 ms per rendered second. Continuously modulated V/oct takes about 233 ms;
 active EXP FM, linear TZ FM and PM take approximately 271, 256 and 253 ms.
 The 64x physical contact solve contributes only at note onset; held-note cost
 is still dominated by pickup and amplifier processing. These figures
 are comparative only and will vary with compiler and processor.
+
+The benchmark also isolates the shared amplifier with Vibrato inactive and
+active (about 118 and 165 ms respectively on that build). Static Bass, Treble
+and Vibrato Speed control laws are cached, values shared by both 2x circuit
+frames are evaluated once at host rate, and the lamp/LDR state continues to run
+at zero Intensity so enabling Vibrato preserves its physical phase and envelope.
+The isolated benchmark precomputes its stimulus outside the timed region. None
+of these changes alters a steady-state render checksum. At the Rack boundary,
+disconnected modulation and direct
+outputs also avoid their otherwise redundant per-voice routing work. The
+transistor solves, their iteration criteria, and both oversampling factors are
+unchanged.
 
 Adding the separate tone-bar submode initially pushed the three audio-rate
 modulation cases to roughly 370/355/352 ms because an eleven-element hot loop
@@ -570,7 +592,11 @@ The Rack boundary uses the following deliberate routing rule:
 
 - V/oct and the single pitch-modulation input use Rack's poly-voltage read. A
   one-channel cable is therefore broadcast to all active notes, while a
-  polyphonic cable addresses corresponding voices. The explicit pedal input
+  polyphonic cable addresses corresponding voices. Preserved release tails keep
+  following a one-channel global source. A stolen polyphonic channel belongs to
+  its replacement note, so the old tail instead returns through the existing 4x
+  interpolation to zero modulation; feeding it the reassigned voltage would
+  retune the released note with the new note's expression. The explicit pedal input
   preserves the model's separate key-held and damper-held states for raw modular
   gates. Rack's MIDI-to-CV module has no pedal output, so the smoke patch adds
   Core MIDI CC-to-CV with cell 1 mapped to unsmoothed CC64. MIDI-to-CV itself

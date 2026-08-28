@@ -258,6 +258,8 @@ struct TfElectricPiano : Module
 	tfdsp::ElectricPianoModulation PitchModulation(int channel)
 	{
 		tfdsp::ElectricPianoModulation modulation;
+		if (!inputs[MODULATION_INPUT].isConnected())
+			return modulation;
 		const double scaledVoltage = params[MODULATION_AMOUNT].getValue() *
 			FinitePolyVoltage(MODULATION_INPUT, channel);
 		const int mode = static_cast<int>(std::round(
@@ -270,6 +272,19 @@ struct TfElectricPiano : Module
 			modulation.phaseRadians = (3.14159265358979323846 / 5.0) *
 				scaledVoltage;
 		return modulation;
+	}
+
+	tfdsp::ElectricPianoModulation TailPitchModulation(int channel)
+	{
+		// A mono modulation source is deliberately global and can continue to
+		// drive released tails. With a polyphonic source, however, Rack reuses the
+		// stolen channel for the replacement note; forwarding that voltage would
+		// retune the old tail with the new note's expression. Supplying zero lets
+		// the voice's existing 4x interpolators return smoothly to its physical
+		// frequency while preserving its accumulated phase.
+		if (inputs[MODULATION_INPUT].getChannels() > 1)
+			return {};
+		return PitchModulation(channel);
 	}
 
 	void process(const ProcessArgs& args) override
@@ -287,6 +302,7 @@ struct TfElectricPiano : Module
 
 		const auto baseControls = Controls();
 		const bool velocityConnected = inputs[VELOCITY_INPUT].isConnected();
+		const bool directOutputConnected = outputs[DIRECT_OUTPUT].isConnected();
 		double pickupSum = 0.0;
 		std::array<double, PORT_MAX_CHANNELS> directPickups{};
 		for (int channel = 0; channel < channels; ++channel)
@@ -324,7 +340,8 @@ struct TfElectricPiano : Module
 					retriggerEdge);
 			}
 			pickupSum += pickup;
-			directPickups[channel] += pickup;
+			if (directOutputConnected)
+				directPickups[channel] += pickup;
 		}
 
 		int directChannels = channels;
@@ -336,10 +353,14 @@ struct TfElectricPiano : Module
 				tail.outputChannel) >= 1.0;
 			const double pickup = tail.voice->Step(tail.voice->NotePitch(),
 				0.0, 0.0, sustain, baseControls,
-				PitchModulation(tail.outputChannel));
+				TailPitchModulation(tail.outputChannel));
 			pickupSum += pickup;
-			directPickups[tail.outputChannel] += pickup;
-			directChannels = std::max(directChannels, tail.outputChannel + 1);
+			if (directOutputConnected)
+			{
+				directPickups[tail.outputChannel] += pickup;
+				directChannels = std::max(directChannels,
+					tail.outputChannel + 1);
+			}
 			if (!tail.voice->IsAudible())
 			{
 				tail.voice->Reset();
@@ -347,14 +368,17 @@ struct TfElectricPiano : Module
 			}
 		}
 
-		outputs[DIRECT_OUTPUT].setChannels(directChannels);
-		for (int channel = 0; channel < directChannels; ++channel)
+		if (directOutputConnected)
 		{
-			const double directVoltage = tfdsp::RackOutputAdapter::
-				ProcessPostDecimation(DirectPickupToRackGain *
-					directPickups[channel]);
-			outputs[DIRECT_OUTPUT].setVoltage(
-				static_cast<float>(directVoltage), channel);
+			outputs[DIRECT_OUTPUT].setChannels(directChannels);
+			for (int channel = 0; channel < directChannels; ++channel)
+			{
+				const double directVoltage = tfdsp::RackOutputAdapter::
+					ProcessPostDecimation(DirectPickupToRackGain *
+						directPickups[channel]);
+				outputs[DIRECT_OUTPUT].setVoltage(
+					static_cast<float>(directVoltage), channel);
+			}
 		}
 
 		outputs[LEFT_OUTPUT].setChannels(1);
