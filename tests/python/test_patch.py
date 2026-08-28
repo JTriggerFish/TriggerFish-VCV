@@ -158,7 +158,7 @@ EXPECTED_DEFAULTS = {
         6: 0.55,
         7: 0.48,
         8: 0.50,
-        9: 0.24,
+        9: 0.12,
         10: 0.18,
         11: 0.32,
         12: 0.50,
@@ -166,6 +166,9 @@ EXPECTED_DEFAULTS = {
         14: 0.50,
         15: 0.32,
         16: 0.0,
+        17: 0.0,
+        18: 2.0,
+        19: 0.5,
     },
     "TfWavefoldOscillator": {
         0: 0.0,
@@ -468,9 +471,10 @@ def test_smoke_patch_does_not_name_local_hardware(name):
     patch = load_patch(name)
     audio = modules(patch, "AudioInterface")[0]
 
-    for midi_module in modules(patch, "MIDIToCVInterface"):
-        assert midi_module["data"]["midi"]["driver"] == -1
-        assert "deviceName" not in midi_module["data"]["midi"]
+    for model in ("MIDIToCVInterface", "MIDICCToCVInterface"):
+        for midi_module in modules(patch, model):
+            assert midi_module["data"]["midi"]["driver"] == -1
+            assert "deviceName" not in midi_module["data"]["midi"]
     assert audio["data"]["audio"]["driver"] == -1
     assert "deviceName" not in audio["data"]["audio"]
 
@@ -478,12 +482,17 @@ def test_smoke_patch_does_not_name_local_hardware(name):
 def test_electric_piano_patch_is_16_voice_velocity_playable():
     patch = load_patch("electric_piano")
     midi_module = modules(patch, "MIDIToCVInterface")[0]
+    midi_cc_module = modules(patch, "MIDICCToCVInterface")[0]
     piano = modules(patch, "TfElectricPiano")[0]
 
     assert midi_module["data"]["channels"] == 16
+    assert midi_cc_module["data"]["ccs"][0] == 64
+    assert midi_cc_module["data"]["smooth"] is False
     assert has_cable(patch, midi_module["id"], 0, piano["id"], 0)
     assert has_cable(patch, midi_module["id"], 1, piano["id"], 1)
     assert has_cable(patch, midi_module["id"], 2, piano["id"], 2)
+    assert has_cable(patch, midi_module["id"], 6, piano["id"], 4)
+    assert has_cable(patch, midi_cc_module["id"], 0, piano["id"], 5)
     assert {
         cable["outputId"]
         for cable in patch["cables"]
@@ -502,6 +511,37 @@ def test_electric_piano_exposes_coupling_and_preserves_tails():
     )[0]
     assert "std::swap" in preserve_tail
     assert "CreateVoice()" not in preserve_tail
+
+
+def test_electric_piano_has_one_polyphonic_pitch_modulation_input():
+    module_source = (ROOT / "src" / "TfElectricPiano.cpp").read_text(encoding="utf-8")
+
+    assert module_source.count("MODULATION_INPUT") >= 3
+    assert "MODULATION_AMOUNT" in module_source
+    assert "MODULATION_MODE" in module_source
+    assert "EXPONENTIAL_FM" in module_source
+    assert "LINEAR_THROUGH_ZERO_FM" in module_source
+    assert "PHASE_MODULATION" in module_source
+    assert "exponentialPitch" in module_source
+    assert "linearFrequencyRatio" in module_source
+    assert "phaseRadians" in module_source
+    assert "getPolyVoltage(channel)" in module_source
+    assert "RETRIGGER_INPUT" in module_source
+    assert "PEDAL_INPUT" in module_source
+    assert "STRIKE_POSITION" in module_source
+    for removed_input in (
+        "EXP_FM_INPUT",
+        "LINEAR_FM_INPUT",
+        "PHASE_MOD_INPUT",
+        "BODY_MOD_INPUT",
+        "HAMMER_MOD_INPUT",
+        "STRIKE_MOD_INPUT",
+        "TONE_INPUT",
+        "SUSTAIN_INPUT",
+        "DRIVE_MOD_INPUT",
+        "VIBRATO_SPEED_MOD_INPUT",
+    ):
+        assert removed_input not in module_source
 
 
 @pytest.mark.parametrize("name", PATCH_PATHS)

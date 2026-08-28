@@ -19,7 +19,9 @@ def _device_settings(template_path: Path) -> dict[str, dict]:
     for module in document.get("modules", []):
         model = module.get("model")
         data = module.get("data", {})
-        if model == "MIDIToCVInterface" and isinstance(data.get("midi"), dict):
+        if model in {"MIDIToCVInterface", "MIDICCToCVInterface"} and isinstance(
+            data.get("midi"), dict
+        ):
             settings[model] = {"midi": data["midi"]}
         elif model == "AudioInterface" and isinstance(data.get("audio"), dict):
             settings[model] = {"audio": data["audio"]}
@@ -40,6 +42,11 @@ def _portable_with_device_settings(
         return portable_data
     for module in document.get("modules", []):
         inherited = settings.get(module.get("model"))
+        if inherited is None and module.get("model") == "MIDICCToCVInterface":
+            # A refreshed electric-piano patch may be inheriting from an older
+            # local fixture that predates its CC64 module. Use the keyboard
+            # selected by MIDI-CV so sustain works without a second setup pass.
+            inherited = settings.get("MIDIToCVInterface")
         if inherited:
             module.setdefault("data", {}).update(inherited)
     return (json.dumps(document, indent=2) + "\n").encode("utf-8")

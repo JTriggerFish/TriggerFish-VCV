@@ -23,8 +23,18 @@ namespace
 		double checksum{};
 	};
 
+	enum class ModulationMode
+	{
+		Fixed,
+		LegacyPitch,
+		Exponential,
+		Linear,
+		Phase
+	};
+
 	template <std::size_t VoiceCount>
-	Measurement MeasureVoices(bool modulatePitch, bool includeAmplifier = false)
+	Measurement MeasureVoices(ModulationMode mode,
+		bool includeAmplifier = false)
 	{
 		std::array<tfdsp::ElectricPianoVoice, VoiceCount> voices;
 		tfdsp::ElectricPianoAmplifier amplifier;
@@ -42,7 +52,8 @@ namespace
 
 		std::vector<double> modulation(RenderSamples);
 		for (int sample = 0; sample < RenderSamples; ++sample)
-			modulation[static_cast<std::size_t>(sample)] = modulatePitch ?
+			modulation[static_cast<std::size_t>(sample)] =
+				mode != ModulationMode::Fixed ?
 				0.01 * std::sin(TwoPi * 5.0 * sample / SampleRate) : 0.0;
 
 		for (int sample = 0; sample < WarmupSamples; ++sample)
@@ -62,8 +73,19 @@ namespace
 			const double offset = modulation[static_cast<std::size_t>(sample)];
 			double pickup = 0.0;
 			for (std::size_t voice = 0; voice < VoiceCount; ++voice)
-				pickup += voices[voice].Step(pitches[voice] + offset, 10.0,
-					0.85, false, controls);
+			{
+				tfdsp::ElectricPianoModulation voiceModulation;
+				if (mode == ModulationMode::Exponential)
+					voiceModulation.exponentialPitch = offset;
+				else if (mode == ModulationMode::Linear)
+					voiceModulation.linearFrequencyRatio = 10.0 * offset;
+				else if (mode == ModulationMode::Phase)
+					voiceModulation.phaseRadians = 50.0 * offset;
+				const double pitch = pitches[voice] +
+					(mode == ModulationMode::LegacyPitch ? offset : 0.0);
+				pickup += voices[voice].Step(pitch, 10.0, 0.85, false,
+					controls, voiceModulation);
+			}
 			if (includeAmplifier)
 			{
 				const auto output = amplifier.Step(5.0 * pickup, controls);
@@ -105,18 +127,30 @@ int main()
 {
 	Print("one voice, fixed pitch", BestOf([]
 	{
-		return MeasureVoices<1>(false);
+		return MeasureVoices<1>(ModulationMode::Fixed);
 	}));
 	Print("16 voices, fixed pitch", BestOf([]
 	{
-		return MeasureVoices<16>(false);
+		return MeasureVoices<16>(ModulationMode::Fixed);
 	}));
 	Print("16 voices + shared amp", BestOf([]
 	{
-		return MeasureVoices<16>(false, true);
+		return MeasureVoices<16>(ModulationMode::Fixed, true);
 	}));
 	Print("16 voices, pitch modulated", BestOf([]
 	{
-		return MeasureVoices<16>(true);
+		return MeasureVoices<16>(ModulationMode::LegacyPitch);
+	}));
+	Print("16 voices, EXP FM", BestOf([]
+	{
+		return MeasureVoices<16>(ModulationMode::Exponential);
+	}));
+	Print("16 voices, linear TZ FM", BestOf([]
+	{
+		return MeasureVoices<16>(ModulationMode::Linear);
+	}));
+	Print("16 voices, phase modulated", BestOf([]
+	{
+		return MeasureVoices<16>(ModulationMode::Phase);
 	}));
 }

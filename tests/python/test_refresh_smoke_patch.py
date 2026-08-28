@@ -41,6 +41,10 @@ def test_new_local_patch_can_inherit_private_device_selections(tmp_path):
                         "data": {"midi": {"driver": -1, "channel": -1}},
                     },
                     {
+                        "model": "MIDICCToCVInterface",
+                        "data": {"midi": {"driver": -1, "channel": -1}},
+                    },
+                    {
                         "model": "AudioInterface",
                         "data": {"audio": {"driver": -1, "blockSize": 256}},
                     },
@@ -82,7 +86,8 @@ def test_new_local_patch_can_inherit_private_device_selections(tmp_path):
     assert prepare_local_patch(portable, local, template) is False
     created = json.loads(local.read_text(encoding="utf-8"))
     assert created["modules"][0]["data"]["midi"]["deviceName"] == ("Private keyboard")
-    assert created["modules"][1]["data"]["audio"]["deviceName"] == ("Private interface")
+    assert created["modules"][1]["data"]["midi"]["deviceName"] == ("Private keyboard")
+    assert created["modules"][2]["data"]["audio"]["deviceName"] == ("Private interface")
 
 
 def test_refresh_replaces_topology_but_preserves_local_device_selection(tmp_path):

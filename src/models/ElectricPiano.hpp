@@ -16,6 +16,9 @@
 namespace tfdsp
 {
 
+inline constexpr double ElectricPianoDefaultDecay = 0.50;
+inline constexpr double ElectricPianoDefaultRelease = 0.12;
+
 struct ElectricPianoControls
 {
 	double velocityCurve = 0.5;
@@ -26,8 +29,8 @@ struct ElectricPianoControls
 	double hammer = 0.52;
 	double tone = 0.55;
 	double proximity = 0.48;
-	double decay = 0.50;
-	double release = 0.24;
+	double decay = ElectricPianoDefaultDecay;
+	double release = ElectricPianoDefaultRelease;
 	double mechanics = 0.18;
 	double drive = 0.32;
 	double outputVolume = 0.50;
@@ -35,10 +38,94 @@ struct ElectricPianoControls
 	double amplifierTreble = 0.50;
 	double vibratoSpeed = 0.32;
 	double vibratoIntensity = 0.0;
+	// There is no historical front-panel equivalent. At 0.5 the graduated
+	// factory strike point is unchanged; the control is sampled on key-down.
+	double strikePosition = 0.5;
+};
+
+// Creative pitch modulation is kept separate from the physical controls.
+// Exponential FM, linear FM and phase modulation rotate analytic modal
+// coordinates at oversampled pickup readout. V/oct remains the physical
+// resonator tuning, so through-zero motion never gives the hammer/contact solve
+// a non-physical negative tine frequency. See the modelling notes for scope.
+struct ElectricPianoModulation
+{
+	double exponentialPitch{}; // octaves
+	// Additive deviation as a fraction of the positive modal frequency. A value
+	// of -1 reaches zero and values below -1 reverse phase direction.
+	double linearFrequencyRatio{};
+	double phaseRadians{};
 };
 
 inline constexpr double ElectricPianoReferenceFrequency =
 	261.6255653005986;
+inline constexpr std::size_t ElectricPianoAttackModeBegin = 3;
+inline constexpr std::size_t ElectricPianoAttackModeEnd = 10;
+inline constexpr std::size_t ElectricPianoToneBarSubMode = 10;
+inline constexpr std::size_t ElectricPianoModeCount = 11;
+
+// Published quantities are deliberately kept in SI units and separate from
+// the small, named calibration trims below.  This prevents a later listening
+// pass from silently turning a measured Hunt--Crossley parameter into another
+// arbitrary model-space constant.  Values are from Sonderbo (2024), tables
+// 3.1/3.2 and section 3.2.1.
+struct ElectricPianoPublishedMechanicalData
+{
+	static constexpr double HammerMassKg = 0.011;
+	static constexpr double MaximumHammerVelocityMetresPerSecond = 4.0;
+	static constexpr double ContactExponent = 2.8;
+	static constexpr double ContactStiffnessNewtonPerMetrePower = 1.5e11;
+	static constexpr double ContactDampingWeight = 9.0e10;
+	static constexpr double TineRadiusMetres = 0.0005;
+	static constexpr double TineDensityKgPerCubicMetre = 7850.0;
+	static constexpr double TineYoungsModulusPascal = 2.0e11;
+	static constexpr double LongestTineMetres = 0.1564;
+	static constexpr double ShortestTineMetres = 0.0226;
+	static constexpr double FrequencyIndependentLossPerSecond = 0.0001;
+	static constexpr double FrequencyDependentLossSquareMetresPerSecond = 0.005;
+	// Sonderbo (2024), table 3.3. These are the damped-spring connection
+	// parameters used in the published real-time Rhodes model, not measurements
+	// of a particular restored instrument.
+	static constexpr double DamperLinearSpringNewtonPerMetre = 100.0;
+	static constexpr double DamperNonlinearSpringNewtonPerCubicMetre = 100000.0;
+	static constexpr double DamperViscousKgPerSecond = 0.5;
+};
+
+inline double ElectricPianoDamperReleaseSeconds(double release)
+{
+	release = std::clamp(std::isfinite(release) ? release : 0.0, 0.0, 1.0);
+	// In the strongly overdamped published connection, its slow relaxation is
+	// approximately R/K1 = 5 ms. Use that as the fast, properly adjusted damper
+	// endpoint. The logarithmic panel travel extends to the existing 1.2 s
+	// deliberate sound-design limit; the factory default retains a small amount
+	// of tone-bar transfer rather than imposing the unattainable ideal endpoint.
+	constexpr double PublishedDamperRelaxationSeconds =
+		ElectricPianoPublishedMechanicalData::DamperViscousKgPerSecond /
+		ElectricPianoPublishedMechanicalData::DamperLinearSpringNewtonPerMetre;
+	constexpr double MaximumReleaseSeconds = 1.2;
+	return PublishedDamperRelaxationSeconds * std::pow(
+		MaximumReleaseSeconds / PublishedDamperRelaxationSeconds, release);
+}
+
+// These are intentionally the only unsourced voicing degrees of freedom in
+// the mechanical calibration.  Keep them close to unity and adjust them only
+// from controlled renders/listening tests; the UI controls remain sound-design
+// controls rather than compensation for hidden model errors.
+struct ElectricPianoMechanicalTrim
+{
+	static constexpr double HammerVelocity = 1.0;
+	// MIDI velocity is not a measurement of hammer speed.  This is the one
+	// explicit action-law trim pending optical hammer-velocity measurements.
+	static constexpr double HammerVelocityCurveExponent = 0.85;
+	static constexpr double ContactStiffness = 1.0;
+	static constexpr double TineModalMass = 1.0;
+	// A measured pickup flux map is not available. These two independent trims
+	// set the excursion-to-field scale and final voltage respectively, so future
+	// listening can change magnetic curvature without disturbing gain staging.
+	static constexpr double PickupExcursion = 0.05;
+	static constexpr double PickupOutput = 0.00033;
+	static constexpr double AttackModeOutput = 1.0;
+};
 
 struct ElectricPianoCoupledForkProfile
 {
@@ -47,6 +134,7 @@ struct ElectricPianoCoupledForkProfile
 	std::array<double, 2> inverseModalMassRatios{};
 	std::array<double, 2> supportReactionLossFactors{};
 	double toneBarModalMassRatio{};
+	double toneBarFreeFrequencyRatio{};
 };
 
 inline ElectricPianoCoupledForkProfile MakeElectricPianoCoupledForkProfile(
@@ -62,6 +150,10 @@ inline ElectricPianoCoupledForkProfile MakeElectricPianoCoupledForkProfile(
 	// its first-mode effective mass is substantially smaller; four tine modal
 	// masses is the reduced-coordinate value used here.
 	constexpr double ToneBarModalMassRatio = 4.0;
+	// Service documentation and SLDV both show a strong played fundamental in
+	// each prong. The separate sub-fundamental belongs to another tone-bar mode;
+	// detuning this fundamental coordinate down to the submode was a structural
+	// error that generated a persistent false sideband family in the pickup.
 	const double toneBarFrequencyRatio = 0.9970 +
 		0.0010 * keyboardPosition;
 	// A logarithmic stiffness span moves from an almost isolated tine to a
@@ -91,6 +183,7 @@ inline ElectricPianoCoupledForkProfile MakeElectricPianoCoupledForkProfile(
 
 	ElectricPianoCoupledForkProfile profile;
 	profile.toneBarModalMassRatio = ToneBarModalMassRatio;
+	profile.toneBarFreeFrequencyRatio = toneBarFrequencyRatio;
 	for (std::size_t mode = 0; mode < 2; ++mode)
 	{
 		profile.frequencyRatios[mode] = frequencyCalibration *
@@ -116,36 +209,122 @@ inline ElectricPianoCoupledForkProfile MakeElectricPianoCoupledForkProfile(
 	return profile;
 }
 
+inline double ElectricPianoToneBarSubModeCouplingScale(double coupling,
+	double keyboardPosition)
+{
+	// The separate tone-bar submode is transmitted through the same common base
+	// as the played fundamental pair. The old reduced coordinate kept its tine
+	// participation fixed while Coupling changed the fundamental eigenvectors,
+	// which made the control almost exclusively a late-decay adjustment. Use the
+	// played tone-bar component as the observable common-base transfer and retain
+	// a small intrinsic path for the real fork's distributed mounting. The square
+	// root keeps the deliberately wide panel endpoints controlled; this scale is
+	// applied reciprocally at hammer projection and pickup observation, so modal
+	// residue changes by its square. The calibrated midpoint is exactly unity.
+	constexpr double IntrinsicDistributedTransfer = 0.10;
+	const auto profile = MakeElectricPianoCoupledForkProfile(coupling,
+		keyboardPosition);
+	const auto midpoint = MakeElectricPianoCoupledForkProfile(0.50,
+		keyboardPosition);
+	const double transfer = IntrinsicDistributedTransfer +
+		std::abs(profile.toneBarDisplacementRatios[1]);
+	const double midpointTransfer = IntrinsicDistributedTransfer +
+		std::abs(midpoint.toneBarDisplacementRatios[1]);
+	return std::sqrt(transfer / std::max(1.0e-12, midpointTransfer));
+}
+
 struct ElectricPianoKeyProfile
 {
 	double fundamentalHz{};
 	double modalMassRatio{};
+	double tineLengthMetres{};
+	double tineModalMassKg{};
 	double pickupSensitivity{};
 	double keyboardPosition{};
 };
+
+inline double ElectricPianoFactoryHammerTipDurometer(double keyboardPosition)
+{
+	keyboardPosition = std::clamp(std::isfinite(keyboardPosition) ?
+		keyboardPosition : 0.5, 0.0, 1.0);
+	const int keyNumber = 1 + static_cast<int>(std::lround(
+		72.0 * keyboardPosition));
+	if (keyNumber <= 30)
+		return 30.0;
+	if (keyNumber <= 40)
+		return 50.0;
+	if (keyNumber <= 50)
+		return 70.0;
+	if (keyNumber <= 64)
+		return 90.0;
+	// The service manual calls keys 65--88 wrapped "extra hard" rather than
+	// assigning another durometer.  100 is only a convenient normalized tag;
+	// the branch itself, not that number, is the sourced classification.
+	return 100.0;
+}
 
 inline ElectricPianoKeyProfile MakeElectricPianoKeyProfile(double pitchVolts)
 {
 	const double boundedPitch = std::clamp(
 		std::isfinite(pitchVolts) ? pitchVolts : 0.0, -6.0, 6.0);
 	const double frequencyRatio = std::exp2(boundedPitch);
-	// First calibration model: a uniform circular cantilever has length
-	// proportional to f^-1/2. With constant diameter its effective modal mass
-	// follows the same law. A hammer impulse therefore produces displacement
-	// proportional to 1 / (mass * frequency), without any bark-specific curve.
+	// The published 73-key cutting-chart endpoints are interpolated
+	// logarithmically.  A tip-normalized uniform cantilever has an effective
+	// modal mass close to one quarter of its distributed mass.  The tuning
+	// spring perturbs individual modes, but this gives the contact solve an SI
+	// mass scale without inventing a register-dependent loudness law.
 	// The pickup-sensitivity term represents the per-key pickup adjustment used
 	// to equalize the complete hammer/tine collision, rather than only the bare
 	// cantilever impedance. Real pickups are individually positioned; the
 	// shallow frequency tilt and end-range correction are an initial
 	// whole-keyboard level calibration.
-	const double modalMassRatio = std::pow(frequencyRatio, -0.5);
 	const double midiNote = 60.0 + 12.0 * boundedPitch;
 	const double keyboardPosition = std::clamp(
 		(midiNote - 28.0) / 72.0, 0.0, 1.0);
+	const double tineLength =
+		ElectricPianoPublishedMechanicalData::LongestTineMetres * std::pow(
+			ElectricPianoPublishedMechanicalData::ShortestTineMetres /
+			ElectricPianoPublishedMechanicalData::LongestTineMetres,
+			keyboardPosition);
+	constexpr double Pi = 3.1415926535897932384626433832795;
+	const double tineArea = Pi *
+		ElectricPianoPublishedMechanicalData::TineRadiusMetres *
+		ElectricPianoPublishedMechanicalData::TineRadiusMetres;
+	const double tineModalMass = 0.25 *
+		ElectricPianoPublishedMechanicalData::TineDensityKgPerCubicMetre *
+		tineArea * tineLength * ElectricPianoMechanicalTrim::TineModalMass;
+	const double referenceKeyboardPosition = (60.0 - 28.0) / 72.0;
+	const double referenceLength =
+		ElectricPianoPublishedMechanicalData::LongestTineMetres * std::pow(
+			ElectricPianoPublishedMechanicalData::ShortestTineMetres /
+			ElectricPianoPublishedMechanicalData::LongestTineMetres,
+			referenceKeyboardPosition);
+	const double modalMassRatio = tineLength / referenceLength;
+	// Every real pickup is moved individually during voicing.  The service
+	// manual supplies the allowable gaps but no per-key voltage curve, so these
+	// nineteen four-key checkpoints remain an intentionally exposed listening
+	// fit. They were calibrated from the geometric-mean RMS of soft, medium and
+	// hard strikes, not one velocity, with a restrained -0.42 dB/octave voltage
+	// tilt. That preserves the contact model's growing treble dynamic range while
+	// removing the former 16 dB upper-register hump and abrupt top-key collapse.
+	constexpr std::array<double, 19> PickupLevelTrims{
+		0.8374, 0.8237, 0.8009, 0.7278, 0.6768, 0.6367, 0.6092,
+		0.5759, 0.5479, 0.5117, 0.4838, 0.4601, 0.4519, 0.4187,
+		0.4148, 0.4409, 0.4540, 0.5184, 0.6504};
+	const double pickupTrimPosition = 18.0 * keyboardPosition;
+	const std::size_t pickupTrimLower = std::min<std::size_t>(17,
+		static_cast<std::size_t>(pickupTrimPosition));
+	const double pickupTrimFraction = pickupTrimPosition -
+		static_cast<double>(pickupTrimLower);
+	const double pickupLevelTrim = PickupLevelTrims[pickupTrimLower] +
+		pickupTrimFraction * (PickupLevelTrims[pickupTrimLower + 1] -
+			PickupLevelTrims[pickupTrimLower]);
 	return {
 		ElectricPianoReferenceFrequency * frequencyRatio,
 		modalMassRatio,
-		std::pow(frequencyRatio, -0.09) *
+		tineLength,
+		tineModalMass,
+		pickupLevelTrim * std::pow(frequencyRatio, -0.19) *
 			(1.0 + std::pow(2.0 * keyboardPosition - 1.0, 2.0)),
 		keyboardPosition};
 }
@@ -156,9 +335,21 @@ inline double ElectricPianoModeBandlimitGain(double frequency,
 	if (!std::isfinite(frequency) || !std::isfinite(sampleRate) ||
 		!(sampleRate > 0.0))
 		return 0.0;
-	const double normalizedFrequency = std::abs(frequency) / sampleRate;
-	const double taper = std::clamp((normalizedFrequency - 0.32) /
-		(0.45 - 0.32), 0.0, 1.0);
+	// Do not expose a different mechanical model merely because the host runs
+	// above 48 kHz: ultrasonic modes can intermodulate through the pickup and
+	// fold into different audible results after a later rate conversion.  The
+	// pickup is evaluated at 4x and passes through the seventh-order 4x
+	// decimator, so audible attack modes need not be discarded at the former
+	// 15.36 kHz threshold before they reach that anti-alias path. Retain them
+	// unchanged through 19.2 kHz and taper smoothly to zero below the common
+	// 48 kHz Nyquist boundary. The fixed ceiling gives every host rate at or above
+	// 48 kHz the same mechanical model; lower rates necessarily use their own
+	// Nyquist limit.
+	const double modalBandwidthSampleRate = std::min(sampleRate, 48000.0);
+	const double normalizedFrequency = std::abs(frequency) /
+		modalBandwidthSampleRate;
+	const double taper = std::clamp((normalizedFrequency - 0.40) /
+		(0.49 - 0.40), 0.0, 1.0);
 	const double smoothTaper = taper * taper * (3.0 - 2.0 * taper);
 	return 1.0 - smoothTaper;
 }
@@ -173,6 +364,9 @@ public:
 		  verticalVelocityInterpolator_(CreateX4Resampler_Cheby7()),
 		  horizontalPositionInterpolator_(CreateX4Resampler_Cheby7()),
 		  horizontalVelocityInterpolator_(CreateX4Resampler_Cheby7()),
+		  exponentialFmInterpolator_(CreateX4Resampler_Cheby7()),
+		  linearFmInterpolator_(CreateX4Resampler_Cheby7()),
+		  phaseModulationInterpolator_(CreateX4Resampler_Cheby7()),
 		  pickupDecimator_(CreateX4Resampler_Cheby7())
 	{
 	}
@@ -187,7 +381,7 @@ public:
 	void SetSampleRate(double sampleRate)
 	{
 		sampleRate_ = std::clamp(sampleRate, 8000.0, 768000.0);
-		pickupLowPass_ = 0.0;
+		pickupOutput_ = 0.0;
 		hammerNoiseDecay_ = std::exp(-1.0 / (0.0045 * sampleRate_));
 		keyReleaseNoiseDecay_ = std::exp(-1.0 / (0.012 * sampleRate_));
 		damperNoiseDecay_ = std::exp(-1.0 / (0.018 * sampleRate_));
@@ -210,10 +404,16 @@ public:
 			resonator.state = {};
 		coefficientsDirty_ = true;
 		cachedTone_ = -1.0;
+		exponentialFmInterpolator_->Reset();
+		linearFmInterpolator_->Reset();
+		phaseModulationInterpolator_->Reset();
 		verticalPositionInterpolator_->Reset();
 		verticalVelocityInterpolator_->Reset();
 		horizontalPositionInterpolator_->Reset();
 		horizontalVelocityInterpolator_->Reset();
+		exponentialFmInterpolatorPrimed_ = false;
+		linearFmInterpolatorPrimed_ = false;
+		phaseModulationInterpolatorPrimed_ = false;
 		pickupDecimator_->Reset();
 	}
 
@@ -226,7 +426,8 @@ public:
 		keyHeld_ = false;
 		latchedVelocity_ = 0.0;
 		keyPosition_ = 0.5;
-		pickupLowPass_ = 0.0;
+		pickupExcursionScale_ = 1.0;
+		pickupOutput_ = 0.0;
 		hammerNoise_ = 0.0;
 		keyReleaseNoise_ = 0.0;
 		damperNoise_ = 0.0;
@@ -236,23 +437,48 @@ public:
 			resonator = {};
 		hammerPosition_ = 0.0;
 		hammerVelocity_ = 0.0;
-		hammerIncomingVelocity_ = 1.0;
-		hammerInverseMass_ = 1.0;
+		hammerIncomingVelocity_ = MinimumHammerContactVelocity;
+		hammerInverseMass_ = 1.0 /
+			ElectricPianoPublishedMechanicalData::HammerMassKg;
 		contactStiffness_ = 0.0;
-		contactExponent_ = 2.1;
+		contactExponent_ =
+			ElectricPianoPublishedMechanicalData::ContactExponent;
 		contactLoss_ = 0.0;
 		contactAge_ = 0.0;
 		contactActive_ = false;
 		contactEngaged_ = false;
 		contactModeShape_.fill(0.0);
+		modeActive_.fill(false);
+		contactModeActive_.fill(false);
 		modeInverseMass_.fill(1.0);
 		coupledToneBarRatio_.fill(0.0);
-		tineModalMass_ = 1.0;
+		tineModalMass_ = 1.0e-4;
 		coupledForkInitialized_ = false;
 		energy_ = 0.0;
+		modulationPhasorReal_.fill(1.0);
+		modulationPhasorImaginary_.fill(0.0);
+		modulationPhasorNormalizationCountdown_ = 4096;
+		previousOversampledPhaseModulation_ = 0.0;
+		previousHostExponentialPitch_ = 0.0;
+		previousHostLinearFrequencyRatio_ = 0.0;
+		previousHostPhaseModulation_ = 0.0;
+		modulationPathActive_ = false;
+		modulationControlsPrimed_ = false;
+		exponentialFmPathActive_ = false;
+		linearFmPathActive_ = false;
+		phaseModulationPathActive_ = false;
+		exponentialFmInterpolatorPrimed_ = false;
+		linearFmInterpolatorPrimed_ = false;
+		phaseModulationInterpolatorPrimed_ = false;
+		modulationCrossfade_ = 0.0;
+		for (auto& frame : pickupModeFrames_)
+			frame.fill({});
 		controlsInitialized_ = false;
 		coefficientsDirty_ = true;
 		timbreDirty_ = true;
+		exponentialFmInterpolator_->Reset();
+		linearFmInterpolator_->Reset();
+		phaseModulationInterpolator_->Reset();
 		verticalPositionInterpolator_->Reset();
 		verticalVelocityInterpolator_->Reset();
 		horizontalPositionInterpolator_->Reset();
@@ -261,7 +487,8 @@ public:
 	}
 
 	double Step(double pitchVolts, double gateVolts, double velocity,
-		bool sustain, const ElectricPianoControls& controls)
+		bool sustain, const ElectricPianoControls& controls,
+		const ElectricPianoModulation& modulation = {}, bool retrigger = false)
 	{
 		if (!std::isfinite(pitchVolts))
 			pitchVolts = 0.0;
@@ -269,10 +496,49 @@ public:
 			gateVolts = 0.0;
 		velocity = std::clamp(std::isfinite(velocity) ? velocity : 0.8,
 			0.0, 1.0);
+		const double exponentialPitch = std::clamp(
+			std::isfinite(modulation.exponentialPitch) ?
+				modulation.exponentialPitch : 0.0, -4.0, 4.0);
+		const double linearFrequencyRatio = std::clamp(
+			std::isfinite(modulation.linearFrequencyRatio) ?
+				modulation.linearFrequencyRatio : 0.0, -4.0, 4.0);
+		const double phaseModulation = std::clamp(
+			std::isfinite(modulation.phaseRadians) ?
+				modulation.phaseRadians : 0.0, -2.0 * TwoPi, 2.0 * TwoPi);
 
 		const bool gate = gateVolts >= 1.0;
-		if (gate && !lastGate_)
+		bool newSilentStrike = false;
+		if (gate && (!lastGate_ || retrigger))
+		{
+			const bool wasAudible = IsAudible();
+			if (!wasAudible)
+			{
+				newSilentStrike = true;
+				// A silent key has no phase history to preserve. The oversampled
+				// modulation controls are primed below, so an already-present DC PM
+				// voltage becomes initial phase rather than a one-sample impulse.
+				modulationPhasorReal_.fill(1.0);
+				modulationPhasorImaginary_.fill(0.0);
+				modulationPhasorNormalizationCountdown_ = 4096;
+				modulationPathActive_ = false;
+				modulationControlsPrimed_ = false;
+				exponentialFmPathActive_ = false;
+				linearFmPathActive_ = false;
+				phaseModulationPathActive_ = false;
+				exponentialFmInterpolatorPrimed_ = false;
+				linearFmInterpolatorPrimed_ = false;
+				phaseModulationInterpolatorPrimed_ = false;
+				modulationCrossfade_ = 0.0;
+				verticalPositionInterpolator_->Reset();
+				verticalVelocityInterpolator_->Reset();
+				horizontalPositionInterpolator_->Reset();
+				horizontalVelocityInterpolator_->Reset();
+				previousHostExponentialPitch_ = exponentialPitch;
+				previousHostLinearFrequencyRatio_ = linearFrequencyRatio;
+				previousHostPhaseModulation_ = phaseModulation;
+			}
 			Strike(pitchVolts, velocity, controls);
+		}
 		else if (!gate && lastGate_)
 		{
 			keyHeld_ = false;
@@ -314,32 +580,87 @@ public:
 		const bool damped = !keyHeld_ && !sustain;
 		RefreshModeCoefficients(currentFundamental_, damped, activeControls,
 			coefficientUpdateTick || pitchChanged);
-		RefreshTimbreCoefficients(activeControls);
+		RefreshTimbreCoefficients(activeControls,
+			coefficientUpdateTick || pitchChanged);
+
+		if (exponentialPitch != 0.0)
+			exponentialFmPathActive_ = true;
+		if (linearFrequencyRatio != 0.0)
+			linearFmPathActive_ = true;
+		if (phaseModulation != 0.0)
+			phaseModulationPathActive_ = true;
+		modulationPathActive_ = exponentialFmPathActive_ ||
+			linearFmPathActive_ || phaseModulationPathActive_;
+		if (newSilentStrike && modulationPathActive_)
+			modulationCrossfade_ = 1.0;
 
 		if (contactActive_)
 			AdvanceCoupledHammerAndModes();
 		else
 			AdvanceFreeModes();
 
-		double verticalPosition = 0.0;
-		double verticalVelocity = 0.0;
-		double horizontalPosition = 0.0;
-		double horizontalVelocity = 0.0;
+		Eigen::Array<double, PickupOversamplingFactor, 1> exponentialPitchFrames;
+		Eigen::Array<double, PickupOversamplingFactor, 1> linearRatioFrames;
+		Eigen::Array<double, PickupOversamplingFactor, 1> phaseModulationFrames;
+		if (modulationPathActive_)
+		{
+			exponentialPitchFrames.setZero();
+			linearRatioFrames.setZero();
+			phaseModulationFrames.setZero();
+			if (!modulationControlsPrimed_)
+			{
+				previousOversampledPhaseModulation_ =
+					previousHostPhaseModulation_;
+				for (std::size_t mode = 0; mode < modes_.size(); ++mode)
+				{
+					const double initialPhase = ModulationModeWeights[mode] *
+						previousOversampledPhaseModulation_;
+					modulationPhasorReal_[mode] = std::cos(initialPhase);
+					modulationPhasorImaginary_[mode] = std::sin(initialPhase);
+				}
+				modulationControlsPrimed_ = true;
+			}
+			if (exponentialFmPathActive_)
+			{
+				if (!exponentialFmInterpolatorPrimed_)
+				{
+					exponentialFmInterpolator_->PrimeUpsample(
+						previousHostExponentialPitch_);
+					exponentialFmInterpolatorPrimed_ = true;
+				}
+				exponentialPitchFrames = exponentialFmInterpolator_->Upsample(
+					exponentialPitch);
+			}
+			if (linearFmPathActive_)
+			{
+				if (!linearFmInterpolatorPrimed_)
+				{
+					linearFmInterpolator_->PrimeUpsample(
+						previousHostLinearFrequencyRatio_);
+					linearFmInterpolatorPrimed_ = true;
+				}
+				linearRatioFrames = linearFmInterpolator_->Upsample(
+					linearFrequencyRatio);
+			}
+			if (phaseModulationPathActive_)
+			{
+				if (!phaseModulationInterpolatorPrimed_)
+				{
+					phaseModulationInterpolator_->PrimeUpsample(
+						previousHostPhaseModulation_);
+					phaseModulationInterpolatorPrimed_ = true;
+				}
+				phaseModulationFrames = phaseModulationInterpolator_->Upsample(
+					phaseModulation);
+			}
+		}
+		previousHostExponentialPitch_ = exponentialPitch;
+		previousHostLinearFrequencyRatio_ = linearFrequencyRatio;
+		previousHostPhaseModulation_ = phaseModulation;
+
 		energy_ = 0.0;
 		for (std::size_t index = 0; index < modes_.size(); ++index)
 		{
-			if (!modeActive_[index])
-				continue;
-			const double verticalWeight = modeOutputWeight_[index] *
-				modeBandlimitGain_[index];
-			const double horizontalWeight = modeHorizontalWeight_[index] *
-				modeBandlimitGain_[index];
-			verticalPosition += verticalWeight * modes_[index].real;
-			verticalVelocity -= verticalWeight * frequencyVelocityScale_ *
-				modeRatio_[index] * modes_[index].imaginary;
-			horizontalPosition += horizontalWeight * modes_[index].real;
-			horizontalVelocity -= horizontalWeight * frequencyVelocityScale_ *
-				modeRatio_[index] * modes_[index].imaginary;
 			energy_ += modes_[index].real * modes_[index].real +
 				modes_[index].imaginary * modes_[index].imaginary;
 		}
@@ -373,29 +694,230 @@ public:
 				0.20 * keyReleaseNoise_ * releaseCarrier +
 				0.28 * damperNoise_ * damperCarrier);
 
-		const auto verticalPositions = verticalPositionInterpolator_->Upsample(
-			TineDisplacementScale * verticalPosition);
-		const auto verticalVelocities = verticalVelocityInterpolator_->Upsample(
-			verticalVelocity);
-		const auto horizontalPositions = horizontalPositionInterpolator_->Upsample(
-			TineDisplacementScale * horizontalPosition);
-		const auto horizontalVelocities = horizontalVelocityInterpolator_->Upsample(
-			horizontalVelocity);
-		Eigen::Array<double, PickupOversamplingFactor, 1> pickupValues;
-		for (int index = 0; index < PickupOversamplingFactor; ++index)
+		// Preserve the established, cheaper aggregate interpolation path whenever
+		// FM/PM has never been active on this note. If modulation arrives on a held
+		// note, keep it alive briefly and crossfade to the per-mode 4x readout; this
+		// avoids both a timing discontinuity and permanent baseline CPU overhead.
+		const bool legacyPickupNeeded = !modulationPathActive_ ||
+			modulationCrossfade_ < 1.0;
+		Eigen::Array<double, PickupOversamplingFactor, 1> legacyVerticalPositions;
+		Eigen::Array<double, PickupOversamplingFactor, 1> legacyVerticalVelocities;
+		Eigen::Array<double, PickupOversamplingFactor, 1> legacyHorizontalPositions;
+		Eigen::Array<double, PickupOversamplingFactor, 1> legacyHorizontalVelocities;
+		if (legacyPickupNeeded)
 		{
-			const auto gradient = MagneticFluxGradient(
-				pickupVerticalOffset_ + verticalPositions(index),
-				pickupHorizontalOffset_ + horizontalPositions(index), pickupGap_);
-			const double emf = gradient[0] * verticalVelocities(index) +
-				gradient[1] * horizontalVelocities(index);
-			const double pickup = pickupVoltageScale_ * emf;
-			pickupValues(index) = std::clamp(pickup, -12.0, 12.0) +
+			double verticalPosition = 0.0;
+			double verticalVelocity = 0.0;
+			double horizontalPosition = 0.0;
+			double horizontalVelocity = 0.0;
+			for (std::size_t mode = 0; mode < modes_.size(); ++mode)
+			{
+				if (!modeActive_[mode])
+					continue;
+				const double verticalWeight = modeOutputWeight_[mode] *
+					modeBandlimitGain_[mode];
+				const double horizontalWeight = modeHorizontalWeight_[mode] *
+					modeBandlimitGain_[mode];
+				const double velocityScale = TineDisplacementScale *
+					pickupExcursionScale_ *
+					modeAngularFrequency_[mode];
+				verticalPosition += verticalWeight * modes_[mode].real;
+				verticalVelocity -= verticalWeight * velocityScale *
+					modes_[mode].imaginary;
+				horizontalPosition += horizontalWeight * modes_[mode].real;
+				horizontalVelocity -= horizontalWeight * velocityScale *
+					modes_[mode].imaginary;
+			}
+			legacyVerticalPositions = verticalPositionInterpolator_->Upsample(
+				TineDisplacementScale * pickupExcursionScale_ * verticalPosition);
+			legacyVerticalVelocities = verticalVelocityInterpolator_->Upsample(
+				verticalVelocity);
+			legacyHorizontalPositions = horizontalPositionInterpolator_->Upsample(
+				TineDisplacementScale * pickupExcursionScale_ * horizontalPosition);
+			legacyHorizontalVelocities = horizontalVelocityInterpolator_->Upsample(
+				horizontalVelocity);
+		}
+		Eigen::Array<double, PickupOversamplingFactor, 1> pickupValues;
+		const double pickupRate = sampleRate_ *
+			static_cast<double>(PickupOversamplingFactor);
+		for (int frame = 0; frame < PickupOversamplingFactor; ++frame)
+		{
+			if (!modulationPathActive_)
+			{
+				const auto legacyGradient = MagneticFluxGradient(
+					pickupVerticalOffset_ + legacyVerticalPositions(frame),
+					pickupHorizontalOffset_ + legacyHorizontalPositions(frame),
+					pickupGap_);
+				const double legacyEmf = legacyGradient[0] *
+					legacyVerticalVelocities(frame) + legacyGradient[1] *
+					legacyHorizontalVelocities(frame);
+				pickupValues(frame) = std::clamp(
+					pickupVoltageScale_ * legacyEmf, -12.0, 12.0) +
+					mechanicalSignal;
+				continue;
+			}
+			double verticalPosition = 0.0;
+			double verticalVelocity = 0.0;
+			double horizontalPosition = 0.0;
+			double horizontalVelocity = 0.0;
+			const double frameExponentialPitch = std::clamp(
+				exponentialPitchFrames(frame), -4.0, 4.0);
+			const double frameLinearRatio = std::clamp(linearRatioFrames(frame),
+				-4.0, 4.0);
+			const double framePhaseModulation = std::clamp(
+				phaseModulationFrames(frame), -2.0 * TwoPi, 2.0 * TwoPi);
+			const double bodyExponentialRatio =
+				frameExponentialPitch == 0.0 ? 1.0 :
+				Exp2Taylor5(static_cast<float>(frameExponentialPitch));
+			const double phaseModulationFrequency = modulationPathActive_ ?
+				(framePhaseModulation - previousOversampledPhaseModulation_) *
+					pickupRate / TwoPi : 0.0;
+			for (std::size_t mode = 0;
+				mode < ElectricPianoToneBarSubMode; ++mode)
+			{
+				if (!modeActive_[mode])
+					continue;
+				const double physicalFrequency = currentFundamental_ *
+					modeRatio_[mode];
+				double renderedFrequency = physicalFrequency;
+				double renderedReal = pickupModeFrames_[frame][mode].real;
+				double renderedImaginary =
+					pickupModeFrames_[frame][mode].imaginary;
+				double renderedBandlimit = modeBandlimitGain_[mode];
+				if (modulationPathActive_ && ModulationModeWeights[mode] != 0.0)
+				{
+					const double modulationWeight = ModulationModeWeights[mode];
+					const double weightedExponentialPitch = std::clamp(
+						modulationWeight * frameExponentialPitch, -4.0, 4.0);
+					const double exponentialRatio = modulationWeight == 1.0 ?
+						bodyExponentialRatio :
+						(weightedExponentialPitch == 0.0 ? 1.0 :
+							Exp2Taylor5(static_cast<float>(weightedExponentialPitch)));
+					const double frequencyOffset = physicalFrequency *
+						(exponentialRatio - 1.0 +
+							modulationWeight * frameLinearRatio);
+					const double phaseIncrement = TwoPi * frequencyOffset / pickupRate +
+						modulationWeight * (framePhaseModulation -
+							previousOversampledPhaseModulation_);
+					const auto rotation = ModulationPhaseRotation(phaseIncrement);
+					const double oldPhasorReal = modulationPhasorReal_[mode];
+					const double oldPhasorImaginary =
+						modulationPhasorImaginary_[mode];
+					modulationPhasorReal_[mode] = rotation[0] * oldPhasorReal -
+						rotation[1] * oldPhasorImaginary;
+					modulationPhasorImaginary_[mode] = rotation[1] * oldPhasorReal +
+						rotation[0] * oldPhasorImaginary;
+					const double phaseCosine = modulationPhasorReal_[mode];
+					const double phaseSine = modulationPhasorImaginary_[mode];
+					const double physicalReal = renderedReal;
+					const double physicalImaginary = renderedImaginary;
+					renderedReal = phaseCosine * physicalReal -
+						phaseSine * physicalImaginary;
+					renderedImaginary = phaseSine * physicalReal +
+						phaseCosine * physicalImaginary;
+					renderedFrequency = physicalFrequency + frequencyOffset +
+						modulationWeight * phaseModulationFrequency;
+					renderedBandlimit = std::min(renderedBandlimit,
+						ElectricPianoModeBandlimitGain(
+							std::abs(renderedFrequency), sampleRate_));
+				}
+				const double verticalWeight = modeOutputWeight_[mode] *
+					renderedBandlimit;
+				const double horizontalWeight = modeHorizontalWeight_[mode] *
+					renderedBandlimit;
+				const double velocityScale = TineDisplacementScale *
+					pickupExcursionScale_ * TwoPi * renderedFrequency;
+				verticalPosition += verticalWeight * renderedReal;
+				verticalVelocity -= verticalWeight * velocityScale *
+					renderedImaginary;
+				horizontalPosition += horizontalWeight * renderedReal;
+				horizontalVelocity -= horizontalWeight * velocityScale *
+					renderedImaginary;
+			}
+			// The separately measured tone-bar submode remains physical under the
+			// creative FM/PM inputs. Keep it out of the hot ten-coordinate modulation
+			// loop: besides avoiding meaningless phasor work, this preserves the
+			// compiler's established vectorization for polyphonic audio-rate FM.
+			constexpr std::size_t subMode = ElectricPianoToneBarSubMode;
+			if (modeActive_[subMode])
+			{
+				const double renderedBandlimit = modeBandlimitGain_[subMode];
+				const double verticalWeight = modeOutputWeight_[subMode] *
+					renderedBandlimit;
+				const double horizontalWeight = modeHorizontalWeight_[subMode] *
+					renderedBandlimit;
+				const double renderedFrequency = currentFundamental_ *
+					modeRatio_[subMode];
+				const double velocityScale = TineDisplacementScale *
+					pickupExcursionScale_ * TwoPi * renderedFrequency;
+				const double renderedReal =
+					pickupModeFrames_[frame][subMode].real;
+				const double renderedImaginary =
+					pickupModeFrames_[frame][subMode].imaginary;
+				verticalPosition += verticalWeight * renderedReal;
+				verticalVelocity -= verticalWeight * velocityScale *
+					renderedImaginary;
+				horizontalPosition += horizontalWeight * renderedReal;
+				horizontalVelocity -= horizontalWeight * velocityScale *
+					renderedImaginary;
+			}
+			if (modulationPathActive_)
+				previousOversampledPhaseModulation_ = framePhaseModulation;
+			double modulatedPickup = 0.0;
+			if (modulationPathActive_)
+			{
+				const auto gradient = MagneticFluxGradient(
+					pickupVerticalOffset_ + TineDisplacementScale *
+						pickupExcursionScale_ * verticalPosition,
+					pickupHorizontalOffset_ + TineDisplacementScale *
+						pickupExcursionScale_ * horizontalPosition,
+					pickupGap_);
+				const double emf = gradient[0] * verticalVelocity +
+					gradient[1] * horizontalVelocity;
+				modulatedPickup = pickupVoltageScale_ * emf;
+			}
+			double selectedPickup = modulatedPickup;
+			if (legacyPickupNeeded)
+			{
+				const auto legacyGradient = MagneticFluxGradient(
+					pickupVerticalOffset_ + legacyVerticalPositions(frame),
+					pickupHorizontalOffset_ + legacyHorizontalPositions(frame),
+					pickupGap_);
+				const double legacyEmf = legacyGradient[0] *
+					legacyVerticalVelocities(frame) + legacyGradient[1] *
+					legacyHorizontalVelocities(frame);
+				const double legacyPickup = pickupVoltageScale_ * legacyEmf;
+				selectedPickup = modulationPathActive_ ?
+					legacyPickup + modulationCrossfade_ *
+						(modulatedPickup - legacyPickup) : legacyPickup;
+			}
+			pickupValues(frame) = std::clamp(selectedPickup, -12.0, 12.0) +
 				mechanicalSignal;
 		}
-		const double pickup = pickupDecimator_->Downsample(pickupValues);
-		pickupLowPass_ += pickupLowPassCoefficient_ *
-			(pickup - pickupLowPass_);
+		if (modulationPathActive_ && modulationCrossfade_ < 1.0)
+			modulationCrossfade_ = std::min(1.0, modulationCrossfade_ +
+				1.0 / std::max(1.0, 0.006 * sampleRate_));
+		if (modulationPathActive_ &&
+			--modulationPhasorNormalizationCountdown_ <= 0)
+		{
+			for (std::size_t mode = 0; mode < modes_.size(); ++mode)
+			{
+				const double magnitude = std::hypot(modulationPhasorReal_[mode],
+					modulationPhasorImaginary_[mode]);
+				if (magnitude > 0.0)
+				{
+					modulationPhasorReal_[mode] /= magnitude;
+					modulationPhasorImaginary_[mode] /= magnitude;
+				}
+			}
+			modulationPhasorNormalizationCountdown_ = 4096;
+		}
+		// The seventh-order 4x decimator is the pickup reconstruction filter.
+		// A former host-rate 16.5 kHz one-pole was not part of the pickup or
+		// Peterson circuit and added 0.6--1.9 dB of avoidable upper-band loss.
+		// Keep the decimated signal directly; alias rejection is verified at the
+		// actual 4x boundary by the register-wide spectral tests.
+		pickupOutput_ = pickupDecimator_->Downsample(pickupValues);
 		hammerNoise_ *= hammerNoiseDecay_;
 		keyReleaseNoise_ *= keyReleaseNoiseDecay_;
 		damperNoise_ *= damperNoiseDecay_;
@@ -405,10 +927,9 @@ public:
 		{
 			for (auto& mode : modes_)
 				mode = {};
-			pickupLowPass_ *= 0.9;
 		}
 
-		const double result = pickupLowPass_;
+		const double result = pickupOutput_;
 		return std::isfinite(result) ? result : 0.0;
 	}
 
@@ -418,13 +939,63 @@ public:
 		return energy_ + hammerNoise_ * hammerNoise_ +
 			keyReleaseNoise_ * keyReleaseNoise_ +
 			damperNoise_ * damperNoise_ +
-			pickupLowPass_ * pickupLowPass_;
+			pickupOutput_ * pickupOutput_;
 	}
 	bool IsAudible() const { return Activity() > 1.0e-12; }
 	bool GateHigh() const { return lastGate_; }
 	double NotePitch() const { return notePitch_; }
 	bool ContactActive() const { return contactActive_; }
 	double ContactAge() const { return contactAge_; }
+	double ModeFrequencyRatio(std::size_t index) const
+	{
+		return index < modeRatio_.size() ? modeRatio_[index] : 0.0;
+	}
+	double ModeAmplitudeLifetimeSeconds(std::size_t index) const
+	{
+		if (index >= modeRadius_.size() || modeRadius_[index] <= 0.0 ||
+			modeRadius_[index] >= 1.0)
+			return 0.0;
+		return -1.0 / (sampleRate_ * std::log(modeRadius_[index]));
+	}
+	double ModeDisplacementAmplitude(std::size_t index) const
+	{
+		return index < modes_.size() ?
+			std::hypot(modes_[index].real, modes_[index].imaginary) : 0.0;
+	}
+	double ModePickupDisplacementAmplitude(std::size_t index) const
+	{
+		return index < modes_.size() ? ModeDisplacementAmplitude(index) *
+			std::abs(modeOutputWeight_[index]) : 0.0;
+	}
+	bool ModeRendered(std::size_t index) const
+	{
+		return index < modeActive_.size() && modeActive_[index];
+	}
+	bool ModeParticipatesInContact(std::size_t index) const
+	{
+		return index < contactModeActive_.size() && contactModeActive_[index];
+	}
+	double ContactModeProjection(std::size_t index) const
+	{
+		return index < contactModeShape_.size() ? contactModeShape_[index] : 0.0;
+	}
+	double StrikePosition() const { return currentStrikePosition_; }
+	double ContactWidthMetres() const { return contactWidthMetres_; }
+	static std::array<double, 2> MagneticPickupGradient(double vertical,
+		double horizontal, double gap)
+	{
+		return MagneticFluxGradient(vertical, horizontal, gap);
+	}
+	static std::array<double, 2> DirectMagneticPickupGradient(
+		double vertical, double horizontal, double gap)
+	{
+		constexpr double HorizontalFieldScale = 0.62;
+		const double radial = std::sqrt(gap * gap +
+			HorizontalFieldScale * horizontal * horizontal + 0.020);
+		const auto field = EvaluateCalibratedPoleGradient(vertical, radial);
+		return {field.vertical, field.radial * HorizontalFieldScale * horizontal /
+			std::max(1.0e-9, radial)};
+	}
 
 private:
 	struct Mode
@@ -527,11 +1098,21 @@ private:
 		notePitch_ = std::clamp(pitchVolts, -6.0, 6.0);
 		keyPosition_ = key.keyboardPosition;
 		keyPickupSensitivity_ = key.pickupSensitivity;
+		const double bassExcursionPosition = std::clamp(keyPosition_ /
+			((60.0 - 28.0) / 72.0), 0.0, 1.0);
+		const double bassExcursionSmooth = bassExcursionPosition *
+			bassExcursionPosition * (3.0 - 2.0 * bassExcursionPosition);
+		// The published gap range tops out at 1/8 inch, yet the reduced uniform-
+		// beam coordinates over-predict the excursion of the longest, tapered
+		// tines. Keep this visible as a bass-only calibration awaiting measured
+		// tine-tip trajectories; it reaches unity at C4 and never boosts motion.
+		pickupExcursionScale_ = 0.55 + 0.45 * bassExcursionSmooth;
 		coefficientsDirty_ = true;
 		timbreDirty_ = true;
 		const double velocityCurve = Clamp01(controls.velocityCurve);
 		const double dynamics = Clamp01(controls.dynamics);
 		const double hammer = Clamp01(controls.hammer);
+		const double strikePosition = Clamp01(controls.strikePosition);
 		const double gamma = std::exp2(1.0 - 2.0 * velocityCurve);
 		const double curvedVelocity = velocity > 0.0 ?
 			std::pow(velocity, gamma) : 0.0;
@@ -546,52 +1127,98 @@ private:
 		// prescribed. The key-dependent term represents the graduated neoprene
 		// tips used across the real keyboard, while HAMMER moves around that
 		// baseline by changing contact material properties only.
-		const double contactHardness = std::clamp(0.12 + 0.52 * hammer +
-			0.36 * keyPosition_, 0.0, 1.0);
-		const double hammerMass = 0.42 * (1.08 - 0.18 * keyPosition_);
-		hammerInverseMass_ = 1.0 / hammerMass;
+		const double factoryDurometer =
+			ElectricPianoFactoryHammerTipDurometer(keyPosition_);
+		const double factoryHardness = (factoryDurometer - 30.0) / 70.0;
+		const double contactHardness = std::clamp(factoryHardness +
+			0.70 * (hammer - 0.52), 0.0, 1.0);
+		hammerInverseMass_ = 1.0 /
+			ElectricPianoPublishedMechanicalData::HammerMassKg;
 		hammerPosition_ = 0.0;
-		const double requestedHammerVelocity = 1150.0 * dynamicAmplitude *
-			(0.86 + 0.14 * std::sqrt(std::max(0.0, dynamicAmplitude)));
-		// Below this speed the calibrated Hunt-Crossley loss law already clamps
-		// its incoming-velocity denominator. Such strikes are many orders below
-		// the audible output range but can otherwise spend seconds in an almost
-		// static 16x collision when driven by tiny positive CV residue. Classify
-		// them as zero-energy strikes before contact begins; never truncate an
-		// active collision based on elapsed time.
+		const double requestedHammerVelocity =
+			ElectricPianoPublishedMechanicalData::
+				MaximumHammerVelocityMetresPerSecond *
+			ElectricPianoMechanicalTrim::HammerVelocity *
+			std::pow(dynamicAmplitude,
+				ElectricPianoMechanicalTrim::HammerVelocityCurveExponent);
+		// Strikes below this physical speed are many orders below the audible
+		// output range but can otherwise spend seconds in an almost static
+		// oversampled collision when driven by tiny positive CV residue. Classify
+		// them as zero-energy before contact begins; never truncate an active
+		// collision based on elapsed time.
 		const bool audibleHammerStrike =
 			requestedHammerVelocity >= MinimumHammerContactVelocity;
 		hammerVelocity_ = audibleHammerStrike ? requestedHammerVelocity : 0.0;
 		hammerIncomingVelocity_ = std::max(MinimumHammerContactVelocity,
 			requestedHammerVelocity);
-		// The original instrument progresses from soft neoprene in the bass to
-		// wrapped, extra-hard tips in the treble. That change is substantially
-		// larger than the front-panel adjustment around any one key.
-		// Keep the default physical calibration fixed while giving the panel
-		// control a useful six-octave stiffness span. The upper limit prevents
-		// the already wrapped treble tips from becoming numerically impulsive.
-		contactStiffness_ = std::min(1.6e9, 4.0e5 * std::exp2(
-			6.0 * hammer + 9.0 * keyPosition_ - 2.08));
-		contactExponent_ = 1.95 + 0.32 * contactHardness;
-		const double restitution = 0.24 + 0.30 * contactHardness;
-		contactLoss_ = 1.5 * (1.0 - restitution * restitution) /
-			hammerIncomingVelocity_;
+		// The service manual documents five graduated tip grades (30, 50, 70,
+		// 90 durometer, then wrapped extra-hard) but not their force curves.  The
+		// published k is therefore the middle-C/default anchor.  The modest zoned
+		// slope and the symmetric panel span are explicit listening trims around
+		// that anchor, not substitutes for the sourced SI stiffness.
+		const double graduatedTipOctaves = 1.5 * std::log2(
+			factoryDurometer / 50.0);
+		const double panelHardnessOctaves = 5.0 * (hammer - 0.52);
+		contactStiffness_ =
+			ElectricPianoPublishedMechanicalData::
+				ContactStiffnessNewtonPerMetrePower *
+			ElectricPianoMechanicalTrim::ContactStiffness *
+			std::exp2(graduatedTipOctaves + panelHardnessOctaves);
+		contactExponent_ =
+			ElectricPianoPublishedMechanicalData::ContactExponent;
+		// Sonderbo reports lambda separately from k. Scale lambda with the same
+		// tip-grade factor so lambda/k (seconds/metre) remains the measured 0.6
+		// while Hammer changes compliance rather than inventing restitution.
+		contactLoss_ =
+			ElectricPianoPublishedMechanicalData::ContactDampingWeight /
+			ElectricPianoPublishedMechanicalData::
+				ContactStiffnessNewtonPerMetrePower;
 		contactAge_ = 0.0;
 		contactActive_ = audibleHammerStrike;
 		contactEngaged_ = false;
-		contactModeShape_[0] = 0.82;
-		contactModeShape_[1] = 0.82;
-		contactModeShape_[2] = -0.055;
-		tineModalMass_ = key.modalMassRatio;
-		modeInverseMass_[2] = 1.0 / (key.modalMassRatio * 1.65);
-		for (std::size_t index = 3; index < modes_.size(); ++index)
+		currentStrikePosition_ = StrikePositionFromControl(keyPosition_,
+			strikePosition);
+		// Falaize's distributed-force reference uses a 15 mm hammer width. The
+		// effective loaded strip is smaller than the complete tip, so retain the
+		// calibrated 6--12 mm hard-to-soft interval. Deriving this longitudinal
+		// width from Hunt--Crossley indentation assumed a spherical 4 mm tip that
+		// is neither present in the source nor representative of the block-shaped
+		// Rhodes neoprene tip; it narrowed the footprint to sub-5.5 mm values and
+		// changed the previously validated bass modal balance.
+		contactWidthMetres_ = 0.006 + 0.006 * (1.0 - contactHardness);
+		const double fundamentalProjection = FiniteContactModeProjection(0,
+			keyPosition_, currentStrikePosition_, contactWidthMetres_);
+		contactModeShape_[0] = fundamentalProjection;
+		contactModeShape_[1] = fundamentalProjection;
+		contactModeShape_[2] = -0.055 * fundamentalProjection;
+		tineModalMass_ = key.tineModalMassKg;
+		modeInverseMass_[2] = 1.0 / (key.tineModalMassKg * 1.65);
+		for (std::size_t index = ElectricPianoAttackModeBegin;
+			index < ElectricPianoAttackModeEnd; ++index)
 		{
-			contactModeShape_[index] = CantileverModeShapeAtStrike(index,
-				keyPosition_);
+			// Generalized force projection is a property of contact geometry and the
+			// resonator mode, never of MIDI velocity.  Integrate each mode over a
+			// finite neoprene patch; contact duration then supplies velocity-dependent
+			// bandwidth through the Hunt-Crossley force itself.
+			contactModeShape_[index] = FiniteContactModeProjection(index,
+				keyPosition_, currentStrikePosition_, contactWidthMetres_) *
+				AttackModeEnergyCalibration(index, keyPosition_);
 			modeInverseMass_[index] = 1.0 /
-				(key.modalMassRatio *
-					AttackModeModalMassMultipliers[index - 3]);
+				(key.tineModalMassKg *
+					AttackModeModalMassMultiplier(index, keyPosition_));
 		}
+		// The tone bar has a separately observed sub-fundamental mode in addition
+		// to its strong played fundamental. In normal-coordinate form the tine
+		// participation projects both the hammer force and pickup observation;
+		// applying it reciprocally avoids an arbitrary output-only oscillator.
+		const double subModeParticipation =
+			ToneBarSubModeTineParticipation(keyPosition_) *
+			ElectricPianoToneBarSubModeCouplingScale(controls.coupling,
+				keyPosition_);
+		contactModeShape_[ElectricPianoToneBarSubMode] =
+			subModeParticipation * fundamentalProjection;
+		modeInverseMass_[ElectricPianoToneBarSubMode] =
+			1.0 / key.tineModalMassKg;
 
 		// Mechanics remains a separate sound-design layer. Tip hardness has only
 		// a restrained influence on its colour so it cannot duplicate the modal
@@ -611,15 +1238,26 @@ private:
 		energy_ = 1.0;
 	}
 
-	void RefreshTimbreCoefficients(const ElectricPianoControls& controls)
+	void RefreshTimbreCoefficients(const ElectricPianoControls& controls,
+		bool controlTick)
 	{
+		// The nonlinear trajectory normalizer below is deliberately control-rate.
+		// All inputs have already been smoothed at audio rate, and 3 kHz coefficient
+		// refresh is far above knob/CV bandwidth; evaluating dozens of field points
+		// for every active voice on every host sample would make this calibration a
+		// significant steady CPU regression while a control is moving.
+		if (!timbreDirty_ && !controlTick)
+			return;
 		const double body = Clamp01(controls.body);
 		const double bell = Clamp01(controls.bell);
+		const double coupling = Clamp01(controls.coupling);
 		const double proximity = Clamp01(controls.proximity);
 		const double tone = Clamp01(controls.tone);
 		const double mechanics = Clamp01(controls.mechanics);
 		if (!timbreDirty_ && body == cachedBodyWeight_ &&
-			bell == cachedBellWeight_ && proximity == cachedProximity_ &&
+			bell == cachedBellWeight_ &&
+			coupling == cachedCouplingWeight_ &&
+			proximity == cachedProximity_ &&
 			tone == cachedTone_ &&
 			mechanics == cachedMechanics_)
 			return;
@@ -631,8 +1269,24 @@ private:
 		modeOutputWeight_[0] = 0.58 + 0.52 * body;
 		modeOutputWeight_[1] = modeOutputWeight_[0];
 		modeOutputWeight_[2] = 0.06 + 0.12 * body;
-		for (std::size_t index = 3; index < modeOutputWeight_.size(); ++index)
-			modeOutputWeight_[index] = 0.10 + 0.38 * bell;
+		// Bell is a deliberate balance control around the calibrated physical
+		// residue, not a correction for the default model. The upper keyboard has
+		// progressively fewer attack coordinates below Nyquist, so normalize panel
+		// sensitivity from a 24 dB bass/middle span toward 36 dB at C6 rather than
+		// leaving the same knob effectively dead there. The midpoint remains unity.
+		constexpr double F3Position = (53.0 - 28.0) / 72.0;
+		constexpr double C6Position = (84.0 - 28.0) / 72.0;
+		const double upperBellLinear = std::clamp(
+			(keyPosition_ - F3Position) / (C6Position - F3Position), 0.0, 1.0);
+		const double upperBellSmooth = upperBellLinear * upperBellLinear *
+			(3.0 - 2.0 * upperBellLinear);
+		const double bellOctaveSpan = 4.0 + 2.0 * upperBellSmooth;
+		const double bellGain = std::exp2(bellOctaveSpan * (bell - 0.52));
+		for (std::size_t index = ElectricPianoAttackModeBegin;
+			index < ElectricPianoAttackModeEnd; ++index)
+			modeOutputWeight_[index] =
+				ElectricPianoMechanicalTrim::AttackModeOutput *
+				bellGain;
 
 		// Imperfect transverse coupling gives the tine tip a shallow elliptical
 		// orbit. The near-fundamental third mode carries most of the horizontal
@@ -640,15 +1294,64 @@ private:
 		modeHorizontalWeight_[0] = 0.010;
 		modeHorizontalWeight_[1] = -0.012;
 		modeHorizontalWeight_[2] = 0.42 + 0.20 * body;
-		for (std::size_t index = 3; index < modeHorizontalWeight_.size(); ++index)
+		modeOutputWeight_[ElectricPianoToneBarSubMode] =
+			modeOutputWeight_[1] * ToneBarSubModeTineParticipation(keyPosition_) *
+			ElectricPianoToneBarSubModeCouplingScale(coupling,
+				keyPosition_);
+		for (std::size_t index = ElectricPianoAttackModeBegin;
+			index < ElectricPianoAttackModeEnd; ++index)
 			modeHorizontalWeight_[index] = (index % 2 == 0 ? -1.0 : 1.0) *
-			(0.045 + 0.10 * bell);
+			0.097 * bellGain;
+		modeHorizontalWeight_[ElectricPianoToneBarSubMode] = 0.0;
 
 		// The service adjustment called "timbre" is the tine's vertical alignment
 		// to the pickup pole. Moving toward the pole centre suppresses the linear
 		// fundamental relative to curvature-generated harmonics. PROXIMITY controls
 		// the independent front-to-back distance and therefore magnetic curvature.
-		pickupGap_ = 1.32 - 0.78 * proximity;
+		// Each real key is voiced by moving its pickup. Trajectory normalization
+		// below makes this a dynamic-timbre calibration, not a register-dependent
+		// gain contour.
+		// The service range is expressed directly in millimetres: ordinary
+		// voicing is 1/16--1/8 inch, while post-1972 middle/upper pickups can be
+		// brought as close as 0.020 inch. The panel midpoint is the keyed neutral
+		// setup below; each half is logarithmic so the close end retains useful
+		// resolution.
+		constexpr double MinimumServiceGapMillimetres = 0.020 * 25.4;
+		constexpr double DefaultServiceGapMillimetres = 1.6;
+		constexpr double MaximumServiceGapMillimetres = 0.125 * 25.4;
+		// A serviced harp is individually voiced. Long bass tines need the ordinary
+		// 1/16-inch clearance, while the service manual explicitly permits 0.020 inch
+		// in the middle/upper range to retain dynamic response from their much smaller
+		// travel. Preserve the successful bass and bark calibration exactly through
+		// middle C, then graduate the neutral per-key screw setting toward 0.52 mm at
+		// the top, still just above the documented 0.020-inch service limit. The
+		// former 0.60 mm endpoint left the highest keys with little pickup-curvature
+		// sparkle even after the mechanical topology was corrected. This remains a
+		// physical gap change, not a register EQ or output crossfade.
+		constexpr double MiddleCPosition = (60.0 - 28.0) / 72.0;
+		constexpr double TrebleNeutralGapMillimetres = 0.52;
+		const double trebleGapPosition = std::clamp(
+			(keyPosition_ - MiddleCPosition) / (1.0 - MiddleCPosition), 0.0, 1.0);
+		const double trebleGapSmooth = trebleGapPosition * trebleGapPosition *
+			(3.0 - 2.0 * trebleGapPosition);
+		const double neutralKeyGap = DefaultServiceGapMillimetres * std::pow(
+			TrebleNeutralGapMillimetres / DefaultServiceGapMillimetres,
+			trebleGapSmooth);
+		// Only the closest endpoint is additionally zoned: bass keys retain the
+		// ordinary 1/16-inch service limit.
+		const double closeGapTransition = std::clamp(keyPosition_ /
+			((52.0 - 28.0) / 72.0), 0.0, 1.0);
+		const double closeGapSmooth = closeGapTransition * closeGapTransition *
+			(3.0 - 2.0 * closeGapTransition);
+		const double minimumKeyGap = 0.0625 * 25.4 + closeGapSmooth *
+			(MinimumServiceGapMillimetres - 0.0625 * 25.4);
+		pickupGap_ = proximity < 0.48 ?
+			MaximumServiceGapMillimetres * std::pow(
+				neutralKeyGap / MaximumServiceGapMillimetres,
+				proximity / 0.48) :
+			neutralKeyGap * std::pow(
+				minimumKeyGap / neutralKeyGap,
+				(proximity - 0.48) / 0.52);
 		// At minimum Tone the tine rests close to the primary edge's maximum
 		// gradient. Raising Tone moves it onto one flank, trading odd-harmonic
 		// symmetry for the stronger even/sideband mixture used when voicing a
@@ -661,30 +1364,46 @@ private:
 		const double alignmentMagnitude = std::sqrt(
 			alignmentGradient[0] * alignmentGradient[0] +
 			alignmentGradient[1] * alignmentGradient[1]);
-		const auto proximityGradient = MagneticFluxGradient(
-			pickupVerticalOffset_, pickupHorizontalOffset_, pickupGap_);
-		const double proximityMagnitude = std::sqrt(
-			proximityGradient[0] * proximityGradient[0] +
-			proximityGradient[1] * proximityGradient[1]);
-		// A real service adjustment changes both sensitivity and curvature, but the
-		// uncorrected pole field spans well over 16 dB and turns Proximity into a
-		// second amplifier Drive control. Retaining only a small part of that raw dB
-		// span keeps the adjustment audible while leaving the excursion-dependent
-		// magnetic curvature intact.
-		const double proximityGain = std::pow(alignmentMagnitude /
-			std::max(1.0e-6, proximityMagnitude), 0.85);
+		// Small-signal normalization alone cannot calibrate a nonlinear pickup: it
+		// made the same panel movement cut bass keys while boosting upper keys by
+		// roughly 6 dB. Normalize the RMS EMF of a representative keyed trajectory
+		// instead. The nominal excursion follows the existing, documented bass
+		// excursion trim; sampling three amplitudes makes the correction robust to
+		// velocity without imposing an envelope on the actual signal. Curvature and
+		// harmonic balance are retained because this is one scalar per pickup setup,
+		// never an instantaneous waveshaper inversion.
+		const double nominalExcursionMillimetres =
+			(0.08 + 0.32 * std::pow(1.0 - keyPosition_, 1.5)) *
+			pickupExcursionScale_;
+		const double referenceTrajectory = MagneticTrajectoryRms(
+			pickupVerticalOffset_, pickupHorizontalOffset_, ReferencePickupGap,
+			nominalExcursionMillimetres);
+		const double currentTrajectory = MagneticTrajectoryRms(
+			pickupVerticalOffset_, pickupHorizontalOffset_, pickupGap_,
+			nominalExcursionMillimetres);
+		const double proximityGain = referenceTrajectory /
+			std::max(1.0e-9, currentTrajectory);
+		// Preserve a restrained service-like sensitivity change: the close end may
+		// become at most about 1 dB louder after trajectory normalization, instead
+		// of acting as another output-level control.
+		// The three-amplitude normalizer samples a generic ellipse; real keyed
+		// trajectories retain a small register-dependent residual at close gaps.
+		// This measured correction raises the under-normalized middle register
+		// without reviving the former upper-key level jump.
+		const double intentionalSensitivity = std::pow(
+			neutralKeyGap / pickupGap_, 0.08);
 		pickupAlignmentGain_ = std::clamp(ReferenceGradientMagnitude() /
-			std::max(1.0e-6, alignmentMagnitude) * proximityGain, 0.40, 5.0);
-		pickupVoltageScale_ = 0.135 * keyPickupSensitivity_ *
+			std::max(1.0e-6, alignmentMagnitude) * proximityGain *
+			intentionalSensitivity, 0.04, 7.0);
+		pickupVoltageScale_ = 0.130 *
+			ElectricPianoMechanicalTrim::PickupOutput * keyPickupSensitivity_ *
 			pickupAlignmentGain_ * inverseReferenceGradient_;
-		const double cutoff = std::min(0.42 * sampleRate_, 16500.0);
-		pickupLowPassCoefficient_ = 1.0 - std::exp(
-			-TwoPi * cutoff / sampleRate_);
 		// Preserve a wide sound-design range while making the calibrated default
 		// a quiet mechanical contribution rather than a parallel percussion layer.
 		mechanicsLevel_ = 0.060 * mechanics * (0.30 + 0.70 * mechanics);
 		cachedBodyWeight_ = body;
 		cachedBellWeight_ = bell;
+		cachedCouplingWeight_ = coupling;
 		cachedProximity_ = proximity;
 		cachedTone_ = tone;
 		cachedMechanics_ = mechanics;
@@ -751,18 +1470,24 @@ private:
 				modeInverseMass_[index] =
 					coupledFork.inverseModalMassRatios[index] /
 					std::max(1.0e-9, tineModalMass_);
-				contactModeShape_[index] = 0.82;
 			}
 			modeRatio_[2] = 1.0018 + 0.0010 * (keyPosition_ - 0.5);
-			for (std::size_t index = 3; index < modes_.size(); ++index)
+			for (std::size_t index = ElectricPianoAttackModeBegin;
+				index < ElectricPianoAttackModeEnd; ++index)
 				modeRatio_[index] = KeyboardModeRatio(index, keyPosition_);
+			modeRatio_[ElectricPianoToneBarSubMode] =
+				ToneBarSubModeFrequencyRatio(keyPosition_);
 		}
 
 		if (decayChanged)
 		{
-			const double releaseSeconds = 0.012 * std::pow(100.0, release);
+			const double releaseSeconds =
+				ElectricPianoDamperReleaseSeconds(release);
 			const double decayScale = std::pow(4.0, 2.0 * (decay - 0.5));
-			const double bellDecay = 0.82 + 0.38 * bell;
+			// Published modal lifetimes are the default calibration. Bell may extend
+			// or shorten the attack modes deliberately, but its factory 0.52 position
+			// must not silently add the former 1.76% hidden correction.
+			const double bellDecay = 1.0 + 0.38 * (bell - 0.52);
 			// Material loss is small. Most fundamental loss occurs when an
 			// unbalanced fork drives its resilient mounting block and harp. The
 			// support coordinate has been analytically reduced into the reaction
@@ -771,7 +1496,7 @@ private:
 			// increasing mounting loss toward the short, stiff treble assemblies.
 			const double intrinsicForkLifetime = IntrinsicForkDecaySeconds *
 				keyboardDecayScale;
-			const double supportLossRate = 0.45 + 3.55 * keyPosition_;
+			const double supportLossRate = 0.55 + 4.45 * keyPosition_;
 			for (std::size_t index = 0; index < modes_.size(); ++index)
 			{
 				double lifetime;
@@ -781,44 +1506,88 @@ private:
 						supportLossRate * coupledSupportLossFactor_[index];
 					lifetime = decayScale / std::max(1.0e-9, lossRate);
 				}
+				else if (index == ElectricPianoToneBarSubMode)
+					lifetime = ToneBarSubModeDecaySeconds(keyPosition_) *
+						decayScale;
 				else
-					lifetime = HigherModeBaseDecaySeconds[index - 2] *
-						decayScale * keyboardDecayScale;
-				if (index >= 3)
+					lifetime = (index == 2 ? TransverseModeDecaySeconds *
+						keyboardDecayScale :
+						AttackModeDecaySeconds(index, keyPosition_)) *
+						decayScale;
+				if (index >= ElectricPianoAttackModeBegin &&
+					index < ElectricPianoAttackModeEnd)
 					lifetime *= bellDecay;
 				if (damped)
 					lifetime = std::min(lifetime, releaseSeconds *
-						(index >= 3 ? 0.55 : 1.0));
+						(index >= ElectricPianoAttackModeBegin &&
+							index < ElectricPianoAttackModeEnd ? 0.55 : 1.0));
 				modeRadius_[index] = std::exp(-1.0 /
 					(std::max(0.002, lifetime) * sampleRate_));
+				modePickupRadius_[index] = std::exp(-1.0 /
+					(std::max(0.002, lifetime) * sampleRate_ *
+						static_cast<double>(PickupOversamplingFactor)));
 				modeSubstepRadius_[index] = std::exp(-1.0 /
 					(std::max(0.002, lifetime) * sampleRate_ *
 						static_cast<double>(ContactOversamplingFactor)));
 			}
 		}
 
-		frequencyVelocityScale_ = fundamental /
-			ElectricPianoReferenceFrequency;
 		for (std::size_t index = 0; index < modes_.size(); ++index)
 		{
 			const double frequency = fundamental * modeRatio_[index];
 			const double normalizedFrequency = frequency / sampleRate_;
 			modeBandlimitGain_[index] = ElectricPianoModeBandlimitGain(
 				frequency, sampleRate_);
-			modeActive_[index] = normalizedFrequency < 0.49;
-			if (!modeActive_[index])
+			modeActive_[index] = normalizedFrequency < 0.49 &&
+				modeBandlimitGain_[index] > 0.0;
+			// A mode need not be audible to load the hammer. The contact solve runs
+			// at 64x host rate, so retain the already modelled ultrasonic modes in
+			// the point mobility during collision while keeping them out of pickup
+			// reconstruction. The old single activity flag removed most higher
+			// modes from upper-key collisions and concentrated their energy in the
+			// last audible coordinate. This split changes no bass mode that was
+			// already below the pickup bandwidth.
+			if (contactActive_)
+				contactModeActive_[index] = frequency < 0.49 * sampleRate_ *
+					static_cast<double>(ContactOversamplingFactor);
+			// Contact-only coefficients are needed only during the short collision.
+			// Avoid paying their trigonometric update cost on every pitch-modulated
+			// free-decay sample after the hammer has separated.
+			const bool collisionModeNeeded = contactActive_ &&
+				contactModeActive_[index];
+			if (!modeActive_[index] && !collisionModeNeeded)
 			{
 				modes_[index] = {};
 				modeRealCoefficient_[index] = 0.0;
 				modeImaginaryCoefficient_[index] = 0.0;
+				modePickupRealCoefficient_[index] = 0.0;
+				modePickupImaginaryCoefficient_[index] = 0.0;
 				modeSubstepRealCoefficient_[index] = 0.0;
 				modeSubstepImaginaryCoefficient_[index] = 0.0;
 				modeAngularFrequency_[index] = 0.0;
 				continue;
 			}
 			const double angle = TwoPi * frequency / sampleRate_;
-			modeRealCoefficient_[index] = modeRadius_[index] * std::cos(angle);
-			modeImaginaryCoefficient_[index] = modeRadius_[index] * std::sin(angle);
+			if (modeActive_[index])
+			{
+				modeRealCoefficient_[index] = modeRadius_[index] * std::cos(angle);
+				modeImaginaryCoefficient_[index] = modeRadius_[index] * std::sin(angle);
+				const double pickupAngle = angle /
+					static_cast<double>(PickupOversamplingFactor);
+				modePickupRealCoefficient_[index] = modePickupRadius_[index] *
+					std::cos(pickupAngle);
+				modePickupImaginaryCoefficient_[index] = modePickupRadius_[index] *
+					std::sin(pickupAngle);
+			}
+			else
+			{
+				modeRealCoefficient_[index] = 0.0;
+				modeImaginaryCoefficient_[index] = 0.0;
+				modePickupRealCoefficient_[index] = 0.0;
+				modePickupImaginaryCoefficient_[index] = 0.0;
+				if (!contactActive_)
+					modes_[index] = {};
+			}
 			const double substepAngle = angle /
 				static_cast<double>(ContactOversamplingFactor);
 			modeSubstepRealCoefficient_[index] = modeSubstepRadius_[index] *
@@ -860,16 +1629,66 @@ private:
 
 	void AdvanceFreeModes()
 	{
-		for (std::size_t index = 0; index < modes_.size(); ++index)
+		if (!modulationPathActive_)
 		{
-			if (!modeActive_[index])
-				continue;
-			const double oldReal = modes_[index].real;
-			const double oldImaginary = modes_[index].imaginary;
-			modes_[index].real = modeRealCoefficient_[index] * oldReal -
-				modeImaginaryCoefficient_[index] * oldImaginary;
-			modes_[index].imaginary = modeImaginaryCoefficient_[index] *
-				oldReal + modeRealCoefficient_[index] * oldImaginary;
+			for (std::size_t index = 0;
+				index < ElectricPianoToneBarSubMode; ++index)
+			{
+				if (!modeActive_[index])
+					continue;
+				const double oldReal = modes_[index].real;
+				const double oldImaginary = modes_[index].imaginary;
+				modes_[index].real = modeRealCoefficient_[index] * oldReal -
+					modeImaginaryCoefficient_[index] * oldImaginary;
+				modes_[index].imaginary = modeImaginaryCoefficient_[index] *
+					oldReal + modeRealCoefficient_[index] * oldImaginary;
+			}
+			constexpr std::size_t subMode = ElectricPianoToneBarSubMode;
+			if (modeActive_[subMode])
+			{
+				const double oldReal = modes_[subMode].real;
+				const double oldImaginary = modes_[subMode].imaginary;
+				modes_[subMode].real = modeRealCoefficient_[subMode] * oldReal -
+					modeImaginaryCoefficient_[subMode] * oldImaginary;
+				modes_[subMode].imaginary = modeImaginaryCoefficient_[subMode] *
+					oldReal + modeRealCoefficient_[subMode] * oldImaginary;
+			}
+			return;
+		}
+		// The pickup nonlinearity and creative FM/PM are evaluated at 4x. Advance
+		// the physical resonators at that same cadence so their modal coordinates
+		// do not have to be reconstructed from a host-rate aggregate signal.
+		for (int frame = 0; frame < PickupOversamplingFactor; ++frame)
+		{
+			for (std::size_t index = 0;
+				index < ElectricPianoToneBarSubMode; ++index)
+			{
+				if (!modeActive_[index])
+				{
+					pickupModeFrames_[frame][index] = {};
+					continue;
+				}
+				const double oldReal = modes_[index].real;
+				const double oldImaginary = modes_[index].imaginary;
+				modes_[index].real = modePickupRealCoefficient_[index] * oldReal -
+					modePickupImaginaryCoefficient_[index] * oldImaginary;
+				modes_[index].imaginary = modePickupImaginaryCoefficient_[index] *
+					oldReal + modePickupRealCoefficient_[index] * oldImaginary;
+				pickupModeFrames_[frame][index] = modes_[index];
+			}
+			constexpr std::size_t subMode = ElectricPianoToneBarSubMode;
+			if (!modeActive_[subMode])
+				pickupModeFrames_[frame][subMode] = {};
+			else
+			{
+				const double oldReal = modes_[subMode].real;
+				const double oldImaginary = modes_[subMode].imaginary;
+				modes_[subMode].real = modePickupRealCoefficient_[subMode] * oldReal -
+					modePickupImaginaryCoefficient_[subMode] * oldImaginary;
+				modes_[subMode].imaginary = modePickupImaginaryCoefficient_[subMode] *
+					oldReal + modePickupRealCoefficient_[subMode] * oldImaginary;
+				pickupModeFrames_[frame][subMode] = modes_[subMode];
+			}
 		}
 	}
 
@@ -887,7 +1706,7 @@ private:
 			double velocity = 0.0;
 			for (std::size_t index = 0; index < modes_.size(); ++index)
 			{
-				if (!modeActive_[index])
+				if (!contactModeActive_[index])
 					continue;
 				position -= contactModeShape_[index] * modes_[index].real;
 				velocity += contactModeShape_[index] *
@@ -895,6 +1714,9 @@ private:
 			}
 			return std::array<double, 2>{position, velocity};
 		};
+		if (modulationPathActive_)
+			for (auto& frame : pickupModeFrames_)
+				frame.fill({});
 		for (int substep = 0; substep < ContactOversamplingFactor; ++substep)
 		{
 			if (contactActive_)
@@ -918,10 +1740,24 @@ private:
 					if (compression > 0.0)
 					{
 						contactEngaged_ = true;
-						const double hysteresis = std::clamp(
-							1.0 + contactLoss_ * relativeVelocity, 0.04, 2.2);
-						force = contactStiffness_ *
-							std::pow(compression, contactExponent_) * hysteresis;
+						// Hunt--Crossley damping may reach zero on a sufficiently fast
+						// unloading stroke, but a contact cannot pull the hammer back
+						// toward the tine.  Do not cap the measured loading branch.
+						const double hysteresis =
+							1.0 + contactLoss_ * relativeVelocity;
+						if (hysteresis <= 0.0 && relativeVelocity < 0.0)
+						{
+							// The dissipative fit has crossed the point at which its
+							// algebraic force would become tensile. A real neoprene tip
+							// cannot pull the receding hammer, so this is separation,
+							// not a zero-force state held at positive penetration.
+							hammerPosition_ = tine[0];
+							contactActive_ = false;
+							contactEngaged_ = false;
+						}
+						else
+							force = contactStiffness_ *
+								std::pow(compression, contactExponent_) * hysteresis;
 					}
 					if (!std::isfinite(force))
 					{
@@ -938,7 +1774,7 @@ private:
 						hammerVelocity_ -= impulse * hammerInverseMass_;
 						for (std::size_t index = 0; index < modes_.size(); ++index)
 						{
-							if (!modeActive_[index] ||
+							if (!contactModeActive_[index] ||
 								!(modeAngularFrequency_[index] > 0.0))
 								continue;
 							modes_[index].imaginary += contactModeShape_[index] *
@@ -952,7 +1788,7 @@ private:
 
 			for (std::size_t index = 0; index < modes_.size(); ++index)
 			{
-				if (!modeActive_[index])
+				if (!contactModeActive_[index])
 					continue;
 				const double oldReal = modes_[index].real;
 				const double oldImaginary = modes_[index].imaginary;
@@ -961,6 +1797,15 @@ private:
 					oldImaginary;
 				modes_[index].imaginary = modeSubstepImaginaryCoefficient_[index] *
 					oldReal + modeSubstepRealCoefficient_[index] * oldImaginary;
+			}
+			if (modulationPathActive_ && (substep + 1) %
+				(ContactOversamplingFactor / PickupOversamplingFactor) == 0)
+			{
+				const int frame = (substep + 1) /
+					(ContactOversamplingFactor / PickupOversamplingFactor) - 1;
+				for (std::size_t index = 0; index < modes_.size(); ++index)
+					pickupModeFrames_[frame][index] = modeActive_[index] ?
+						modes_[index] : Mode{};
 			}
 
 			if (contactActive_)
@@ -989,6 +1834,14 @@ private:
 				}
 			}
 		}
+		// Contact-only coordinates cannot be advanced at host rate once the
+		// hammer separates. Their remaining ultrasonic energy is outside the
+		// pickup model and is intentionally discarded here, after it has affected
+		// the complete physical collision rather than before it.
+		if (!contactActive_)
+			for (std::size_t index = 0; index < modes_.size(); ++index)
+				if (!modeActive_[index])
+					modes_[index] = {};
 	}
 
 	static double KeyboardModeRatio(std::size_t index,
@@ -996,54 +1849,505 @@ private:
 	{
 		if (index < 3)
 			return 1.0;
-		const double position = std::clamp(keyboardPosition, 0.0, 1.0);
-		const double scale = 1.0 + (1.0 - 2.0 * position) *
-			ModeRatioKeyboardSpread[index];
-		return ModeRatios[index] * scale;
+		const std::size_t waveNumberIndex = index - 2;
+		const double uniformRatio = std::pow(
+			CantileverWaveNumbers[waveNumberIndex] /
+			CantileverWaveNumbers[0], 2.0);
+		auto applyShearCorrection = [&](double ratio)
+		{
+			// The measured F1/F3 ratios already contain the real tine's shear and
+			// rotary-inertia effects. Above the final measurement, correct the
+			// Euler--Bernoulli extrapolation with the first-order Timoshenko/Rayleigh
+			// factor cited by Pfeifle and Sonderbo. It is normalized by the
+			// fundamental so pitch is unchanged; only the increasingly sensitive
+			// upper-mode ratios of short tines move. Blend in only beyond F3 so the
+			// measured anchors and the successful bass remain exact.
+			constexpr double PoissonRatio = 0.29;
+			constexpr double CircularShearCoefficient =
+				6.0 * (1.0 + PoissonRatio) / (7.0 + 6.0 * PoissonRatio);
+			const double youngsToShearRatio = 2.0 * (1.0 + PoissonRatio);
+			const double tineLength =
+				ElectricPianoPublishedMechanicalData::LongestTineMetres * std::pow(
+					ElectricPianoPublishedMechanicalData::ShortestTineMetres /
+						ElectricPianoPublishedMechanicalData::LongestTineMetres,
+					std::clamp(keyboardPosition, 0.0, 1.0));
+			const double radiusToLength =
+				ElectricPianoPublishedMechanicalData::TineRadiusMetres /
+				std::max(1.0e-9, tineLength);
+			const double correctionCoefficient = 0.25 * radiusToLength *
+				radiusToLength * (1.0 + youngsToShearRatio /
+					CircularShearCoefficient);
+			const double correction = std::sqrt(
+				(1.0 + correctionCoefficient * CantileverWaveNumbers[0] *
+					CantileverWaveNumbers[0]) /
+				(1.0 + correctionCoefficient *
+					CantileverWaveNumbers[waveNumberIndex] *
+					CantileverWaveNumbers[waveNumberIndex]));
+			constexpr double F3Position = (53.0 - 28.0) / 72.0;
+			constexpr double A4Position = (69.0 - 28.0) / 72.0;
+			const double blendLinear = std::clamp((keyboardPosition - F3Position) /
+				(A4Position - F3Position), 0.0, 1.0);
+			const double blend = blendLinear * blendLinear *
+				(3.0 - 2.0 * blendLinear);
+			return ratio * std::exp(blend * std::log(correction));
+		};
+		// Gabrielli/Cantarini report the first measured overtones of F1 at
+		// 7.2/20.6 and those of F3 at 7.4/20.7/38.7. A Rayleigh--Ritz cantilever with
+		// one sliding point mass fits both anchors with tuning-mass fractions
+		// 0.146/0.177 and positions 0.859L/0.840L. Extrapolating those physical
+		// parameters (mass fraction versus tine length and spring position versus
+		// key) yields the compact ratio polynomials below. This replaces the former
+		// return to an unloaded A4 beam even though every real key retains a tuning
+		// spring. The fit is explicitly provisional above F3 until the article's
+		// full-key data or new SLDV measurements are available. The very lowest key
+		// retains the calibrated 7.11/20.25 ratios.
+		constexpr double F1Position = (29.0 - 28.0) / 72.0;
+		constexpr double F3Position = (53.0 - 28.0) / 72.0;
+		auto smoothInterpolate = [](double position, double lowerPosition,
+			double upperPosition, double lowerValue, double upperValue)
+		{
+			const double linear = std::clamp((position - lowerPosition) /
+				(upperPosition - lowerPosition), 0.0, 1.0);
+			const double smooth = linear * linear * (3.0 - 2.0 * linear);
+			return lowerValue + smooth * (upperValue - lowerValue);
+		};
+		if (waveNumberIndex >= 1 && waveNumberIndex <= 3)
+		{
+			const std::size_t measuredIndex = waveNumberIndex - 1;
+			constexpr std::array<double, 3> LowestKeyRatios{
+				7.11, 20.25, 34.386};
+			constexpr std::array<double, 3> F1Ratios{7.2, 20.6, 34.386};
+			constexpr std::array<double, 3> F3Ratios{7.4, 20.7, 38.7};
+			if (keyboardPosition < F1Position)
+				return applyShearCorrection(smoothInterpolate(keyboardPosition, 0.0,
+					F1Position, LowestKeyRatios[measuredIndex],
+					F1Ratios[measuredIndex]));
+			if (keyboardPosition < F3Position)
+				return applyShearCorrection(smoothInterpolate(keyboardPosition,
+					F1Position, F3Position, F1Ratios[measuredIndex],
+					F3Ratios[measuredIndex]));
+			const double pointMassPosition = std::clamp(
+				(keyboardPosition - F3Position) / (1.0 - F3Position), 0.0, 1.0);
+			const double squared = pointMassPosition * pointMassPosition;
+			constexpr std::array<double, 3> LinearPointMassCoefficients{
+				0.3887, 0.2667, -1.1750};
+			constexpr std::array<double, 3> QuadraticPointMassCoefficients{
+				0.0022, -0.3675, 0.6190};
+			return applyShearCorrection(F3Ratios[measuredIndex] +
+				LinearPointMassCoefficients[measuredIndex] * pointMassPosition +
+				QuadraticPointMassCoefficients[measuredIndex] * squared);
+		}
+		return applyShearCorrection(uniformRatio);
 	}
 
-	static double CantileverModeShapeAtStrike(std::size_t index,
+	static std::array<double, 9> SpringLoadedModeReduction(std::size_t index,
 		double keyboardPosition)
 	{
-		if (index < 3)
+		// Offline Rayleigh--Ritz reduction of a uniform cantilever plus the sliding
+		// tuning mass fitted at F1/F3. Components 0--7 expand a tip-normalized loaded
+		// eigenfunction in the first eight tip-normalized cantilever shapes; component
+		// 8 is generalized modal mass divided by the quarter-beam reference mass.
+		// Fifth-order keyed polynomials reproduce the 73-key eigensolve with maximum
+		// coefficient error below 6.5e-6 and mass-ratio error below 2.3e-5. Keeping
+		// this solve out of the audio path also preserves cheap continuous tuning.
+		constexpr std::array<std::array<std::array<double, 6>, 9>, 3>
+			ReductionPolynomials{{
+			{{
+				{{-0.0956129, 0.0456194, 0.00777974, -0.000116554,
+					-9.46565e-05, -3.09906e-06}},
+				{{1.10324, -0.0455643, -0.0104353, -9.22499e-05,
+					0.000148787, 1.19656e-05}},
+				{{-0.00398375, -0.00128955, 0.00183961, 0.000294257,
+					-1.9185e-05, -8.84302e-06}},
+				{{-0.00220983, 0.000352183, 0.000614798, 2.54259e-05,
+					-1.9119e-05, -2.65702e-06}},
+				{{-0.000963916, 0.000374115, 0.000208078, -2.96839e-05,
+					-1.20937e-05, -3.05088e-07}},
+				{{-0.000370971, 0.000262402, 4.75427e-05, -3.62169e-05,
+					-5.54762e-06, 7.79864e-07}},
+				{{-0.000102739, 0.000160785, -1.67049e-05, -2.82371e-05,
+					-6.24785e-07, 1.14076e-06}},
+				{{8.68671e-06, 8.48909e-05, -3.78117e-05, -1.67413e-05,
+					2.43924e-06, 1.01795e-06}},
+				{{1.24536, -0.130942, -0.0154338, 0.00239892,
+					0.00042329, -1.50138e-05}}
+			}},
+			{{
+				{{0.0856358, 0.0718697, 0.00239745, -0.000800856,
+					0.000103003, 2.45192e-05}},
+				{{0.0264046, 0.00725223, -0.0122908, -0.00115264,
+					9.91097e-05, -1.35701e-05}},
+				{{0.856621, -0.10777, 0.0105401, 0.00509314,
+					-0.000285909, -0.000179625}},
+				{{0.0204186, 0.0217557, 0.00242873, -0.00193329,
+					-0.00012666, 0.000105396}},
+				{{0.00748901, 0.00635952, -0.000622121, -0.00081385,
+					2.26418e-05, 4.0268e-05}},
+				{{0.00274673, 0.00146424, -0.00106307, -0.000356234,
+					6.33963e-05, 1.89727e-05}},
+				{{0.000746877, -0.000241582, -0.00086532, -9.23743e-05,
+					6.8684e-05, 6.35504e-06}},
+				{{-6.27144e-05, -0.000689937, -0.000524997, 5.61063e-05,
+					5.57334e-05, -2.31667e-06}},
+				{{0.758331, -0.147027, 0.0427399, 0.00513243,
+					-0.00150902, -5.12784e-05}}
+			}},
+			{{
+				{{0.179255, 0.069498, -0.000834428, -9.1712e-05,
+					-0.000210303, -0.000145463}},
+				{{0.0500679, -0.00904389, -0.0123546, -0.000331001,
+					5.78134e-07, 7.40167e-07}},
+				{{-0.0772817, -0.0930271, -0.0253526, 0.000664447,
+					0.000802763, 0.000230014}},
+				{{0.750814, 0.0193002, 0.0563247, -0.000129465,
+					-0.00115623, 0.000269954}},
+				{{0.0702597, 0.022177, -0.00752142, -0.000515268,
+					0.000267363, -0.000236803}},
+				{{0.021748, 0.000528111, -0.00541273, -0.000221897,
+					0.000127871, -7.32499e-05}},
+				{{0.00559402, -0.00461574, -0.00332659, 0.000191674,
+					0.000100441, -2.94211e-05}},
+				{{-0.000457813, -0.00481666, -0.00152236, 0.000433223,
+					6.75157e-05, -1.57717e-05}},
+				{{0.680285, 0.112127, 0.101452, 0.00504365,
+					0.00165225, -7.54704e-05}}
+			}}
+		}};
+		std::array<double, 9> reduction{};
+		if (index < 3 || index > 5)
+		{
+			reduction[8] = 1.0;
+			return reduction;
+		}
+		const double coordinate = 2.0 * std::clamp(keyboardPosition, 0.0, 1.0) - 1.0;
+		const auto& polynomials = ReductionPolynomials[index - 3];
+		for (std::size_t component = 0; component < reduction.size(); ++component)
+		{
+			double value = polynomials[component].back();
+			for (std::size_t term = polynomials[component].size() - 1;
+				term-- > 0;)
+				value = value * coordinate + polynomials[component][term];
+			reduction[component] = value;
+		}
+		reduction[8] = std::clamp(reduction[8], 0.5, 1.5);
+		return reduction;
+	}
+
+	static double AttackModeModalMassMultiplier(std::size_t index,
+		double keyboardPosition)
+	{
+		// Modes 3--5 use the spring-loaded Rayleigh--Ritz eigenvectors fitted to
+		// the measured F1/F3 ratios. Their generalized masses therefore differ from
+		// the quarter-beam mass used by KeyProfile. Higher, unconstrained modes keep
+		// the uniform-beam normalization until measurements justify loading them.
+		if (index < 3 || index > 5)
 			return 1.0;
-		const double beta = CantileverWaveNumbers[index - 2];
-		const double strikePosition = 0.31 + 0.07 *
-			std::clamp(keyboardPosition, 0.0, 1.0);
+		return SpringLoadedModeReduction(index, keyboardPosition)[8];
+	}
+
+	static double BeamAttackModeDecaySeconds(std::size_t index,
+		double keyboardPosition)
+	{
+		const double tineLength =
+			ElectricPianoPublishedMechanicalData::LongestTineMetres * std::pow(
+				ElectricPianoPublishedMechanicalData::ShortestTineMetres /
+				ElectricPianoPublishedMechanicalData::LongestTineMetres,
+				std::clamp(keyboardPosition, 0.0, 1.0));
+		const std::size_t waveNumberIndex = index - 2;
+		const double spatialWaveNumber =
+			CantileverWaveNumbers[waveNumberIndex] / tineLength;
+		const double lossRate =
+			ElectricPianoPublishedMechanicalData::FrequencyIndependentLossPerSecond +
+			ElectricPianoPublishedMechanicalData::
+				FrequencyDependentLossSquareMetresPerSecond *
+			spatialWaveNumber * spatialWaveNumber;
+		return 1.0 / std::max(1.0e-9, lossRate);
+	}
+
+	static double AttackModeDecaySeconds(std::size_t index,
+		double keyboardPosition)
+	{
+		const double beamDecay = BeamAttackModeDecaySeconds(index,
+			keyboardPosition);
+		const std::size_t waveNumberIndex = index - 2;
+		if (waveNumberIndex < 1 || waveNumberIndex > 3)
+			return beamDecay;
+
+		// Table 8.6 of Cantarini/Gabrielli gives amplitude-decay slopes in
+		// dB/s. Convert with tau = 20 log10(e)/|slope| and use the resulting
+		// measured lifetime as a multiplier on Sonderbo's distributed-loss law.
+		// Retaining the beam law between anchors preserves register scaling; the
+		// multiplier admits the observed non-monotonic mode-dependent losses that a
+		// single sigma0 + sigma1*k^2 curve cannot reproduce. The F3 multiplier must
+		// not remain frozen above the last measured damping anchor: doing that made
+		// modes four and five roughly eleven and five times too long throughout the
+		// treble. In the absence of treble damping measurements, relax the measured
+		// anomaly independently by A4 to the sourced distributed-loss law. Do not tie
+		// this provisional loss coordinate to the point-mass frequency extrapolation:
+		// a tuning spring can shift frequency without preserving F3's anomalous loss.
+		constexpr double DbPerNeper = 8.685889638065037;
+		constexpr double F1Position = (29.0 - 28.0) / 72.0;
+		constexpr double F3Position = (53.0 - 28.0) / 72.0;
+		constexpr std::array<double, 3> F1DecaySeconds{
+			DbPerNeper / 21.1, DbPerNeper / 67.7, 0.0};
+		constexpr std::array<double, 3> F3DecaySeconds{
+			DbPerNeper / 294.0, DbPerNeper / 37.0, DbPerNeper / 161.0};
+		const std::size_t measuredIndex = waveNumberIndex - 1;
+		const double f1Multiplier = F1DecaySeconds[measuredIndex] > 0.0 ?
+			F1DecaySeconds[measuredIndex] /
+				BeamAttackModeDecaySeconds(index, F1Position) : 1.0;
+		const double f3Multiplier = F3DecaySeconds[measuredIndex] /
+			BeamAttackModeDecaySeconds(index, F3Position);
+		if (keyboardPosition > F3Position)
+		{
+			constexpr double A4Position = (69.0 - 28.0) / 72.0;
+			const double relaxationLinear = std::clamp(
+				(keyboardPosition - F3Position) / (A4Position - F3Position),
+				0.0, 1.0);
+			const double relaxation = relaxationLinear * relaxationLinear *
+				(3.0 - 2.0 * relaxationLinear);
+			const double measuredLossPerturbation = 1.0 - relaxation;
+			return beamDecay * std::exp(measuredLossPerturbation *
+				std::log(std::max(1.0e-12, f3Multiplier)));
+		}
+		const double linear = std::clamp((keyboardPosition - F1Position) /
+			(F3Position - F1Position), 0.0, 1.0);
+		const double smooth = linear * linear * (3.0 - 2.0 * linear);
+		const double logMultiplier = std::log(std::max(1.0e-12, f1Multiplier)) +
+			smooth * (std::log(std::max(1.0e-12, f3Multiplier)) -
+				std::log(std::max(1.0e-12, f1Multiplier)));
+		return beamDecay * std::exp(logMultiplier);
+	}
+
+	static double AttackModeEnergyCalibration(std::size_t index,
+		double keyboardPosition)
+	{
+		// The measured F1/F3 decay constants describe modal residues whose
+		// magnitudes were fitted at the same time. Substituting only those decay
+		// constants changes a mode's total observed energy in direct proportion to
+		// its lifetime. Preserve the existing reduced model's broadband impulse
+		// calibration by scaling the contact projection by sqrt(tau_beam/tau_fit).
+		// This is an explicit residue normalization; it does not alter the loaded
+		// eigenfunction, generalized mass, frequency, or measured decay constant.
+		const double fittedLifetime = AttackModeDecaySeconds(index,
+			keyboardPosition);
+		const double beamLifetime = BeamAttackModeDecaySeconds(index,
+			keyboardPosition);
+		return std::sqrt(std::clamp(beamLifetime /
+			std::max(1.0e-9, fittedLifetime), 0.05, 4.0));
+	}
+
+	static double ToneBarSubModeFrequencyRatio(double keyboardPosition)
+	{
+		// Gabrielli/Cantarini SLDV measurements locate the tone-bar submode at
+		// 0.83*f0 for F1 and 0.58*f0 for F3. The openly available measurements
+		// stop there. Above F3, aligned direct-harp recordings show the strongest
+		// early submode settling near 0.4--0.5*f0 rather than rising toward f0.
+		constexpr double F1Position = (29.0 - 28.0) / 72.0;
+		constexpr double F3Position = (53.0 - 28.0) / 72.0;
+		if (keyboardPosition <= F1Position)
+			return 0.83;
+		if (keyboardPosition <= F3Position)
+		{
+			const double linear = (keyboardPosition - F1Position) /
+				(F3Position - F1Position);
+			const double smooth = linear * linear * (3.0 - 2.0 * linear);
+			return std::exp(std::log(0.83) + smooth *
+				(std::log(0.58) - std::log(0.83)));
+		}
+		const double upperPosition = (keyboardPosition - F3Position) /
+			(1.0 - F3Position);
+		return 0.42 + 0.16 * std::exp(-5.0 * upperPosition);
+	}
+
+	static double ToneBarSubModeDecaySeconds(double keyboardPosition)
+	{
+		// Table 8.6 gives amplitude slopes of -9.1 dB/s at F1 and
+		// -138 dB/s at F3. Convert with tau=20*log10(e)/|slope|. The
+		// upper continuation is constrained by direct-harp spectrograms, where
+		// the line falls by roughly 25--40 dB between 100 and 250 ms.
+		constexpr double DbPerNeper = 8.685889638065037;
+		constexpr double F1Lifetime = DbPerNeper / 9.1;
+		constexpr double F3Lifetime = DbPerNeper / 138.0;
+		constexpr double F1Position = (29.0 - 28.0) / 72.0;
+		constexpr double F3Position = (53.0 - 28.0) / 72.0;
+		if (keyboardPosition <= F1Position)
+			return F1Lifetime;
+		if (keyboardPosition <= F3Position)
+		{
+			const double linear = (keyboardPosition - F1Position) /
+				(F3Position - F1Position);
+			const double smooth = linear * linear * (3.0 - 2.0 * linear);
+			return std::exp(std::log(F1Lifetime) + smooth *
+				(std::log(F3Lifetime) - std::log(F1Lifetime)));
+		}
+		const double upperPosition = (keyboardPosition - F3Position) /
+			(1.0 - F3Position);
+		return F3Lifetime * std::pow(0.035 / F3Lifetime, upperPosition);
+	}
+
+	static double ToneBarSubModeTineParticipation(double keyboardPosition)
+	{
+		// A normal mode is observed and forced through the same tine component.
+		// The two SLDV anchors imply a weak F1 residue (-28 dB relative to the
+		// played mode) and a much stronger F3 residue (-4.5 dB). Above F3 the
+		// direct-harp corpus shows a rapid reduction; by the upper register the
+		// submode and its pickup sidebands are 40--60 dB below the fundamental.
+		// These participation values are an initial reciprocal modal fit; unlike
+		// the former observation gain they enter twice, at force and pickup.
+		constexpr double F1Position = (29.0 - 28.0) / 72.0;
+		constexpr double F3Position = (53.0 - 28.0) / 72.0;
+		constexpr std::array<double, 8> KeyPositions{
+			F1Position, F3Position, (55.0 - 28.0) / 72.0,
+			(59.0 - 28.0) / 72.0, (65.0 - 28.0) / 72.0,
+			(76.0 - 28.0) / 72.0, (88.0 - 28.0) / 72.0, 1.0};
+		constexpr std::array<double, 8> Participations{
+			0.177, 0.56, 0.40, 0.25, 0.15, 0.060, 0.045, 0.040};
+		if (keyboardPosition <= KeyPositions.front())
+			return Participations.front();
+		for (std::size_t upper = 1; upper < KeyPositions.size(); ++upper)
+		{
+			if (keyboardPosition > KeyPositions[upper])
+				continue;
+			const double linear = (keyboardPosition - KeyPositions[upper - 1]) /
+				(KeyPositions[upper] - KeyPositions[upper - 1]);
+			const double smooth = linear * linear * (3.0 - 2.0 * linear);
+			return std::exp(std::log(Participations[upper - 1]) + smooth *
+				(std::log(Participations[upper]) -
+					std::log(Participations[upper - 1])));
+		}
+		return Participations.back();
+	}
+
+	static double StrikePositionFromControl(double keyboardPosition,
+		double strikeControl)
+	{
+		// The service procedure does not describe a straight line: it asks the
+		// technician to set C4, F3 and C3 independently, then accept the intervening
+		// keys when they fall close to maximum power without a thunk. A linear
+		// 0.40L--0.20L approximation put C4 and much of the upper register close to
+		// higher-mode nodes. A full-keyboard render sweep found the same optimum the
+		// manual describes: a fairly flat bass line, a pronounced bend around the
+		// C3--C4 checkpoints, and a gentler approach toward the treble clamp.
+		//
+		// Positions remain explicit listening trims because no published factory
+		// jig dimensions identify the contact point on every tine. Keeping the six
+		// checkpoints here makes a later measured-harp calibration local and avoids
+		// hiding the correction in per-mode gains.
+		constexpr std::array<double, 6> KeyboardCheckpoints{
+			0.0, (48.0 - 28.0) / 72.0, (53.0 - 28.0) / 72.0,
+			(60.0 - 28.0) / 72.0, (84.0 - 28.0) / 72.0, 1.0};
+		constexpr std::array<double, 6> FactoryStrikePositions{
+			0.38, 0.29, 0.22, 0.205, 0.16, 0.14};
+		const double position = std::clamp(keyboardPosition, 0.0, 1.0);
+		std::size_t lower = 0;
+		while (lower + 2 < KeyboardCheckpoints.size() &&
+			position > KeyboardCheckpoints[lower + 1])
+			++lower;
+		const double interval = KeyboardCheckpoints[lower + 1] -
+			KeyboardCheckpoints[lower];
+		const double linearFraction = std::clamp(
+			(position - KeyboardCheckpoints[lower]) / interval, 0.0, 1.0);
+		const double smoothFraction = linearFraction * linearFraction *
+			(3.0 - 2.0 * linearFraction);
+		const double factoryPosition = FactoryStrikePositions[lower] +
+			smoothFraction * (FactoryStrikePositions[lower + 1] -
+				FactoryStrikePositions[lower]);
+		// The panel now represents a signed physical displacement of the harp's
+		// striking line about the factory point. A full-range movement tapers from
+		// 6 mm in the bass to 1 mm in the treble, consistent with the much shorter
+		// upper tines. Unlike interpolation toward 0.04L/0.96L, this is smooth at
+		// centre and cannot fling adjacent high-register settings across several
+		// modal nodes. Centre remains bit-for-bit the calibrated factory position.
+		const double tineLength =
+			ElectricPianoPublishedMechanicalData::LongestTineMetres * std::pow(
+				ElectricPianoPublishedMechanicalData::ShortestTineMetres /
+					ElectricPianoPublishedMechanicalData::LongestTineMetres,
+				position);
+		const double maximumOffsetMetres = 0.006 + position * (0.001 - 0.006);
+		const double signedControl = 2.0 *
+			(std::clamp(strikeControl, 0.0, 1.0) - 0.5);
+		return std::clamp(factoryPosition + signedControl *
+			maximumOffsetMetres / tineLength, 0.04, 0.96);
+	}
+
+	static double UniformCantileverModeShape(std::size_t waveNumberIndex,
+		double position)
+	{
+		const double beta = CantileverWaveNumbers[waveNumberIndex];
 		const double sigma = (std::cosh(beta) + std::cos(beta)) /
 			(std::sinh(beta) + std::sin(beta));
-		auto shape = [&](double position)
+		auto shape = [&](double normalizedPosition)
 		{
-			const double argument = beta * position;
+			const double argument = beta * normalizedPosition;
 			return std::cosh(argument) - std::cos(argument) - sigma *
 				(std::sinh(argument) - std::sin(argument));
 		};
-		return std::clamp(shape(strikePosition) / shape(1.0), -1.5, 1.5);
+		return std::clamp(shape(std::clamp(position, 0.0, 1.0)) / shape(1.0),
+			-1.5, 1.5);
 	}
 
-	static std::array<double, 2> MagneticFluxGradient(double vertical,
-		double horizontal, double gap)
+	static double CantileverModeShape(std::size_t index, double position)
 	{
-		// The Peterson-era pole is not a rounded, symmetric point source. Its two
-		// offset protuberances concentrate flux into a steep transition whose
-		// gradient remains unidirectional across the normal tine excursion. Model
-		// the linked flux as two softened magnetic edges: the narrow primary edge
-		// supplies the harmonic curvature, while the broader return edge gives the
-		// published field models their strong spatial asymmetry. Differentiating
-		// this scalar flux map preserves Faraday's-law consistency in both planes.
-		constexpr double HorizontalFieldScale = 0.62;
-		constexpr double GapRegularization = 0.020;
-		const double radialDistance = std::sqrt(gap * gap +
-			HorizontalFieldScale * horizontal * horizontal + GapRegularization);
-		const double radialDerivative = HorizontalFieldScale * horizontal /
-			std::max(1.0e-9, radialDistance);
-		// Both pole edges share the same radial falloff. This fractional power is
-		// one of the dominant steady-state costs because the pickup is evaluated
-		// four times per sample for every voice; calculate it once per field point.
-		const double radialFalloff = PowNegative1p3(radialDistance);
+		const std::size_t waveNumberIndex = index < 3 ? 0 : index - 2;
+		return UniformCantileverModeShape(waveNumberIndex, position);
+	}
 
-		double verticalGradient = 0.0;
-		double radialGradient = 0.0;
+	static double FiniteContactModeProjection(std::size_t index,
+		double keyboardPosition, double centre, double contactWidthMetres)
+	{
+		// Integrate the calibrated physical contact strip over the modal shape. The
+		// symmetric binomial weights approximate the peaked pressure of a compliant
+		// contact; this runs once per strike, not in the contact substeps.
+		const double tineLength =
+			ElectricPianoPublishedMechanicalData::LongestTineMetres * std::pow(
+				ElectricPianoPublishedMechanicalData::ShortestTineMetres /
+					ElectricPianoPublishedMechanicalData::LongestTineMetres,
+				std::clamp(keyboardPosition, 0.0, 1.0));
+		const double halfWidth = std::clamp(0.5 * contactWidthMetres /
+			std::max(1.0e-6, tineLength), 0.001, 0.14);
+		constexpr std::array<double, 5> Offsets{-1.0, -0.5, 0.0, 0.5, 1.0};
+		constexpr std::array<double, 5> Weights{1.0, 4.0, 6.0, 4.0, 1.0};
+		const bool springLoadedMode = index >= 3 && index <= 5;
+		const auto loadedReduction = springLoadedMode ?
+			SpringLoadedModeReduction(index, keyboardPosition) :
+			std::array<double, 9>{};
+		auto modeShape = [&](double position)
+		{
+			if (!springLoadedMode)
+				return CantileverModeShape(index, position);
+			double shape = 0.0;
+			for (std::size_t basis = 0; basis < 8; ++basis)
+				shape += loadedReduction[basis] *
+					UniformCantileverModeShape(basis, position);
+			return std::clamp(shape, -1.5, 1.5);
+		};
+		double projection = 0.0;
+		for (std::size_t sample = 0; sample < Offsets.size(); ++sample)
+			projection += Weights[sample] * modeShape(
+				centre + halfWidth * Offsets[sample]);
+		return projection / 16.0;
+	}
+
+	struct MagneticFieldSample
+	{
+		double vertical{};
+		double radial{};
+	};
+
+	static MagneticFieldSample EvaluateCalibratedPoleGradient(double vertical,
+		double radialDistance)
+	{
+		// Pfeifle derives a three-part integral over an idealised pole
+		// cross-section, but publishes neither production dimensions nor a flux scan.
+		// Falaize's sourced circular-pole reduction was also evaluated here; as a
+		// keyboard-wide replacement for this asymmetric pole it over-produced bass H2
+		// by 5--14x and reduced rather than restored the treble harmonic ladder. Keep
+		// the measured-listening-calibrated asymmetric edge reduction until a real 2D
+		// pickup scan exists. It remains one scalar flux construction, differentiated
+		// consistently for arbitrary two-dimensional tine motion.
+		const double radialFalloff = PowNegative1p3(radialDistance);
+		MagneticFieldSample result;
 		auto accumulateEdge = [&](double edgePosition, double weight,
 			double edgeRadius)
 		{
@@ -1053,21 +2357,150 @@ private:
 			const double displacement = vertical - edgePosition;
 			const double argument = displacement * inverseWidth;
 			const double transition = TanhPade76(argument);
-			const double transitionDerivative = 1.0 -
-				transition * transition;
+			const double transitionDerivative = 1.0 - transition * transition;
 			const double amplitude = weight * radialFalloff;
-			verticalGradient += amplitude * transitionDerivative * inverseWidth;
+			result.vertical += amplitude * transitionDerivative * inverseWidth;
 			const double amplitudeDerivative = -FieldFalloff * amplitude /
 				std::max(1.0e-9, radialDistance);
 			const double argumentDerivative = -displacement * GapBroadening *
 				inverseWidth * inverseWidth;
-			radialGradient += amplitudeDerivative * transition + amplitude *
+			result.radial += amplitudeDerivative * transition + amplitude *
 				transitionDerivative * argumentDerivative;
 		};
-
 		accumulateEdge(0.34, 1.0, 0.030);
 		accumulateEdge(-0.46, 0.20, 0.095);
-		return {verticalGradient, radialGradient * radialDerivative};
+		return result;
+	}
+
+	struct MagneticFieldTable
+	{
+		// The primary edge is only 0.03 mm wide at zero clearance. A dense
+		// process-wide table keeps interpolation below the direct-field error bound
+		// without changing the four-lookups-per-sample runtime cost.
+		static constexpr std::size_t VerticalSamples = 241;
+		static constexpr std::size_t RadialSamples = 135;
+		static constexpr double VerticalMinimum = -1.2;
+		static constexpr double VerticalMaximum = 1.8;
+		static constexpr double RadialMinimum = 0.45;
+		static constexpr double RadialMaximum = 3.8;
+		std::array<MagneticFieldSample,
+			VerticalSamples * RadialSamples> samples{};
+
+		MagneticFieldTable()
+		{
+			for (std::size_t verticalIndex = 0;
+				verticalIndex < VerticalSamples; ++verticalIndex)
+			{
+				const double vertical = VerticalMinimum +
+					(VerticalMaximum - VerticalMinimum) *
+						static_cast<double>(verticalIndex) /
+						static_cast<double>(VerticalSamples - 1);
+				for (std::size_t radialIndex = 0;
+					radialIndex < RadialSamples; ++radialIndex)
+				{
+					const double radial = RadialMinimum +
+						(RadialMaximum - RadialMinimum) *
+							static_cast<double>(radialIndex) /
+							static_cast<double>(RadialSamples - 1);
+					samples[verticalIndex * RadialSamples + radialIndex] =
+						EvaluateCalibratedPoleGradient(vertical, radial);
+				}
+			}
+		}
+
+		MagneticFieldSample Interpolate(double vertical, double radial) const
+		{
+			const double verticalCoordinate = std::clamp(
+				(vertical - VerticalMinimum) * (VerticalSamples - 1) /
+					(VerticalMaximum - VerticalMinimum), 0.0,
+				static_cast<double>(VerticalSamples - 1));
+			const double radialCoordinate = std::clamp(
+				(radial - RadialMinimum) * (RadialSamples - 1) /
+					(RadialMaximum - RadialMinimum), 0.0,
+				static_cast<double>(RadialSamples - 1));
+			const std::size_t vertical0 = std::min(
+				static_cast<std::size_t>(verticalCoordinate), VerticalSamples - 2);
+			const std::size_t radial0 = std::min(
+				static_cast<std::size_t>(radialCoordinate), RadialSamples - 2);
+			const double verticalFraction = verticalCoordinate -
+				static_cast<double>(vertical0);
+			const double radialFraction = radialCoordinate -
+				static_cast<double>(radial0);
+			auto at = [&](std::size_t v, std::size_t r) -> const MagneticFieldSample&
+			{
+				return samples[v * RadialSamples + r];
+			};
+			auto blend = [&](double MagneticFieldSample::*component)
+			{
+				const double lower = at(vertical0, radial0).*component +
+					radialFraction * (at(vertical0, radial0 + 1).*component -
+						at(vertical0, radial0).*component);
+				const double upper = at(vertical0 + 1, radial0).*component +
+					radialFraction * (at(vertical0 + 1, radial0 + 1).*component -
+						at(vertical0 + 1, radial0).*component);
+				return lower + verticalFraction * (upper - lower);
+			};
+			return {blend(&MagneticFieldSample::vertical),
+				blend(&MagneticFieldSample::radial)};
+		}
+	};
+
+	static std::array<double, 2> MagneticFluxGradient(double vertical,
+		double horizontal, double gap)
+	{
+		// The table is two-dimensional in alignment and radial clearance. Horizontal
+		// tine motion changes that clearance, so the second component follows by the
+		// chain rule. Construction occurs once per process; every voice then pays
+		// only a bilinear lookup at the 4x pickup rate.
+		constexpr double HorizontalFieldScale = 0.62;
+		const double radialDistance = std::sqrt(gap * gap +
+			HorizontalFieldScale * horizontal * horizontal + 0.020);
+		static const MagneticFieldTable Table;
+		const auto field = Table.Interpolate(vertical, radialDistance);
+		return {field.vertical, field.radial * HorizontalFieldScale * horizontal /
+			std::max(1.0e-9, radialDistance)};
+	}
+
+	static double MagneticTrajectoryRms(double verticalOffset,
+		double horizontalOffset, double gap, double nominalExcursion)
+	{
+		// The normalization trajectory is dimensionless in time, so its angular
+		// frequency cancels from the ratio. A small quadrature component represents
+		// the measured two-polarization orbit without claiming a per-key ellipse.
+		// Average low, nominal and high excursions geometrically: one arbitrary
+		// MIDI velocity then cannot dominate the pickup calibration.
+		constexpr std::array<double, 3> ExcursionScales{0.45, 1.0, 1.8};
+		constexpr std::array<double, 12> PhaseCosines{
+			0.9659258263, 0.7071067812, 0.2588190451, -0.2588190451,
+			-0.7071067812, -0.9659258263, -0.9659258263, -0.7071067812,
+			-0.2588190451, 0.2588190451, 0.7071067812, 0.9659258263};
+		constexpr std::array<double, 12> PhaseSines{
+			0.2588190451, 0.7071067812, 0.9659258263, 0.9659258263,
+			0.7071067812, 0.2588190451, -0.2588190451, -0.7071067812,
+			-0.9659258263, -0.9659258263, -0.7071067812, -0.2588190451};
+		double logarithmicRms = 0.0;
+		for (double excursionScale : ExcursionScales)
+		{
+			const double verticalAmplitude = nominalExcursion * excursionScale;
+			const double horizontalAmplitude = 0.12 * verticalAmplitude;
+			double energy = 0.0;
+			for (std::size_t sample = 0; sample < PhaseCosines.size(); ++sample)
+			{
+				const double cosine = PhaseCosines[sample];
+				const double sine = PhaseSines[sample];
+				const auto gradient = MagneticFluxGradient(
+					verticalOffset + verticalAmplitude * cosine,
+					horizontalOffset + horizontalAmplitude * sine, gap);
+				const double emf = gradient[0] * (-verticalAmplitude * sine) +
+					gradient[1] * (horizontalAmplitude * cosine);
+				energy += emf * emf;
+			}
+			const double rms = std::sqrt(energy /
+				static_cast<double>(PhaseCosines.size()));
+			logarithmicRms += std::log(std::max(1.0e-12, rms));
+		}
+		return std::exp(logarithmicRms /
+			static_cast<double>(ExcursionScales.size()));
 	}
 
 	static double ReferenceGradientMagnitude()
@@ -1087,56 +2520,90 @@ private:
 			static_cast<double>(UINT32_MAX)) - 1.0;
 	}
 
+	static std::array<double, 2> ModulationPhaseRotation(double angle)
+	{
+		// Normal musical FM moves only a small fraction of a cycle per 4x frame.
+		// This seventh/sixth-order local rotation is effectively exact in that
+		// range and avoids two transcendental calls per mode. Extreme modulation
+		// retains the full library implementation rather than range-reducing a
+		// polynomial outside its error bound.
+		if (std::abs(angle) < 0.35)
+		{
+			const double squared = angle * angle;
+			const double sine = angle * (1.0 + squared * (-1.0 / 6.0 +
+				squared * (1.0 / 120.0 - squared / 5040.0)));
+			const double cosine = 1.0 + squared * (-1.0 / 2.0 + squared *
+				(1.0 / 24.0 - squared / 720.0));
+			return {cosine, sine};
+		}
+		return {std::cos(angle), std::sin(angle)};
+	}
+
 	static constexpr double TwoPi = 6.283185307179586476925286766559;
 	static constexpr double FieldFalloff = 1.30;
-	static constexpr double TineDisplacementScale = 0.56;
-	static constexpr int ContactOversamplingFactor = 16;
-	static constexpr double MinimumHammerContactVelocity = 1.0;
+	// Modal coordinates and velocities are now metres and metres/second. The
+	// pickup field below is expressed in millimetres. PickupExcursion is the
+	// separately documented fit needed because no measured flux map is available.
+	static constexpr double TineDisplacementScale = 1000.0 *
+		ElectricPianoMechanicalTrim::PickupExcursion;
+	// The published SI stiffness is roughly five orders above the former
+	// model-space fit. Sixty-four symplectic substeps keep collision spectra
+	// sample-rate invariant; this path runs only for the few milliseconds of
+	// actual contact and does not affect sustained-voice CPU.
+	static constexpr int ContactOversamplingFactor = 64;
+	static constexpr double MinimumHammerContactVelocity = 0.012;
 	static constexpr int PickupOversamplingFactor =
 		X4Resampler_Order7::ResamplingFactor;
-	static constexpr double ReferencePickupGap = 1.32 - 0.78 * 0.48;
+	static constexpr double ReferencePickupGap = 1.6;
 	static constexpr double ReferencePickupVertical = 0.34 + 0.22 * 0.55 * 0.55 +
 		0.020 * ((60.0 - 28.0) / 72.0);
 	static constexpr double ReferencePickupHorizontal = 0.10 + 0.035 *
 		((60.0 - 28.0) / 72.0);
-	static constexpr std::array<double, 8> ModeRatios{
-		1.0, 1.0, 1.0, 6.267, 17.55, 34.39, 56.84, 83.0};
-	static constexpr std::array<double, 8> ModeRatioKeyboardSpread{
-		0.0, 0.0, 0.0, 0.035, 0.050, 0.065, 0.080, 0.095};
-	static constexpr std::array<double, 6> CantileverWaveNumbers{
-		1.875104, 4.694091, 7.854757, 10.995541, 14.137168, 17.278760};
+	// The first three coordinates form the audible coupled tine/tone-bar body.
+	// Broadly FM-modulating the intentionally inharmonic, short-lived attack
+	// modes produces a sideband cloud rather than the coherent overtones players
+	// expect from FM. Keep those impact coordinates physical and let the nonlinear
+	// magnetic pickup derive the upper modulation spectrum from the body motion.
+	static constexpr std::array<double, ElectricPianoModeCount>
+		ModulationModeWeights{
+			1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+	static constexpr std::array<double, 8> CantileverWaveNumbers{
+		1.875104, 4.694091, 7.854757, 10.995541, 14.137168, 17.278760,
+		20.420352, 23.561945};
 	static constexpr double IntrinsicForkDecaySeconds = 6.8;
-	static constexpr std::array<double, 6> HigherModeBaseDecaySeconds{
-		1.9, 0.20, 0.120, 0.070, 0.040, 0.024};
-	static constexpr std::array<double, 5> AttackModeModalMassMultipliers{
-		0.92, 0.96, 1.02, 1.10, 1.22};
+	static constexpr double TransverseModeDecaySeconds = 1.9;
 
-	std::array<Mode, 8> modes_{};
-	std::array<double, 8> modeRealCoefficient_{};
-	std::array<double, 8> modeImaginaryCoefficient_{};
-	std::array<double, 8> modeRadius_{};
-	std::array<double, 8> modeSubstepRealCoefficient_{};
-	std::array<double, 8> modeSubstepImaginaryCoefficient_{};
-	std::array<double, 8> modeSubstepRadius_{};
-	std::array<double, 8> modeAngularFrequency_{};
-	std::array<double, 8> modeOutputWeight_{};
-	std::array<double, 8> modeHorizontalWeight_{};
-	std::array<double, 8> modeRatio_{};
-	std::array<double, 8> modeBandlimitGain_{};
-	std::array<bool, 8> modeActive_{};
-	std::array<double, 8> contactModeShape_{};
-	std::array<double, 8> modeInverseMass_{};
+	std::array<Mode, ElectricPianoModeCount> modes_{};
+	std::array<double, ElectricPianoModeCount> modeRealCoefficient_{};
+	std::array<double, ElectricPianoModeCount> modeImaginaryCoefficient_{};
+	std::array<double, ElectricPianoModeCount> modeRadius_{};
+	std::array<double, ElectricPianoModeCount> modePickupRealCoefficient_{};
+	std::array<double, ElectricPianoModeCount> modePickupImaginaryCoefficient_{};
+	std::array<double, ElectricPianoModeCount> modePickupRadius_{};
+	std::array<double, ElectricPianoModeCount> modeSubstepRealCoefficient_{};
+	std::array<double, ElectricPianoModeCount> modeSubstepImaginaryCoefficient_{};
+	std::array<double, ElectricPianoModeCount> modeSubstepRadius_{};
+	std::array<double, ElectricPianoModeCount> modeAngularFrequency_{};
+	std::array<double, ElectricPianoModeCount> modeOutputWeight_{};
+	std::array<double, ElectricPianoModeCount> modeHorizontalWeight_{};
+	std::array<double, ElectricPianoModeCount> modeRatio_{};
+	std::array<double, ElectricPianoModeCount> modeBandlimitGain_{};
+	std::array<bool, ElectricPianoModeCount> modeActive_{};
+	std::array<bool, ElectricPianoModeCount> contactModeActive_{};
+	std::array<double, ElectricPianoModeCount> contactModeShape_{};
+	std::array<double, ElectricPianoModeCount> modeInverseMass_{};
 	std::array<double, 2> coupledToneBarRatio_{};
 	std::array<double, 2> coupledSupportLossFactor_{};
 	double sampleRate_ = 48000.0;
 	double latchedVelocity_{};
 	double keyPosition_ = 0.5;
-	double tineModalMass_ = 1.0;
+	double currentStrikePosition_ = 0.22;
+	double contactWidthMetres_ = 0.009;
+	double tineModalMass_ = 1.0e-4;
 	double notePitch_{};
-	double frequencyVelocityScale_ = 1.0;
 	double keyPickupSensitivity_ = 1.0;
-	double pickupLowPass_{};
-	double pickupLowPassCoefficient_{};
+	double pickupExcursionScale_ = 1.0;
+	double pickupOutput_{};
 	double pickupGap_ = 1.0;
 	double pickupVerticalOffset_ = ReferencePickupVertical;
 	double pickupHorizontalOffset_ = ReferencePickupHorizontal;
@@ -1158,10 +2625,12 @@ private:
 	std::array<MechanicalResonator, 6> mechanicalResonators_{};
 	double hammerPosition_{};
 	double hammerVelocity_{};
-	double hammerIncomingVelocity_ = 1.0;
-	double hammerInverseMass_ = 1.0;
+	double hammerIncomingVelocity_ = 0.004;
+	double hammerInverseMass_ =
+		1.0 / ElectricPianoPublishedMechanicalData::HammerMassKg;
 	double contactStiffness_{};
-	double contactExponent_ = 2.1;
+	double contactExponent_ =
+		ElectricPianoPublishedMechanicalData::ContactExponent;
 	double contactLoss_{};
 	double contactAge_{};
 	double controlSmoothingCoefficient_ = 0.0035;
@@ -1170,6 +2639,16 @@ private:
 	int modeCoefficientUpdateCountdown_{};
 	ElectricPianoControls smoothedControls_{};
 	double energy_{};
+	std::array<std::array<Mode, ElectricPianoModeCount>, PickupOversamplingFactor>
+		pickupModeFrames_{};
+	std::array<double, ElectricPianoModeCount> modulationPhasorReal_{};
+	std::array<double, ElectricPianoModeCount> modulationPhasorImaginary_{};
+	double previousOversampledPhaseModulation_{};
+	double previousHostExponentialPitch_{};
+	double previousHostLinearFrequencyRatio_{};
+	double previousHostPhaseModulation_{};
+	double modulationCrossfade_{};
+	int modulationPhasorNormalizationCountdown_ = 4096;
 	double cachedFundamental_{};
 	double currentFundamental_{};
 	double cachedPitch_ = -1000.0;
@@ -1179,6 +2658,7 @@ private:
 	double cachedRelease_{};
 	double cachedBodyWeight_ = -1.0;
 	double cachedBellWeight_ = -1.0;
+	double cachedCouplingWeight_ = -1.0;
 	double cachedProximity_ = -1.0;
 	double cachedTone_ = -1.0;
 	double cachedMechanics_ = -1.0;
@@ -1193,10 +2673,21 @@ private:
 	bool lastGate_{};
 	bool lastSustain_{};
 	bool keyHeld_{};
+	bool modulationPathActive_{};
+	bool modulationControlsPrimed_{};
+	bool exponentialFmPathActive_{};
+	bool linearFmPathActive_{};
+	bool phaseModulationPathActive_{};
+	bool exponentialFmInterpolatorPrimed_{};
+	bool linearFmInterpolatorPrimed_{};
+	bool phaseModulationInterpolatorPrimed_{};
 	std::unique_ptr<X4Resampler_Order7> verticalPositionInterpolator_;
 	std::unique_ptr<X4Resampler_Order7> verticalVelocityInterpolator_;
 	std::unique_ptr<X4Resampler_Order7> horizontalPositionInterpolator_;
 	std::unique_ptr<X4Resampler_Order7> horizontalVelocityInterpolator_;
+	std::unique_ptr<X4Resampler_Order7> exponentialFmInterpolator_;
+	std::unique_ptr<X4Resampler_Order7> linearFmInterpolator_;
+	std::unique_ptr<X4Resampler_Order7> phaseModulationInterpolator_;
 	std::unique_ptr<X4Resampler_Order7> pickupDecimator_;
 };
 

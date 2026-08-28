@@ -70,13 +70,21 @@ without a separate bark waveshaper. The sixteen pickup voices meet in one
 shared, stateful amplifier, so chords interact and compress differently from
 isolated notes.
 
-The resonator state represents displacement. An initial cantilever-scaling
-profile derives modal mass from each key's exact pitch; modal mass and frequency
-together determine displacement per impulse. A separate per-key pickup-
-sensitivity curve balances small-signal level without removing the larger
-displacement of low tines. Repeated strikes add impulses to existing motion.
-When a Rack MIDI channel is reassigned, its released note moves into one of
-sixteen internal tail slots instead of being silenced or retuned.
+The resonator state is displacement in metres and the collision is solved from
+published SI quantities: an 11 g hammer, a 4 m/s maximum speed, a 2.8 contact
+exponent, and the reported Hunt-Crossley stiffness and damping weight. Published
+tine density, radius, and 73-key cutting-chart endpoints set the modal mass.
+Seven short attack coordinates use the Euler-Bernoulli cantilever ladder, with
+the measured F1 ratios substituted where data exists; their loss follows the
+published frequency-dependent beam damping. Their strike projection is
+integrated over a finite neoprene contact patch and never multiplied by
+velocity. A separate, explicitly calibrated per-key pickup sensitivity and
+gap curve balances level within the service-manual adjustment range. Repeated
+strikes add impulses to existing motion.
+`RETRIG` accepts Rack MIDI-to-CV's polyphonic retrigger output. When a
+still-high MIDI channel is reassigned, that event moves its released note into
+one of sixteen internal tail slots and gives the replacement note a fresh
+hammer strike instead of silently retuning the old resonator.
 
 - **Vel Curve** curves incoming 0–10 V velocity to suit the controller, while
   **Dynamics** sets the range of physical hammer speed. That speed changes both
@@ -86,26 +94,39 @@ sixteen internal tail slots instead of being silenced or retuned.
   positive CV residue as zero before contact begins; active collisions are never
   ended by an elapsed-time cutoff.
 - **Body** and **Bell** balance the coupled fundamental body and the signed,
-  short-lived inharmonic modes. **Hammer** changes neoprene stiffness,
-  hysteretic loss, and contact duration rather than directly boosting Bell or
-  treble; as a strike property, changes apply to newly played notes. **Coupling**
+  short-lived inharmonic modes. Bell is centred on the calibrated residue and
+  has a wider treble span because fewer attack coordinates remain below pickup
+  bandwidth there. **Hammer** changes neoprene stiffness around
+  the manual's five graduated factory tip zones, and therefore changes contact
+  duration and bandwidth rather than directly boosting Bell or treble; as a
+  strike property, changes apply to newly played notes. **Strike**
+  moves the hammer contact point along the tine, changing its projection into
+  the higher attack modes, and is likewise sampled on key-down. **Coupling**
   changes the common-base stiffness of a genuine two-coordinate tine/tone-bar
-  system. Its normal-mode frequencies, hammer projections, modal masses, decay,
-  and tine pickup motion are derived together. Weak coupling lets the tine drive
-  energy into the lossy mounting block; strong anti-phase tine/bar motion cancels
-  that reaction, raising Q and adding a short tone-bar sub-fundamental bloom.
-  This changes body and sustain rather than crossfading levels.
+  fundamental pair. Both prongs have near-played-pitch fundamentals; the
+  measured tone-bar sub-fundamental is a separate coordinate. Normal-mode
+  frequencies, hammer projections, modal masses, support loss and tine pickup
+  motion are derived together, and the same common-base transfer now changes
+  the separate submode reciprocally at strike and observation. This changes
+  onset colour and sustain rather than crossfading levels.
 - **Tone** changes the tine's vertical alignment to the pickup pole and hence
   the balance of fundamental and curvature-generated harmonics. **Proximity**
-  changes front-to-back pickup distance and therefore both level and dynamic
-  response. Its small-signal sensitivity is partly normalized so the control
-  retains magnetic curvature without becoming a second Drive control.
-  `TONE CV` accepts polyphonic modulation at 10% of the knob range per volt.
-- **Decay** scales natural modal decay, **Release** controls damper speed, and
+  changes front-to-back pickup distance and therefore magnetic curvature and
+  dynamic response. Keyed trajectory normalization keeps its level nearly
+  constant across the harp, so it does not become a second Drive control.
+- **Decay** scales natural modal decay; its midpoint is the neutral calibrated
+  lifetime. **Release** controls damper speed from the published damped-spring
+  relaxation to deliberately long tails, with a fast physical default.
   **Mechanics** ranges from a clean pickup sound to deliberately emphasized,
   differentiated keybed, key-release, and damper events. The calibrated default
-  remains subordinate to the pitched voice. `PEDAL` holds released notes while
-  its gate is high.
+  remains subordinate to the pitched voice. `PEDAL` is an explicit sustain gate
+  so raw modular key gates can distinguish key-up from pedal-up. Rack's main
+  MIDI-to-CV module has no pedal output; use Core MIDI CC-to-CV with a cell mapped
+  to CC64, as demonstrated by the smoke patch. Rack MIDI-to-CV also holds its own
+  gates under CC64, so that stock routing cannot expose the intervening physical
+  key-up event even though pedal release and damper timing remain explicit. With
+  `PEDAL` disconnected, the input is simply false and sustain-held upstream gates
+  retain the module's previous approximate behavior.
 - **Drive** raises level by up to 24 dB into transistor-level solves of the
   Peterson Figure 11-8 input pair and active tone-feedback amplifier. Its
   reciprocal is applied at Figure 11-8's
@@ -134,6 +155,19 @@ sixteen internal tail slots instead of being silenced or retuned.
   cone radiation and enclosure filtering are deliberately not included.
   `DIRECT POLY` exposes
   each pickup channel, while `LEFT` and `RIGHT` expose the shared Suitcase path.
+- `MOD IN` and its bipolar **Depth** control feed one of three pitch-modulation
+  modes selected by the three-way switch. **EXP** is calibrated to one octave
+  at +/-5 V and full depth. **LIN TZ** is additive: -5 V reaches zero frequency
+  at full depth and more-negative voltage reverses the three coupled body
+  coordinates. **Phase** reaches +/-180 degrees at +/-5 V. A mono cable
+  broadcasts to every voice; a polyphonic cable addresses corresponding notes.
+  All three modes run at the 4x pickup rate and deliberately leave the short,
+  inharmonic impact modes unmodulated; this avoids turning their modal ratios
+  into a dissonant sideband cloud while the nonlinear pickup derives the upper
+  spectrum from the modulated body.
+  As with conventional FM, audio-rate sidebands are harmonic only when carrier
+  and modulator frequencies have a simple integer relationship. The EP's
+  closely split coupled-body modes retain their natural shallow beating.
 
 The default curves vary spectrum and decay by velocity and keyboard position.
 There is no dedicated bark detector or bass enhancement: low-note bark must
@@ -141,8 +175,9 @@ arise from the resonator motion, nonlinear magnetic pickup, and shared
 amplifier. Its presence and onset are therefore calibration evidence for the
 physical model rather than a directly imposed feature.
 
-The resonators run at host sample rate, while hammer/tine contact is integrated
-at 16x during a collision. Tine motion is interpolated around the nonlinear
+The resonators run at host sample rate, while the stiff, physical-unit
+hammer/tine contact is integrated at 64x during a collision. This extra work
+exists only during contact. Tine motion is interpolated around the nonlinear
 magnetic pickup at 4x. The tone-network/Figure 11-9 amplifier chain runs in a
 separate 2x path before decimation; only slow controls, supply
 recovery, and vibrato remain at host rate. High resonator modes

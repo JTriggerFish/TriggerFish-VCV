@@ -16,7 +16,8 @@ namespace tfdsp
 // 390k/33k-biased common-emitter stage with 12k collector and 1.5k emitter
 // resistors; Q2 is its direct-coupled emitter follower with a 4.7k emitter
 // resistor. The 0.22 uF input, 330 pF base/collector and 5 uF output capacitors
-// are backward-Euler companions in the same Newton solve.
+// are trapezoidal companions in the same Newton solve. This preserves the
+// analogue response at the 2x circuit rate without backward-Euler damping.
 //
 // Figure 11-8's later active tone-feedback section is solved separately by
 // PetersonTonePreAmplifier at the low-impedance Q2 emitter-follower boundary.
@@ -179,14 +180,22 @@ private:
 	struct CapacitorCompanion
 	{
 		double previousVoltage{};
+		double previousCurrent{};
 
-		void Reset(double voltage) { previousVoltage = voltage; }
+		void Reset(double voltage)
+		{
+			previousVoltage = voltage;
+			previousCurrent = 0.0;
+		}
 		double History(double capacitance, double timeStep) const
 		{
-			return -capacitance * previousVoltage / timeStep;
+			return -previousCurrent -
+				2.0 * capacitance * previousVoltage / timeStep;
 		}
-		void Commit(double voltage, double, double)
+		void Commit(double voltage, double capacitance, double timeStep)
 		{
+			previousCurrent = 2.0 * capacitance * voltage / timeStep +
+				History(capacitance, timeStep);
 			previousVoltage = voltage;
 		}
 	};
@@ -270,13 +279,14 @@ private:
 		const auto q2 = NpnLinearization(SupplyVoltage, x[CollectorQ1BaseQ2],
 			x[EmitterQ2]);
 		const double inputCurrent = dcMode ? 0.0 :
-			InputCapacitance / timeStep * (x[BaseQ1] - inputVoltage) +
+			2.0 * InputCapacitance / timeStep * (x[BaseQ1] - inputVoltage) +
 			histories.input;
 		const double millerCurrent = dcMode ? 0.0 :
-			MillerCapacitance / timeStep *
+			2.0 * MillerCapacitance / timeStep *
 				(x[BaseQ1] - x[CollectorQ1BaseQ2]) + histories.miller;
 		const double outputCurrent = dcMode ? 0.0 :
-			OutputCapacitance / timeStep * (x[EmitterQ2] - x[Output]) +
+			2.0 * OutputCapacitance / timeStep *
+				(x[EmitterQ2] - x[Output]) +
 			histories.output;
 		return {
 			(x[BaseQ1] - SupplyVoltage) / BaseBiasResistance +
@@ -297,11 +307,11 @@ private:
 		const auto q2 = NpnLinearization(SupplyVoltage,
 			unknowns_[CollectorQ1BaseQ2], unknowns_[EmitterQ2]);
 		const double inputConductance = dcMode ? 0.0 :
-			InputCapacitance / timeStep;
+			2.0 * InputCapacitance / timeStep;
 		const double millerConductance = dcMode ? 0.0 :
-			MillerCapacitance / timeStep;
+			2.0 * MillerCapacitance / timeStep;
 		const double outputConductance = dcMode ? 0.0 :
-			OutputCapacitance / timeStep;
+			2.0 * OutputCapacitance / timeStep;
 
 		matrix[BaseQ1][BaseQ1] = 1.0 / BaseBiasResistance +
 			1.0 / BaseGroundResistance + inputConductance +

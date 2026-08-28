@@ -1,48 +1,63 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="240" height="380" viewBox="0 0 240 380">
-  <rect width="240" height="380" fill="#cecece"/>
-
-  <g font-family="DejaVu Sans, sans-serif" text-anchor="middle" fill="#1f1f1f">
-    <text x="120" y="14" font-size="10" font-weight="bold" letter-spacing="1.1">TRIGGERFISH</text>
-    <text x="120" y="24" font-size="7.4" font-weight="bold" letter-spacing="1.1">ELECTRIC PIANO</text>
-
-    <g font-size="5.4" font-weight="bold">
-      <text x="30" y="43">VEL CURVE</text>
-      <text x="86" y="43">DYNAMICS</text>
-      <text x="142" y="43">BODY</text>
-      <text x="198" y="43">BELL</text>
-      <text x="30" y="100">COUPLING</text>
-      <text x="86" y="100">HAMMER</text>
-      <text x="142" y="100">TONE</text>
-      <text x="198" y="100">PROXIMITY</text>
-      <text x="30" y="157">DECAY</text>
-      <text x="86" y="157">RELEASE</text>
-      <text x="142" y="157">MECHANICS</text>
-      <text x="198" y="157">DRIVE</text>
-      <text x="22" y="214">OUTPUT</text>
-      <text x="71" y="214">AMP BASS</text>
-      <text x="120" y="214">AMP TREBLE</text>
-      <text x="169" y="214">VIB SPEED</text>
-      <text x="218" y="214">VIB INT</text>
-    </g>
-
-    <g font-size="5" font-weight="bold">
-      <text x="28" y="253">1V/OCT</text>
-      <text x="74" y="253">GATE</text>
-      <text x="120" y="253">VELOCITY</text>
-      <text x="166" y="253">PEDAL</text>
-      <text x="212" y="253">TONE CV</text>
-    </g>
-    <g font-size="5.4" font-weight="bold">
-      <text x="61" y="313">DIRECT POLY</text>
-      <text x="120" y="313">LEFT</text>
-      <text x="179" y="313">RIGHT</text>
-    </g>
+<svg xmlns="http://www.w3.org/2000/svg" width="270" height="380" viewBox="0 0 270 380">
+  <rect width="270" height="380" fill="#cecece"/>
+  <path d="M28 27h214" stroke="#777" stroke-width="0.7"/>
+  <g id="output-jack-blocks" stroke-width="0.45">
+    <rect x="53" y="337" width="44" height="34" rx="7" fill="#858585" stroke="#666"/>
+    <rect x="113" y="337" width="44" height="34" rx="7" fill="#545454" stroke="#2e2e2e"/>
+    <rect x="173" y="337" width="44" height="34" rx="7" fill="#545454" stroke="#2e2e2e"/>
   </g>
 
-  <g stroke-width="0.45">
-    <rect x="38" y="315" width="46" height="48" rx="8" fill="#858585" stroke="#666"/>
-    <rect x="97" y="315" width="46" height="48" rx="8" fill="#545454" stroke="#2e2e2e"/>
-    <rect x="156" y="315" width="46" height="48" rx="8" fill="#545454" stroke="#2e2e2e"/>
+  <g font-family="DejaVu Sans, sans-serif" text-anchor="middle" fill="#1f1f1f">
+    <text x="135" y="14" font-size="10" font-weight="bold" letter-spacing="1.1">TRIGGERFISH</text>
+    <text x="135" y="24" font-size="7.8" letter-spacing="1.5">ELECTRIC PIANO</text>
+
+    <g font-size="6.1" font-weight="bold">
+      <text x="27" y="42">DYNAMICS</text>
+      <text x="81" y="42">VEL CURVE</text>
+      <text x="135" y="42">HAMMER</text>
+      <text x="189" y="42">TONE</text>
+      <text x="243" y="42">PROXIMITY</text>
+    </g>
+
+    <g font-size="5.4" font-weight="bold">
+      <text x="18" y="98">BODY</text>
+      <text x="56" y="98">BELL</text>
+      <text x="94" y="98">COUPLING</text>
+      <text x="132" y="98">STRIKE</text>
+      <text x="170" y="98">DECAY</text>
+      <text x="208" y="98">RELEASE</text>
+      <text x="246" y="98">MECHANICS</text>
+    </g>
+
+    <text x="135" y="157" font-size="7" font-weight="bold" letter-spacing="0.9">SUITCASE AMPLIFIER</text>
+    <g font-size="5.6" font-weight="bold">
+      <text x="22.5" y="165">DRIVE</text>
+      <text x="67.5" y="165">OUTPUT</text>
+      <text x="112.5" y="165">BASS</text>
+      <text x="157.5" y="165">TREBLE</text>
+      <text x="202.5" y="165">VIB SPEED</text>
+      <text x="247.5" y="165">VIB INT</text>
+    </g>
+
+    <text x="135" y="230" font-size="7" font-weight="bold" letter-spacing="0.9">PITCH MODULATION</text>
+    <g fill="#686868" text-anchor="start" font-size="4.5" font-weight="bold">
+      <text x="58" y="248">EXP FM</text>
+      <text x="58" y="257">THROUGH-ZERO FM</text>
+      <text x="58" y="266">PHASE MOD</text>
+    </g>
+    <text x="140" y="238" font-size="5.3" font-weight="bold">DEPTH</text>
+    <text x="225" y="238" font-size="5.3" font-weight="bold">MOD IN</text>
+
+    <g font-size="5.4" font-weight="bold">
+      <text x="27" y="297">1V/OCT</text>
+      <text x="81" y="297">GATE</text>
+      <text x="135" y="297">RETRIG</text>
+      <text x="189" y="297">VELOCITY</text>
+      <text x="243" y="297">PEDAL</text>
+      <text x="75" y="339">DIRECT POLY</text>
+      <text x="135" y="339">LEFT</text>
+      <text x="195" y="339">RIGHT</text>
+    </g>
   </g>
 </svg>

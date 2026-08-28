@@ -93,7 +93,7 @@ DEFAULT_PARAMS = {
         0.55,
         0.48,
         0.50,
-        0.24,
+        0.12,
         0.18,
         0.32,
         0.50,
@@ -101,6 +101,9 @@ DEFAULT_PARAMS = {
         0.50,
         0.32,
         0.0,
+        0.0,  # pitch-modulation depth
+        2.0,  # EXP / LIN TZ / PHASE selector (top to bottom)
+        0.5,  # hammer strike position
     ],
     "TfWavefoldOscillator": [
         0.0,
@@ -232,6 +235,23 @@ def midi(module_id: int, pos: tuple[int, int], *, channels: int = 1) -> dict:
             "channels": channels,
             "pwRange": 2,
             "midi": {"driver": -1, "channel": -1},
+        },
+    )
+
+
+def midi_cc(module_id: int, pos: tuple[int, int], *, first_cc: int = 64) -> dict:
+    """Rack Core MIDI CC-to-CV with cell 1 assigned to an unsmoothed CC."""
+    return module(
+        module_id,
+        "Core",
+        "MIDICCToCVInterface",
+        pos,
+        data={
+            "ccs": [first_cc] + [-1] * 15,
+            "midi": {"driver": -1, "channel": -1},
+            "smooth": False,
+            "mpeMode": False,
+            "lsbMode": False,
         },
     )
 
@@ -1132,10 +1152,13 @@ def generate_electric_piano_patch() -> None:
             1,
             "TriggerFish Electric Piano playable prototype\n\n"
             "Select MIDI and audio devices, then play from a velocity-sensitive "
-            "keyboard. MIDI-CV is set to 16-channel polyphonic mode; pitch, gate, "
-            "and velocity feed the instrument directly.\n\n"
+            "keyboard. Select the same MIDI device in MIDI-CV and MIDI CC-CV. "
+            "MIDI-CV is set to 16-channel polyphonic mode; pitch, gate, velocity, "
+            "and retrigger feed the instrument directly. MIDI CC-CV cell 1 is "
+            "preassigned to sustain pedal CC64.\n\n"
             "Start with VEL CURVE and DYNAMICS to match your controller. BODY and "
             "BELL balance the resonances, HAMMER changes physical tip stiffness, "
+            "STRIKE moves the hammer contact point, "
             "and COUPLING moves from a short isolated tine to a sustained "
             "common-base tuning fork. "
             "TONE changes vertical tine/pickup alignment; "
@@ -1144,20 +1167,26 @@ def generate_electric_piano_patch() -> None:
             "adds synchronized key noise. DRIVE controls level-compensated "
             "amplifier overload; OUTPUT sets post-amp level, AMP BASS and AMP "
             "TREBLE shape the Peterson preamp, and VIB SPEED/INT control stereo "
-            "Suitcase panning. DIRECT POLY bypasses that final amp.\n\n"
-            "The stereo output mixers are set to unity gain. PEDAL accepts a gate; "
-            "patch your preferred MIDI CC-to-CV module there for sustain.",
+            "Suitcase panning. MOD IN accepts mono broadcast or per-voice poly "
+            "CV; the three-way switch selects EXP FM, through-zero LIN TZ, or "
+            "PHASE and DEPTH is bipolar. DIRECT POLY bypasses the final amp.\n\n"
+            "The stereo output mixers are set to unity gain. RETRIG preserves an "
+            "old tail and strikes the replacement note when Rack reassigns a "
+            "still-high MIDI channel.",
         )
     )
     patch.add(midi(2, (17, 0), channels=16))
-    patch.add(module(3, "TriggerFish-Elements", "TfElectricPiano", (29, 0)))
-    patch.add(mixer(4, (45, 0), (1.0, 1.0, 0.0, 0.0, 0.0)))
-    patch.add(mixer(5, (54, 0), (1.0, 1.0, 0.0, 0.0, 0.0)))
-    patch.add(audio(6, (63, 0)))
+    patch.add(midi_cc(7, (29, 0), first_cc=64))
+    patch.add(module(3, "TriggerFish-Elements", "TfElectricPiano", (39, 0)))
+    patch.add(mixer(4, (59, 0), (1.0, 1.0, 0.0, 0.0, 0.0)))
+    patch.add(mixer(5, (68, 0), (1.0, 1.0, 0.0, 0.0, 0.0)))
+    patch.add(audio(6, (77, 0)))
 
     patch.cable(2, 0, 3, 0)  # MIDI pitch -> 1V/oct
     patch.cable(2, 1, 3, 1)  # MIDI gate -> key gate
     patch.cable(2, 2, 3, 2)  # MIDI velocity -> strike velocity
+    patch.cable(2, 6, 3, 4)  # MIDI retrigger -> explicit note retrigger
+    patch.cable(7, 0, 3, 5)  # CC64 -> sustain pedal
     patch.cable(3, 1, 4, 1)  # shared amplifier left -> left master
     patch.cable(3, 2, 5, 1)  # shared amplifier right -> right master
     patch.cable(4, 0, 6, 0)

@@ -14,7 +14,7 @@
       "version": "2.6.6",
       "params": [],
       "data": {
-        "text": "TriggerFish Electric Piano playable prototype\n\nSelect MIDI and audio devices, then play from a velocity-sensitive keyboard. MIDI-CV is set to 16-channel polyphonic mode; pitch, gate, and velocity feed the instrument directly.\n\nStart with VEL CURVE and DYNAMICS to match your controller. BODY and BELL balance the resonances, HAMMER changes physical tip stiffness, and COUPLING moves from a short isolated tine to a sustained common-base tuning fork. TONE changes vertical tine/pickup alignment; PROXIMITY changes pickup distance and dynamic response. DECAY scales the natural tine/tone-bar ring time; RELEASE sets damper speed. MECHANICS adds synchronized key noise. DRIVE controls level-compensated amplifier overload; OUTPUT sets post-amp level, AMP BASS and AMP TREBLE shape the Peterson preamp, and VIB SPEED/INT control stereo Suitcase panning. DIRECT POLY bypasses that final amp.\n\nThe stereo output mixers are set to unity gain. PEDAL accepts a gate; patch your preferred MIDI CC-to-CV module there for sustain."
+        "text": "TriggerFish Electric Piano playable prototype\n\nSelect MIDI and audio devices, then play from a velocity-sensitive keyboard. Select the same MIDI device in MIDI-CV and MIDI CC-CV. MIDI-CV is set to 16-channel polyphonic mode; pitch, gate, velocity, and retrigger feed the instrument directly. MIDI CC-CV cell 1 is preassigned to sustain pedal CC64.\n\nStart with VEL CURVE and DYNAMICS to match your controller. BODY and BELL balance the resonances, HAMMER changes physical tip stiffness, STRIKE moves the hammer contact point, and COUPLING moves from a short isolated tine to a sustained common-base tuning fork. TONE changes vertical tine/pickup alignment; PROXIMITY changes pickup distance and dynamic response. DECAY scales the natural tine/tone-bar ring time; RELEASE sets damper speed. MECHANICS adds synchronized key noise. DRIVE controls level-compensated amplifier overload; OUTPUT sets post-amp level, AMP BASS and AMP TREBLE shape the Peterson preamp, and VIB SPEED/INT control stereo Suitcase panning. MOD IN accepts mono broadcast or per-voice poly CV; the three-way switch selects EXP FM, through-zero LIN TZ, or PHASE and DEPTH is bipolar. DIRECT POLY bypasses the final amp.\n\nThe stereo output mixers are set to unity gain. RETRIG preserves an old tail and strikes the replacement note when Rack reassigns a still-high MIDI channel."
       },
       "pos": [
         0,
@@ -37,6 +37,44 @@
       },
       "pos": [
         17,
+        0
+      ]
+    },
+    {
+      "id": 7,
+      "plugin": "Core",
+      "model": "MIDICCToCVInterface",
+      "version": "2.6.6",
+      "params": [],
+      "data": {
+        "ccs": [
+          64,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1
+        ],
+        "midi": {
+          "driver": -1,
+          "channel": -1
+        },
+        "smooth": false,
+        "mpeMode": false,
+        "lsbMode": false
+      },
+      "pos": [
+        29,
         0
       ]
     },
@@ -84,7 +122,7 @@
         },
         {
           "id": 9,
-          "value": 0.24
+          "value": 0.12
         },
         {
           "id": 10,
@@ -113,10 +151,22 @@
         {
           "id": 16,
           "value": 0.0
+        },
+        {
+          "id": 17,
+          "value": 0.0
+        },
+        {
+          "id": 18,
+          "value": 2.0
+        },
+        {
+          "id": 19,
+          "value": 0.5
         }
       ],
       "pos": [
-        29,
+        39,
         0
       ]
     },
@@ -152,7 +202,7 @@
         "mixExp": false
       },
       "pos": [
-        45,
+        59,
         0
       ]
     },
@@ -188,7 +238,7 @@
         "mixExp": false
       },
       "pos": [
-        54,
+        68,
         0
       ]
     },
@@ -209,7 +259,7 @@
         "dcFilter": true
       },
       "pos": [
-        63,
+        77,
         0
       ]
     }
@@ -241,35 +291,51 @@
     },
     {
       "id": 1003,
-      "outputModuleId": 3,
-      "outputId": 1,
-      "inputModuleId": 4,
-      "inputId": 1,
+      "outputModuleId": 2,
+      "outputId": 6,
+      "inputModuleId": 3,
+      "inputId": 4,
       "color": "#0986ad"
     },
     {
       "id": 1004,
-      "outputModuleId": 3,
-      "outputId": 2,
-      "inputModuleId": 5,
-      "inputId": 1,
+      "outputModuleId": 7,
+      "outputId": 0,
+      "inputModuleId": 3,
+      "inputId": 5,
       "color": "#c91847"
     },
     {
       "id": 1005,
-      "outputModuleId": 4,
-      "outputId": 0,
-      "inputModuleId": 6,
-      "inputId": 0,
+      "outputModuleId": 3,
+      "outputId": 1,
+      "inputModuleId": 4,
+      "inputId": 1,
       "color": "#7a3ec8"
     },
     {
       "id": 1006,
+      "outputModuleId": 3,
+      "outputId": 2,
+      "inputModuleId": 5,
+      "inputId": 1,
+      "color": "#f3374b"
+    },
+    {
+      "id": 1007,
+      "outputModuleId": 4,
+      "outputId": 0,
+      "inputModuleId": 6,
+      "inputId": 0,
+      "color": "#ffcc00"
+    },
+    {
+      "id": 1008,
       "outputModuleId": 5,
       "outputId": 0,
       "inputModuleId": 6,
       "inputId": 1,
-      "color": "#f3374b"
+      "color": "#0c8e15"
     }
   ]
 }

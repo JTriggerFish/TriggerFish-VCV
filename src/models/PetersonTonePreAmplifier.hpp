@@ -185,7 +185,7 @@ public:
 		totalIterations_ += static_cast<std::uint64_t>(iterationsPerformed);
 		++processedSamples_;
 
-		CommitCapacitors();
+		CommitCapacitors(timeStep);
 		outputDc_ += outputDcCoefficient_ * (unknowns_[EmitterQ5] - outputDc_);
 		return {unknowns_[EmitterQ5] - outputDc_, iterationsPerformed,
 			converged};
@@ -281,13 +281,24 @@ private:
 	struct CapacitorCompanion
 	{
 		double previousVoltage{};
+		double previousCurrent{};
 
-		void Reset(double voltage) { previousVoltage = voltage; }
+		void Reset(double voltage)
+		{
+			previousVoltage = voltage;
+			previousCurrent = 0.0;
+		}
 		double History(double capacitance, double timeStep) const
 		{
-			return -capacitance * previousVoltage / timeStep;
+			return -previousCurrent -
+				2.0 * capacitance * previousVoltage / timeStep;
 		}
-		void Commit(double voltage) { previousVoltage = voltage; }
+		void Commit(double voltage, double capacitance, double timeStep)
+		{
+			previousCurrent = 2.0 * capacitance * voltage / timeStep +
+				History(capacitance, timeStep);
+			previousVoltage = voltage;
+		}
 	};
 
 	struct DeviceCurrents
@@ -395,7 +406,7 @@ private:
 		const CircuitDual negative = negativeNode >= 0 ?
 			node[static_cast<std::size_t>(negativeNode)] : CircuitDual(0.0);
 		Stamp(residual, positiveNode, negativeNode,
-			(positive - negative) * (capacitance / timeStep) +
+			(positive - negative) * (2.0 * capacitance / timeStep) +
 				CircuitDual(history));
 	}
 
@@ -593,19 +604,25 @@ private:
 		capacitors_[FollowerBaseCapacitor].Reset(unknowns_[BaseQ5]);
 	}
 
-	void CommitCapacitors()
+	void CommitCapacitors(double timeStep)
 	{
 		capacitors_[TrebleSeriesCapacitor].Commit(
-			unknowns_[TrebleWiper] - unknowns_[TrebleJunction]);
+			unknowns_[TrebleWiper] - unknowns_[TrebleJunction],
+			Capacitances[TrebleSeriesCapacitor], timeStep);
 		capacitors_[TrebleFeedbackCapacitor].Commit(
-			unknowns_[TrebleJunction] - unknowns_[FeedbackBase]);
+			unknowns_[TrebleJunction] - unknowns_[FeedbackBase],
+			Capacitances[TrebleFeedbackCapacitor], timeStep);
 		capacitors_[BassTopCapacitor].Commit(
-			unknowns_[BassWiper] - unknowns_[BassTop]);
+			unknowns_[BassWiper] - unknowns_[BassTop],
+			Capacitances[BassTopCapacitor], timeStep);
 		capacitors_[BassBottomCapacitor].Commit(
-			unknowns_[BassWiper] - unknowns_[BassBottom]);
+			unknowns_[BassWiper] - unknowns_[BassBottom],
+			Capacitances[BassBottomCapacitor], timeStep);
 		capacitors_[FollowerCompensationCapacitor].Commit(
-			unknowns_[CompensationJunction] - unknowns_[EmitterQ5]);
-		capacitors_[FollowerBaseCapacitor].Commit(unknowns_[BaseQ5]);
+			unknowns_[CompensationJunction] - unknowns_[EmitterQ5],
+			Capacitances[FollowerCompensationCapacitor], timeStep);
+		capacitors_[FollowerBaseCapacitor].Commit(unknowns_[BaseQ5],
+			Capacitances[FollowerBaseCapacitor], timeStep);
 	}
 
 	static constexpr double SupplyVoltage = 25.0;

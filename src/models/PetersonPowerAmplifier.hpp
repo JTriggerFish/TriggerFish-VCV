@@ -19,10 +19,11 @@ namespace tfdsp
 // module. The topology, rather than a fitted transfer curve, produces overload:
 // Q1 is the globally-fed-back error stage, Q2 is the class-A transformer
 // driver, and the transformer drives an asymmetric pair of matched PNP
-// germanium devices. Stiff junction/feedback capacitors use backward-Euler
-// companions (the 2x internal step keeps their audio-band error small while
-// avoiding trapezoidal parasitic ringing) and all nonlinear device
-// currents participate in the same zero-delay Newton solve.
+// germanium devices. The stiff transformer/junction loop deliberately retains
+// backward-Euler capacitor companions: undamped trapezoidal companions excite
+// a non-physical sample-to-sample mode in this nonlinear solve. The preceding
+// Peterson voltage/tone stages use trapezoidal companions where their measured
+// audio-band response benefits and no such stiff loop exists.
 class PetersonPowerAmplifier
 {
 public:
