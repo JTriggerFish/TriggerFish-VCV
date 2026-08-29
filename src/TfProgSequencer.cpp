@@ -78,6 +78,32 @@ constexpr const char *DescendingArpeggioExample = R"(arpeggio = sequence {
 play arpeggio
 )";
 
+constexpr const char *JazzRideExample = R"(jazz_ride = sequence {
+  subdiv 8n
+  ride x ~ x x ; x ~ x x
+  velocity .88 .56 .72 .90 .55 .74
+  cv1 2.5 5.0 5.8 3.0 5.2 6.0
+  cv2 5.5
+  cv3 0
+}
+|> swing .66 8n
+
+play jazz_ride
+)";
+
+constexpr const char *JazzHiHatExample = R"(jazz_hat = sequence {
+  subdiv 8n
+  hihat x ~ x x ; x ~ x x
+  velocity .76 .42 .58 .80 .40 .56
+  cv1 7.0 7.8 6.4 7.2 8.0 6.8
+  cv2 4.8
+  cv3 9 3 9 9 2 9
+}
+|> swing .66 8n
+
+play jazz_hat
+)";
+
 constexpr int ArrangementCursorPulseBeats = 4;
 constexpr const char *ProgSequencerDocumentationUrl =
     "https://github.com/JTriggerFish/TriggerFish-VCV/blob/master/docs/"
@@ -2747,7 +2773,9 @@ struct TfProgSequencerWidget : ModuleWidget {
       for (const auto &example :
            {std::make_pair("Acid bassline", AcidBasslineExample),
             std::make_pair("Slow bassline", SlowBasslineExample),
-            std::make_pair("Descending arpeggio", DescendingArpeggioExample)}) {
+            std::make_pair("Descending arpeggio", DescendingArpeggioExample),
+            std::make_pair("Jazz ride", JazzRideExample),
+            std::make_pair("Jazz hi-hat", JazzHiHatExample)}) {
         examplesMenu->addChild(createMenuItem(
             example.first, "", [=]() { editor->loadExample(example.second); }));
       }

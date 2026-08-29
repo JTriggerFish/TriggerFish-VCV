@@ -31,6 +31,7 @@ upgrading.
   - [Chords and voicings](#chords-and-voicings)
 - [Rhythm and articulation](#rhythm-and-articulation)
   - [Direct events](#direct-events)
+  - [Ride and hi-hat sequences](#ride-and-hi-hat-sequences)
   - [Reusable rhythmic gestures](#reusable-rhythmic-gestures)
   - [Slides with a gesture](#slides-with-a-gesture)
   - [Probability: silence and omission](#probability-silence-and-omission)
@@ -206,11 +207,11 @@ cable, which identifies one unambiguous Transport even in a larger patch.
 Double-click selects a word and triple-click selects a complete row. The usual
 text-field selection, clipboard, and navigation controls remain available.
 The module context menu links directly to this reference. Its Examples submenu
-can load an Acid bassline, Slow bassline, or Descending arpeggio program into
-the editor. Loading replaces the current draft and participates in Rack undo;
-the active program continues until the example is evaluated. The Editor
-submenu contains the width and heatmap controls. Heatmaps include the
-perceptually uniform Magma, Inferno, Plasma, Viridis, and Cividis ramps, plus
+can load an Acid bassline, Slow bassline, Descending arpeggio, Jazz ride, or
+Jazz hi-hat program into the editor. Loading replaces the current draft and
+participates in Rack undo; the active program continues until the example is
+evaluated. The Editor submenu contains the width and heatmap controls. Heatmaps
+include the perceptually uniform Magma, Inferno, Plasma, Viridis, and Cividis ramps, plus
 black-based CRT Green, CRT Blue, CRT Yellow, and CRT Red phosphor-style ramps.
 The heatmap choice is stored with the patch.
 
@@ -303,11 +304,12 @@ valid where signed timing is meaningful, including Offset.
 
 ## Program structure
 
-A sequence has one pitched lane, spelled `notes` or `chords`, plus optional
-settings and numerical or CV lanes. The two spellings have identical syntax;
-`chords` simply makes harmonic intent easier to see. Normally each pitched
-event owns its attack. A reusable `rhythm` definition can instead supply the
-attacks for a slower held-pitch timeline.
+A sequence normally has one pitched lane, spelled `notes` or `chords`, plus
+optional settings and numerical or CV lanes. A percussion sequence instead
+has one pitch-free `ride` or `hihat` lane. The two pitched spellings have
+identical syntax; `chords` simply makes harmonic intent easier to see. Normally
+each pitched event owns its attack. A reusable `rhythm` definition can instead
+supply the attacks for a slower held-pitch timeline.
 
 ```text
 name = sequence {
@@ -344,11 +346,11 @@ contains several `seed` commands, the last seed takes effect. The final `play`
 command selects the active arrangement. Playback state is controlled locally
 with Ctrl+Space or by the connected Transport.
 
-Every sequence requires exactly one pitched lane: either `notes` or `chords`.
-Settings and auxiliary lanes are optional, but the same lane cannot be declared
-twice. `notes` and `chords` therefore cannot both occur in one sequence; a
-single lane may freely mix individual notes and voicings. `vel` is a shorter
-spelling of `velocity`, and `dur` is a shorter spelling of `duration`.
+Every sequence requires one event lane: `notes`, `chords`, `ride`, or `hihat`.
+Settings and auxiliary lanes are optional, but event lanes cannot be combined
+and the same lane cannot be declared twice. A single pitched lane may freely
+mix individual notes and voicings. `vel` is a shorter spelling of `velocity`,
+and `dur` is a shorter spelling of `duration`.
 
 Settings do not cycle:
 
@@ -367,8 +369,9 @@ lane, `??` presence decisions, and timing transforms. With a separate rhythm,
 the held pitched timeline defines the boundary and the shorter rhythm gesture
 loops inside it. At the boundary the pitched pattern and gesture restart;
 independently cycling numerical and CV lanes retain their normal phases while
-the same sequence continues. An arrangement advances after the requested
-number of complete pitched passes.
+the same sequence continues. A `ride` or `hihat` pattern defines its own
+sequence boundary without a pitch lane. An arrangement advances after the
+requested number of complete event passes.
 
 A bracket group such as `[1 2]` subdivides one direct event and therefore still
 occupies one top-level position. When an arrangement moves to a different named
@@ -565,6 +568,37 @@ lead = sequence {
 
 Each pitched token attacks at the beginning of its own span. All the familiar
 duration, articulation, probability, subdivision, and ratchet syntax applies.
+
+### Ride and hi-hat sequences
+
+`ride` and `hihat` are pitch-free event lanes for the TriggerFish cymbal
+modules. They use the existing rhythm alphabet: `x` is a hit, `~` is a rest,
+and `_` extends the preceding event. This is distinct from `x3` in a pitched
+`notes` lane, where `x` is the ghost-note prefix on degree 3.
+
+```text
+jazz_ride = sequence {
+  subdiv 8n
+  ride x ~ x x ; x ~ x x
+  velocity .88 .56 .72 .90 .55 .74
+  cv1 2.5 5.0 5.8 3.0 5.2 6.0  // Location volts
+  cv2 5.5                         // Hardness volts
+  cv3 0                           // Mute volts
+}
+|> swing .66 8n
+
+play jazz_ride
+```
+
+The ordinary Trigger and Velocity outputs connect to HIT and STRENGTH. A useful
+patching convention is CV1 to LOCATION, CV2 to HARDNESS, and CV3 to MUTE on Ride
+or PEDAL on Hi-Hat. These are not special lane types; CV outputs retain their
+general-purpose voltage semantics. A cymbal sequence needs no `notes`, `chords`,
+or separate `rhythm` lane and cannot combine one with its percussion lane.
+
+The cymbal HIT jack accepts either Trigger or Gate. Tip and mallet modes strike
+on the rising edge. In brush mode a Trigger creates a finite swish while a held
+Gate sustains the brush gesture.
 
 ### Reusable rhythmic gestures
 
@@ -1395,7 +1429,7 @@ closing brace and a pipeline continuation may begin subsequent lines.
 
 ```text
 sequence-line ::= setting-line | notes-line | chords-line | rhythm-line |
-                  scalar-line | cv-line
+                  percussion-line | scalar-line | cv-line
 setting-line  ::= "subdiv" positive-note-value |
                   "tonic" named-pitch ["@" SIGNED_INTEGER] |
                   "scale" SCALE_NAME |
@@ -1405,6 +1439,7 @@ setting-line  ::= "subdiv" positive-note-value |
 notes-line    ::= "notes" note-pattern pipeline*
 chords-line   ::= "chords" note-pattern pipeline*
 rhythm-line   ::= "rhythm" (NAME | rhythm-pattern) pipeline*
+percussion-line ::= ("ride" | "hihat") rhythm-pattern pipeline*
 scalar-line   ::= scalar-lane scalar-pattern pipeline*
 cv-line       ::= cv-name envelope-source |
                   cv-name scalar-pattern cv-pipeline*
@@ -1434,9 +1469,11 @@ scalar-lane   ::= "octave" | "velocity" | "vel" |
 `VOICING_RECIPE` is `basic`, `rootless_3notes`, or `rootless_4notes`. `vel` and
 `dur` are scalar aliases. Settings accept one value and cannot have an
 inline pipeline. `SCALE_NAME` is one of the names listed under
-[Scale degrees](#scale-degrees). A sequence requires exactly one `notes` or
-`chords` lane. A `rhythm` lane is optional and may contain an inline pattern or
-name a reusable rhythm definition.
+[Scale degrees](#scale-degrees). A sequence requires exactly one event lane:
+`notes`, `chords`, `ride`, or `hihat`. A pitched sequence may also contain an
+optional `rhythm` lane with an inline pattern or reusable rhythm name. A
+percussion lane is already a complete unpitched event pattern and cannot be
+combined with `notes`, `chords`, or `rhythm`.
 Each setting and canonical lane may appear at most once, so `velocity` and its
 `vel` alias cannot both occur in the same sequence. A pipeline on the same line
 as a lane transforms that lane. A pipeline on a following line inside the

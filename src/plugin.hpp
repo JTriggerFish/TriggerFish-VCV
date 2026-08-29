@@ -16,6 +16,8 @@ extern Model *modelTf303VoiceCore;
 extern Model *modelTf303Oscillator;
 extern Model *modelTf4072VoiceCore;
 extern Model *modelTfElectricPiano;
+extern Model *modelTfRideCymbal;
+extern Model *modelTfHiHat;
 extern Model *modelTfWavefoldOscillator;
 extern Model *modelTfUnisonOscillator;
 extern Model *modelTfScenePack4;

@@ -1,0 +1,75 @@
+{
+  "schema": 1,
+  "dataset_id": "iowa-21ride-mf-ff-v1",
+  "description": "One University of Iowa 21-inch ride, neutral stick, known bow and bell locations at MF and FF.",
+  "role": "primary_fit_object",
+  "source_root": "build/cymbal-calibration/references",
+  "output_root": "build/cymbal-calibration/fit-targets/iowa-21ride-mf-ff-v1",
+  "source_metadata": {
+    "institution": "University of Iowa Musical Instrument Samples",
+    "instrument": "21-inch ride cymbal",
+    "recording_environment": "anechoic",
+    "sample_rate_hz": 44100,
+    "channels": 2,
+    "sample_format": "signed 32-bit PCM in AIFF",
+    "take_policy": "one published take per articulation and dynamic"
+  },
+  "derived_audio": {
+    "sample_rate_hz": 48000,
+    "channels": 1,
+    "sample_format": "32-bit floating-point WAV",
+    "channel_transform": "mid = 0.5 * (left + right)",
+    "onset_alignment": "analysis only; derived WAV retains the complete source timeline",
+    "gain": "unchanged; no peak, RMS, or loudness normalization",
+    "dc_removal": "analysis only"
+  },
+  "cells": {
+    "bow-mf": {
+      "articulation": "bow",
+      "source_label": "normal",
+      "dynamic": "mf",
+      "model_strength": 0.6,
+      "source": "21ride.stick.normal.mf.stereo.aif",
+      "source_sha256": "925fd060e6575170a64ab574af6be34714ef3d0b57ba743a971dffaafedff182",
+      "output": "bow-mf.wav"
+    },
+    "bow-ff": {
+      "articulation": "bow",
+      "source_label": "normal",
+      "dynamic": "ff",
+      "model_strength": 0.9,
+      "source": "21ride.stick.normal.ff.stereo.aif",
+      "source_sha256": "f8aa4111c804339afbf9e7eae32f1b5906cef81896510c92a7e71161fa854b68",
+      "output": "bow-ff.wav"
+    },
+    "bell-mf": {
+      "articulation": "bell",
+      "source_label": "bell",
+      "dynamic": "mf",
+      "model_strength": 0.6,
+      "source": "21ride.stick.bell.mf.stereo.aif",
+      "source_sha256": "bb07ddebdcb14cfba9e6134daa1edcd2e306d8e9a2dd25c26474f07e134ca64f",
+      "output": "bell-mf.wav"
+    },
+    "bell-ff": {
+      "articulation": "bell",
+      "source_label": "bell",
+      "dynamic": "ff",
+      "model_strength": 0.9,
+      "source": "21ride.stick.bell.ff.stereo.aif",
+      "source_sha256": "3e7bd42c0e5e482a6ae4ed33b87f32fe770f3dc20a93132532ffd59ed8a8621b",
+      "output": "bell-ff.wav"
+    }
+  },
+  "excluded": [
+    "Iowa PP: unsuitable level/noise/tail consistency for the primary matrix",
+    "Iowa shoulder: contact geometry differs from the neutral tip articulation",
+    "Salamander: bow has MP/FF but bell only F, so no matched bell velocity pair",
+    "Bitwig A-G: four velocity layers are useful, but the letter groups have no stable cross-cymbal radial-location mapping"
+  ],
+  "held_out_validation": [
+    "Bitwig 20-inch ride A-G velocity/take populations",
+    "Salamander Paiste and Stagg bow/bell strong hits",
+    "Iowa shoulder and mallet articulations"
+  ]
+}

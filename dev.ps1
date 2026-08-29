@@ -220,6 +220,14 @@ switch ($Command) {
             if ($LASTEXITCODE -ne 0) {
                 throw "TfElectricPiano panel generation failed with exit code $LASTEXITCODE."
             }
+            foreach ($moduleName in @("TfRideCymbal", "TfHiHat")) {
+                & uv run python tools/svg_text_to_paths.py `
+                    "res-src/$moduleName.svg" "res/$moduleName.svg" `
+                    --font $panelFont
+                if ($LASTEXITCODE -ne 0) {
+                    throw "$moduleName panel generation failed with exit code $LASTEXITCODE."
+                }
+            }
             & uv run python tools/svg_text_to_paths.py `
                 "res-src/TfReverb.svg" "res/TfReverb.svg" `
                 --font $panelFont
@@ -301,7 +309,7 @@ switch ($Command) {
             $env:CMAKE_CXX_COMPILER = Join-Path $mingwBin "g++.exe"
             & uv sync --group dev --python 3.13 --reinstall-package triggerfish-vcv-dsp
             if ($LASTEXITCODE -ne 0) { throw "uv sync failed with exit code $LASTEXITCODE." }
-            & uv run pytest
+            & uv run pytest --basetemp build/pytest-temp
             if ($LASTEXITCODE -ne 0) { throw "pytest failed with exit code $LASTEXITCODE." }
         }
         finally {

@@ -95,6 +95,28 @@
       ]
     },
     {
+      "slug": "TfRideCymbal",
+      "name": "Ride Cymbal",
+      "description": "Development shell for the next-generation ride cymbal model",
+      "manualUrl": "https://github.com/JTriggerFish/TriggerFish-VCV#ride-cymbal-and-hi-hat",
+      "tags": [
+        "Drum",
+        "Synth voice",
+        "Physical modeling"
+      ]
+    },
+    {
+      "slug": "TfHiHat",
+      "name": "Hi-Hat",
+      "description": "Development shell for the next-generation hi-hat model",
+      "manualUrl": "https://github.com/JTriggerFish/TriggerFish-VCV#ride-cymbal-and-hi-hat",
+      "tags": [
+        "Drum",
+        "Synth voice",
+        "Physical modeling"
+      ]
+    },
+    {
       "slug": "TfWavefoldOscillator",
       "name": "Wavefold Oscillator",
       "description": "Alive sine/triangle oscillator with Hinge, Lockhart, and Serge wavefolders",

@@ -1727,6 +1727,60 @@ bool ParseRhythm(const syntax::Pattern &pattern, Sequence &sequence,
   return true;
 }
 
+bool IsPercussionLane(const syntax::Lane &lane) noexcept {
+  return lane.name.text == "ride" || lane.name.text == "hihat";
+}
+
+Sequence::PercussionVoice
+PercussionVoice(const std::vector<syntax::Lane> &lanes) noexcept {
+  const auto lane = std::find_if(lanes.begin(), lanes.end(), IsPercussionLane);
+  if (lane == lanes.end())
+    return Sequence::PercussionVoice::None;
+  return lane->name.text == "ride" ? Sequence::PercussionVoice::Ride
+                                    : Sequence::PercussionVoice::HiHat;
+}
+
+bool HasPercussionLaneConflict(
+    const std::vector<syntax::Lane> &lanes) noexcept {
+  return std::any_of(lanes.begin(), lanes.end(), [](const syntax::Lane &lane) {
+    return lane.name.text == "notes" || lane.name.text == "chords" ||
+           lane.name.text == "rhythm";
+  });
+}
+
+void BuildPercussionPitchTimeline(Sequence &sequence) {
+  PitchTimelineStep timeline;
+  timeline.kind = PitchTimelineStep::Kind::Pitch;
+  timeline.span = sequence.nameSpan;
+  for (const auto &step : sequence.articulation) {
+    const auto hit = std::find_if(
+        step.atoms.begin(), step.atoms.end(), [](const ArticulationAtom &atom) {
+          return atom.kind == ArticulationKind::Attack ||
+                 atom.kind == ArticulationKind::Slide;
+        });
+    if (hit == step.atoms.end())
+      continue;
+    ChordValue degree;
+    degree.meaning = ChordValue::Meaning::SinglePitch;
+    PitchValue pitch;
+    pitch.degree = 1;
+    pitch.span = hit->span;
+    degree.voices.push_back(pitch);
+    degree.harmonicRoot = pitch;
+    degree.span = hit->span;
+    timeline.pitch.values.push_back(std::move(degree));
+    break;
+  }
+  if (sequence.rhythmSubdivisionBeats <= 0.0)
+    sequence.rhythmSubdivisionBeats = sequence.subdivisionBeats;
+  double durationBeats = 0.0;
+  for (const auto &step : sequence.articulation)
+    durationBeats +=
+        sequence.rhythmSubdivisionBeats * step.durationMultiplier;
+  timeline.durationMultiplier = durationBeats / sequence.subdivisionBeats;
+  sequence.pitchTimeline.push_back(std::move(timeline));
+}
+
 bool ParseScalars(const syntax::Pattern &pattern,
                   std::vector<ScalarItem> &items, const std::string &lane,
                   Diagnostic &diagnostic) {
@@ -1903,6 +1957,7 @@ enum class LaneValueKind {
   Notes,
   Chords,
   Rhythm,
+  Percussion,
   Scalar,
   Subdivision,
   Tonic,
@@ -1920,10 +1975,14 @@ struct LaneSpec {
   bool acceptsPipelines;
 };
 
-constexpr std::array<LaneSpec, 18> LaneSpecs{{
+constexpr std::array<LaneSpec, 20> LaneSpecs{{
     {"notes", "notes", LaneValueKind::Notes, CursorLane::Notes, true},
     {"chords", "notes", LaneValueKind::Chords, CursorLane::Notes, true},
     {"rhythm", "rhythm", LaneValueKind::Rhythm, CursorLane::Rhythm, true},
+    {"ride", "percussion", LaneValueKind::Percussion, CursorLane::Rhythm,
+     true},
+    {"hihat", "percussion", LaneValueKind::Percussion, CursorLane::Rhythm,
+     true},
     {"octave", "octave", LaneValueKind::Scalar, CursorLane::Octave, true},
     {"velocity", "velocity", LaneValueKind::Scalar, CursorLane::Velocity, true},
     {"vel", "velocity", LaneValueKind::Scalar, CursorLane::Velocity, true},
@@ -3029,9 +3088,21 @@ CompileResult CompileDocument(const syntax::Document &document) {
     std::array<SourceSpan, static_cast<std::size_t>(CursorLane::Count)>
         alignmentSpans{};
     std::unordered_set<std::string> seenLanes;
-    const bool hasSeparateRhythm = std::any_of(
-        definition->lanes.begin(), definition->lanes.end(),
-        [](const syntax::Lane &lane) { return lane.name.text == "rhythm"; });
+    const auto percussionVoice = PercussionVoice(definition->lanes);
+    const bool hasPercussion =
+        percussionVoice != Sequence::PercussionVoice::None;
+    const bool hasSeparateRhythm = hasPercussion ||
+        std::any_of(definition->lanes.begin(), definition->lanes.end(),
+                    [](const syntax::Lane &lane) {
+                      return lane.name.text == "rhythm";
+                    });
+    if (hasPercussion && HasPercussionLaneConflict(definition->lanes)) {
+      result.diagnostic = Error(
+          sequence.nameSpan,
+          "ride/hihat is a complete percussion lane and cannot be combined "
+          "with notes, chords, or rhythm in the same sequence");
+      return result;
+    }
     for (const auto &lane : definition->lanes) {
       const std::string laneName = lane.name.text;
       const std::string laneValue = LaneText(lane);
@@ -3198,6 +3269,10 @@ CompileResult CompileDocument(const syntax::Document &document) {
           // the setting appears later in the source block.
           sequence.rhythmSubdivisionBeats = 0.0;
         }
+      } else if (laneSpec->valueKind == LaneValueKind::Percussion) {
+        sequence.percussionVoice = percussionVoice;
+        ok = ParseRhythm(lane.pattern, sequence, result.diagnostic);
+        sequence.rhythmSubdivisionBeats = 0.0;
       } else {
         auto *items = &sequence.velocity;
         if (parsedLane == CursorLane::Octave)
@@ -3290,10 +3365,13 @@ CompileResult CompileDocument(const syntax::Document &document) {
       return result;
     }
     if (hasSeparateRhythm && sequence.pitchTimeline.empty()) {
-      result.diagnostic =
-          Error(sequence.nameSpan,
-                "a sequence with rhythm requires a notes or chords lane");
-      return result;
+      if (!hasPercussion) {
+        result.diagnostic =
+            Error(sequence.nameSpan,
+                  "a sequence with rhythm requires a notes or chords lane");
+        return result;
+      }
+      BuildPercussionPitchTimeline(sequence);
     }
     if (hasSeparateRhythm) {
       sequence.pitchTimelineBeats = 0.0;

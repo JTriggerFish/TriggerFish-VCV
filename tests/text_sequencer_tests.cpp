@@ -3154,6 +3154,7 @@ void reusableRhythmComposesWithNotesChordsAndSlides() {
     const auto ambiguous = tfseq::Compile(std::string(reserved) + R"( = rhythm {
   events x ~
 }
+
 line = sequence {
   notes 1 2
   rhythm )" + reserved + R"(
@@ -3351,6 +3352,94 @@ play line
               second.events[0].kind == tfseq::EventKind::Slide,
           ">x makes the gesture position legato for single notes or chords");
   }
+}
+
+void rideLaneUsesExistingRhythmSemantics() {
+  const auto ride = tfseq::Compile(R"(jazz_ride = sequence {
+  subdiv 8n
+  ride x ~ x x x ~ x x
+  velocity .88 .58 .72 .9 .56 .74
+  cv1 2.5 5 5.8 3 5.2 6
+  cv2 5.5
+  cv3 0
+}
+|> swing .66 8n
+play jazz_ride
+)");
+  check(static_cast<bool>(ride),
+        "ride lane compiles: " + ride.diagnostic.message);
+  if (ride) {
+    const auto &sequence = ride.program->semantic().sequences.front();
+    check(sequence.percussionVoice ==
+              tfseq::Sequence::PercussionVoice::Ride &&
+              sequence.separateRhythm && sequence.pitchTimeline.size() == 1,
+          "ride is a pitch-free percussion sequence with one internal dummy");
+    check(close(sequence.pitchTimelineBeats, 4.0),
+          "the percussion phrase length follows its rhythm cells");
+    tfseq::Runtime runtime;
+    runtime.setProgram(ride.program.get());
+    std::size_t attacks = 0;
+    for (int cell = 0; cell < 8; ++cell) {
+      const auto output = runtime.next(cell * 0.5);
+      for (std::size_t event = 0; event < output.count; ++event)
+        attacks += output.events[event].kind == tfseq::EventKind::Attack;
+    }
+    check(attacks == 6, "x remains the existing rhythm hit token");
+  }
+
+}
+
+void hihatLanePreservesIntentAndRejectsPitchedConflicts() {
+  const auto hihat = tfseq::Compile(R"(jazz_hat = sequence {
+  subdiv 8n
+  hihat x ~ x x x ~ x x
+  velocity .72 .42 .58 .76 .4 .55
+  cv3 9 9 5 9 9 4
+}
+play jazz_hat
+)");
+  check(static_cast<bool>(hihat),
+        "hihat lane compiles: " + hihat.diagnostic.message);
+  if (hihat)
+    check(hihat.program->semantic().sequences.front().percussionVoice ==
+              tfseq::Sequence::PercussionVoice::HiHat,
+          "hihat intent is preserved in the semantic program");
+
+  check(!tfseq::Compile(R"(bad = sequence {
+  ride x x
+  notes 1 2
+}
+play bad
+)"), "a percussion lane cannot silently conflict with pitched lanes");
+}
+
+void percussionKindChangesRestartPlaybackState() {
+  const auto ride = tfseq::Compile(R"(line = sequence {
+  ride x x x x
+}
+play line
+)");
+  const auto rideEdit = tfseq::Compile(R"(line = sequence {
+  ride x ~ x x
+}
+play line
+)");
+  const auto hihat = tfseq::Compile(R"(line = sequence {
+  hihat x ~ x x
+}
+play line
+)");
+  check(ride && rideEdit && hihat,
+        "percussion hot-swap fixtures compile");
+  if (!ride || !rideEdit || !hihat)
+    return;
+  tfseq::Runtime runtime;
+  runtime.setProgram(ride.program.get());
+  runtime.next(0.0);
+  check(runtime.canPreserveCurrentPhase(rideEdit.program.get()),
+        "an edit to the same percussion kind preserves phase");
+  check(!runtime.canPreserveCurrentPhase(hihat.program.get()),
+        "changing percussion kind restarts its playback state");
 }
 
 void structuralHotSwapRestartsOnlyTheCurrentTerm() {
@@ -3884,6 +3973,9 @@ int main() {
   openKeyboardCompingMotifIsPreciselyTimed();
   localMutePreservesChordPhaseAndDrainsTriggers();
   reusableRhythmComposesWithNotesChordsAndSlides();
+  rideLaneUsesExistingRhythmSemantics();
+  hihatLanePreservesIntentAndRejectsPitchedConflicts();
+  percussionKindChangesRestartPlaybackState();
   structuralHotSwapRestartsOnlyTheCurrentTerm();
   jazzVoicingRecipesAndVoiceLeadingAreDeterministic();
   if (failures != 0)

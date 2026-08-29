@@ -281,6 +281,7 @@ struct Scale {
 };
 
 struct Sequence {
+  enum class PercussionVoice { None, Ride, HiHat };
   std::uint64_t stableId = 0;
   std::string name;
   SourceSpan nameSpan;
@@ -300,6 +301,10 @@ struct Sequence {
   // pitchTimeline supplies held values and articulation supplies independent
   // attacks. Single pitches and chords use this same representation.
   bool separateRhythm = false;
+  // Percussion lanes use the ordinary trigger/velocity/CV outputs but do not
+  // require a meaningless pitch lane. The enum preserves author intent for
+  // editors, diagnostics, and future dedicated routing.
+  PercussionVoice percussionVoice = PercussionVoice::None;
   std::vector<ScalarItem> octave;
   std::vector<ArticulationStep> articulation;
   std::vector<ScalarItem> velocity;

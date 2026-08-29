@@ -10,6 +10,12 @@
 namespace tfseq {
 namespace {
 
+bool PlaybackStateCompatible(const Sequence &left,
+                             const Sequence &right) noexcept {
+  return left.separateRhythm == right.separateRhythm &&
+         left.percussionVoice == right.percussionVoice;
+}
+
 bool TransformEnabled(const Transform &transform, std::uint64_t cycle,
                       std::uint64_t seed, std::uint64_t salt) noexcept {
   (void)salt;
@@ -785,7 +791,7 @@ bool Runtime::canPreserveCurrentPhase(
     if (nextOccurrence++ != occurrence)
       continue;
     const auto &nextSequence = nextSemantic.sequences[part.sequence];
-    return nextSequence.separateRhythm == previousSequence.separateRhythm;
+    return PlaybackStateCompatible(nextSequence, previousSequence);
   }
   return false;
 }
@@ -833,7 +839,7 @@ Runtime::replaceProgram(const CompiledProgram *program, double beat) noexcept {
       } else if (previousBeforeNext) {
         ++previousPosition;
       } else {
-        if (nextSequence.separateRhythm == previousSequence.separateRhythm) {
+        if (PlaybackStateCompatible(nextSequence, previousSequence)) {
           nextStates[nextIndex] = previousStates[previousIndex];
           // Presence decisions and the realized aligned-lane length belong to
           // the newly compiled structure. Recompute the cached count on its
