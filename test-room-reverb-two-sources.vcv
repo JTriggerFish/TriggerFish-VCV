@@ -11,7 +11,7 @@
       "id": 2,
       "plugin": "TriggerFish-Elements",
       "model": "TfTransport",
-      "version": "2.5.2",
+      "version": "2.5.3",
       "params": [
         {
           "id": 0,
@@ -46,7 +46,7 @@
       "id": 3,
       "plugin": "TriggerFish-Elements",
       "model": "TfProgSequencer",
-      "version": "2.5.2",
+      "version": "2.5.3",
       "params": [],
       "data": {
         "source": "bass = sequence {\n  subdiv 2n\n  tonic D@1\n  scale dorian\n  notes 1_2 7_2 4_2 5 7\n  gate .96\n}\n\nplay bass\n",
@@ -61,7 +61,7 @@
       "id": 4,
       "plugin": "TriggerFish-Elements",
       "model": "TfProgSequencer",
-      "version": "2.5.2",
+      "version": "2.5.3",
       "params": [],
       "data": {
         "source": "arpeggio = sequence {\n  subdiv 16n\n  tonic D@4\n  scale dorian\n  notes 3' 1' 5 3 ; 1' 5 3 1 ; 2' 7 5 2 ; 7 5 2 1\n  gate .52\n  cv1 2 -2 |> interp linear |> rate 1/9\n  cv2 env ad 5ms 16n depth 2 curve 0\n}\n\nplay arpeggio\n",
@@ -77,7 +77,7 @@
       "id": 16,
       "plugin": "TriggerFish-Elements",
       "model": "TfProgSequencer",
-      "version": "2.5.2",
+      "version": "2.5.3",
       "params": [],
       "data": {
         "source": "comp = rhythm {\n  subdiv 16n\n  // Three sixteenths, an upbeat hit, then repeat from beat 3-and.\n  events x_3 x ~!6 x_3 x ~!2\n}\n\nkeys = sequence {\n  subdiv 2n\n  chords (C F A)_2 (C D G)_2 (B, D G)_2 (A, C F) (G, C E)\n  rhythm comp\n  gate .95 .8\n  velocity .72 .8\n}\n\nplay keys\n",
@@ -94,7 +94,7 @@
       "id": 5,
       "plugin": "TriggerFish-Elements",
       "model": "TfUnisonOscillator",
-      "version": "2.5.2",
+      "version": "2.5.3",
       "params": [
         {
           "id": 0,
@@ -182,7 +182,7 @@
       "id": 6,
       "plugin": "TriggerFish-Elements",
       "model": "Tf4072VoiceCore",
-      "version": "2.5.2",
+      "version": "2.5.3",
       "params": [
         {
           "id": 0,
@@ -294,7 +294,7 @@
       "id": 7,
       "plugin": "TriggerFish-Elements",
       "model": "TfWavefoldOscillator",
-      "version": "2.5.2",
+      "version": "2.5.3",
       "params": [
         {
           "id": 0,
@@ -374,7 +374,7 @@
       "id": 8,
       "plugin": "TriggerFish-Elements",
       "model": "Tf4072VoiceCore",
-      "version": "2.5.2",
+      "version": "2.5.3",
       "params": [
         {
           "id": 0,
@@ -486,7 +486,7 @@
       "id": 13,
       "plugin": "TriggerFish-Elements",
       "model": "TfElectricPiano",
-      "version": "2.5.2",
+      "version": "2.5.3",
       "params": [
         {
           "id": 0,
@@ -637,7 +637,7 @@
       "id": 17,
       "plugin": "TriggerFish-Elements",
       "model": "TfEventMerge2",
-      "version": "2.5.2",
+      "version": "2.5.3",
       "params": [],
       "pos": [
         108,
@@ -648,7 +648,7 @@
       "id": 9,
       "plugin": "TriggerFish-Elements",
       "model": "TfScenePack4",
-      "version": "2.5.2",
+      "version": "2.5.3",
       "params": [],
       "pos": [
         110,
@@ -659,7 +659,7 @@
       "id": 10,
       "plugin": "TriggerFish-Elements",
       "model": "TfReverb",
-      "version": "2.5.2",
+      "version": "2.5.3",
       "params": [
         {
           "id": 0,

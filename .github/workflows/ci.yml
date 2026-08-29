@@ -11,24 +11,30 @@ env:
   RACK_SDK_VERSION: "2.6.6"
 
 jobs:
-  plugin-build:
+  plugin-build-cross:
+    name: Plugin build (${{ matrix.platform }})
     runs-on: ubuntu-latest
+    container:
+      # VCV rack-plugin-toolchain v2-derived image, pinned at Rack SDK 2.6.6.
+      image: ghcr.io/bloodbat/rack-plugin-toolchain-win-linux@sha256:d49eaf94ea3f1e29f547d920cc5a50ff8339f45398017d1ea7c1a79fa1dbc25f
+      options: --user root
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - lin-x64
+          - win-x64
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Download Rack SDK
+      - name: Cross-build and package plugin
         run: |
-          curl --fail --location \
-            "https://vcvrack.com/downloads/Rack-SDK-${RACK_SDK_VERSION}-lin-x64.zip" \
-            --output rack-sdk.zip
-          unzip -q rack-sdk.zip
-      - name: Build and package plugin
-        run: |
-          make RACK_DIR="$GITHUB_WORKSPACE/Rack-SDK" cleandep
-          make RACK_DIR="$GITHUB_WORKSPACE/Rack-SDK" dep
-          make RACK_DIR="$GITHUB_WORKSPACE/Rack-SDK" -j2 dist
+          export PLUGIN_DIR="$GITHUB_WORKSPACE"
+          cd /home/build/rack-plugin-toolchain
+          make -j2 "plugin-build-${{ matrix.platform }}"
 
   plugin-build-mac:
+    name: Plugin build (mac-${{ matrix.arch }})
     strategy:
       matrix:
         include:
@@ -53,12 +59,25 @@ jobs:
           make RACK_DIR="$GITHUB_WORKSPACE/Rack-SDK" -j2 dist
 
   dsp-tests:
+    name: DSP tests (${{ matrix.any_backend }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - any_backend: standard-library-any
+            cpp_flags: -DCPPPEGLIB_USE_STD_ANY=1
+          - any_backend: macos-10.9-compatible-any
+            cpp_flags: -DCPPPEGLIB_USE_STD_ANY=0
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Configure C++ tests
-        run: cmake -S . -B build/tests -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+        run: >-
+          cmake -S . -B build/tests
+          -DCMAKE_BUILD_TYPE=Release
+          -DBUILD_TESTING=ON
+          -DCMAKE_CXX_FLAGS="${{ matrix.cpp_flags }}"
       - name: Build C++ tests
         run: cmake --build build/tests --parallel 2
       - name: Run C++ tests
