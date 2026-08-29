@@ -232,9 +232,9 @@ ScoreCandidate(const std::array<int, MaximumPolyphony> &candidate,
       const std::size_t previousIndex =
           paired == 1 ? previousCount / 2
                       : index * (previousCount - 1) / (paired - 1);
-      const auto movement =
-          std::llabs(static_cast<long long>(candidate[candidateIndex]) -
-                     static_cast<long long>(orderedPrevious[previousIndex]));
+      const std::int64_t movement = std::llabs(
+          static_cast<long long>(candidate[candidateIndex]) -
+          static_cast<long long>(orderedPrevious[previousIndex]));
       score.totalMotion += movement;
       score.largestLeap = std::max(score.largestLeap, movement);
       if (movement != 0)
