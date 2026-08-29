@@ -37,7 +37,8 @@ public:
 
 	explicit Arp4072Filter(
 		std::function<std::unique_ptr<ResamplerType>()> resamplerCreator)
-		: _resampler(resamplerCreator()),
+		: _audioInputResampler(resamplerCreator()),
+		  _lowPassOutputResampler(resamplerCreator()),
 		  _cutoffPitchResampler(resamplerCreator()),
 		  _linearFmResampler(resamplerCreator()),
 		  _resonanceResampler(resamplerCreator()),
@@ -65,7 +66,8 @@ public:
 	void Reset()
 	{
 		_state = {};
-		_resampler->Reset();
+		_audioInputResampler->Reset();
+		_lowPassOutputResampler->Reset();
 		_cutoffPitchResampler->Reset();
 		_linearFmResampler->Reset();
 		_resonanceResampler->Reset();
@@ -74,6 +76,7 @@ public:
 		_postExponentialCvResampler->Reset();
 		_lastIterations = 0;
 		_solverFailures = 0;
+		_renderedLowPassLastSample = true;
 	}
 
 	float Step(double inputRackVolts, double cutoffHz, double resonance,
@@ -112,7 +115,8 @@ public:
 		const auto controls = UpsampleControls(log2CutoffHz, linearFmHz, resonance,
 			std::min(CutoffCeilingHz, numericalCeiling));
 
-		const auto upsampled = _resampler->Upsample(inputRackVolts * driveGain);
+		const auto upsampled = _audioInputResampler->Upsample(
+			inputRackVolts * driveGain);
 		Eigen::Array<double, OversamplingFactor, 1> output;
 		for (int i = 0; i < OversamplingFactor; ++i)
 		{
@@ -123,7 +127,7 @@ public:
 				SoftOutputCompliance(physicalOutput));
 		}
 
-		const double result = _resampler->Downsample(output);
+		const double result = DownsampleLowPass(output, true);
 		if (!std::isfinite(result))
 		{
 			Reset();
@@ -141,7 +145,8 @@ public:
 	ProcessedOutputs StepWithPostProcessor(double inputRackVolts,
 		double cutoffHz, double resonance, double driveGain,
 		double linearControlVolts,
-		double exponentialControlVolts, PostProcessor&& postProcessor)
+		double exponentialControlVolts, PostProcessor&& postProcessor,
+		bool renderLowPass = true)
 	{
 		if (!std::isfinite(cutoffHz))
 		{
@@ -152,25 +157,28 @@ public:
 			std::log2(std::max(cutoffHz,
 				std::numeric_limits<double>::min())), resonance, driveGain,
 			linearControlVolts, exponentialControlVolts,
-			std::forward<PostProcessor>(postProcessor));
+			std::forward<PostProcessor>(postProcessor), renderLowPass);
 	}
 
 	template<typename PostProcessor>
 	ProcessedOutputs StepWithPostProcessorLogCutoff(double inputRackVolts,
 		double log2CutoffHz, double resonance, double driveGain,
 		double linearControlVolts,
-		double exponentialControlVolts, PostProcessor&& postProcessor)
+		double exponentialControlVolts, PostProcessor&& postProcessor,
+		bool renderLowPass = true)
 	{
 		return StepWithPostProcessorModulatedLogCutoff(inputRackVolts,
 			log2CutoffHz, 0.0, resonance, driveGain, linearControlVolts,
-			exponentialControlVolts, std::forward<PostProcessor>(postProcessor));
+			exponentialControlVolts, std::forward<PostProcessor>(postProcessor),
+			renderLowPass);
 	}
 
 	template<typename PostProcessor>
 	ProcessedOutputs StepWithPostProcessorModulatedLogCutoff(
 		double inputRackVolts, double log2CutoffHz, double linearFmHz,
 		double resonance, double driveGain, double linearControlVolts,
-		double exponentialControlVolts, PostProcessor&& postProcessor)
+		double exponentialControlVolts, PostProcessor&& postProcessor,
+		bool renderLowPass = true)
 	{
 		if (!std::isfinite(inputRackVolts) || !std::isfinite(log2CutoffHz) ||
 			!std::isfinite(linearFmHz) ||
@@ -187,7 +195,8 @@ public:
 		const auto controls = UpsampleControls(log2CutoffHz, linearFmHz, resonance,
 			std::min(CutoffCeilingHz, numericalCeiling));
 
-		const auto audio = _resampler->Upsample(inputRackVolts * driveGain);
+		const auto audio = _audioInputResampler->Upsample(
+			inputRackVolts * driveGain);
 		const auto linearCv = _postLinearCvResampler->Upsample(
 			linearControlVolts);
 		const auto exponentialCv = _postExponentialCvResampler->Upsample(
@@ -203,12 +212,13 @@ public:
 			// normalled connection to the VCA. Both output paths therefore see
 			// exactly the same filter-node level and overload behavior.
 			const double limitedOutput = SoftOutputCompliance(physicalOutput);
-			lowPass(i) = RackOutputAdapter::ProcessOversampled(limitedOutput);
+			if (renderLowPass)
+				lowPass(i) = RackOutputAdapter::ProcessOversampled(limitedOutput);
 			postProcessed(i) = RackOutputAdapter::ProcessOversampled(
 				postProcessor(limitedOutput, linearCv(i), exponentialCv(i)));
 		}
 
-		const double lowPassResult = _resampler->Downsample(lowPass);
+		const double lowPassResult = DownsampleLowPass(lowPass, renderLowPass);
 		const double postResult = _postOutputResampler->Downsample(postProcessed);
 		if (!std::isfinite(lowPassResult) || !std::isfinite(postResult))
 		{
@@ -333,7 +343,8 @@ private:
 	static constexpr double OutputKneeVolts = 10.0;
 	static constexpr double OutputRailVolts = 13.5;
 
-	std::unique_ptr<ResamplerType> _resampler;
+	std::unique_ptr<ResamplerType> _audioInputResampler;
+	std::unique_ptr<ResamplerType> _lowPassOutputResampler;
 	std::unique_ptr<ResamplerType> _cutoffPitchResampler;
 	std::unique_ptr<ResamplerType> _linearFmResampler;
 	std::unique_ptr<ResamplerType> _resonanceResampler;
@@ -345,12 +356,28 @@ private:
 	double _sampleRate{};
 	int _lastIterations{};
 	std::size_t _solverFailures{};
+	bool _renderedLowPassLastSample{true};
 
 	struct OversampledControls
 	{
 		Eigen::Array<double, OversamplingFactor, 1> cutoffHz;
 		Eigen::Array<double, OversamplingFactor, 1> resonance;
 	};
+
+	double DownsampleLowPass(
+		const Eigen::Array<double, OversamplingFactor, 1>& input,
+		bool render)
+	{
+		if (!render)
+		{
+			_renderedLowPassLastSample = false;
+			return 0.0;
+		}
+		if (!_renderedLowPassLastSample)
+			_lowPassOutputResampler->Reset();
+		_renderedLowPassLastSample = true;
+		return _lowPassOutputResampler->Downsample(input);
+	}
 
 	static double Softplus(double value, double knee)
 	{
@@ -404,7 +431,8 @@ private:
 	{
 		// The midpoint coefficient is prewarped so the small-signal one-pole
 		// sections reach their requested analog cutoff at the oversampled rate.
-		const double gamma = 2.0 * std::tan(Pi * cutoffHz / _sampleRate);
+		const double gamma = 2.0 * tfdsp::TanPrewarp(
+			Pi * cutoffHz / _sampleRate);
 		const double stageSaturationCoefficient =
 			StageSaturationCoefficientPerVolt();
 		const double stageStep = gamma / stageSaturationCoefficient;
@@ -460,19 +488,17 @@ private:
 			for (int i = 0; i < 4; ++i)
 				stageSlope[i] = 1.0 - stageTanh[i] * stageTanh[i];
 
-			double jacobian[4][4]{
-				{1.0 + 0.5 * gamma * stageSlope[0], 0.0, 0.0,
-					gamma * stageSlope[0] * firstInputDerivative},
-				{0.5 * gamma * stageSlope[1],
-					1.0 + 0.5 * gamma * stageSlope[1], 0.0, 0.0},
-				{0.0, 0.5 * gamma * stageSlope[2],
-					1.0 + 0.5 * gamma * stageSlope[2], 0.0},
-				{0.0, 0.0, 0.5 * gamma * stageSlope[3],
-					1.0 + 0.5 * gamma * stageSlope[3]},
-			};
 			for (double& value : residual)
 				value = -value;
-			if (!Solve4x4(jacobian, residual))
+			if (!SolveCyclicBidiagonal4(
+				1.0 + 0.5 * gamma * stageSlope[0],
+				gamma * stageSlope[0] * firstInputDerivative,
+				0.5 * gamma * stageSlope[1],
+				1.0 + 0.5 * gamma * stageSlope[1],
+				0.5 * gamma * stageSlope[2],
+				1.0 + 0.5 * gamma * stageSlope[2],
+				0.5 * gamma * stageSlope[3],
+				1.0 + 0.5 * gamma * stageSlope[3], residual))
 				break;
 
 			double maximumDelta = 0.0;
@@ -505,43 +531,37 @@ private:
 		return next[3];
 	}
 
-	static bool Solve4x4(double matrix[4][4], std::array<double, 4>& rhs)
+	/** Solve the fixed filter Jacobian without treating its twelve structural
+	 * zeros as arbitrary dense entries. Rows 1..3 form a lower bidiagonal chain
+	 * and the only wraparound term is row 0, column 3. Expressing each chained
+	 * unknown as an affine function of x0 keeps the Newton system unchanged.
+	 */
+	static bool SolveCyclicBidiagonal4(double diagonal0, double wrap03,
+		double lower10, double diagonal1, double lower21, double diagonal2,
+		double lower32, double diagonal3, std::array<double, 4>& rhs)
 	{
-		for (int column = 0; column < 4; ++column)
-		{
-			int pivot = column;
-			for (int row = column + 1; row < 4; ++row)
-			{
-				if (std::abs(matrix[row][column]) >
-					std::abs(matrix[pivot][column]))
-					pivot = row;
-			}
-			if (std::abs(matrix[pivot][column]) < 1.0e-14)
-				return false;
-			if (pivot != column)
-			{
-				for (int i = column; i < 4; ++i)
-					std::swap(matrix[column][i], matrix[pivot][i]);
-				std::swap(rhs[column], rhs[pivot]);
-			}
+		constexpr double MinimumPivot = 1.0e-14;
+		if (std::abs(diagonal1) < MinimumPivot ||
+			std::abs(diagonal2) < MinimumPivot ||
+			std::abs(diagonal3) < MinimumPivot)
+			return false;
 
-			for (int row = column + 1; row < 4; ++row)
-			{
-				const double factor = matrix[row][column] /
-					matrix[column][column];
-				for (int i = column + 1; i < 4; ++i)
-					matrix[row][i] -= factor * matrix[column][i];
-				rhs[row] -= factor * rhs[column];
-			}
-		}
+		const double intercept1 = rhs[1] / diagonal1;
+		const double slope1 = -lower10 / diagonal1;
+		const double intercept2 =
+			(rhs[2] - lower21 * intercept1) / diagonal2;
+		const double slope2 = -lower21 * slope1 / diagonal2;
+		const double intercept3 =
+			(rhs[3] - lower32 * intercept2) / diagonal3;
+		const double slope3 = -lower32 * slope2 / diagonal3;
+		const double reducedPivot = diagonal0 + wrap03 * slope3;
+		if (std::abs(reducedPivot) < MinimumPivot)
+			return false;
 
-		for (int row = 3; row >= 0; --row)
-		{
-			double value = rhs[row];
-			for (int column = row + 1; column < 4; ++column)
-				value -= matrix[row][column] * rhs[column];
-			rhs[row] = value / matrix[row][row];
-		}
+		rhs[0] = (rhs[0] - wrap03 * intercept3) / reducedPivot;
+		rhs[1] = intercept1 + slope1 * rhs[0];
+		rhs[2] = intercept2 + slope2 * rhs[0];
+		rhs[3] = intercept3 + slope3 * rhs[0];
 		return true;
 	}
 };

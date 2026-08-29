@@ -363,6 +363,7 @@ struct TfUnisonOscillator : Module
 		const bool needLeft = outputs[LEFT_OUTPUT].isConnected();
 		const bool needRight = outputs[RIGHT_OUTPUT].isConnected();
 		const bool needMain = needMono || needLeft || needRight;
+		const bool needStereo = needLeft || needRight;
 		const double subLevel = params[SUB_LEVEL].getValue();
 		const bool needSub = needMain && subLevel > 1.0e-7;
 		const bool renderCenterSub = needSub && subModeMix == 0.0;
@@ -422,21 +423,23 @@ struct TfUnisonOscillator : Module
 			const double spreadControl = std::clamp(params[SPREAD].getValue() +
 				spreadCvAmount * finiteInput(SPREAD_INPUT) / 5.0, 0.0, 1.0);
 			const double spreadCents = tfdsp::UnisonSpreadCents(spreadControl);
-			const double width = std::clamp(params[WIDTH].getValue() +
-				widthCvAmount * finiteInput(WIDTH_INPUT) / 5.0, 0.0, 1.0);
+			const double width = needStereo ? std::clamp(
+				params[WIDTH].getValue() + widthCvAmount *
+					finiteInput(WIDTH_INPUT) / 5.0, 0.0, 1.0) : 0.0;
 			std::array<double, tfdsp::MaximumStackedOscillatorVoices>
 				leftPanGains{};
 			std::array<double, tfdsp::MaximumStackedOscillatorVoices>
 				rightPanGains{};
-			for (int voice = 0; voice < voicesToProcess; ++voice)
-			{
-				const double pan = std::clamp(
-					width * panPositions[voice], -1.0, 1.0);
-				// This equal-power law includes the sqrt(2) compensation that
-				// makes a centred stereo side equal to MONO.
-				leftPanGains[voice] = std::sqrt(1.0 - pan);
-				rightPanGains[voice] = std::sqrt(1.0 + pan);
-			}
+			if (needStereo)
+				for (int voice = 0; voice < voicesToProcess; ++voice)
+				{
+					const double pan = std::clamp(
+						width * panPositions[voice], -1.0, 1.0);
+					// This equal-power law includes the sqrt(2) compensation that
+					// makes a centred stereo side equal to MONO.
+					leftPanGains[voice] = std::sqrt(1.0 - pan);
+					rightPanGains[voice] = std::sqrt(1.0 + pan);
+				}
 
 			double monoMain = 0.0;
 			double leftMain = 0.0;

@@ -298,6 +298,8 @@ struct TfWavefoldOscillator : Module
 			params[CHARACTER].getValue())), 0, 2);
 		const auto character = charactersByPosition[characterPosition];
 		const bool externalInputConnected = inputs[AUDIO_INPUT].isConnected();
+		const bool renderOscillator = outputs[OSCILLATOR_OUTPUT].isConnected();
+		const bool renderFolded = outputs[FOLDED_OUTPUT].isConnected();
 
 		for (int channel = 0; channel < channels; ++channel)
 		{
@@ -352,7 +354,7 @@ struct TfWavefoldOscillator : Module
 					oscillatorsX2[channel][voice]->SetFolderAntialiasing(false);
 					voiceOutput = oscillatorsX2[channel][voice]->StepWithInput(
 						voiceFrequency, morph, fold, symmetry, externalInput,
-						foldExternalInput);
+						foldExternalInput, renderOscillator, renderFolded);
 				}
 				else
 				{
@@ -360,7 +362,7 @@ struct TfWavefoldOscillator : Module
 					oscillatorsX4[channel][voice]->SetFolderAntialiasing(false);
 					voiceOutput = oscillatorsX4[channel][voice]->StepWithInput(
 						voiceFrequency, morph, fold, symmetry, externalInput,
-						foldExternalInput);
+						foldExternalInput, renderOscillator, renderFolded);
 				}
 				rendered.oscillator += voiceOutput.oscillator;
 				if (!externalInputConnected || voice == 0)

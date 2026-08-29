@@ -365,6 +365,8 @@ private:
 			}
 			for (std::size_t row = column + 1; row < UnknownCount; ++row)
 			{
+				if (matrix[row][column] == 0.0)
+					continue;
 				const double factor = matrix[row][column] /
 					matrix[column][column];
 				for (std::size_t i = column + 1; i < UnknownCount; ++i)

@@ -381,6 +381,7 @@ struct Tf4072VoiceCore : Module
 		const bool exponentialAmpEnvelope =
 			params[AMP_ENV_LAW].getValue() > 0.5f;
 		const bool vcaOverride = inputs[VCA_AUDIO_INPUT].isConnected();
+		const bool renderLowPass = outputs[LP_OUTPUT].isConnected();
 		const bool autoGateTrigger = !inputs[TRIGGER_INPUT].isConnected();
 		const double log2C4 = std::log2(dsp::FREQ_C4);
 
@@ -466,7 +467,7 @@ struct Tf4072VoiceCore : Module
 						{
 							return vcasX2[channel]->ProcessOversampled(filtered,
 								linearCv, exponentialCv, initialGain);
-						});
+						}, renderLowPass);
 					lowPass = rendered.lowPass;
 					vcaOutput = rendered.postProcessed;
 				}
@@ -491,7 +492,7 @@ struct Tf4072VoiceCore : Module
 						{
 							return vcasX4[channel]->ProcessOversampled(filtered,
 								linearCv, exponentialCv, initialGain);
-						});
+						}, renderLowPass);
 					lowPass = rendered.lowPass;
 					vcaOutput = rendered.postProcessed;
 				}

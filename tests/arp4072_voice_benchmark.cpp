@@ -12,7 +12,8 @@ using Clock = std::chrono::steady_clock;
 using Filter = tfdsp::Arp4072Filter<tfdsp::X4Resampler_Order7>;
 using Vca = tfdsp::Arp4019Vca<tfdsp::X4Resampler_Order7>;
 
-void Run(const double resonance, const double driveGain) {
+void Run(const double resonance, const double driveGain,
+         const bool renderLowPass = true) {
   constexpr double SampleRate = 48'000.0;
   constexpr std::size_t WarmupSamples = 48'000;
   constexpr std::size_t MeasuredSamples = 10 * 48'000;
@@ -33,7 +34,8 @@ void Run(const double resonance, const double driveGain) {
           [&](const double filtered, const double linearCv,
               const double exponentialCv) {
             return vca.ProcessOversampled(filtered, linearCv, exponentialCv);
-          });
+          },
+          renderLowPass);
       checksum += output.lowPass + output.postProcessed;
       solverIterations += static_cast<std::size_t>(filter.LastIterations());
     }
@@ -46,7 +48,8 @@ void Run(const double resonance, const double driveGain) {
       std::chrono::duration<double>(Clock::now() - start).count();
   const double audioSeconds = static_cast<double>(MeasuredSamples) / SampleRate;
   std::cout << std::fixed << std::setprecision(4)
-            << "resonance: " << resonance << ", drive: " << driveGain << '\n'
+            << "resonance: " << resonance << ", drive: " << driveGain
+            << ", low-pass output: " << (renderLowPass ? "on" : "off") << '\n'
             << "single-core real-time fraction: " << elapsed / audioSeconds
             << '\n'
             << "nanoseconds per sample: "
@@ -62,4 +65,5 @@ void Run(const double resonance, const double driveGain) {
 int main() {
   Run(0.f, 1.5);
   Run(0.5, 3.3);
+  Run(0.5, 3.3, false);
 }

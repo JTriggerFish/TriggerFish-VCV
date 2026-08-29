@@ -474,6 +474,9 @@ public:
 		_previousFolderSource = 0.0;
 		_folderSourceInitialized = false;
 		_controlsInitialized = false;
+		_externalInputInitialized = false;
+		_renderedOscillatorLastSample = true;
+		_renderedFoldedLastSample = true;
 	}
 
 	void SetFolderAntialiasing(bool enabled)
@@ -527,7 +530,8 @@ public:
 	 * path. Inputs and outputs use a normalized peak level of one.
 	 */
 	Output StepWithInput(double frequencyHz, double morph, double fold,
-		double symmetry, double externalInput, bool useExternalInput)
+		double symmetry, double externalInput, bool useExternalInput,
+		bool renderOscillator = true, bool renderFolded = true)
 	{
 		if (!std::isfinite(frequencyHz) || !std::isfinite(morph) ||
 			!std::isfinite(fold) || !std::isfinite(symmetry) ||
@@ -543,16 +547,23 @@ public:
 			_morphInterpolator->PrimeUpsample(morph);
 			_foldInterpolator->PrimeUpsample(fold);
 			_symmetryInterpolator->PrimeUpsample(symmetry);
-			_externalInputInterpolator->PrimeUpsample(externalInput);
 			_controlsInitialized = true;
 		}
+		if (useExternalInput && !_externalInputInitialized)
+		{
+			_externalInputInterpolator->PrimeUpsample(externalInput);
+			_externalInputInitialized = true;
+		}
+		else if (!useExternalInput)
+			_externalInputInitialized = false;
 
 		const auto frequencies = _frequencyInterpolator->Upsample(frequencyHz);
 		const auto morphs = _morphInterpolator->Upsample(morph);
 		const auto folds = _foldInterpolator->Upsample(fold);
 		const auto symmetries = _symmetryInterpolator->Upsample(symmetry);
-		const auto externalInputs =
-			_externalInputInterpolator->Upsample(externalInput);
+		Eigen::Array<double, OversamplingFactor, 1> externalInputs;
+		if (useExternalInput)
+			externalInputs = _externalInputInterpolator->Upsample(externalInput);
 		Eigen::Array<double, OversamplingFactor, 1> oscillatorOutput;
 		Eigen::Array<double, OversamplingFactor, 1> foldedOutput;
 		const double internalRate = _sampleRate * OversamplingFactor;
@@ -583,7 +594,8 @@ public:
 			_folderSourceInitialized = true;
 			const double foldedInput = drive * folderSource +
 				std::clamp(symmetries(index), -1.0, 1.0);
-			oscillatorOutput(index) = source;
+			if (renderOscillator)
+				oscillatorOutput(index) = source;
 			const double wet = makeup * (_useAdaa ?
 				_folder.Process(foldedInput, _character) :
 				Wavefolder::Transfer(foldedInput, _character));
@@ -591,13 +603,21 @@ public:
 			// same control that drives the cascade, avoiding residual character at
 			// the minimum setting. ADAA's dry term uses its matching half-sample
 			// average so intermediate blends remain phase coherent.
-			foldedOutput(index) = foldAmount <= 0.0 ? folderSource :
-				alignedDrySource + foldAmount * (wet - alignedDrySource);
+			if (renderFolded)
+				foldedOutput(index) = foldAmount <= 0.0 ? folderSource :
+					alignedDrySource + foldAmount * (wet - alignedDrySource);
 		}
+		if (renderOscillator && !_renderedOscillatorLastSample)
+			_oscillatorDecimator->Reset();
+		if (renderFolded && !_renderedFoldedLastSample)
+			_foldedDecimator->Reset();
 		Output result{
-			_oscillatorDecimator->Downsample(oscillatorOutput),
-			_foldedDecimator->Downsample(foldedOutput),
+			renderOscillator ?
+				_oscillatorDecimator->Downsample(oscillatorOutput) : 0.0,
+			renderFolded ? _foldedDecimator->Downsample(foldedOutput) : 0.0,
 		};
+		_renderedOscillatorLastSample = renderOscillator;
+		_renderedFoldedLastSample = renderFolded;
 		if (std::isfinite(result.oscillator) && std::isfinite(result.folded))
 			return result;
 		Reset();
@@ -616,6 +636,9 @@ private:
 	Wavefolder _folder;
 	double _sampleRate{48000.0};
 	bool _controlsInitialized{};
+	bool _externalInputInitialized{};
+	bool _renderedOscillatorLastSample{true};
+	bool _renderedFoldedLastSample{true};
 	bool _useAdaa{};
 	double _previousFolderSource{};
 	bool _folderSourceInitialized{};

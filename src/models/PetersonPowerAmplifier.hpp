@@ -712,6 +712,11 @@ private:
 			}
 			for (std::size_t row = column + 1; row < UnknownCount; ++row)
 			{
+				// Modified-nodal stamping leaves most entries structurally zero.
+				// Do not turn a sparse ten-node circuit into dense arithmetic until
+				// elimination actually creates a connection in this column.
+				if (matrix[row][column] == 0.0)
+					continue;
 				const double factor = matrix[row][column] /
 					matrix[column][column];
 				for (std::size_t entry = column + 1; entry < UnknownCount; ++entry)

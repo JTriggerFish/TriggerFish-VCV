@@ -3012,8 +3012,9 @@ public:
 		// Keep the physical lamp/LDR state running while Intensity is down. This
 		// costs one slow nonlinear evaluation but makes enabling Vibrato resume the
 		// continuously evolving oscillator instead of restarting its lamp envelope.
-		const double sine = std::sin(6.2831853071795864769 * vibratoPhase_);
-		const double lampTarget = std::tanh(1.6 * sine) / std::tanh(1.6);
+		const double sine = tfdsp::SinTwoPi(vibratoPhase_);
+		const double lampTarget = tfdsp::TanhPade76(1.6 * sine) /
+			tfdsp::TanhPade76(1.6);
 		vibratoLamp_ += vibratoLampCoefficient_ *
 			(lampTarget - vibratoLamp_);
 		const double outputGain = 2.0 * smoothedOutputVolume_;

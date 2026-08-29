@@ -109,6 +109,11 @@ if(BUILD_TESTING)
 	target_link_libraries(triggerfish_4072_voice_benchmark PRIVATE
 		triggerfish_dsp)
 
+	add_executable(triggerfish_wavefold_oscillator_benchmark EXCLUDE_FROM_ALL
+		tests/wavefold_oscillator_benchmark.cpp)
+	target_link_libraries(triggerfish_wavefold_oscillator_benchmark PRIVATE
+		triggerfish_dsp)
+
 	add_executable(triggerfish_peterson_amp_benchmark EXCLUDE_FROM_ALL
 		tests/peterson_amp_benchmark.cpp)
 	target_link_libraries(triggerfish_peterson_amp_benchmark PRIVATE

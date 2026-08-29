@@ -3383,9 +3383,13 @@ int main()
 		tfdsp::CreateX2Resampler_Chebychev7);
 	tfdsp::WavefoldOscillator<tfdsp::X2Resampler_Order7> detailedOscillator(
 		tfdsp::CreateX2Resampler_Chebychev7);
+	tfdsp::WavefoldOscillator<tfdsp::X2Resampler_Order7> foldedOnlyOscillator(
+		tfdsp::CreateX2Resampler_Chebychev7);
 	normalledOscillator.SetSampleRate(48000.0);
 	detailedOscillator.SetSampleRate(48000.0);
+	foldedOnlyOscillator.SetSampleRate(48000.0);
 	double normalledDifference = 0.0;
+	double omittedOutputDifference = 0.0;
 	bool externalPathFinite = true;
 	for (int i = 0; i < 10000; ++i)
 	{
@@ -3393,14 +3397,20 @@ int main()
 			440.0, 0.4, 0.7, -0.2);
 		const auto detailed = detailedOscillator.StepWithInput(
 			440.0, 0.4, 0.7, -0.2, 0.0, false);
+		const auto foldedOnly = foldedOnlyOscillator.StepWithInput(
+			440.0, 0.4, 0.7, -0.2, 0.0, false, false, true);
 		normalledDifference = std::max(normalledDifference,
 			std::abs(normalled - detailed.folded));
+		omittedOutputDifference = std::max(omittedOutputDifference,
+			std::abs(foldedOnly.folded - detailed.folded));
 		externalPathFinite = externalPathFinite &&
 			std::isfinite(detailed.oscillator) &&
 			std::isfinite(detailed.folded);
 	}
 	Check(normalledDifference < 1.0e-12,
 		"normalled folder input preserves the original oscillator path");
+	Check(omittedOutputDifference < 1.0e-12,
+		"omitting the unused raw output does not change the folded path");
 	Check(externalPathFinite,
 		"wavefold oscillator exposes finite oscillator and folder outputs");
 	for (int i = 0; i < 10000; ++i)
@@ -3585,6 +3595,25 @@ int main()
 	}
 	Check(maxExp2RelativeError < 6.0e-6,
 		"fast exp2 stays within its relative-error budget");
+	double maxTanPrewarpRelativeError = 0.0;
+	for (int i = 1; i <= 20000; ++i)
+	{
+		const double argument = 0.225 * 3.14159265358979323846 * i / 20000.0;
+		maxTanPrewarpRelativeError = std::max(maxTanPrewarpRelativeError,
+			std::abs(tfdsp::TanPrewarp(argument) / std::tan(argument) - 1.0));
+	}
+	Check(maxTanPrewarpRelativeError < 2.0e-8,
+		"fast filter prewarp stays within its relative-error budget");
+	double maxSinTwoPiAbsoluteError = 0.0;
+	for (int i = -20000; i <= 20000; ++i)
+	{
+		const double phase = 4.0 * i / 20000.0;
+		maxSinTwoPiAbsoluteError = std::max(maxSinTwoPiAbsoluteError,
+			std::abs(tfdsp::SinTwoPi(phase) - std::sin(
+				6.283185307179586476925286766559 * phase)));
+	}
+	Check(maxSinTwoPiAbsoluteError < 7.0e-10,
+		"fast control sine stays within its absolute-error budget");
 
 	Check(tfdsp::detune::linear(5.0, 0.0) == 5.0,
 		"linear detune preserves pitch exactly when drift is zero");
@@ -3884,6 +3913,44 @@ int main()
 		"ARP 4072 and 4019 share one finite oversampled signal path");
 	Check(std::abs(arpVoiceVcaPeak / arpVoiceFilterPeak - 1.0) < 0.04,
 		"ARP voice-core VCA preserves the filter level at unity control");
+	Arp4072 arpVoiceFilterWithoutLowPass(tfdsp::CreateX4Resampler_Cheby7);
+	Arp4072 arpVoiceFilterWithLowPass(tfdsp::CreateX4Resampler_Cheby7);
+	Arp4019 arpVoiceVcaWithoutLowPass(tfdsp::CreateX4Resampler_Cheby7);
+	Arp4019 arpVoiceVcaWithLowPass(tfdsp::CreateX4Resampler_Cheby7);
+	arpVoiceFilterWithoutLowPass.SetSampleRate(48000.0);
+	arpVoiceFilterWithLowPass.SetSampleRate(48000.0);
+	arpVoiceVcaWithoutLowPass.SetSampleRate(48000.0);
+	arpVoiceVcaWithLowPass.SetSampleRate(48000.0);
+	double omittedLowPassDifference = 0.0;
+	bool omittedLowPassZero = true;
+	for (int i = 0; i < 4096; ++i)
+	{
+		const double input = 0.1 * std::sin(2.0 *
+			3.14159265358979323846 * 330.0 * i / 48000.0);
+		const auto withoutLowPass =
+			arpVoiceFilterWithoutLowPass.StepWithPostProcessor(
+				input, 2400.0, 0.35, 2.0, 0.0, 10.0,
+				[&](double filtered, double linearCv, double exponentialCv)
+				{
+					return arpVoiceVcaWithoutLowPass.ProcessOversampled(
+						filtered, linearCv, exponentialCv);
+				}, false);
+		const auto withLowPass = arpVoiceFilterWithLowPass.StepWithPostProcessor(
+			input, 2400.0, 0.35, 2.0, 0.0, 10.0,
+			[&](double filtered, double linearCv, double exponentialCv)
+			{
+				return arpVoiceVcaWithLowPass.ProcessOversampled(
+					filtered, linearCv, exponentialCv);
+			});
+		omittedLowPassDifference = std::max(omittedLowPassDifference,
+			std::abs(static_cast<double>(withoutLowPass.postProcessed) -
+				static_cast<double>(withLowPass.postProcessed)));
+		omittedLowPassZero = omittedLowPassZero &&
+			withoutLowPass.lowPass == 0.0f;
+	}
+	Check(omittedLowPassZero, "omitted ARP low-pass output remains zero");
+	Check(omittedLowPassDifference < 1.0e-12,
+		"omitting the ARP low-pass decimator does not change its VCA path");
 
 	Arp4072X2 arpVoiceFilterX2(tfdsp::CreateX2Resampler_Chebychev7);
 	tfdsp::Arp4019Vca<tfdsp::X2Resampler_Order7> arpVoiceVcaX2(

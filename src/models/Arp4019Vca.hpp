@@ -191,6 +191,7 @@ public:
 
 private:
 	static constexpr double LogTen = 2.30258509299404568402;
+	static constexpr double Log2E = 1.4426950408889634074;
 	static constexpr double LinearCutoffKnee = 1.0e-6;
 	static constexpr double MaximumControlGain = 16.0;
 	static constexpr double OutputKneeVolts = 10.0;
@@ -224,11 +225,12 @@ private:
 		// current rather than clipped at this input.
 		const double gainExponent = LogTen * 0.5 *
 			(controlVolts - LinearUnityControlVolts);
-		if (gainExponent < -50.0)
-			return std::exp(-50.0);
-		if (gainExponent > 50.0)
-			return std::exp(50.0);
-		return std::exp(gainExponent);
+		const double boundedExponent = std::clamp(gainExponent, -50.0, 50.0);
+		// Rack's fifth-order exp2 approximation is bounded to 6e-6 relative
+		// error (about 0.000052 dB), far below component tolerance and control
+		// resolution, and avoids four libm calls per host sample in the 4x path.
+		return static_cast<double>(tfdsp::Exp2Taylor5(
+			static_cast<float>(boundedExponent * Log2E)));
 	}
 
 	static double LimitControlGain(double gain)
