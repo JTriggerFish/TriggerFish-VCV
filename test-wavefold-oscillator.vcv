@@ -92,7 +92,7 @@
       "id": 4,
       "plugin": "TriggerFish-Elements",
       "model": "TfWavefoldOscillator",
-      "version": "2.5.0",
+      "version": "2.5.1",
       "params": [
         {
           "id": 0,
@@ -172,7 +172,7 @@
       "id": 5,
       "plugin": "TriggerFish-Elements",
       "model": "TfVCA",
-      "version": "2.5.0",
+      "version": "2.5.1",
       "params": [
         {
           "id": 0,

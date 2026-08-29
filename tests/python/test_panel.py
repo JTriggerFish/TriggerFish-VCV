@@ -103,7 +103,16 @@ def test_prog_sequencer_has_three_valid_3u_widths_with_outlined_runtime_text():
     assert (
         "localRestartRequested.store(true, std::memory_order_release)" in module_source
     )
-    assert "masterPulseGrid.advance()" in module_source
+    assert "masterPulseGrid" not in module_source
+    assert "IsQuarterBoundaryOnClockEdge" in module_source
+    assert (
+        "localPlayback.applyClockEdge(clockSeen, transportPulseCount)" in module_source
+    )
+    assert "tftransport::ProcessEventOutputs(" in module_source
+    assert "localRunToggleRequests.exchange" in module_source
+    assert "const bool scoreRunning = transportRunning;" in module_source
+    assert "const bool outputEnabled = localPlayback.audible()" in module_source
+    assert '"MUTED / UNMUTE NEXT BEAT"' in module_source
     assert "RescaleSampleCount" in module_source
     assert "editorRunEnabled.store(true, std::memory_order_relaxed)" in module_source
     assert (
@@ -115,7 +124,8 @@ def test_prog_sequencer_has_three_valid_3u_widths_with_outlined_runtime_text():
     assert "cable->outputId, command" in module_source
     assert '"QUEUED - activates on the next quarter beat"' in module_source
     assert "TransportStatus { Waiting, Playing, Paused, Stopped }" in module_source
-    assert 'TransportStatus::Stopped ? "STOP"' in module_source
+    assert "transport == TfProgSequencer::TransportStatus::Stopped" in module_source
+    assert 'name = "STOP"' in module_source
     assert (
         "transportStatus.load(std::memory_order_relaxed) !=\n"
         "          TransportStatus::Stopped" in module_source

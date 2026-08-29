@@ -89,7 +89,8 @@ The essential live controls are:
 - Ctrl+`.` evaluates the complete document while preserving playback phase;
 - Ctrl+Shift+`.` evaluates the complete document and restarts the arrangement
   on the next quarter beat;
-- Ctrl+Space pauses or resumes the module at its current position; and
+- Ctrl+Space mutes the module immediately while its score keeps running, or
+  queues its unmute for the next shared quarter beat; and
 - Ctrl+R restarts only this module on the next shared quarter beat without
   recompiling its draft.
 
@@ -125,7 +126,7 @@ not alter the active program.
 | Ctrl+Shift+Enter | Evaluate the same source on the next scheduler step when phase can be preserved |
 | Ctrl+`.` | Evaluate the complete document and preserve the phase of sequences whose names remain active |
 | Ctrl+Shift+`.` | Evaluate the complete document and restart its arrangement from the beginning on the next quarter beat |
-| Ctrl+Space | Pause or resume this module locally and retain its current position |
+| Ctrl+Space | Mute this module immediately while its score keeps running, or unmute it on the next master quarter beat |
 | Ctrl+R | Restart only this module from its active arrangement on the next master quarter beat |
 | Ctrl+Shift+Space | Pause or play the TriggerFish Transport connected directly to RUN |
 | Ctrl+Shift+R | Restart the connected TriggerFish Transport from beat zero |
@@ -177,15 +178,22 @@ requested boundary.
 
 The local transport starts enabled. It is combined with the RUN input, so both
 must permit playback. The RUN jack is normalled high, and an unpatched module
-therefore follows the local transport. A connected RUN voltage below 1 V pauses
-playback: Gate, Trigger, and Accent go low while pitch, CV values, sequence
-position, clock period, slides, and lane phases are retained. Raising RUN
-continues from that position. RESET is the separate operation that returns the
-arrangement and all lanes to their beginnings. A shared RESET also clears a
-local Ctrl+Space pause, so a Transport Restart reliably brings every connected
-sequencer back into playback. Ctrl+R instead leaves the shared Transport and
-the other sequencers untouched; an independently tracked 24-PPQN grid queues
-that local restart on the next true master quarter-note boundary.
+therefore follows the local transport. Ctrl+Space mutes locally and
+immediately: Gate, Trigger, and Accent go low, but the score, note and lane
+cursors, random state, slides, CV envelopes, and graphical beat indicators keep
+following the shared Clock. Pressing Ctrl+Space again queues unmute on the next
+true master quarter-note boundary; another press before the boundary cancels
+the queued resume. This keeps the module in musical phase with its siblings
+throughout the mute. The status strip turns red and reads `MUTED`; a queued
+unmute turns it amber and reads `MUTED / UNMUTE NEXT BEAT`, while the sequence
+cursor continues to show the current phase. A connected RUN voltage below 1 V
+remains a genuine score pause, and raising it continues from the retained
+position. RESET is the separate operation that returns the arrangement and all
+lanes to their beginnings. A shared RESET also clears a local Ctrl+Space mute or queued resume,
+so a Transport Restart reliably brings every connected sequencer back into
+playback. Ctrl+R instead leaves the shared Transport and the other sequencers
+untouched; it uses the sequencer's current musical clock phase to apply that
+local restart on the next quarter-note boundary.
 
 The transport shortcuts leave the program source unchanged. A connected
 Transport command is handed to the Transport's audio processing through an

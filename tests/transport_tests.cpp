@@ -78,6 +78,11 @@ int main() {
             std::abs(tftransport::BeatAtPulse(6) - 0.25) < 1e-12 &&
             tftransport::BeatPeriodFromPulseSamples(2000) == 48000.0,
         "sender and receiver share one fixed 24 PPQN timebase");
+  check(tftransport::IsQuarterBoundaryOnClockEdge(false, 0) &&
+            !tftransport::IsQuarterBoundaryOnClockEdge(true, 0) &&
+            !tftransport::IsQuarterBoundaryOnClockEdge(true, 22) &&
+            tftransport::IsQuarterBoundaryOnClockEdge(true, 23),
+        "local actions use the receiver's own next musical pulse boundary");
   check(tftransport::RescaleSampleCount(1000, 48000.0, 96000.0) == 2000 &&
             tftransport::RescaleSampleCount(1000, 96000.0, 48000.0) == 500 &&
             tftransport::RescaleSampleCount(0, 48000.0, 96000.0) == 0,
@@ -98,16 +103,72 @@ int main() {
             receiverPeriodKnown && receiverPeriodSamples == 30000.0,
         "a discontinuity preserves an already established period");
 
-  tftransport::PulseGrid grid;
-  check(grid.advance() && grid.seen() && grid.pulse() == 0,
-        "the first transport pulse establishes a quarter-note boundary");
-  for (int pulse = 1; pulse < tftransport::PulsesPerQuarterNote; ++pulse)
-    check(!grid.advance(), "intermediate transport pulses are not quarters");
-  check(grid.advance() && grid.pulse() == tftransport::PulsesPerQuarterNote,
-        "the independent pulse grid finds the next quarter-note boundary");
-  grid.reset();
-  check(grid.advance() && grid.pulse() == 0,
-        "reset realigns the independent pulse grid to beat zero");
+  tftransport::QuantizedLocalPlayback localPlayback;
+  check(localPlayback.audible() && !localPlayback.resumeQueued(),
+        "local playback starts enabled with no queued resume");
+  check(localPlayback.toggle() ==
+                tftransport::QuantizedLocalPlayback::ToggleResult::Muted &&
+            !localPlayback.audible() && !localPlayback.resumeQueued(),
+        "local pause takes effect immediately");
+  check(localPlayback.toggle() ==
+                tftransport::QuantizedLocalPlayback::ToggleResult::ResumeQueued &&
+            !localPlayback.audible() && localPlayback.resumeQueued(),
+        "local play queues resume without enabling between beats");
+  check(localPlayback.applyQuarterBoundary() && localPlayback.audible() &&
+            !localPlayback.resumeQueued(),
+        "the next master quarter boundary applies a queued local resume");
+  localPlayback.toggle();
+  localPlayback.toggle();
+  check(localPlayback.toggle() ==
+                tftransport::QuantizedLocalPlayback::ToggleResult::ResumeCanceled &&
+            !localPlayback.audible() && !localPlayback.resumeQueued() &&
+            !localPlayback.applyQuarterBoundary(),
+        "a second local play request cancels a queued resume");
+  localPlayback.reset();
+  check(localPlayback.audible() && !localPlayback.resumeQueued(),
+        "reset clears local pause and pending resume state");
+
+  tftransport::QuantizedLocalPlayback phaseLockedPlayback;
+  phaseLockedPlayback.toggle();
+  phaseLockedPlayback.toggle();
+  for (std::int64_t pulse = 17; pulse < 23; ++pulse) {
+    phaseLockedPlayback.applyClockEdge(true, pulse);
+  }
+  check(!phaseLockedPlayback.audible() &&
+            phaseLockedPlayback.applyClockEdge(true, 23) &&
+            phaseLockedPlayback.audible(),
+        "queued unmute ignores an unrelated pulse-grid origin and waits for "
+        "the receiver's pulse 24");
+
+  int triggerFrames = 2;
+  const auto mutedOutputs = tftransport::ProcessEventOutputs(
+      false, true, 8.f, [&triggerFrames] {
+        if (triggerFrames <= 0)
+          return false;
+        --triggerFrames;
+        return true;
+      });
+  check(mutedOutputs.gate == 0.f && mutedOutputs.trigger == 0.f &&
+            mutedOutputs.accent == 0.f && triggerFrames == 1,
+        "local mute suppresses every event output while consuming trigger "
+        "time");
+  tftransport::ProcessEventOutputs(
+      false, true, 8.f, [&triggerFrames] {
+        if (triggerFrames <= 0)
+          return false;
+        --triggerFrames;
+        return true;
+      });
+  const auto resumedOutputs = tftransport::ProcessEventOutputs(
+      true, true, 8.f, [&triggerFrames] {
+        if (triggerFrames <= 0)
+          return false;
+        --triggerFrames;
+        return true;
+      });
+  check(resumedOutputs.gate == 10.f && resumedOutputs.trigger == 0.f &&
+            resumedOutputs.accent == 8.f,
+        "unmute cannot expose a trigger pulse that elapsed while muted");
 
   tftransport::RunSynchronizedClockEdge synchronizedEdge;
   check(!synchronizedEdge.process(true, true, false) &&

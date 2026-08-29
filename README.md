@@ -4,7 +4,7 @@ Circuit-modelled sound generators and processors, plus pitch utilities for VCV R
 
 [![CI](https://github.com/JTriggerFish/TriggerFish-VCV/actions/workflows/ci.yml/badge.svg)](https://github.com/JTriggerFish/TriggerFish-VCV/actions/workflows/ci.yml)
 
-[Release notes for 2.5.0](docs/releases/2.5.0.md)
+[Release notes for 2.5.1](docs/releases/2.5.1.md)
 
 <table>
   <tr>
@@ -560,8 +560,10 @@ evaluates the top-level statement containing the selection or current line on
 the next quarter beat. Ctrl+Shift+Enter evaluates the same source on the next
 scheduler step when playback phase is compatible.
 Ctrl+Shift+`.` compiles the document and restarts it on the next quarter beat;
-Ctrl+Space toggles local transport and Ctrl+R restarts only this sequencer on
-the next shared quarter beat. With RUN connected directly to a
+Ctrl+Space mutes local event outputs while its score and editor cursors keep
+running, then queues unmute for the next shared quarter beat. The status strip
+shows the mute and queued-unmute states while the cursor keeps moving. Ctrl+R
+restarts only this sequencer on that grid. With RUN connected directly to a
 TriggerFish Transport, Ctrl+Shift+Space pauses or plays the shared Transport,
 Ctrl+Shift+R restarts it, and Ctrl+Shift+Backspace stops it. Ctrl+`/` toggles
 line comments and Ctrl+D duplicates the current line or selection without

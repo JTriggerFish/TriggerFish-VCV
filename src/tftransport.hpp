@@ -27,6 +27,16 @@ inline constexpr double BeatAtPulse(std::int64_t pulse) noexcept {
   return static_cast<double>(pulse) * BeatsPerPulse;
 }
 
+// Predict whether the clock edge currently being processed is a quarter-note
+// boundary in the receiver's own musical timeline. Before the first observed
+// edge, that edge establishes beat zero; afterwards currentPulse is the most
+// recently processed pulse.
+inline constexpr bool
+IsQuarterBoundaryOnClockEdge(bool clockSeen,
+                             std::int64_t currentPulse) noexcept {
+  return !clockSeen || IsQuarterNotePulse(currentPulse + 1);
+}
+
 inline constexpr double
 BeatPeriodFromPulseSamples(std::int64_t samples) noexcept {
   return static_cast<double>(samples) * PulsesPerQuarterNote;
@@ -66,33 +76,67 @@ inline bool UpdateBeatPeriodEstimate(std::int64_t pulseIntervalSamples,
   return true;
 }
 
-// Tracks the absolute 24-PPQN grid independently of a sequencer's local
-// pause state. This lets a locally paused sequencer re-enter on a real master
-// quarter-note boundary instead of guessing from the next arbitrary pulse.
-class PulseGrid {
+// Local mute is immediate, but local resume waits for a known master quarter
+// boundary. The sequencer's score keeps following the shared clock while
+// muted, so its arrangement and lane cursors remain synchronized and visible.
+class QuantizedLocalPlayback {
 public:
+  enum class ToggleResult { Muted, ResumeQueued, ResumeCanceled };
+
   void reset() noexcept {
-    seen_ = false;
-    pulse_ = 0;
+    audible_ = true;
+    resumeQueued_ = false;
   }
 
-  bool advance() noexcept {
-    if (seen_)
-      ++pulse_;
-    else {
-      seen_ = true;
-      pulse_ = 0;
+  ToggleResult toggle() noexcept {
+    if (audible_) {
+      audible_ = false;
+      resumeQueued_ = false;
+      return ToggleResult::Muted;
     }
-    return IsQuarterNotePulse(pulse_);
+    resumeQueued_ = !resumeQueued_;
+    return resumeQueued_ ? ToggleResult::ResumeQueued
+                         : ToggleResult::ResumeCanceled;
   }
 
-  bool seen() const noexcept { return seen_; }
-  std::int64_t pulse() const noexcept { return pulse_; }
+  bool applyQuarterBoundary() noexcept {
+    if (!resumeQueued_)
+      return false;
+    audible_ = true;
+    resumeQueued_ = false;
+    return true;
+  }
+
+  bool applyClockEdge(bool clockSeen, std::int64_t currentPulse) noexcept {
+    return IsQuarterBoundaryOnClockEdge(clockSeen, currentPulse) &&
+           applyQuarterBoundary();
+  }
+
+  bool audible() const noexcept { return audible_; }
+  bool resumeQueued() const noexcept { return resumeQueued_; }
 
 private:
-  bool seen_ = false;
-  std::int64_t pulse_ = 0;
+  bool audible_ = true;
+  bool resumeQueued_ = false;
 };
+
+struct EventOutputVoltages {
+  float gate = 0.f;
+  float trigger = 0.f;
+  float accent = 0.f;
+};
+
+// Trigger processing is deliberately unconditional: muting hides a trigger
+// pulse but must not freeze it and leak the stale pulse on a later unmute.
+template <typename TriggerProcessor>
+inline EventOutputVoltages
+ProcessEventOutputs(bool enabled, bool gateHigh, float accent,
+                    TriggerProcessor processTrigger) noexcept {
+  const bool triggerHigh = processTrigger();
+  return {enabled && gateHigh ? 10.f : 0.f,
+          enabled && triggerHigh ? 10.f : 0.f,
+          enabled && gateHigh ? accent : 0.f};
+}
 
 // A transport module's RUN and CLOCK cables can become visible to different
 // downstream workers one engine frame apart. Rack's Schmitt trigger consumes

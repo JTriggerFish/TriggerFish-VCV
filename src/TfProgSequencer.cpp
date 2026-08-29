@@ -175,7 +175,10 @@ struct TfProgSequencer : Module {
   std::array<std::atomic<float>, tfseq::CvLaneCount> visibleCvValues{};
   std::atomic<int> panelWidthHp{30};
   std::atomic<tfui::HeatmapPalette> editorHeatmap{tfui::HeatmapPalette::Magma};
+  tftransport::QuantizedLocalPlayback localPlayback;
+  std::atomic<unsigned> localRunToggleRequests{0};
   std::atomic<bool> editorRunEnabled{true};
+  std::atomic<bool> editorResumeQueued{false};
   std::atomic<bool> localRestartRequested{false};
 
   dsp::SchmittTrigger clockTrigger;
@@ -221,7 +224,6 @@ struct TfProgSequencer : Module {
   bool skipNextPeriodMeasurement = false;
   std::int64_t samplesSinceClock = 0;
   std::int64_t transportPulseCount = 0;
-  tftransport::PulseGrid masterPulseGrid;
   tftransport::RunSynchronizedClockEdge runSynchronizedClockEdge;
   std::int64_t resetIgnoreSamples = 0;
   double periodSamples = 0.0;
@@ -437,6 +439,10 @@ struct TfProgSequencer : Module {
   }
 
   void resetTransport() noexcept {
+    localPlayback.reset();
+    localRunToggleRequests.store(0, std::memory_order_relaxed);
+    editorRunEnabled.store(true, std::memory_order_relaxed);
+    editorResumeQueued.store(false, std::memory_order_relaxed);
     runtime.reset();
     scheduledCount = 0;
     nextScheduleOrder = 0;
@@ -446,7 +452,6 @@ struct TfProgSequencer : Module {
     skipNextPeriodMeasurement = false;
     samplesSinceClock = 0;
     transportPulseCount = 0;
-    masterPulseGrid.reset();
     runSynchronizedClockEdge.reset();
     localRestartRequested.store(false, std::memory_order_relaxed);
     periodSamples = 0.0;
@@ -487,17 +492,15 @@ struct TfProgSequencer : Module {
   }
 
   // Restart only this arrangement while preserving the external clock-period
-  // estimate and the independent master pulse grid. The caller invokes this
-  // on a known master quarter boundary, so the first processed clock edge is
-  // the new local beat zero without disturbing any sibling sequencer.
+  // estimate. The caller invokes this on the arrangement's own known quarter
+  // boundary, so the current clock edge becomes local beat zero without
+  // disturbing any sibling sequencer.
   void restartArrangementAtClock() noexcept {
     const bool retainedPeriodKnown = periodKnown;
     const double retainedPeriodSamples = periodSamples;
-    const auto retainedMasterPulseGrid = masterPulseGrid;
     resetTransport();
     periodKnown = retainedPeriodKnown;
     periodSamples = retainedPeriodSamples;
-    masterPulseGrid = retainedMasterPulseGrid;
   }
 
   void activateProgram(std::uintptr_t pending, double beat) noexcept {
@@ -887,14 +890,23 @@ struct TfProgSequencer : Module {
     sampleRateHz = args.sampleRate;
     if (resetTrigger.process(inputs[RESET_INPUT].getVoltage(), 0.1f, 2.f)) {
       // A shared RESET is an explicit request to bring every sequencer back,
-      // so it also clears any module-local pause left by Ctrl+Space.
-      editorRunEnabled.store(true, std::memory_order_relaxed);
+      // so it also clears any module-local mute left by Ctrl+Space.
       resetTransport();
       resetIgnoreSamples =
           std::max<std::int64_t>(1, std::llround(args.sampleRate * 0.001));
     }
     if (resetIgnoreSamples > 0)
       --resetIgnoreSamples;
+
+    const unsigned localToggles =
+        localRunToggleRequests.exchange(0, std::memory_order_acq_rel);
+    if ((localToggles & 1U) != 0U) {
+      localPlayback.toggle();
+      editorRunEnabled.store(localPlayback.audible(),
+                             std::memory_order_relaxed);
+      editorResumeQueued.store(localPlayback.resumeQueued(),
+                               std::memory_order_relaxed);
+    }
 
     const bool transportRunning = !inputs[RUN_INPUT].isConnected() ||
                                   inputs[RUN_INPUT].getVoltage() >= 1.f;
@@ -906,25 +918,17 @@ struct TfProgSequencer : Module {
     const bool clockEdge = runSynchronizedClockEdge.process(
         detectedClockEdge, clockVoltage >= 0.1f, transportRunning);
 
-    // Keep following the common grid while this sequencer is locally paused.
-    // Otherwise it cannot know where the next master quarter begins when a
-    // local restart is requested.
-    const bool masterQuarterBoundary =
-        transportRunning && clockEdge && masterPulseGrid.advance();
-    if (masterQuarterBoundary &&
-        localRestartRequested.exchange(false, std::memory_order_acq_rel)) {
-      restartArrangementAtClock();
-      editorRunEnabled.store(true, std::memory_order_relaxed);
-    }
-    const bool running =
-        editorRunEnabled.load(std::memory_order_relaxed) && transportRunning;
+    // Local mute does not stop score time. The runtime keeps
+    // consuming the shared clock so editor cursors and later re-entry retain
+    // the same musical phase as every sibling sequencer.
+    const bool scoreRunning = transportRunning;
 
-    if (!running) {
+    if (!scoreRunning) {
       if (wasRunning) {
         clockLightPulse.reset();
         for (auto &voice : outputVoices)
           voice.triggerPulse.reset();
-        // Clock edges occurring during a local pause are not part of this
+        // Clock edges occurring while RUN is low are not part of this
         // arrangement's elapsed time. Retain the established tempo rather
         // than folding the paused interval into its next measurement.
         skipNextPeriodMeasurement = true;
@@ -935,7 +939,20 @@ struct TfProgSequencer : Module {
                               std::memory_order_relaxed);
       }
     } else if (clockEdge) {
-      bool beatBoundary = false;
+      bool beatBoundary = tftransport::IsQuarterBoundaryOnClockEdge(
+          clockSeen, transportPulseCount);
+      const bool localRestart =
+          beatBoundary &&
+          localRestartRequested.exchange(false, std::memory_order_acq_rel);
+      if (localRestart)
+        restartArrangementAtClock();
+      // Quantize re-entry against the exact receiver phase used to schedule
+      // notes. A local restart already clears the mute state itself.
+      if (!localRestart &&
+          localPlayback.applyClockEdge(clockSeen, transportPulseCount)) {
+        editorRunEnabled.store(true, std::memory_order_relaxed);
+        editorResumeQueued.store(false, std::memory_order_relaxed);
+      }
       if (clockSeen) {
         // A stopped external clock produces one very long apparent interval.
         // Retain the last valid period on the returning edge; folding the gap
@@ -947,7 +964,6 @@ struct TfProgSequencer : Module {
         skipNextPeriodMeasurement = false;
         ++transportPulseCount;
         pulseBeat = tftransport::BeatAtPulse(transportPulseCount);
-        beatBoundary = tftransport::IsQuarterNotePulse(transportPulseCount);
       } else {
         clockSeen = true;
         clockTimedOut = false;
@@ -992,7 +1008,7 @@ struct TfProgSequencer : Module {
                    static_cast<double>(samplesSinceClock) / periodSamples);
       phase += withinBeat;
     }
-    if (running && clockSeen) {
+    if (scoreRunning && clockSeen) {
       maybeSwapPendingAtSchedulerStep(phase);
       if (activeProgram)
         scheduleDueSteps(pulseBeat + tfseq::SchedulingLookaheadBeats(
@@ -1012,7 +1028,7 @@ struct TfProgSequencer : Module {
       }
     }
 
-    if (running && clockSeen)
+    if (scoreRunning && clockSeen)
       advanceActivationRuntime(phase);
 
     for (std::size_t index = 0; index < outputVoiceCount; ++index) {
@@ -1050,7 +1066,7 @@ struct TfProgSequencer : Module {
           amount = std::pow(amount, state.power);
         state.value = state.from + (state.target - state.from) * amount;
       }
-      if (running) {
+      if (scoreRunning) {
         const double beatDelta =
             periodKnown && periodSamples > 0.0 ? 1.0 / periodSamples : 0.0;
         const float envelope = state.envelope.process(
@@ -1065,18 +1081,20 @@ struct TfProgSequencer : Module {
     for (const auto output : {PITCH_OUTPUT, GATE_OUTPUT, TRIGGER_OUTPUT,
                               VELOCITY_OUTPUT, ACCENT_OUTPUT})
       outputs[output].setChannels(static_cast<int>(outputVoiceCount));
+    const bool outputEnabled = localPlayback.audible() && transportRunning;
     for (std::size_t index = 0; index < outputVoiceCount; ++index) {
       auto &voice = outputVoices[index];
       outputs[PITCH_OUTPUT].setVoltage(voice.pitch, static_cast<int>(index));
-      outputs[GATE_OUTPUT].setVoltage(running && voice.gateHigh ? 10.f : 0.f,
+      const auto eventOutputs = tftransport::ProcessEventOutputs(
+          outputEnabled, voice.gateHigh, voice.accent,
+          [&voice, &args] { return voice.triggerPulse.process(args.sampleTime); });
+      outputs[GATE_OUTPUT].setVoltage(eventOutputs.gate,
                                       static_cast<int>(index));
-      outputs[TRIGGER_OUTPUT].setVoltage(
-          running && voice.triggerPulse.process(args.sampleTime) ? 10.f : 0.f,
-          static_cast<int>(index));
+      outputs[TRIGGER_OUTPUT].setVoltage(eventOutputs.trigger,
+                                         static_cast<int>(index));
       outputs[VELOCITY_OUTPUT].setVoltage(voice.velocity,
                                           static_cast<int>(index));
-      outputs[ACCENT_OUTPUT].setVoltage(running && voice.gateHigh ? voice.accent
-                                                                  : 0.f,
+      outputs[ACCENT_OUTPUT].setVoltage(eventOutputs.accent,
                                         static_cast<int>(index));
     }
     constexpr std::array<int, tfseq::CvLaneCount> cvOutputIds{
@@ -1087,15 +1105,16 @@ struct TfProgSequencer : Module {
       visibleCvValues[index].store(cvOutputs[index].output,
                                    std::memory_order_relaxed);
     }
-    const bool transportActive = running && activeProgram;
-    const bool clockFlash = running && clockLightPulse.process(args.sampleTime);
+    const bool transportActive = outputEnabled && activeProgram;
+    const bool clockFlash =
+        scoreRunning && clockLightPulse.process(args.sampleTime);
     lights[RUN_LIGHT].setBrightness(
         tfui::transportLightBrightness(transportActive, clockFlash));
     visibleBeat.store(clockSeen ? phase - programStartBeat : 0.0,
                       std::memory_order_relaxed);
-    if (running && clockSeen)
+    if (scoreRunning && clockSeen)
       ++samplesSinceClock;
-    wasRunning = running;
+    wasRunning = scoreRunning;
   }
 };
 
@@ -2248,11 +2267,9 @@ struct TfSequenceEditor : app::LedDisplayTextField {
     if (module && (event.action == GLFW_PRESS || event.action == GLFW_REPEAT) &&
         event.isKeyCommand(GLFW_KEY_SPACE, RACK_MOD_CTRL)) {
       suppressShortcutSpace = true;
-      if (event.action == GLFW_PRESS) {
-        const bool enabled =
-            module->editorRunEnabled.load(std::memory_order_relaxed);
-        module->editorRunEnabled.store(!enabled, std::memory_order_relaxed);
-      }
+      if (event.action == GLFW_PRESS)
+        module->localRunToggleRequests.fetch_add(1,
+                                                std::memory_order_release);
       event.consume(this);
       return;
     }
@@ -2504,6 +2521,16 @@ struct TfSequenceStatus : Widget {
     return editorColor(palette, intensity);
   }
 
+  bool locallyMuted() const noexcept {
+    return module &&
+           !module->editorRunEnabled.load(std::memory_order_relaxed);
+  }
+
+  bool localResumeQueued() const noexcept {
+    return module &&
+           module->editorResumeQueued.load(std::memory_order_relaxed);
+  }
+
   std::string statusText() const {
     std::string status =
         module ? module->compileMessage : "PROG SEQUENCER BETA";
@@ -2511,11 +2538,16 @@ struct TfSequenceStatus : Widget {
       return status;
     const auto transport =
         module->transportStatus.load(std::memory_order_relaxed);
-    const char *name =
-        transport == TfProgSequencer::TransportStatus::Playing   ? "PLAY"
-        : transport == TfProgSequencer::TransportStatus::Paused  ? "PAUSE"
-        : transport == TfProgSequencer::TransportStatus::Stopped ? "STOP"
-                                                                 : "WAIT";
+    const char *name = "WAIT";
+    if (locallyMuted()) {
+      name = localResumeQueued() ? "MUTED / UNMUTE NEXT BEAT" : "MUTED";
+    } else if (transport == TfProgSequencer::TransportStatus::Playing) {
+      name = "PLAY";
+    } else if (transport == TfProgSequencer::TransportStatus::Paused) {
+      name = "PAUSE";
+    } else if (transport == TfProgSequencer::TransportStatus::Stopped) {
+      name = "STOP";
+    }
     if (status.rfind("READY", 0) == 0)
       status = "READY";
     else if (status.rfind("QUEUED", 0) == 0)
@@ -2560,7 +2592,12 @@ struct TfSequenceStatus : Widget {
       nvgScissor(args.vg, RECT_ARGS(args.clipBox));
       nvgBeginPath(args.vg);
       nvgRect(args.vg, 0.f, 0.f, box.size.x, box.size.y);
-      nvgFillColor(args.vg, heatmapColor(EditorIntensity::Background));
+      const bool muted = locallyMuted();
+      const bool resumeQueued = localResumeQueued();
+      nvgFillColor(args.vg,
+                   muted ? resumeQueued ? nvgRGB(58, 42, 8)
+                                        : nvgRGB(55, 10, 12)
+                         : heatmapColor(EditorIntensity::Background));
       nvgFill(args.vg);
       auto font = APP->window->loadFont(
           asset::system("res/fonts/ShareTechMono-Regular.ttf"));
@@ -2569,7 +2606,10 @@ struct TfSequenceStatus : Widget {
         nvgFontSize(args.vg, 10.f);
         nvgTextAlign(args.vg, NVG_ALIGN_LEFT | NVG_ALIGN_TOP);
         nvgTextLineHeight(args.vg, 1.05f);
-        nvgFillColor(args.vg, heatmapColor(EditorIntensity::Status));
+        nvgFillColor(args.vg,
+                     muted ? resumeQueued ? nvgRGB(255, 206, 90)
+                                          : nvgRGB(255, 145, 145)
+                           : heatmapColor(EditorIntensity::Status));
         const std::string status = statusText();
         const float textWidth = std::max(1.f, box.size.x - 8.f);
         requiredHeight = std::clamp(

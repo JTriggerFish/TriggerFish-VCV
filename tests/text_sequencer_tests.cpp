@@ -3,6 +3,7 @@
 #include "tfseq_envelope.hpp"
 #include "tfseq_parser.hpp"
 #include "tfseq_voicing.hpp"
+#include "tftransport.hpp"
 #include "tfui_animation.hpp"
 #include "tfui_colormap.hpp"
 
@@ -3006,6 +3007,123 @@ play bad
         "held pitch timelines reject attack articulation");
 }
 
+void localMutePreservesChordPhaseAndDrainsTriggers() {
+  const auto compiled = tfseq::Compile(R"(comp = rhythm {
+  subdiv 16n
+  events x_3 x ~!6 x_3 x ~!2
+}
+
+keys = sequence {
+  subdiv 2n
+  chords (C F A)_2 (C D G)_2 (B, D G)_2 (A, C F) (G, C E)
+  rhythm comp
+  gate .95 .8
+  velocity .72 .8
+}
+play keys
+)");
+  check(static_cast<bool>(compiled),
+        "local-mute chord fixture: " + compiled.diagnostic.message);
+  if (!compiled)
+    return;
+
+  tfseq::Runtime runtime;
+  runtime.setProgram(compiled.program.get());
+  tftransport::QuantizedLocalPlayback playback;
+  constexpr auto RhythmLane =
+      static_cast<std::size_t>(tfseq::CursorLane::Rhythm);
+  tfseq::SourceSpan cursorBeforeMute;
+  tfseq::SourceSpan cursorWhileMuted;
+  double nextStepBeat = 0.0;
+  double gateOffBeat = -1.0;
+  bool gateHigh = false;
+  bool clockSeen = false;
+  bool mutedAttackSeen = false;
+  bool reentryApplied = false;
+  bool reentryAttackAudible = false;
+  std::int64_t currentPulse = 0;
+  int triggerFrames = 0;
+
+  for (std::int64_t incomingPulse = 0; incomingPulse <= 96;
+       ++incomingPulse) {
+    if (incomingPulse == 63) {
+      check(playback.toggle() ==
+                tftransport::QuantizedLocalPlayback::ToggleResult::Muted,
+            "mute is applied between the beat-2.5 and beat-3.25 attacks");
+    }
+    if (incomingPulse == 82) {
+      check(playback.toggle() == tftransport::QuantizedLocalPlayback::
+                                         ToggleResult::ResumeQueued,
+            "resume is queued between the final upbeat and beat 4");
+    }
+
+    if (playback.applyClockEdge(clockSeen, currentPulse)) {
+      check(incomingPulse == 96 && triggerFrames == 0,
+            "re-entry waits for beat 4 and no muted trigger survives to it");
+      reentryApplied = true;
+    }
+    if (clockSeen)
+      ++currentPulse;
+    else {
+      clockSeen = true;
+      currentPulse = 0;
+    }
+    const double beat = tftransport::BeatAtPulse(currentPulse);
+
+    while (nextStepBeat <= beat + 1.e-9) {
+      const double eventBeat = nextStepBeat;
+      const auto events = runtime.next(eventBeat);
+      nextStepBeat += events.durationBeats;
+      if (events.count == 0)
+        continue;
+      const auto &event = events.events[0];
+      if (event.kind == tfseq::EventKind::Rest) {
+        gateHigh = false;
+        triggerFrames = 0;
+        continue;
+      }
+      gateHigh = event.gateFraction > 0.f;
+      gateOffBeat = eventBeat + event.spanBeats * event.gateFraction;
+      triggerFrames = 2;
+      const auto cursor = event.cursors[RhythmLane];
+      if (eventBeat < 2.625)
+        cursorBeforeMute = cursor;
+      if (std::abs(eventBeat - 3.25) < 1.e-9) {
+        cursorWhileMuted = cursor;
+        mutedAttackSeen = true;
+      }
+    }
+    if (gateHigh && beat >= gateOffBeat)
+      gateHigh = false;
+
+    const auto outputs = tftransport::ProcessEventOutputs(
+        playback.audible(), gateHigh, 8.f, [&triggerFrames] {
+          if (triggerFrames <= 0)
+            return false;
+          --triggerFrames;
+          return true;
+        });
+    if (incomingPulse >= 63 && incomingPulse < 96) {
+      check(outputs.gate == 0.f && outputs.trigger == 0.f &&
+                outputs.accent == 0.f,
+            "Gate, Trigger, and Accent remain silent throughout local mute");
+    }
+    if (incomingPulse == 96) {
+      reentryAttackAudible = outputs.gate == 10.f &&
+                             outputs.trigger == 10.f &&
+                             outputs.accent == 8.f;
+    }
+  }
+
+  check(mutedAttackSeen && cursorBeforeMute.valid() &&
+            cursorWhileMuted.valid() &&
+            (cursorBeforeMute.begin != cursorWhileMuted.begin ||
+             cursorBeforeMute.end != cursorWhileMuted.end),
+        "the rhythm cursor and score advance through a locally muted attack");
+  check(nextStepBeat > 4.0 && reentryApplied && reentryAttackAudible,
+        "the next real chord attack re-enters exactly on the musical beat");
+}
+
 void reusableRhythmComposesWithNotesChordsAndSlides() {
   for (const char *reserved : {"x", "_", "x_2", "x__"}) {
     const auto ambiguous = tfseq::Compile(std::string(reserved) + R"( = rhythm {
@@ -3738,6 +3856,7 @@ int main() {
   musicalNoteValuesAreSharedAcrossTimeControls();
   unsafeNumericInputsAreDiagnostics();
   openKeyboardCompingMotifIsPreciselyTimed();
+  localMutePreservesChordPhaseAndDrainsTriggers();
   reusableRhythmComposesWithNotesChordsAndSlides();
   structuralHotSwapRestartsOnlyTheCurrentTerm();
   jazzVoicingRecipesAndVoiceLeadingAreDeterministic();
