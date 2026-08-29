@@ -9,6 +9,10 @@ permissions:
 
 env:
   RACK_SDK_VERSION: "2.6.6"
+  # Swift 5.7's libc++ 14 is the public source counterpart closest to the
+  # libc++ headers in VCV's required MacOSX12.3 SDK. Keep this immutable so
+  # newer hosted-runner headers cannot hide old deployment-target failures.
+  VCV_LIBCXX_COMMIT: "3dade082a9b1989207a7fa7f3975868485d16a49"
 
 jobs:
   plugin-build-cross:
@@ -57,6 +61,60 @@ jobs:
           make RACK_DIR="$GITHUB_WORKSPACE/Rack-SDK" cleandep
           make RACK_DIR="$GITHUB_WORKSPACE/Rack-SDK" dep
           make RACK_DIR="$GITHUB_WORKSPACE/Rack-SDK" -j2 dist
+
+  plugin-build-mac-libcxx-compat:
+    name: Plugin build (VCV macOS 12.3 libc++ compatibility)
+    runs-on: macos-15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Fetch pinned Swift 5.7 libc++ headers
+        run: |
+          libcxx_root="$RUNNER_TEMP/swift-libcxx"
+          git init "$libcxx_root"
+          git -C "$libcxx_root" remote add origin https://github.com/swiftlang/llvm-project.git
+          git -C "$libcxx_root" sparse-checkout init --cone
+          git -C "$libcxx_root" sparse-checkout set libcxx/include
+          git -C "$libcxx_root" fetch --depth=1 origin "$VCV_LIBCXX_COMMIT"
+          git -C "$libcxx_root" checkout --detach FETCH_HEAD
+          grep -q '#define _LIBCPP_VERSION 14000' "$libcxx_root/libcxx/include/__config"
+          echo "VCV_LIBCXX_INCLUDE=$libcxx_root/libcxx/include" >> "$GITHUB_ENV"
+      - name: Prove the compatibility headers enforce the old target
+        run: |
+          cat > "$RUNNER_TEMP/libcxx-any-probe.cpp" <<'EOF'
+          #include <any>
+          int main() {
+            std::any value = 1;
+            return std::any_cast<int>(value);
+          }
+          EOF
+          cat > "$RUNNER_TEMP/libcxx-variant-probe.cpp" <<'EOF'
+          #include <variant>
+          int main() {
+            std::variant<int, float> choice = 1;
+            return std::visit([](auto selected) { return int(selected); }, choice);
+          }
+          EOF
+          for probe in libcxx-any-probe.cpp libcxx-variant-probe.cpp; do
+            if xcrun clang++ -std=c++17 -fsyntax-only -mmacosx-version-min=10.9 \
+                -nostdinc++ -isystem "$VCV_LIBCXX_INCLUDE" \
+                "$RUNNER_TEMP/$probe"; then
+              echo "Pinned libc++ headers did not reject $probe on macOS 10.9" >&2
+              exit 1
+            fi
+          done
+      - name: Download Rack SDK
+        run: |
+          curl --fail --location \
+            "https://vcvrack.com/downloads/Rack-SDK-${RACK_SDK_VERSION}-mac-arm64.zip" \
+            --output rack-sdk.zip
+          unzip -q rack-sdk.zip
+      - name: Build with VCV-compatible libc++ headers
+        run: |
+          make RACK_DIR="$GITHUB_WORKSPACE/Rack-SDK" cleandep
+          make RACK_DIR="$GITHUB_WORKSPACE/Rack-SDK" dep
+          make RACK_DIR="$GITHUB_WORKSPACE/Rack-SDK" -j2 \
+            EXTRA_CXXFLAGS="-nostdinc++ -isystem $VCV_LIBCXX_INCLUDE"
 
   dsp-tests:
     name: DSP tests (${{ matrix.any_backend }})

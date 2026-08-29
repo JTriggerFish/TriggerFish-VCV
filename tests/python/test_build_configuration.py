@@ -51,3 +51,13 @@ def test_macos_10_9_sources_avoid_unavailable_libcxx_entry_points():
     assert not offenders, "macOS 10.9-incompatible libc++ calls:\n" + "\n".join(
         offenders
     )
+
+
+def test_ci_builds_with_pinned_vcv_compatible_libcxx_headers():
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    assert 'VCV_LIBCXX_COMMIT: "3dade082a9b1989207a7fa7f3975868485d16a49"' in workflow
+    assert "plugin-build-mac-libcxx-compat:" in workflow
+    assert "-mmacosx-version-min=10.9" in workflow
+    assert '-nostdinc++ -isystem "$VCV_LIBCXX_INCLUDE"' in workflow
+    assert "std::any_cast<int>" in workflow
+    assert "std::visit" in workflow

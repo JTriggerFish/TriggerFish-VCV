@@ -139,6 +139,22 @@ or required for the automated tests.
 The GitHub Actions workflow performs both a Linux Rack SDK package build and
 the standalone tests, so Linux compatibility is checked continuously.
 
+## VCV macOS compatibility
+
+Rack's plugin build targets macOS 10.9, while VCV's official cross-toolchain
+uses libc++ headers from the MacOSX12.3 SDK. Some otherwise valid C++17 APIs are
+annotated unavailable for that deployment target. CI therefore builds the full
+plugin with pinned Swift 5.7/libc++ 14 headers, the closest public source
+counterpart to those SDK headers, and first proves that the compatibility
+harness rejects `std::any_cast` and `std::visit` at the 10.9 target.
+
+This hosted check covers old-libc++ source and availability compatibility. An
+exact release-toolchain check additionally requires a self-hosted Linux runner
+with VCV's `rack-plugin-toolchain` and a `MacOSX12.3.sdk.tar.xz` generated from
+Xcode 14.0.1, because the Apple SDK cannot be committed to this public
+repository. Configure that runner with the labels `self-hosted`, `linux`,
+`x64`, and `vcv-toolchain` before making its release check required.
+
 ## Smoke-test patches
 
 [test-slop4.vcv](test-slop4.vcv) is a MIDI-controlled, enveloped Slop4 voice
