@@ -803,7 +803,7 @@ Runtime::replaceProgram(const CompiledProgram *program, double beat) noexcept {
   const auto nextStateCount = program ? program->stateWorkspace.size() : 0;
   if (nextStates)
     std::fill_n(nextStates, nextStateCount, SequencePlaybackState{});
-  if (program && previousProgram) {
+  if (program && previousProgram && nextStates && previousStates) {
     const auto &nextSequences = program->semantic().sequences;
     const auto &previousSequences = previousProgram->semantic().sequences;
     const auto &nextOrder = program->stateTransferOrder;
@@ -973,10 +973,10 @@ const Sequence *Runtime::currentSequence(SourceSpan &partSpan,
 
 StepEvents Runtime::next(double beat) noexcept {
   StepEvents output;
-  if (program_) {
-    output.events = program_->stepWorkspace.data();
-    output.capacity = program_->stepWorkspace.size();
-  }
+  if (!program_)
+    return output;
+  output.events = program_->stepWorkspace.data();
+  output.capacity = program_->stepWorkspace.size();
   const auto &semantic = program_->semantic();
   const auto seed = semantic.seed;
   SourceSpan partSpan;

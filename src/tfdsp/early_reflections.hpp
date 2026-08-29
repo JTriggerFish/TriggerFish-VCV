@@ -272,11 +272,14 @@ EarlyReflectionImageCountThroughOrder(const std::size_t maximumOrder) noexcept {
                                  2 * maximumOrder;
 }
 
-inline EarlyReflectionRoom MakeEarlyReflectionRoom(
-    const double space,
-    const EarlyReflectionRoomFamily family = EarlyReflectionRoomFamily::Room) {
-  if (!std::isfinite(space) || space < 0.0 || space > 1.0)
-    throw std::invalid_argument("Space must be in [0, 1]");
+namespace detail {
+
+// These constructors are shared with the realtime room-reverb control path.
+// Their callers must provide the bounded inputs documented by the checked
+// public wrappers below; keeping validation out of these functions makes that
+// realtime path structurally non-throwing.
+inline EarlyReflectionRoom MakeEarlyReflectionRoomFromValidatedInputs(
+    const double space, const EarlyReflectionRoomFamily family) noexcept {
   EarlyReflectionVector minimum{};
   EarlyReflectionVector maximum{};
   switch (family) {
@@ -303,6 +306,32 @@ inline EarlyReflectionRoom MakeEarlyReflectionRoom(
   for (std::size_t axis = 0; axis < 3; ++axis)
     room.listenerPositionMetres[axis] =
         listenerFraction[axis] * room.dimensionsMetres[axis];
+  return room;
+}
+
+inline EarlyReflectionSource
+MakeEarlyReflectionSourceFromValidatedInputs(
+    const EarlyReflectionRoom &room,
+    const EarlyReflectionVector &normalizedPosition) noexcept {
+  EarlyReflectionSource source;
+  for (std::size_t axis = 0; axis < 3; ++axis) {
+    constexpr double margin = 0.001;
+    const double position =
+        std::clamp(normalizedPosition[axis], margin, 1.0 - margin);
+    source.positionMetres[axis] = position * room.dimensionsMetres[axis];
+  }
+  return source;
+}
+
+} // namespace detail
+
+inline EarlyReflectionRoom MakeEarlyReflectionRoom(
+    const double space,
+    const EarlyReflectionRoomFamily family = EarlyReflectionRoomFamily::Room) {
+  if (!std::isfinite(space) || space < 0.0 || space > 1.0)
+    throw std::invalid_argument("Space must be in [0, 1]");
+  auto room =
+      detail::MakeEarlyReflectionRoomFromValidatedInputs(space, family);
   room.Validate();
   return room;
 }
@@ -311,18 +340,14 @@ inline EarlyReflectionSource
 MakeEarlyReflectionSource(const EarlyReflectionRoom &room,
                           const EarlyReflectionVector &normalizedPosition) {
   room.Validate();
-  EarlyReflectionSource source;
   for (std::size_t axis = 0; axis < 3; ++axis) {
     if (!std::isfinite(normalizedPosition[axis]) ||
         normalizedPosition[axis] < 0.0 || normalizedPosition[axis] > 1.0)
       throw std::invalid_argument(
           "normalized source coordinates must lie in [0, 1]");
-    constexpr double margin = 0.001;
-    const double position =
-        std::clamp(normalizedPosition[axis], margin, 1.0 - margin);
-    source.positionMetres[axis] = position * room.dimensionsMetres[axis];
   }
-  return source;
+  return detail::MakeEarlyReflectionSourceFromValidatedInputs(
+      room, normalizedPosition);
 }
 
 inline std::vector<EarlyReflectionSource>
@@ -348,10 +373,10 @@ MakeDefaultEarlyReflectionSources(const EarlyReflectionRoom &room,
   return sources;
 }
 
-inline EarlyReflectionMaterials
-MakeEarlyReflectionMaterials(const double damping) {
-  if (!std::isfinite(damping) || damping < 0.0 || damping > 1.0)
-    throw std::invalid_argument("Damping must be in [0, 1]");
+namespace detail {
+
+inline EarlyReflectionMaterials MakeEarlyReflectionMaterialsFromValidatedInput(
+    const double damping) noexcept {
   constexpr std::array<std::array<double, EarlyReflectionBandCount>,
                        EarlyReflectionSurfaceCount>
       bright{{{{0.97, 0.94, 0.88, 0.78}},
@@ -375,6 +400,15 @@ MakeEarlyReflectionMaterials(const double damping) {
                              std::log(bright[surface][band])));
   materials.airAbsorptionDbPerMetre = {0.0, 0.001, 0.006, 0.020};
   return materials;
+}
+
+} // namespace detail
+
+inline EarlyReflectionMaterials
+MakeEarlyReflectionMaterials(const double damping) {
+  if (!std::isfinite(damping) || damping < 0.0 || damping > 1.0)
+    throw std::invalid_argument("Damping must be in [0, 1]");
+  return detail::MakeEarlyReflectionMaterialsFromValidatedInput(damping);
 }
 
 inline double

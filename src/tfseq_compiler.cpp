@@ -459,7 +459,6 @@ bool ParseJazzChord(const Token &token,
   while (cursor < main.size()) {
     if (main.compare(cursor, 3, "alt") == 0 && cursor + 3 == main.size()) {
       altered = true;
-      cursor += 3;
       break;
     }
     Alteration alteration;
@@ -3519,8 +3518,8 @@ CompileResult CompileDocument(const syntax::Document &document) {
       std::unordered_map<std::size_t, std::size_t> transformedSequences;
       for (std::size_t partIndex = 0; partIndex < parts.size(); ++partIndex) {
         const auto baseSequence = parts[partIndex].sequence;
-        if (const auto transformed = transformedSequences.find(baseSequence);
-            transformed != transformedSequences.end()) {
+        const auto transformed = transformedSequences.find(baseSequence);
+        if (transformed != transformedSequences.end()) {
           parts[partIndex].sequence = transformed->second;
           continue;
         }
@@ -3549,11 +3548,13 @@ CompileResult CompileDocument(const syntax::Document &document) {
 
   resolveName = [&](const std::string &name, const SourceSpan &span,
                     std::vector<ArrangementPart> &output) {
-    if (const auto sequence = names.find(name); sequence != names.end()) {
+    const auto sequence = names.find(name);
+    if (sequence != names.end()) {
       output = {{sequence->second, 1, span}};
       return true;
     }
-    if (const auto cached = resolved.find(name); cached != resolved.end()) {
+    const auto cached = resolved.find(name);
+    if (cached != resolved.end()) {
       output = cached->second;
       return true;
     }

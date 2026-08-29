@@ -581,7 +581,9 @@ struct TfRoomPlanWidget : widget::OpaqueWidget {
         text = "Room plan\nDrag a source or the listener marker.";
       }
       Tooltip::step();
-      box.pos = plan->getAbsoluteOffset(Vec(plan->box.size.x, 0.f)).round();
+      if (plan)
+        box.pos =
+            plan->getAbsoluteOffset(Vec(plan->box.size.x, 0.f)).round();
       if (parent)
         box = box.nudge(parent->box.zeroPos());
     }

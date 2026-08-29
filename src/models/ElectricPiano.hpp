@@ -2538,7 +2538,10 @@ private:
 			}
 			const double rms = std::sqrt(energy /
 				static_cast<double>(PhaseCosines.size()));
-			logarithmicRms += std::log(std::max(1.0e-12, rms));
+			// The explicit branch both handles a hypothetical NaN and makes the
+			// strictly-positive logarithm precondition visible to static analysis.
+			const double positiveRms = rms > 1.0e-12 ? rms : 1.0e-12;
+			logarithmicRms += std::log(positiveRms);
 		}
 		return std::exp(logarithmicRms /
 			static_cast<double>(ExcursionScales.size()));

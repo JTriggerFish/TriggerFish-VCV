@@ -520,6 +520,31 @@ play song
         "arrangement repeats are not constrained by a small musical ceiling");
 }
 
+void runtimeWithoutAProgramIsSafelySilent() {
+  tfseq::Runtime runtime;
+  const auto initial = runtime.next(0.0);
+  check(initial.events == nullptr && initial.capacity == 0 &&
+            initial.count == 0 && !initial.overflowed,
+        "a default runtime returns an empty step without dereferencing a program");
+
+  const auto compiled = tfseq::Compile(R"(a = sequence {
+  notes 1
+}
+play a
+)");
+  check(static_cast<bool>(compiled), compiled.diagnostic.message);
+  if (!compiled)
+    return;
+  runtime.setProgram(compiled.program.get());
+  check(runtime.next(0.0).count == 1,
+        "the null-program guard does not affect normal playback");
+  runtime.setProgram(nullptr);
+  const auto cleared = runtime.next(1.0);
+  check(cleared.events == nullptr && cleared.capacity == 0 &&
+            cleared.count == 0 && !cleared.overflowed,
+        "clearing a runtime program makes subsequent steps safely silent");
+}
+
 void compileAndCycleIndependentLanes() {
   const std::string source = R"(riff = sequence {
   tonic C@4
@@ -3813,6 +3838,7 @@ int main() {
   lineCommentsCanTruncatePatterns();
   selectionEvaluationReplacesOnlyContainingStatements();
   explicitSingleRepeatRemainsAnArrangement();
+  runtimeWithoutAProgramIsSafelySilent();
   compileAndCycleIndependentLanes();
   parseFirstClassArticulation();
   namedGateAndDynamicsArticulations();

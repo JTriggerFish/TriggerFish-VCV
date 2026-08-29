@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 
-project(TriggerFishDSP VERSION 2.5.1 LANGUAGES CXX)
+project(TriggerFishDSP VERSION 2.5.2 LANGUAGES CXX)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 17)

@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
+#include <limits>
 #include <string>
 #include <utility>
 #include <vector>
@@ -40,6 +41,28 @@ void TestRoomGeometryDerivesHeightFromSizeAndUsesAspectAndListener() {
                        shaped.dimensionsMetres[axis] -
                    controls.listener[axis]) < 1.e-6,
           "listener controls must map to normalized room coordinates");
+}
+
+void TestRealtimeSceneConstructionSanitizesNonFiniteControls() {
+  tfdsp::RoomReverb reverb;
+  reverb.SetSampleRate(SampleRate);
+  tfdsp::RoomReverbControls controls;
+  controls.space = std::numeric_limits<float>::quiet_NaN();
+  controls.aspect = std::numeric_limits<float>::infinity();
+  controls.damping = -std::numeric_limits<float>::infinity();
+  controls.listener = {std::numeric_limits<float>::quiet_NaN(),
+                       std::numeric_limits<float>::infinity(),
+                       -std::numeric_limits<float>::infinity()};
+  tfdsp::RoomReverb::SourcePositions positions{};
+  positions[0] = {std::numeric_limits<float>::quiet_NaN(),
+                  std::numeric_limits<float>::infinity(),
+                  -std::numeric_limits<float>::infinity()};
+  tfdsp::RoomReverb::InputFrame input{};
+  input[0] = 1.f;
+  const auto output = reverb.Process(input, positions, 1, controls);
+  Check(std::isfinite(output.direct[0]) && std::isfinite(output.direct[1]) &&
+            std::isfinite(output.wet[0]) && std::isfinite(output.wet[1]),
+        "the noexcept realtime scene path must sanitize non-finite controls");
 }
 
 struct RenderResult {
@@ -767,6 +790,7 @@ int main() {
   TestProgressiveDefaultSourceSpread();
   TestAcousticPresetDefinitions();
   TestRoomGeometryDerivesHeightFromSizeAndUsesAspectAndListener();
+  TestRealtimeSceneConstructionSanitizesNonFiniteControls();
   TestCombinedEarlyAndLateResponse();
   TestEarlyTailIsolationAndPreDelay();
   TestGeometryControlsChangeTheResponseIndependently();

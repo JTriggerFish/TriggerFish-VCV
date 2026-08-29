@@ -830,16 +830,16 @@ ParseResult ParseStatementsContaining(const std::string &source,
     for (std::size_t endLine = lastLine; endLine < lineStarts.size();
          ++endLine) {
       const int begin = lineStarts[startLine];
-      const int end = endLine + 1 < lineStarts.size()
-                          ? lineStarts[endLine + 1]
-                          : sourceSize;
+      const auto nextLine = endLine + 1;
+      const bool hasFollowingLine = nextLine < lineStarts.size();
+      const int end = hasFollowingLine ? lineStarts[nextLine] : sourceSize;
       if (end < selectionEnd)
         continue;
 
       // A continuation beginning with |> belongs to the sequence above it;
       // do not accept a shorter otherwise-valid prefix that silently drops it.
-      if (endLine + 1 < lineStarts.size()) {
-        int cursor = lineStarts[endLine + 1];
+      if (hasFollowingLine) {
+        int cursor = lineStarts[nextLine];
         while (cursor < sourceSize &&
                (source[static_cast<std::size_t>(cursor)] == ' ' ||
                 source[static_cast<std::size_t>(cursor)] == '\t'))

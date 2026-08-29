@@ -247,6 +247,25 @@ private:
     return std::clamp(std::isfinite(value) ? value : 0.f, 0.f, 1.f);
   }
 
+  static EarlyReflectionRoom
+  MakeRoomFromSanitizedControls(const RoomReverbControls &controls) noexcept {
+    auto room = detail::MakeEarlyReflectionRoomFromValidatedInputs(
+        ClampControl(controls.space), EarlyReflectionRoomFamily::Room);
+    const double aspect =
+        std::exp((2.0 * ClampControl(controls.aspect) - 1.0) * std::log(1.8));
+    const double rootAspect = std::sqrt(aspect);
+    room.dimensionsMetres[0] *= rootAspect;
+    room.dimensionsMetres[1] /= rootAspect;
+    for (std::size_t axis = 0; axis < 3; ++axis) {
+      const double fraction =
+          std::clamp(static_cast<double>(ClampControl(controls.listener[axis])),
+                     0.02, 0.98);
+      room.listenerPositionMetres[axis] =
+          fraction * room.dimensionsMetres[axis];
+    }
+    return room;
+  }
+
   static float Smoothstep(const float value) noexcept {
     const float limited = ClampControl(value);
     return limited * limited * (3.f - 2.f * limited);
@@ -560,7 +579,7 @@ private:
   void UpdateControlTargets(const RoomReverbControls &controls,
                             const SourcePositions &positions,
                             const std::size_t sourceCount) noexcept {
-    controlRoom_ = MakeRoom(controls);
+    controlRoom_ = MakeRoomFromSanitizedControls(controls);
     UpdateDirectGains(positions, sourceCount);
     UpdateLateAlignmentTargets();
     targetWetSizeGain_ = WetSizeCalibration(controlRoom_);
@@ -595,17 +614,18 @@ private:
       return;
     EarlyReflectionBuildRequest request;
     request.config = earlyConfig_;
-    request.room = MakeRoom(controls);
+    request.room = MakeRoomFromSanitizedControls(controls);
     request.sourceCount = sourceCount;
     for (std::size_t source = 0; source < sourceCount; ++source) {
       std::array<double, 3> normalized{};
       for (std::size_t axis = 0; axis < 3; ++axis)
         normalized[axis] = ClampControl(positions[source][axis]);
       request.sources[source] =
-          MakeEarlyReflectionSource(request.room, normalized);
+          detail::MakeEarlyReflectionSourceFromValidatedInputs(request.room,
+                                                               normalized);
     }
-    request.materials =
-        MakeEarlyReflectionMaterials(ClampControl(controls.damping));
+    request.materials = detail::MakeEarlyReflectionMaterialsFromValidatedInput(
+        ClampControl(controls.damping));
     request.transitionSeconds = 0.100;
     if (worker_->Submit(request) == 0)
       return;
@@ -643,19 +663,7 @@ public:
   RoomReverb &operator=(const RoomReverb &) = delete;
 
   static EarlyReflectionRoom MakeRoom(const RoomReverbControls &controls) {
-    auto room = MakeEarlyReflectionRoom(ClampControl(controls.space));
-    const double aspect =
-        std::exp((2.0 * ClampControl(controls.aspect) - 1.0) * std::log(1.8));
-    const double rootAspect = std::sqrt(aspect);
-    room.dimensionsMetres[0] *= rootAspect;
-    room.dimensionsMetres[1] /= rootAspect;
-    for (std::size_t axis = 0; axis < 3; ++axis) {
-      const double fraction =
-          std::clamp(static_cast<double>(ClampControl(controls.listener[axis])),
-                     0.02, 0.98);
-      room.listenerPositionMetres[axis] =
-          fraction * room.dimensionsMetres[axis];
-    }
+    auto room = MakeRoomFromSanitizedControls(controls);
     room.Validate();
     return room;
   }

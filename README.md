@@ -4,7 +4,7 @@ Circuit-modelled sound generators and processors, plus pitch utilities for VCV R
 
 [![CI](https://github.com/JTriggerFish/TriggerFish-VCV/actions/workflows/ci.yml/badge.svg)](https://github.com/JTriggerFish/TriggerFish-VCV/actions/workflows/ci.yml)
 
-[Release notes for 2.5.1](docs/releases/2.5.1.md)
+[Release notes for 2.5.2](docs/releases/2.5.2.md)
 
 <table>
   <tr>
