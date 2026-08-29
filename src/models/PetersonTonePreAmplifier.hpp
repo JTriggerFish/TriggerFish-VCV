@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 
 #include "tfdsp/approx.hpp"
 
@@ -69,6 +70,7 @@ public:
 			0.0, -10.0, 10.0);
 		bass = std::clamp(std::isfinite(bass) ? bass : 0.5, 0.0, 1.0);
 		treble = std::clamp(std::isfinite(treble) ? treble : 0.5, 0.0, 1.0);
+		UpdateRealtimeControls(bass, treble);
 		if (!controlsInitialized_)
 		{
 			SolveOperatingPoint(bass, treble);
@@ -87,11 +89,11 @@ public:
 		for (int iteration = 0; iteration < MaximumNewtonIterations; ++iteration)
 		{
 			++iterationsPerformed;
-			const auto residual = Evaluate(unknowns_, inputVoltage, bass, treble,
-				histories, timeStep, false);
+			const auto residual = EvaluateRealtime(unknowns_, inputVoltage,
+				histories, timeStep);
 			double maximumResidual = 0.0;
 			for (const auto& value : residual)
-				maximumResidual = std::max(maximumResidual, std::abs(value.value));
+				maximumResidual = std::max(maximumResidual, std::abs(value));
 			if (maximumResidual < (iteration == 0 ? NewtonTolerance :
 				RealtimeRefinementTolerance))
 			{
@@ -101,12 +103,9 @@ public:
 
 			double matrix[UnknownCount][UnknownCount]{};
 			std::array<double, UnknownCount> correction{};
+			BuildRealtimeJacobian(matrix, timeStep);
 			for (std::size_t row = 0; row < UnknownCount; ++row)
-			{
-				correction[row] = -residual[row].value;
-				for (std::size_t column = 0; column < UnknownCount; ++column)
-					matrix[row][column] = residual[row].derivative[column];
-			}
+				correction[row] = -residual[row];
 			if (!SolveLinear(matrix, correction))
 				break;
 
@@ -138,12 +137,12 @@ public:
 					auto candidate = unknowns_;
 					for (std::size_t index = 0; index < UnknownCount; ++index)
 						candidate[index] += damping * correction[index];
-					const auto candidateResidual = Evaluate(candidate, inputVoltage,
-						bass, treble, histories, timeStep, false);
+					const auto candidateResidual = EvaluateRealtime(candidate,
+						inputVoltage, histories, timeStep);
 					double candidateMaximum = 0.0;
 					for (const auto& value : candidateResidual)
 						candidateMaximum = std::max(candidateMaximum,
-							std::abs(value.value));
+							std::abs(value));
 					if (candidateMaximum < maximumResidual || lineSearch == 4)
 					{
 						unknowns_ = candidate;
@@ -171,11 +170,11 @@ public:
 
 		if (!converged)
 		{
-			const auto residual = Evaluate(unknowns_, inputVoltage, bass, treble,
-				histories, timeStep, false);
+			const auto residual = EvaluateRealtime(unknowns_, inputVoltage,
+				histories, timeStep);
 			double maximumResidual = 0.0;
 			for (const auto& value : residual)
-				maximumResidual = std::max(maximumResidual, std::abs(value.value));
+				maximumResidual = std::max(maximumResidual, std::abs(value));
 			converged = maximumResidual < RealtimeFailureTolerance;
 		}
 		if (!converged)
@@ -371,6 +370,244 @@ private:
 		result.emitter = -forward + ReverseAlpha * reverse;
 		result.base = -(result.collector + result.emitter);
 		return result;
+	}
+
+	struct DeviceLinearization
+	{
+		std::array<double, 3> current{}; // collector, base, emitter
+		double derivative[3][3]{}; // terminal current by c/b/e voltage
+	};
+
+	struct ExponentialLinearization
+	{
+		double value{};
+		double slope{};
+	};
+
+	static ExponentialLinearization LimitedExpLinearized(double argument)
+	{
+		if (argument <= -20.0)
+			return {};
+		const double limited = std::min(argument, 40.0);
+		const double value = static_cast<double>(Exp2Taylor5(
+			static_cast<float>(limited * Log2E)));
+		return {value, argument < 40.0 ? value : 0.0};
+	}
+
+	static DeviceLinearization NpnLinearization(double collector, double base,
+		double emitter)
+	{
+		const auto forwardExp = LimitedExpLinearized(
+			(base - emitter) / ThermalVoltage);
+		const auto reverseExp = LimitedExpLinearized(
+			(base - collector) / ThermalVoltage);
+		const double forward = SaturationCurrent / ForwardAlpha *
+			(forwardExp.value - 1.0);
+		const double reverse = SaturationCurrent / ReverseAlpha *
+			(reverseExp.value - 1.0);
+		const double gf = SaturationCurrent /
+			(ForwardAlpha * ThermalVoltage) * forwardExp.slope;
+		const double gr = SaturationCurrent /
+			(ReverseAlpha * ThermalVoltage) * reverseExp.slope;
+		DeviceLinearization result;
+		result.current[0] = ForwardAlpha * forward - reverse;
+		result.current[2] = -forward + ReverseAlpha * reverse;
+		result.current[1] = -(result.current[0] + result.current[2]);
+		result.derivative[0][0] = gr;
+		result.derivative[0][1] = ForwardAlpha * gf - gr;
+		result.derivative[0][2] = -ForwardAlpha * gf;
+		result.derivative[2][0] = -ReverseAlpha * gr;
+		result.derivative[2][1] = -gf + ReverseAlpha * gr;
+		result.derivative[2][2] = gf;
+		for (int column = 0; column < 3; ++column)
+			result.derivative[1][column] = -result.derivative[0][column] -
+				result.derivative[2][column];
+		return result;
+	}
+
+	using RealtimeResidual = std::array<double, UnknownCount>;
+
+	void UpdateRealtimeControls(double bass, double treble)
+	{
+		if (bass != cachedRealtimeBass_)
+		{
+			cachedRealtimeBass_ = bass;
+			realtimeBassTopResistance_ = PotMinimumResistance +
+				(1.0 - bass) * TonePotResistance;
+			realtimeBassBottomResistance_ = PotMinimumResistance +
+				bass * TonePotResistance;
+		}
+		if (treble != cachedRealtimeTreble_)
+		{
+			cachedRealtimeTreble_ = treble;
+			realtimeTrebleTopResistance_ = PotMinimumResistance +
+				(1.0 - treble) * TonePotResistance;
+			realtimeTrebleBottomResistance_ = PotMinimumResistance +
+				treble * TonePotResistance;
+			const double extension = std::max(0.0, 2.0 * (treble - 0.5));
+			realtimeTrebleInputResistance_ = TrebleInputResistance * std::pow(
+				TrebleBoostInputResistanceRatio, extension);
+		}
+	}
+
+	RealtimeResidual EvaluateRealtime(
+		const std::array<double, UnknownCount>& node, double inputVoltage,
+		const std::array<double, CapacitorCount>& histories,
+		double timeStep) const
+	{
+		RealtimeResidual residual{};
+		const auto stamp = [&](int positive, int negative, double current)
+		{
+			if (positive >= 0)
+				residual[static_cast<std::size_t>(positive)] += current;
+			if (negative >= 0)
+				residual[static_cast<std::size_t>(negative)] -= current;
+		};
+		const auto voltage = [&](int index, double fixed)
+		{
+			return index >= 0 ? node[static_cast<std::size_t>(index)] : fixed;
+		};
+		const auto resistor = [&](int positive, int negative, double resistance,
+			double positiveFixed = 0.0, double negativeFixed = 0.0)
+		{
+			stamp(positive, negative,
+				(voltage(positive, positiveFixed) -
+					voltage(negative, negativeFixed)) / resistance);
+		};
+		const auto capacitor = [&](int positive, int negative,
+			double capacitance, double history)
+		{
+			stamp(positive, negative,
+				(voltage(positive, 0.0) - voltage(negative, 0.0)) *
+					(2.0 * capacitance / timeStep) + history);
+		};
+
+		resistor(TrebleTop, -1, realtimeTrebleInputResistance_, 0.0,
+			inputVoltage);
+		resistor(BassTop, -1, BassInputResistance, 0.0, inputVoltage);
+		resistor(TrebleTop, TrebleWiper, realtimeTrebleTopResistance_);
+		resistor(TrebleWiper, TrebleBottom,
+			realtimeTrebleBottomResistance_);
+		resistor(TrebleBottom, CollectorOutput, ToneEndResistance);
+		resistor(BassTop, BassWiper, realtimeBassTopResistance_);
+		resistor(BassWiper, BassBottom, realtimeBassBottomResistance_);
+		resistor(BassBottom, CollectorOutput, ToneEndResistance);
+		resistor(TrebleJunction, BassWiper, ToneBridgeResistance);
+		resistor(FeedbackBase, -1, FeedbackGroundResistance);
+		resistor(FeedbackBase, CollectorOutput, FeedbackResistance);
+		resistor(CollectorOutput, -1, CollectorResistance, 0.0,
+			SupplyVoltage);
+		resistor(CollectorOutput, CompensationJunction,
+			FollowerSeriesResistance);
+		resistor(CompensationJunction, BaseQ5, FollowerBaseResistance);
+		resistor(EmitterQ5, -1, FollowerEmitterResistance);
+		resistor(EmitterQ5, -1, HistoricalVolumeResistance);
+
+		capacitor(TrebleWiper, TrebleJunction,
+			Capacitances[TrebleSeriesCapacitor],
+			histories[TrebleSeriesCapacitor]);
+		capacitor(TrebleJunction, FeedbackBase,
+			Capacitances[TrebleFeedbackCapacitor],
+			histories[TrebleFeedbackCapacitor]);
+		capacitor(BassWiper, BassTop, Capacitances[BassTopCapacitor],
+			histories[BassTopCapacitor]);
+		capacitor(BassWiper, BassBottom, Capacitances[BassBottomCapacitor],
+			histories[BassBottomCapacitor]);
+		capacitor(CompensationJunction, EmitterQ5,
+			Capacitances[FollowerCompensationCapacitor],
+			histories[FollowerCompensationCapacitor]);
+		capacitor(BaseQ5, -1, Capacitances[FollowerBaseCapacitor],
+			histories[FollowerBaseCapacitor]);
+
+		const auto q4 = NpnLinearization(node[CollectorOutput],
+			node[FeedbackBase], node[BaseQ3]);
+		const auto q3 = NpnLinearization(node[CollectorOutput], node[BaseQ3],
+			0.0);
+		const auto q5 = NpnLinearization(SupplyVoltage, node[BaseQ5],
+			node[EmitterQ5]);
+		residual[CollectorOutput] += q4.current[0] + q3.current[0];
+		residual[FeedbackBase] += q4.current[1];
+		residual[BaseQ3] += q4.current[2] + q3.current[1];
+		residual[BaseQ5] += q5.current[1];
+		residual[EmitterQ5] += q5.current[2];
+		return residual;
+	}
+
+	void BuildRealtimeJacobian(double matrix[UnknownCount][UnknownCount],
+		double timeStep) const
+	{
+		const auto stampConductance = [&](int positive, int negative,
+			double conductance)
+		{
+			if (positive >= 0)
+			{
+				matrix[positive][positive] += conductance;
+				if (negative >= 0)
+					matrix[positive][negative] -= conductance;
+			}
+			if (negative >= 0)
+			{
+				matrix[negative][negative] += conductance;
+				if (positive >= 0)
+					matrix[negative][positive] -= conductance;
+			}
+		};
+		const auto resistor = [&](int positive, int negative, double resistance)
+		{
+			stampConductance(positive, negative, 1.0 / resistance);
+		};
+		const auto capacitor = [&](int positive, int negative,
+			double capacitance)
+		{
+			stampConductance(positive, negative,
+				2.0 * capacitance / timeStep);
+		};
+		const auto stampDevice = [&](const DeviceLinearization& device,
+			const std::array<int, 3>& nodes)
+		{
+			for (int terminal = 0; terminal < 3; ++terminal)
+				if (nodes[terminal] >= 0)
+					for (int voltage = 0; voltage < 3; ++voltage)
+						if (nodes[voltage] >= 0)
+							matrix[nodes[terminal]][nodes[voltage]] +=
+								device.derivative[terminal][voltage];
+		};
+
+		resistor(TrebleTop, -1, realtimeTrebleInputResistance_);
+		resistor(BassTop, -1, BassInputResistance);
+		resistor(TrebleTop, TrebleWiper, realtimeTrebleTopResistance_);
+		resistor(TrebleWiper, TrebleBottom,
+			realtimeTrebleBottomResistance_);
+		resistor(TrebleBottom, CollectorOutput, ToneEndResistance);
+		resistor(BassTop, BassWiper, realtimeBassTopResistance_);
+		resistor(BassWiper, BassBottom, realtimeBassBottomResistance_);
+		resistor(BassBottom, CollectorOutput, ToneEndResistance);
+		resistor(TrebleJunction, BassWiper, ToneBridgeResistance);
+		resistor(FeedbackBase, -1, FeedbackGroundResistance);
+		resistor(FeedbackBase, CollectorOutput, FeedbackResistance);
+		resistor(CollectorOutput, -1, CollectorResistance);
+		resistor(CollectorOutput, CompensationJunction,
+			FollowerSeriesResistance);
+		resistor(CompensationJunction, BaseQ5, FollowerBaseResistance);
+		resistor(EmitterQ5, -1, FollowerEmitterResistance);
+		resistor(EmitterQ5, -1, HistoricalVolumeResistance);
+		capacitor(TrebleWiper, TrebleJunction,
+			Capacitances[TrebleSeriesCapacitor]);
+		capacitor(TrebleJunction, FeedbackBase,
+			Capacitances[TrebleFeedbackCapacitor]);
+		capacitor(BassWiper, BassTop, Capacitances[BassTopCapacitor]);
+		capacitor(BassWiper, BassBottom, Capacitances[BassBottomCapacitor]);
+		capacitor(CompensationJunction, EmitterQ5,
+			Capacitances[FollowerCompensationCapacitor]);
+		capacitor(BaseQ5, -1, Capacitances[FollowerBaseCapacitor]);
+
+		stampDevice(NpnLinearization(unknowns_[CollectorOutput],
+			unknowns_[FeedbackBase], unknowns_[BaseQ3]),
+			{CollectorOutput, FeedbackBase, BaseQ3});
+		stampDevice(NpnLinearization(unknowns_[CollectorOutput],
+			unknowns_[BaseQ3], 0.0), {CollectorOutput, BaseQ3, -1});
+		stampDevice(NpnLinearization(SupplyVoltage, unknowns_[BaseQ5],
+			unknowns_[EmitterQ5]), {-1, BaseQ5, EmitterQ5});
 	}
 
 	static void Stamp(Residual& residual, int positiveNode, int negativeNode,
@@ -666,6 +903,13 @@ private:
 	std::uint64_t totalIterations_{};
 	std::uint64_t processedSamples_{};
 	bool controlsInitialized_{};
+	double cachedRealtimeBass_{std::numeric_limits<double>::quiet_NaN()};
+	double cachedRealtimeTreble_{std::numeric_limits<double>::quiet_NaN()};
+	double realtimeTrebleTopResistance_{50'001.0};
+	double realtimeTrebleBottomResistance_{50'001.0};
+	double realtimeBassTopResistance_{50'001.0};
+	double realtimeBassBottomResistance_{50'001.0};
+	double realtimeTrebleInputResistance_{TrebleInputResistance};
 };
 
 } // namespace tfdsp

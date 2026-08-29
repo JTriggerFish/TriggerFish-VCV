@@ -4,6 +4,7 @@
 #include <cmath>
 #include <random>
 
+#include "approx.hpp"
 #include "filters.hpp"
 
 namespace tfdsp
@@ -139,7 +140,7 @@ namespace tfdsp
 		const double boundedDepth = std::clamp(depth, 0.0, 1.0);
 		if (boundedDepth == 0.0)
 			return std::clamp(value, minimum, maximum);
-		const double shapedDrift = std::tanh(drift);
+		const double shapedDrift = TanhPade76(drift);
 		const double headroom = shapedDrift >= 0.0 ?
 			1.0 - normalized : normalized;
 		const double modulated = normalized + boundedDepth *

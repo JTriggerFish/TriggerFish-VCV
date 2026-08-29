@@ -36,6 +36,9 @@ public:
     sampleRate_ = sampleRate;
     windowSamples_ =
         std::max(64.f, windowSeconds * static_cast<float>(sampleRate));
+    const float windowPhaseIncrement = 2.f * Pi / windowSamples_;
+    windowCosineIncrement_ = std::cos(windowPhaseIncrement);
+    windowSineIncrement_ = std::sin(windowPhaseIncrement);
     initialPhase_ = WrapPhase(initialPhase);
     initialSeed_ = randomSeed != 0 ? randomSeed : 0x6d2b79f5u;
     lookbackJitterSamples_ = 0.005f * static_cast<float>(sampleRate_);
@@ -100,7 +103,9 @@ private:
     float windowSum = 0.f;
     for (auto &grain : grains_) {
       if (render) {
-        const float window = Hann(grain.phase);
+        // sin(pi * phase)^2 == (1 - cos(2 pi * phase)) / 2. Advancing this
+        // cosine recursively avoids a transcendental call per grain/sample.
+        const float window = 0.5f * (1.f - grain.windowCosine);
         output += window * Read(grain.delaySamples);
         windowSum += window;
       }
@@ -109,8 +114,15 @@ private:
       const float nextPhase = grain.phase + 1.f / grain.durationSamples;
       if (nextPhase >= 1.f)
         StartGrain(grain, 0.f);
-      else
+      else {
         grain.phase = nextPhase;
+        const float nextCosine =
+            grain.windowCosine * windowCosineIncrement_ -
+            grain.windowSine * windowSineIncrement_;
+        grain.windowSine = grain.windowSine * windowCosineIncrement_ +
+                           grain.windowCosine * windowSineIncrement_;
+        grain.windowCosine = nextCosine;
+      }
     }
 
     if (++writeIndex_ == buffer_.size())
@@ -162,16 +174,13 @@ private:
     float delaySamples{};
     float pitchRatio{2.f};
     float durationSamples{5'760.f};
+    float windowCosine{1.f};
+    float windowSine{};
   };
 
   static float WrapPhase(float phase) noexcept {
     phase -= std::floor(phase);
     return phase < 0.f ? phase + 1.f : phase;
-  }
-
-  static float Hann(const float phase) noexcept {
-    const float sine = std::sin(Pi * phase);
-    return sine * sine;
   }
 
   std::uint32_t RandomBits() noexcept {
@@ -191,6 +200,9 @@ private:
     grain.pitchRatio = 2.f * std::exp2(cents / 1200.f);
     grain.durationSamples = windowSamples_;
     grain.phase = phase;
+    const float windowPhase = 2.f * Pi * phase;
+    grain.windowCosine = std::cos(windowPhase);
+    grain.windowSine = std::sin(windowPhase);
     const float jitter = lookbackJitterSamples_ * BipolarRandom();
     const float elapsed = phase * grain.durationSamples;
     grain.delaySamples = grain.durationSamples * (grain.pitchRatio - 1.f) +
@@ -210,8 +222,10 @@ private:
     const auto sample = [this, integer](const int offset) {
       const auto distance =
           static_cast<std::size_t>(static_cast<int>(integer) + offset);
-      return buffer_[(writeIndex_ + buffer_.size() - distance) %
-                     buffer_.size()];
+      const auto index = writeIndex_ >= distance
+                             ? writeIndex_ - distance
+                             : writeIndex_ + buffer_.size() - distance;
+      return buffer_[index];
     };
     return c0 * sample(-1) + c1 * sample(0) + c2 * sample(1) + c3 * sample(2);
   }
@@ -221,6 +235,8 @@ private:
   float initialPhase_{};
   float lookbackJitterSamples_{240.f};
   float safetySamples_{480.f};
+  float windowCosineIncrement_{1.f};
+  float windowSineIncrement_{};
   std::uint32_t initialSeed_{0x6d2b79f5u};
   std::uint32_t randomState_{initialSeed_};
   std::array<Biquad, 4> antiAlias_{};

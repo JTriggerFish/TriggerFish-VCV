@@ -5,6 +5,7 @@
 #include <functional>
 #include <memory>
 
+#include "tfdsp/approx.hpp"
 #include "tfdsp/rail.hpp"
 #include "tfdsp/sampleRate.hpp"
 
@@ -145,7 +146,7 @@ public:
 
 		const double differentialBaseVolts = AudioInputScale() *
 			audioDifferenceVolts;
-		const double outputCurrent = _lastControlCurrent * std::tanh(
+		const double outputCurrent = _lastControlCurrent * tfdsp::TanhPade76(
 			differentialBaseVolts / (2.0 * ThermalVoltage));
 		const double target = OutputFeedbackResistanceOhms * outputCurrent;
 		_outputLowPass += _outputCoefficient * (target - _outputLowPass);
@@ -246,7 +247,7 @@ private:
 		if (magnitude <= OutputKneeVolts)
 			return voltage;
 		const double headroom = OutputRailVolts - OutputKneeVolts;
-		return std::copysign(OutputKneeVolts + headroom * std::tanh(
+		return std::copysign(OutputKneeVolts + headroom * tfdsp::TanhPade76(
 			(magnitude - OutputKneeVolts) / headroom), voltage);
 	}
 

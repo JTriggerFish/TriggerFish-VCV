@@ -99,6 +99,21 @@ if(BUILD_TESTING)
 	target_link_libraries(triggerfish_early_reflections_benchmark PRIVATE
 		triggerfish_dsp)
 
+	add_executable(triggerfish_room_reverb_benchmark EXCLUDE_FROM_ALL
+		tests/room_reverb_benchmark.cpp)
+	target_link_libraries(triggerfish_room_reverb_benchmark PRIVATE
+		triggerfish_dsp)
+
+	add_executable(triggerfish_4072_voice_benchmark EXCLUDE_FROM_ALL
+		tests/arp4072_voice_benchmark.cpp)
+	target_link_libraries(triggerfish_4072_voice_benchmark PRIVATE
+		triggerfish_dsp)
+
+	add_executable(triggerfish_peterson_amp_benchmark EXCLUDE_FROM_ALL
+		tests/peterson_amp_benchmark.cpp)
+	target_link_libraries(triggerfish_peterson_amp_benchmark PRIVATE
+		triggerfish_dsp)
+
 	add_executable(triggerfish_electric_piano_benchmark EXCLUDE_FROM_ALL
 		tests/electric_piano_benchmark.cpp)
 	target_link_libraries(triggerfish_electric_piano_benchmark PRIVATE

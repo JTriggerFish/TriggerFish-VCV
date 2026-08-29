@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <limits>
 #include <memory>
 
 #include "plugin.hpp"
@@ -97,6 +98,16 @@ struct Tf4072VoiceCore : Module
 	int oversampling = 1;
 	int activeOversampling = 1;
 	int activeChannels = 0;
+	std::array<float, 7> cachedExponentInputs{{
+		std::numeric_limits<float>::quiet_NaN(),
+		std::numeric_limits<float>::quiet_NaN(),
+		std::numeric_limits<float>::quiet_NaN(),
+		std::numeric_limits<float>::quiet_NaN(),
+		std::numeric_limits<float>::quiet_NaN(),
+		std::numeric_limits<float>::quiet_NaN(),
+		std::numeric_limits<float>::quiet_NaN(),
+	}};
+	std::array<double, 7> cachedPowers{};
 
 	Tf4072VoiceCore()
 	{
@@ -273,6 +284,16 @@ struct Tf4072VoiceCore : Module
 		}
 	}
 
+	double CachedPowerOfTen(const std::size_t slot, const float exponent)
+	{
+		if (exponent != cachedExponentInputs[slot])
+		{
+			cachedExponentInputs[slot] = exponent;
+			cachedPowers[slot] = std::pow(10.0, static_cast<double>(exponent));
+		}
+		return cachedPowers[slot];
+	}
+
 	static void CaptureEnvelopeLight(const tfdsp::ArpEnvelope& envelope,
 		std::array<float, 4>& stagePeaks)
 	{
@@ -341,7 +362,7 @@ struct Tf4072VoiceCore : Module
 		const double resonanceKnob = params[RESONANCE].getValue();
 		const double driveDb = params[DRIVE].getValue();
 		const double driveGain = driveDb <= -59.99 ? 0.0 :
-			std::pow(10.0, driveDb / 20.0);
+			CachedPowerOfTen(0, static_cast<float>(driveDb / 20.0));
 		const double filterEnvAmount = params[FILTER_ENV_AMOUNT].getValue();
 		const double filterModAmount = params[FILTER_MOD_AMOUNT].getValue();
 		const double resonanceCvAmount = params[RES_CV_AMOUNT].getValue();
@@ -363,20 +384,20 @@ struct Tf4072VoiceCore : Module
 		const bool autoGateTrigger = !inputs[TRIGGER_INPUT].isConnected();
 		const double log2C4 = std::log2(dsp::FREQ_C4);
 
-		const double filterAttack = std::pow(10.0,
-			static_cast<double>(params[FILTER_ATTACK].getValue()));
-		const double filterDecay = std::pow(10.0,
-			static_cast<double>(params[FILTER_DECAY].getValue()));
+		const double filterAttack = CachedPowerOfTen(
+			1, params[FILTER_ATTACK].getValue());
+		const double filterDecay = CachedPowerOfTen(
+			2, params[FILTER_DECAY].getValue());
 		const double filterSustain = params[FILTER_SUSTAIN].getValue();
-		const double filterRelease = std::pow(10.0,
-			static_cast<double>(params[FILTER_RELEASE].getValue()));
-		const double ampAttack = std::pow(10.0,
-			static_cast<double>(params[AMP_ATTACK].getValue()));
-		const double ampDecay = std::pow(10.0,
-			static_cast<double>(params[AMP_DECAY].getValue()));
+		const double filterRelease = CachedPowerOfTen(
+			3, params[FILTER_RELEASE].getValue());
+		const double ampAttack = CachedPowerOfTen(
+			4, params[AMP_ATTACK].getValue());
+		const double ampDecay = CachedPowerOfTen(
+			5, params[AMP_DECAY].getValue());
 		const double ampSustain = params[AMP_SUSTAIN].getValue();
-		const double ampRelease = std::pow(10.0,
-			static_cast<double>(params[AMP_RELEASE].getValue()));
+		const double ampRelease = CachedPowerOfTen(
+			6, params[AMP_RELEASE].getValue());
 
 		for (int channel = 0; channel < channels; ++channel)
 		{

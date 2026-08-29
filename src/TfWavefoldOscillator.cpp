@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <limits>
 #include <memory>
 #include <random>
 
@@ -116,6 +117,10 @@ struct TfWavefoldOscillator : Module
 	std::random_device aliveSeed{};
 	std::minstd_rand aliveRng;
 	double configuredAliveTimeSeconds{};
+	float configuredAliveControl{std::numeric_limits<float>::quiet_NaN()};
+	int configuredUnisonVoices{};
+	std::array<double, tfdsp::MaximumUnisonVoices> unisonPitchPositions{};
+	double unisonOutputGain{1.0};
 	// 4x is the default quality mode; 2x is available as a lower-CPU fallback.
 	int oversampling = 1;
 	int activeOversampling = 1;
@@ -196,6 +201,13 @@ struct TfWavefoldOscillator : Module
 						sampleRate, timeSeconds, 1.0, 100.0);
 	}
 
+	void ConfigureUnison(const int voices)
+	{
+		configuredUnisonVoices = voices;
+		unisonPitchPositions = tfdsp::UnisonPitchPositions(voices);
+		unisonOutputGain = tfdsp::UnisonOutputGain(voices);
+	}
+
 	void ResetAlive()
 	{
 		for (auto& channelProcesses : aliveProcesses)
@@ -216,6 +228,10 @@ struct TfWavefoldOscillator : Module
 			}
 		}
 		ConfigureAlive(AliveTimeSeconds(params[ALIVE_SPEED].getValue()));
+		configuredAliveControl = params[ALIVE_SPEED].getValue();
+		ConfigureUnison(std::clamp(static_cast<int>(std::round(
+			params[UNISON_VOICES].getValue())), 1,
+			tfdsp::MaximumUnisonVoices));
 	}
 
 	void ResetDsp()
@@ -263,10 +279,14 @@ struct TfWavefoldOscillator : Module
 			params[UNISON_VOICES].getValue())), 1, tfdsp::MaximumUnisonVoices);
 		const double spreadCents = tfdsp::UnisonSpreadCents(
 			params[UNISON_SPREAD].getValue());
-		const double aliveTimeSeconds = AliveTimeSeconds(
-			params[ALIVE_SPEED].getValue());
-		if (std::abs(aliveTimeSeconds - configuredAliveTimeSeconds) > 1.0e-9)
-			ConfigureAlive(aliveTimeSeconds);
+		const float aliveControl = params[ALIVE_SPEED].getValue();
+		if (aliveControl != configuredAliveControl)
+		{
+			configuredAliveControl = aliveControl;
+			ConfigureAlive(AliveTimeSeconds(aliveControl));
+		}
+		if (requestedUnisonVoices != configuredUnisonVoices)
+			ConfigureUnison(requestedUnisonVoices);
 		const bool linearFm = params[FM_MODE].getValue() > 0.5f;
 		// CKSSThree numbers positions from bottom (0) to top (2).
 		constexpr std::array<tfdsp::WavefolderCharacter, 3> charactersByPosition{{
@@ -311,8 +331,6 @@ struct TfWavefoldOscillator : Module
 			const double symmetryBase = symmetryKnob + symmetryAmount *
 				finiteInput(SYMMETRY_INPUT) / 5.0;
 			const double externalInput = finiteInput(AUDIO_INPUT) / 5.0;
-			const auto pitchPositions =
-				tfdsp::UnisonPitchPositions(requestedUnisonVoices);
 			tfdsp::WavefoldOscillatorOutput rendered{};
 			for (int voice = 0; voice < requestedUnisonVoices; ++voice)
 			{
@@ -323,8 +341,9 @@ struct TfWavefoldOscillator : Module
 				const double symmetry = tfdsp::ApplyBoundedDrift(symmetryBase,
 					aliveProcesses[channel][voice][2].Step(aliveRng), symmetryAlive,
 					-1.0, 1.0);
-				const double voiceFrequency = frequency * std::exp2(
-					spreadCents * pitchPositions[voice] / 1200.0);
+				const double voiceFrequency = requestedUnisonVoices == 1 ? frequency :
+					frequency * std::exp2(spreadCents *
+						unisonPitchPositions[voice] / 1200.0);
 				const bool foldExternalInput = externalInputConnected && voice == 0;
 				tfdsp::WavefoldOscillatorOutput voiceOutput;
 				if (activeOversampling == 0)
@@ -347,11 +366,9 @@ struct TfWavefoldOscillator : Module
 				if (!externalInputConnected || voice == 0)
 					rendered.folded += voiceOutput.folded;
 			}
-			const double unisonGain =
-				tfdsp::UnisonOutputGain(requestedUnisonVoices);
-			rendered.oscillator *= unisonGain;
+			rendered.oscillator *= unisonOutputGain;
 			if (!externalInputConnected)
-				rendered.folded *= unisonGain;
+				rendered.folded *= unisonOutputGain;
 			outputs[OSCILLATOR_OUTPUT].setVoltage(static_cast<float>(
 				tfdsp::RackOutputAdapter::ProcessPostDecimation(
 					5.0 * rendered.oscillator)), channel);

@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <limits>
 #include <random>
 
 #include "plugin.hpp"
@@ -158,8 +159,11 @@ struct TfUnisonOscillator : Module
 	double subModeMix{};
 	double sampleRate{48000.0};
 	double driftTimeSeconds{};
+	float configuredDriftControl{std::numeric_limits<float>::quiet_NaN()};
 	double configuredPwmRateHz{};
+	float configuredPwmControl{std::numeric_limits<float>::quiet_NaN()};
 	double transitionCoefficient{1.0};
+	bool layoutTransitionActive{};
 
 	TfUnisonOscillator() : randomGenerator(randomSeed())
 	{
@@ -235,7 +239,10 @@ struct TfUnisonOscillator : Module
 			for (int voice = 0; voice < tfdsp::MaximumStackedOscillatorVoices;
 				++voice)
 				voiceGains[voice] = voice < layoutVoiceCount ? 1.0 : 0.0;
+			layoutTransitionActive = false;
 		}
+		else
+			layoutTransitionActive = true;
 	}
 
 	void ConfigureDrift(double timeSeconds)
@@ -253,9 +260,11 @@ struct TfUnisonOscillator : Module
 		sampleRate = std::max(nextSampleRate, 1.0);
 		humOscillator.SetFrequency(60.0, sampleRate);
 		configuredPwmRateHz = PwmRateHz(params[PWM_RATE].getValue());
+		configuredPwmControl = params[PWM_RATE].getValue();
 		pwmOscillator.SetFrequency(configuredPwmRateHz, sampleRate);
 		transitionCoefficient = -std::expm1(-1.0 / (0.010 * sampleRate));
-		ConfigureDrift(DriftTimeSeconds(params[DRIFT_SPEED].getValue()));
+		configuredDriftControl = params[DRIFT_SPEED].getValue();
+		ConfigureDrift(DriftTimeSeconds(configuredDriftControl));
 	}
 
 	void ResetDsp()
@@ -284,18 +293,38 @@ struct TfUnisonOscillator : Module
 	{
 		if (requestedVoices != layoutVoiceCount)
 			SetLayout(requestedVoices);
-		for (int voice = 0; voice < tfdsp::MaximumStackedOscillatorVoices;
-			++voice)
+		if (layoutTransitionActive)
 		{
-			const double gainTarget = voice < layoutVoiceCount ? 1.0 : 0.0;
-			voiceGains[voice] += transitionCoefficient *
-				(gainTarget - voiceGains[voice]);
-			pitchPositions[voice] += transitionCoefficient *
-				(targetPitchPositions[voice] - pitchPositions[voice]);
-			panPositions[voice] += transitionCoefficient *
-				(targetPanPositions[voice] - panPositions[voice]);
-			trackingPositions[voice] += transitionCoefficient *
-				(targetTrackingPositions[voice] - trackingPositions[voice]);
+			double maximumDifference = 0.0;
+			for (int voice = 0; voice < tfdsp::MaximumStackedOscillatorVoices;
+				++voice)
+			{
+				const double gainTarget = voice < layoutVoiceCount ? 1.0 : 0.0;
+				voiceGains[voice] += transitionCoefficient *
+					(gainTarget - voiceGains[voice]);
+				pitchPositions[voice] += transitionCoefficient *
+					(targetPitchPositions[voice] - pitchPositions[voice]);
+				panPositions[voice] += transitionCoefficient *
+					(targetPanPositions[voice] - panPositions[voice]);
+				trackingPositions[voice] += transitionCoefficient *
+					(targetTrackingPositions[voice] - trackingPositions[voice]);
+				maximumDifference = std::max({maximumDifference,
+					std::abs(gainTarget - voiceGains[voice]),
+					std::abs(targetPitchPositions[voice] - pitchPositions[voice]),
+					std::abs(targetPanPositions[voice] - panPositions[voice]),
+					std::abs(targetTrackingPositions[voice] -
+						trackingPositions[voice])});
+			}
+			if (maximumDifference < 1.0e-9)
+			{
+				pitchPositions = targetPitchPositions;
+				panPositions = targetPanPositions;
+				trackingPositions = targetTrackingPositions;
+				for (int voice = 0;
+					voice < tfdsp::MaximumStackedOscillatorVoices; ++voice)
+					voiceGains[voice] = voice < layoutVoiceCount ? 1.0 : 0.0;
+				layoutTransitionActive = false;
+			}
 		}
 		waveformMix = params[WAVEFORM].getValue() > 0.5f ? 1.0 : 0.0;
 		subModeMix = params[SUB_MODE].getValue() > 0.5f ? 1.0 : 0.0;
@@ -308,14 +337,17 @@ struct TfUnisonOscillator : Module
 			tfdsp::MaximumStackedOscillatorVoices);
 		UpdateTransitions(requestedVoices);
 
-		const double requestedDriftTime = DriftTimeSeconds(
-			params[DRIFT_SPEED].getValue());
-		if (std::abs(requestedDriftTime - driftTimeSeconds) > 1.0e-9)
-			ConfigureDrift(requestedDriftTime);
-		const double requestedPwmRate = PwmRateHz(params[PWM_RATE].getValue());
-		if (std::abs(requestedPwmRate - configuredPwmRateHz) > 1.0e-9)
+		const float requestedDriftControl = params[DRIFT_SPEED].getValue();
+		if (requestedDriftControl != configuredDriftControl)
 		{
-			configuredPwmRateHz = requestedPwmRate;
+			configuredDriftControl = requestedDriftControl;
+			ConfigureDrift(DriftTimeSeconds(requestedDriftControl));
+		}
+		const float requestedPwmControl = params[PWM_RATE].getValue();
+		if (requestedPwmControl != configuredPwmControl)
+		{
+			configuredPwmControl = requestedPwmControl;
+			configuredPwmRateHz = PwmRateHz(requestedPwmControl);
 			pwmOscillator.SetFrequency(configuredPwmRateHz, sampleRate);
 		}
 
@@ -353,17 +385,23 @@ struct TfUnisonOscillator : Module
 		const double tune = std::round(params[OCTAVE].getValue()) +
 			params[TUNE].getValue();
 
-		int voicesToProcess = 0;
-		double sumGainSquares = 0.0;
-		for (int voice = 0; voice < tfdsp::MaximumStackedOscillatorVoices;
-			++voice)
+		int voicesToProcess = layoutVoiceCount;
+		double normalization = 1.0 /
+			std::sqrt(static_cast<double>(layoutVoiceCount));
+		if (layoutTransitionActive)
 		{
-			if (voiceGains[voice] > 1.0e-5 || voice < layoutVoiceCount)
-				voicesToProcess = voice + 1;
-			sumGainSquares += voiceGains[voice] * voiceGains[voice];
+			voicesToProcess = 0;
+			double sumGainSquares = 0.0;
+			for (int voice = 0;
+				voice < tfdsp::MaximumStackedOscillatorVoices; ++voice)
+			{
+				if (voiceGains[voice] > 1.0e-5 || voice < layoutVoiceCount)
+					voicesToProcess = voice + 1;
+				sumGainSquares += voiceGains[voice] * voiceGains[voice];
+			}
+			normalization = 1.0 /
+				std::sqrt(std::max(sumGainSquares, 1.0e-12));
 		}
-		const double normalization = 1.0 /
-			std::sqrt(std::max(sumGainSquares, 1.0e-12));
 		for (int channel = 0; channel < channels; ++channel)
 		{
 			auto finiteInput = [&](InputIds input)

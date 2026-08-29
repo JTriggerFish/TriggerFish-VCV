@@ -396,7 +396,7 @@ private:
 		if (magnitude <= OutputKneeVolts)
 			return voltage;
 		const double headroom = OutputRailVolts - OutputKneeVolts;
-		return std::copysign(OutputKneeVolts + headroom * std::tanh(
+		return std::copysign(OutputKneeVolts + headroom * tfdsp::TanhPade76(
 			(magnitude - OutputKneeVolts) / headroom), voltage);
 	}
 
@@ -426,15 +426,15 @@ private:
 
 			const double limiterVoltage = input * AudioBaseScale() -
 				feedbackScale * midpoint[3];
-			const double limiterTanh = std::tanh(
+			const double limiterTanh = tfdsp::TanhPade76(
 				limiterVoltage / (2.0 * ThermalVoltage));
 			const double firstInput = limiterPeak * limiterTanh;
 
 			std::array<double, 4> stageTanh{};
-			stageTanh[0] = std::tanh(stageSaturationCoefficient *
+			stageTanh[0] = tfdsp::TanhPade76(stageSaturationCoefficient *
 				(firstInput + midpoint[0]));
 			for (int i = 1; i < 4; ++i)
-				stageTanh[i] = std::tanh(stageSaturationCoefficient *
+				stageTanh[i] = tfdsp::TanhPade76(stageSaturationCoefficient *
 					(midpoint[i - 1] + midpoint[i]));
 
 			std::array<double, 4> residual{};

@@ -94,8 +94,9 @@ private:
     float ReadInteger(const std::size_t samples) const noexcept {
       const std::size_t distance =
           std::clamp(samples, std::size_t{1}, buffer_.size() - 1);
-      const std::size_t index =
-          (writeIndex_ + buffer_.size() - distance) % buffer_.size();
+      const std::size_t index = writeIndex_ >= distance
+                                    ? writeIndex_ - distance
+                                    : writeIndex_ + buffer_.size() - distance;
       return buffer_[index];
     }
 
@@ -121,8 +122,9 @@ private:
       for (std::size_t tap = 0; tap < coefficients.size(); ++tap) {
         const auto distance = static_cast<std::size_t>(
             static_cast<int>(integer) + offsets[tap]);
-        const auto index =
-            (writeIndex_ + buffer_.size() - distance) % buffer_.size();
+        const auto index = writeIndex_ >= distance
+                               ? writeIndex_ - distance
+                               : writeIndex_ + buffer_.size() - distance;
         value += coefficients[tap] * buffer_[index];
       }
       return value;

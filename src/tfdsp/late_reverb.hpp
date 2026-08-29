@@ -75,8 +75,9 @@ private:
       for (std::size_t tap = 0; tap < c.size(); ++tap) {
         const auto distance =
             static_cast<std::size_t>(static_cast<int>(integer) + offsets[tap]);
-        const auto index =
-            (writeIndex_ + buffer_.size() - distance) % buffer_.size();
+        const auto index = writeIndex_ >= distance
+                               ? writeIndex_ - distance
+                               : writeIndex_ + buffer_.size() - distance;
         value += c[tap] * buffer_[index];
       }
       return value;

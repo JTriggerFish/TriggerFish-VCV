@@ -74,8 +74,9 @@ private:
       delaySamples = std::max(0.f, delaySamples);
       if (delaySamples < 2.f) {
         const auto history = [&](const std::size_t distance) {
-          const auto index =
-              (writeIndex_ + buffer_.size() - distance) % buffer_.size();
+          const auto index = writeIndex_ >= distance
+                                 ? writeIndex_ - distance
+                                 : writeIndex_ + buffer_.size() - distance;
           return buffer_[index];
         };
         if (delaySamples < 1.f)
@@ -98,8 +99,9 @@ private:
       for (std::size_t tap = 0; tap < coefficients.size(); ++tap) {
         const auto distance =
             static_cast<std::size_t>(static_cast<int>(integer) + offsets[tap]);
-        const auto index =
-            (writeIndex_ + buffer_.size() - distance) % buffer_.size();
+        const auto index = writeIndex_ >= distance
+                               ? writeIndex_ - distance
+                               : writeIndex_ + buffer_.size() - distance;
         value += coefficients[tap] * buffer_[index];
       }
       return value;
@@ -235,6 +237,11 @@ private:
   float preDelayTransitionPhase_{1.f};
   float preDelayTransitionIncrement_{1.f};
   bool preDelayInitialized_{};
+  using DirectGains =
+      std::array<StereoFrame, MaximumSources>;
+  DirectGains directGains_{};
+  DirectGains directGainSteps_{};
+  bool directGainsInitialized_{};
 
   static float ClampControl(const float value) noexcept {
     return std::clamp(std::isfinite(value) ? value : 0.f, 0.f, 1.f);
@@ -245,11 +252,10 @@ private:
     return limited * limited * (3.f - 2.f * limited);
   }
 
-  static StereoFrame RenderDirect(const InputFrame &input,
-                                  const SourcePositions &positions,
-                                  const std::size_t sourceCount,
-                                  const EarlyReflectionRoom &room) noexcept {
-    StereoFrame direct{};
+  static DirectGains CalculateDirectGains(const SourcePositions &positions,
+                                          const std::size_t sourceCount,
+                                          const EarlyReflectionRoom &room) noexcept {
+    DirectGains gains{};
     const std::size_t active = std::min(sourceCount, MaximumSources);
     const double roomScale = std::cbrt(
         room.dimensionsMetres[0] * room.dimensionsMetres[1] *
@@ -273,8 +279,6 @@ private:
       return std::sqrt(distanceSquared) / std::cbrt(volume);
     }();
     for (std::size_t source = 0; source < active; ++source) {
-      if (!std::isfinite(input[source]))
-        continue;
       std::array<double, 3> difference{};
       for (std::size_t axis = 0; axis < difference.size(); ++axis) {
         constexpr double sourceMargin = 0.001;
@@ -298,12 +302,44 @@ private:
       const double rho = distance / std::max(roomScale, 1.0e-12);
       const float distanceGain = static_cast<float>(std::clamp(
           referenceRho / std::max(rho, 0.05), 0.25, 2.0));
-      const float sample = input[source] * distanceGain;
-      direct[0] += sample * static_cast<float>(
-                                std::cos(0.5 * EarlyReflectionPi * pan));
-      direct[1] += sample * static_cast<float>(
-                                std::sin(0.5 * EarlyReflectionPi * pan));
+      gains[source][0] = distanceGain * static_cast<float>(
+                                           std::cos(0.5 * EarlyReflectionPi * pan));
+      gains[source][1] = distanceGain * static_cast<float>(
+                                           std::sin(0.5 * EarlyReflectionPi * pan));
     }
+    return gains;
+  }
+
+  void UpdateDirectGains(const SourcePositions &positions,
+                         const std::size_t sourceCount) noexcept {
+    const auto targets =
+        CalculateDirectGains(positions, sourceCount, controlRoom_);
+    if (!directGainsInitialized_) {
+      directGains_ = targets;
+      directGainSteps_ = {};
+      directGainsInitialized_ = true;
+      return;
+    }
+    for (std::size_t source = 0; source < MaximumSources; ++source)
+      for (std::size_t channel = 0; channel < 2; ++channel)
+        directGainSteps_[source][channel] =
+            (targets[source][channel] - directGains_[source][channel]) /
+            static_cast<float>(ControlUpdateInterval);
+  }
+
+  StereoFrame RenderDirect(const InputFrame &input,
+                           const std::size_t sourceCount) noexcept {
+    StereoFrame direct{};
+    const std::size_t active = std::min(sourceCount, MaximumSources);
+    for (std::size_t source = 0; source < active; ++source) {
+      const float sample =
+          std::isfinite(input[source]) ? input[source] : 0.f;
+      direct[0] += sample * directGains_[source][0];
+      direct[1] += sample * directGains_[source][1];
+    }
+    for (std::size_t source = 0; source < MaximumSources; ++source)
+      for (std::size_t channel = 0; channel < 2; ++channel)
+        directGains_[source][channel] += directGainSteps_[source][channel];
     return direct;
   }
 
@@ -522,9 +558,10 @@ private:
   }
 
   void UpdateControlTargets(const RoomReverbControls &controls,
-                            const SourcePositions &,
-                            const std::size_t) noexcept {
+                            const SourcePositions &positions,
+                            const std::size_t sourceCount) noexcept {
     controlRoom_ = MakeRoom(controls);
+    UpdateDirectGains(positions, sourceCount);
     UpdateLateAlignmentTargets();
     targetWetSizeGain_ = WetSizeCalibration(controlRoom_);
     if (!wetSizeGainInitialized_) {
@@ -713,6 +750,9 @@ public:
         pendingPreDelaySamples_ = 0.f;
     preDelayTransitionPhase_ = 1.f;
     preDelayInitialized_ = false;
+    directGains_ = {};
+    directGainSteps_ = {};
+    directGainsInitialized_ = false;
   }
 
   double SampleRate() const noexcept { return sampleRate_; }
@@ -749,8 +789,7 @@ public:
     }
     --requestCountdown_;
 
-    const StereoFrame direct =
-        RenderDirect(input, positions, activeSources, controlRoom_);
+    const StereoFrame direct = RenderDirect(input, activeSources);
 
     const float preDelaySamples = MaximumPreDelaySeconds *
                                   ClampControl(controls.preDelay) *
