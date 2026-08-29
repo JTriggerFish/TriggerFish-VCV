@@ -144,7 +144,7 @@ the standalone tests, so Linux compatibility is checked continuously.
 Rack's plugin build targets macOS 10.9, while VCV's official cross-toolchain
 uses libc++ headers from the MacOSX12.3 SDK. Some otherwise valid C++17 APIs are
 annotated unavailable for that deployment target. CI therefore builds the full
-plugin with pinned Swift 5.7/libc++ 14 headers, the closest public source
+plugin with pinned Swift 5.6/libc++ 13 headers, the closest public source
 counterpart to those SDK headers, and first proves that the compatibility
 harness rejects `std::any_cast` and `std::visit` at the 10.9 target.
 

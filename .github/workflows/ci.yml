@@ -9,10 +9,10 @@ permissions:
 
 env:
   RACK_SDK_VERSION: "2.6.6"
-  # Swift 5.7's libc++ 14 is the public source counterpart closest to the
+  # Swift 5.6's libc++ 13 is the public source counterpart closest to the
   # libc++ headers in VCV's required MacOSX12.3 SDK. Keep this immutable so
   # newer hosted-runner headers cannot hide old deployment-target failures.
-  VCV_LIBCXX_COMMIT: "3dade082a9b1989207a7fa7f3975868485d16a49"
+  VCV_LIBCXX_COMMIT: "900c3b6b832d1d0e7d6e1220f6ba001802cbe0cc"
 
 jobs:
   plugin-build-cross:
@@ -68,7 +68,7 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Fetch pinned Swift 5.7 libc++ headers
+      - name: Fetch pinned Swift 5.6 libc++ headers
         run: |
           libcxx_root="$RUNNER_TEMP/swift-libcxx"
           git init "$libcxx_root"
@@ -77,7 +77,16 @@ jobs:
           git -C "$libcxx_root" sparse-checkout set libcxx/include
           git -C "$libcxx_root" fetch --depth=1 origin "$VCV_LIBCXX_COMMIT"
           git -C "$libcxx_root" checkout --detach FETCH_HEAD
-          grep -q '#define _LIBCPP_VERSION 14000' "$libcxx_root/libcxx/include/__config"
+          grep -q '#define _LIBCPP_VERSION 13000' "$libcxx_root/libcxx/include/__config"
+          # Source-tree libc++ expects this generated header. These are the
+          # default settings captured in the installed MacOSX12.3 SDK.
+          cat > "$libcxx_root/libcxx/include/__config_site" <<'EOF'
+          #ifndef _LIBCPP_CONFIG_SITE
+          #define _LIBCPP_CONFIG_SITE
+          /* #undef _LIBCPP_ABI_VERSION */
+          /* #undef _LIBCPP_ABI_UNSTABLE */
+          #endif
+          EOF
           echo "VCV_LIBCXX_INCLUDE=$libcxx_root/libcxx/include" >> "$GITHUB_ENV"
       - name: Prove the compatibility headers enforce the old target
         run: |
@@ -96,10 +105,16 @@ jobs:
           }
           EOF
           for probe in libcxx-any-probe.cpp libcxx-variant-probe.cpp; do
-            if xcrun clang++ -std=c++17 -fsyntax-only -mmacosx-version-min=10.9 \
+            if diagnostics=$(xcrun clang++ -std=c++17 -fsyntax-only \
+                -mmacosx-version-min=10.9 \
                 -nostdinc++ -isystem "$VCV_LIBCXX_INCLUDE" \
-                "$RUNNER_TEMP/$probe"; then
+                "$RUNNER_TEMP/$probe" 2>&1); then
               echo "Pinned libc++ headers did not reject $probe on macOS 10.9" >&2
+              exit 1
+            fi
+            echo "$diagnostics"
+            if ! grep -q 'is unavailable: introduced in macOS 10.13' <<< "$diagnostics"; then
+              echo "$probe failed for the wrong reason" >&2
               exit 1
             fi
           done
