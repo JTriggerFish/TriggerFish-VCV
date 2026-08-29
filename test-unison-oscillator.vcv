@@ -92,7 +92,7 @@
       "id": 4,
       "plugin": "TriggerFish-Elements",
       "model": "TfUnisonOscillator",
-      "version": "2.5.3",
+      "version": "2.5.4",
       "params": [
         {
           "id": 0,
@@ -180,7 +180,7 @@
       "id": 5,
       "plugin": "TriggerFish-Elements",
       "model": "TfVCA",
-      "version": "2.5.3",
+      "version": "2.5.4",
       "params": [
         {
           "id": 0,
@@ -216,7 +216,7 @@
       "id": 6,
       "plugin": "TriggerFish-Elements",
       "model": "TfVCA",
-      "version": "2.5.3",
+      "version": "2.5.4",
       "params": [
         {
           "id": 0,

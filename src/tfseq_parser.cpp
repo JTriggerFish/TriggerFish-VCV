@@ -6,7 +6,6 @@
 #include <cstdlib>
 #include <limits>
 #include <memory>
-#include <type_traits>
 #include <unordered_set>
 
 namespace tfseq::syntax {
@@ -784,6 +783,20 @@ bool LoadParser(peg::parser &parser, Diagnostic &diagnostic) {
   return true;
 }
 
+SourceSpan StatementSpan(const Statement &statement) {
+  if (const auto *sequence = std::get_if<SequenceDefinition>(&statement))
+    return sequence->span;
+  if (const auto *rhythm = std::get_if<RhythmDefinition>(&statement))
+    return rhythm->span;
+  if (const auto *assignment = std::get_if<Assignment>(&statement))
+    return assignment->span;
+  if (const auto *play = std::get_if<PlayCommand>(&statement))
+    return play->span;
+  if (const auto *seed = std::get_if<SeedCommand>(&statement))
+    return seed->span;
+  return {};
+}
+
 } // namespace
 
 ParseResult Parse(const std::string &source) {
@@ -862,9 +875,7 @@ ParseResult ParseStatementsContaining(const std::string &source,
       const bool overlaps = std::any_of(
           parsed.document.statements.begin(), parsed.document.statements.end(),
           [&](const Statement &statement) {
-            const auto span =
-                std::visit([](const auto &value) { return value.span; },
-                           statement);
+            const auto span = StatementSpan(statement);
             return selectionBegin == selectionEnd
                        ? span.begin <= selectionBegin && selectionBegin < span.end
                        : span.begin < selectionEnd && selectionBegin < span.end;
@@ -897,10 +908,6 @@ ParseResult ParseStatementsContaining(const std::string &source,
 }
 
 namespace {
-
-SourceSpan StatementSpan(const Statement &statement) {
-  return std::visit([](const auto &value) { return value.span; }, statement);
-}
 
 std::string DefinitionKey(const Statement &statement) {
   if (const auto *sequence = std::get_if<SequenceDefinition>(&statement))
@@ -983,37 +990,36 @@ void Invalidate(Expression &expression) {
 }
 
 void Invalidate(Statement &statement) {
-  std::visit(
-      [](auto &value) {
-        using Value = std::decay_t<decltype(value)>;
-        if constexpr (std::is_same_v<Value, SequenceDefinition>) {
-          Invalidate(value.name);
-          for (auto &lane : value.lanes) {
-            Invalidate(lane.name);
-            Invalidate(lane.rhythmReference);
-            Invalidate(lane.pattern);
-            for (auto &pipeline : lane.pipelines)
-              Invalidate(pipeline);
-          }
-          for (auto &pipeline : value.pipelines)
-            Invalidate(pipeline);
-        } else if constexpr (std::is_same_v<Value, RhythmDefinition>) {
-          Invalidate(value.name);
-          Invalidate(value.subdivision);
-          Invalidate(value.events);
-          for (auto &pipeline : value.pipelines)
-            Invalidate(pipeline);
-        } else if constexpr (std::is_same_v<Value, Assignment>) {
-          Invalidate(value.name);
-          Invalidate(value.expression);
-        } else if constexpr (std::is_same_v<Value, PlayCommand>) {
-          Invalidate(value.name);
-        } else if constexpr (std::is_same_v<Value, SeedCommand>) {
-          Invalidate(value.value);
-        }
-        value.span = {};
-      },
-      statement);
+  if (auto *sequence = std::get_if<SequenceDefinition>(&statement)) {
+    Invalidate(sequence->name);
+    for (auto &lane : sequence->lanes) {
+      Invalidate(lane.name);
+      Invalidate(lane.rhythmReference);
+      Invalidate(lane.pattern);
+      for (auto &pipeline : lane.pipelines)
+        Invalidate(pipeline);
+    }
+    for (auto &pipeline : sequence->pipelines)
+      Invalidate(pipeline);
+    sequence->span = {};
+  } else if (auto *rhythm = std::get_if<RhythmDefinition>(&statement)) {
+    Invalidate(rhythm->name);
+    Invalidate(rhythm->subdivision);
+    Invalidate(rhythm->events);
+    for (auto &pipeline : rhythm->pipelines)
+      Invalidate(pipeline);
+    rhythm->span = {};
+  } else if (auto *assignment = std::get_if<Assignment>(&statement)) {
+    Invalidate(assignment->name);
+    Invalidate(assignment->expression);
+    assignment->span = {};
+  } else if (auto *play = std::get_if<PlayCommand>(&statement)) {
+    Invalidate(play->name);
+    play->span = {};
+  } else if (auto *seed = std::get_if<SeedCommand>(&statement)) {
+    Invalidate(seed->value);
+    seed->span = {};
+  }
 }
 
 bool SameIdentity(const Statement &left, const Statement &right) {

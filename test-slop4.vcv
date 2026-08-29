@@ -149,7 +149,7 @@
       "id": 4,
       "plugin": "TriggerFish-Elements",
       "model": "TfSlop4",
-      "version": "2.5.3",
+      "version": "2.5.4",
       "params": [
         {
           "id": 0,
@@ -401,7 +401,7 @@
       "id": 10,
       "plugin": "TriggerFish-Elements",
       "model": "TfVCA",
-      "version": "2.5.3",
+      "version": "2.5.4",
       "params": [
         {
           "id": 0,

@@ -82,7 +82,7 @@
       "id": 3,
       "plugin": "TriggerFish-Elements",
       "model": "TfElectricPiano",
-      "version": "2.5.3",
+      "version": "2.5.4",
       "params": [
         {
           "id": 0,
