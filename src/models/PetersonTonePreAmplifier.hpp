@@ -200,83 +200,6 @@ public:
 	}
 
 private:
-	template <std::size_t Size>
-	struct Dual
-	{
-		double value{};
-		std::array<double, Size> derivative{};
-
-		Dual() = default;
-		Dual(double scalar) : value(scalar) {}
-
-		static Dual Variable(double scalar, std::size_t index)
-		{
-			Dual result(scalar);
-			result.derivative[index] = 1.0;
-			return result;
-		}
-
-		Dual& operator+=(const Dual& other)
-		{
-			value += other.value;
-			for (std::size_t index = 0; index < Size; ++index)
-				derivative[index] += other.derivative[index];
-			return *this;
-		}
-
-		Dual& operator-=(const Dual& other)
-		{
-			value -= other.value;
-			for (std::size_t index = 0; index < Size; ++index)
-				derivative[index] -= other.derivative[index];
-			return *this;
-		}
-	};
-
-	template <std::size_t Size>
-	friend Dual<Size> operator+(Dual<Size> left, const Dual<Size>& right)
-	{
-		left += right;
-		return left;
-	}
-
-	template <std::size_t Size>
-	friend Dual<Size> operator-(Dual<Size> left, const Dual<Size>& right)
-	{
-		left -= right;
-		return left;
-	}
-
-	template <std::size_t Size>
-	friend Dual<Size> operator-(const Dual<Size>& value)
-	{
-		Dual<Size> result(-value.value);
-		for (std::size_t index = 0; index < Size; ++index)
-			result.derivative[index] = -value.derivative[index];
-		return result;
-	}
-
-	template <std::size_t Size>
-	friend Dual<Size> operator*(const Dual<Size>& value, double scalar)
-	{
-		Dual<Size> result(value.value * scalar);
-		for (std::size_t index = 0; index < Size; ++index)
-			result.derivative[index] = value.derivative[index] * scalar;
-		return result;
-	}
-
-	template <std::size_t Size>
-	friend Dual<Size> operator*(double scalar, const Dual<Size>& value)
-	{
-		return value * scalar;
-	}
-
-	template <std::size_t Size>
-	friend Dual<Size> operator/(const Dual<Size>& value, double scalar)
-	{
-		return value * (1.0 / scalar);
-	}
-
 	struct CapacitorCompanion
 	{
 		double previousVoltage{};
@@ -298,13 +221,6 @@ private:
 				History(capacitance, timeStep);
 			previousVoltage = voltage;
 		}
-	};
-
-	struct DeviceCurrents
-	{
-		Dual<13> collector;
-		Dual<13> base;
-		Dual<13> emitter;
 	};
 
 	enum Unknown : std::size_t
@@ -335,42 +251,6 @@ private:
 		FollowerBaseCapacitor,
 		CapacitorCount
 	};
-
-	using CircuitDual = Dual<UnknownCount>;
-	using Residual = std::array<CircuitDual, UnknownCount>;
-
-	static CircuitDual LimitedExp(const CircuitDual& argument)
-	{
-		if (argument.value <= -20.0)
-			return CircuitDual(0.0);
-		const double limited = std::min(argument.value, 40.0);
-		const double exponential = static_cast<double>(Exp2Taylor5(
-			static_cast<float>(limited * Log2E)));
-		CircuitDual result(exponential);
-		if (argument.value < 40.0)
-		{
-			for (std::size_t index = 0; index < UnknownCount; ++index)
-				result.derivative[index] = exponential *
-					argument.derivative[index];
-		}
-		return result;
-	}
-
-	static DeviceCurrents Npn(const CircuitDual& collector,
-		const CircuitDual& base, const CircuitDual& emitter)
-	{
-		const auto forwardExp = LimitedExp((base - emitter) / ThermalVoltage);
-		const auto reverseExp = LimitedExp((base - collector) / ThermalVoltage);
-		const auto forward = (forwardExp - CircuitDual(1.0)) *
-			(SaturationCurrent / ForwardAlpha);
-		const auto reverse = (reverseExp - CircuitDual(1.0)) *
-			(SaturationCurrent / ReverseAlpha);
-		DeviceCurrents result;
-		result.collector = ForwardAlpha * forward - reverse;
-		result.emitter = -forward + ReverseAlpha * reverse;
-		result.base = -(result.collector + result.emitter);
-		return result;
-	}
 
 	struct DeviceLinearization
 	{
@@ -453,7 +333,7 @@ private:
 	RealtimeResidual EvaluateRealtime(
 		const std::array<double, UnknownCount>& node, double inputVoltage,
 		const std::array<double, CapacitorCount>& histories,
-		double timeStep) const
+		double timeStep, bool dcMode = false) const
 	{
 		RealtimeResidual residual{};
 		const auto stamp = [&](int positive, int negative, double current)
@@ -503,21 +383,24 @@ private:
 		resistor(EmitterQ5, -1, FollowerEmitterResistance);
 		resistor(EmitterQ5, -1, HistoricalVolumeResistance);
 
-		capacitor(TrebleWiper, TrebleJunction,
-			Capacitances[TrebleSeriesCapacitor],
-			histories[TrebleSeriesCapacitor]);
-		capacitor(TrebleJunction, FeedbackBase,
-			Capacitances[TrebleFeedbackCapacitor],
-			histories[TrebleFeedbackCapacitor]);
-		capacitor(BassWiper, BassTop, Capacitances[BassTopCapacitor],
-			histories[BassTopCapacitor]);
-		capacitor(BassWiper, BassBottom, Capacitances[BassBottomCapacitor],
-			histories[BassBottomCapacitor]);
-		capacitor(CompensationJunction, EmitterQ5,
-			Capacitances[FollowerCompensationCapacitor],
-			histories[FollowerCompensationCapacitor]);
-		capacitor(BaseQ5, -1, Capacitances[FollowerBaseCapacitor],
-			histories[FollowerBaseCapacitor]);
+		if (!dcMode)
+		{
+			capacitor(TrebleWiper, TrebleJunction,
+				Capacitances[TrebleSeriesCapacitor],
+				histories[TrebleSeriesCapacitor]);
+			capacitor(TrebleJunction, FeedbackBase,
+				Capacitances[TrebleFeedbackCapacitor],
+				histories[TrebleFeedbackCapacitor]);
+			capacitor(BassWiper, BassTop, Capacitances[BassTopCapacitor],
+				histories[BassTopCapacitor]);
+			capacitor(BassWiper, BassBottom, Capacitances[BassBottomCapacitor],
+				histories[BassBottomCapacitor]);
+			capacitor(CompensationJunction, EmitterQ5,
+				Capacitances[FollowerCompensationCapacitor],
+				histories[FollowerCompensationCapacitor]);
+			capacitor(BaseQ5, -1, Capacitances[FollowerBaseCapacitor],
+				histories[FollowerBaseCapacitor]);
+		}
 
 		const auto q4 = NpnLinearization(node[CollectorOutput],
 			node[FeedbackBase], node[BaseQ3]);
@@ -534,7 +417,7 @@ private:
 	}
 
 	void BuildRealtimeJacobian(double matrix[UnknownCount][UnknownCount],
-		double timeStep) const
+		double timeStep, bool dcMode = false) const
 	{
 		const auto stampConductance = [&](int positive, int negative,
 			double conductance)
@@ -591,15 +474,18 @@ private:
 		resistor(CompensationJunction, BaseQ5, FollowerBaseResistance);
 		resistor(EmitterQ5, -1, FollowerEmitterResistance);
 		resistor(EmitterQ5, -1, HistoricalVolumeResistance);
-		capacitor(TrebleWiper, TrebleJunction,
-			Capacitances[TrebleSeriesCapacitor]);
-		capacitor(TrebleJunction, FeedbackBase,
-			Capacitances[TrebleFeedbackCapacitor]);
-		capacitor(BassWiper, BassTop, Capacitances[BassTopCapacitor]);
-		capacitor(BassWiper, BassBottom, Capacitances[BassBottomCapacitor]);
-		capacitor(CompensationJunction, EmitterQ5,
-			Capacitances[FollowerCompensationCapacitor]);
-		capacitor(BaseQ5, -1, Capacitances[FollowerBaseCapacitor]);
+		if (!dcMode)
+		{
+			capacitor(TrebleWiper, TrebleJunction,
+				Capacitances[TrebleSeriesCapacitor]);
+			capacitor(TrebleJunction, FeedbackBase,
+				Capacitances[TrebleFeedbackCapacitor]);
+			capacitor(BassWiper, BassTop, Capacitances[BassTopCapacitor]);
+			capacitor(BassWiper, BassBottom, Capacitances[BassBottomCapacitor]);
+			capacitor(CompensationJunction, EmitterQ5,
+				Capacitances[FollowerCompensationCapacitor]);
+			capacitor(BaseQ5, -1, Capacitances[FollowerBaseCapacitor]);
+		}
 
 		stampDevice(NpnLinearization(unknowns_[CollectorOutput],
 			unknowns_[FeedbackBase], unknowns_[BaseQ3]),
@@ -608,150 +494,6 @@ private:
 			unknowns_[BaseQ3], 0.0), {CollectorOutput, BaseQ3, -1});
 		stampDevice(NpnLinearization(SupplyVoltage, unknowns_[BaseQ5],
 			unknowns_[EmitterQ5]), {-1, BaseQ5, EmitterQ5});
-	}
-
-	static void Stamp(Residual& residual, int positiveNode, int negativeNode,
-		const CircuitDual& current)
-	{
-		if (positiveNode >= 0)
-			residual[static_cast<std::size_t>(positiveNode)] += current;
-		if (negativeNode >= 0)
-			residual[static_cast<std::size_t>(negativeNode)] -= current;
-	}
-
-	static void StampResistor(Residual& residual,
-		const std::array<CircuitDual, UnknownCount>& node, int positiveNode,
-		int negativeNode, double resistance, double positiveFixed = 0.0,
-		double negativeFixed = 0.0)
-	{
-		const CircuitDual positive = positiveNode >= 0 ?
-			node[static_cast<std::size_t>(positiveNode)] :
-			CircuitDual(positiveFixed);
-		const CircuitDual negative = negativeNode >= 0 ?
-			node[static_cast<std::size_t>(negativeNode)] :
-			CircuitDual(negativeFixed);
-		Stamp(residual, positiveNode, negativeNode,
-			(positive - negative) / resistance);
-	}
-
-	static void StampCapacitor(Residual& residual,
-		const std::array<CircuitDual, UnknownCount>& node, int positiveNode,
-		int negativeNode, double capacitance, double history, double timeStep)
-	{
-		const CircuitDual positive = positiveNode >= 0 ?
-			node[static_cast<std::size_t>(positiveNode)] : CircuitDual(0.0);
-		const CircuitDual negative = negativeNode >= 0 ?
-			node[static_cast<std::size_t>(negativeNode)] : CircuitDual(0.0);
-		Stamp(residual, positiveNode, negativeNode,
-			(positive - negative) * (2.0 * capacitance / timeStep) +
-				CircuitDual(history));
-	}
-
-	Residual Evaluate(const std::array<double, UnknownCount>& values,
-		double inputVoltage, double bass, double treble,
-		const std::array<double, CapacitorCount>& histories, double timeStep,
-		bool dcMode) const
-	{
-		std::array<CircuitDual, UnknownCount> node{};
-		for (std::size_t index = 0; index < UnknownCount; ++index)
-			node[index] = CircuitDual::Variable(values[index], index);
-		Residual residual{};
-
-		const double trebleTopResistance = PotMinimumResistance +
-			(1.0 - treble) * TonePotResistance;
-		const double trebleBottomResistance = PotMinimumResistance +
-			treble * TonePotResistance;
-		const double bassTopResistance = PotMinimumResistance +
-			(1.0 - bass) * TonePotResistance;
-		const double bassBottomResistance = PotMinimumResistance +
-			bass * TonePotResistance;
-
-		// Figure 11-8's input arms and the two actual three-terminal controls.
-		// The original 68 k treble input arm yields only about 4 dB of boost from
-		// the centred setting. Above centre the module progressively parallels
-		// that arm down to 32 k, extending boost while retaining the real active-
-		// feedback topology, original centre calibration and original cut side.
-		// This is an explicit sound-design range extension, not a claim about the
-		// production Peterson component value.
-		const double trebleBoostExtension = std::max(0.0,
-			2.0 * (treble - 0.5));
-		const double trebleInputResistance = TrebleInputResistance * std::pow(
-			TrebleBoostInputResistanceRatio, trebleBoostExtension);
-		StampResistor(residual, node, TrebleTop, -1, trebleInputResistance,
-			0.0, inputVoltage);
-		StampResistor(residual, node, BassTop, -1, BassInputResistance,
-			0.0, inputVoltage);
-		StampResistor(residual, node, TrebleTop, TrebleWiper,
-			trebleTopResistance);
-		StampResistor(residual, node, TrebleWiper, TrebleBottom,
-			trebleBottomResistance);
-		StampResistor(residual, node, TrebleBottom, CollectorOutput,
-			ToneEndResistance);
-		StampResistor(residual, node, BassTop, BassWiper, bassTopResistance);
-		StampResistor(residual, node, BassWiper, BassBottom,
-			bassBottomResistance);
-		StampResistor(residual, node, BassBottom, CollectorOutput,
-			ToneEndResistance);
-		StampResistor(residual, node, TrebleJunction, BassWiper,
-			ToneBridgeResistance);
-
-		// The bias/feedback divider drives Q4, whose emitter drives Q3. Their
-		// collectors share the 12 k output node exactly as drawn.
-		StampResistor(residual, node, FeedbackBase, -1,
-			FeedbackGroundResistance);
-		StampResistor(residual, node, FeedbackBase, CollectorOutput,
-			FeedbackResistance);
-		StampResistor(residual, node, CollectorOutput, -1,
-			CollectorResistance, 0.0, SupplyVoltage);
-
-		// Q5 follows the Darlington collector through the compensated 6.8 k /
-		// 68 k network. The 6.8 k emitter resistor is the dominant load seen by
-		// the historical volume/output network.
-		StampResistor(residual, node, CollectorOutput, CompensationJunction,
-			FollowerSeriesResistance);
-		StampResistor(residual, node, CompensationJunction, BaseQ5,
-			FollowerBaseResistance);
-		StampResistor(residual, node, EmitterQ5, -1,
-			FollowerEmitterResistance);
-		StampResistor(residual, node, EmitterQ5, -1,
-			HistoricalVolumeResistance);
-
-		if (!dcMode)
-		{
-			StampCapacitor(residual, node, TrebleWiper, TrebleJunction,
-				Capacitances[TrebleSeriesCapacitor],
-				histories[TrebleSeriesCapacitor], timeStep);
-			StampCapacitor(residual, node, TrebleJunction, FeedbackBase,
-				Capacitances[TrebleFeedbackCapacitor],
-				histories[TrebleFeedbackCapacitor], timeStep);
-			StampCapacitor(residual, node, BassWiper, BassTop,
-				Capacitances[BassTopCapacitor],
-				histories[BassTopCapacitor], timeStep);
-			StampCapacitor(residual, node, BassWiper, BassBottom,
-				Capacitances[BassBottomCapacitor],
-				histories[BassBottomCapacitor], timeStep);
-			StampCapacitor(residual, node, CompensationJunction, EmitterQ5,
-				Capacitances[FollowerCompensationCapacitor],
-				histories[FollowerCompensationCapacitor], timeStep);
-			StampCapacitor(residual, node, BaseQ5, -1,
-				Capacitances[FollowerBaseCapacitor],
-				histories[FollowerBaseCapacitor], timeStep);
-		}
-
-		const auto q4 = Npn(node[CollectorOutput], node[FeedbackBase],
-			node[BaseQ3]);
-		const auto q3 = Npn(node[CollectorOutput], node[BaseQ3],
-			CircuitDual(0.0));
-		const auto q5 = Npn(CircuitDual(SupplyVoltage), node[BaseQ5],
-			node[EmitterQ5]);
-		residual[CollectorOutput] += q4.collector;
-		residual[FeedbackBase] += q4.base;
-		residual[BaseQ3] += q4.emitter;
-		residual[CollectorOutput] += q3.collector;
-		residual[BaseQ3] += q3.base;
-		residual[BaseQ5] += q5.base;
-		residual[EmitterQ5] += q5.emitter;
-		return residual;
 	}
 
 	static bool SolveLinear(double matrix[UnknownCount][UnknownCount],
@@ -794,24 +536,22 @@ private:
 
 	void SolveOperatingPoint(double bass, double treble)
 	{
+		UpdateRealtimeControls(bass, treble);
 		const std::array<double, CapacitorCount> histories{};
 		for (int iteration = 0; iteration < 100; ++iteration)
 		{
-			const auto residual = Evaluate(unknowns_, 0.0, bass, treble,
-				histories, 1.0, true);
+			const auto residual = EvaluateRealtime(unknowns_, 0.0, histories,
+				1.0, true);
 			double maximumResidual = 0.0;
 			for (const auto& value : residual)
-				maximumResidual = std::max(maximumResidual, std::abs(value.value));
+				maximumResidual = std::max(maximumResidual, std::abs(value));
 			if (maximumResidual < NewtonTolerance)
 				break;
 			double matrix[UnknownCount][UnknownCount]{};
+			BuildRealtimeJacobian(matrix, 1.0, true);
 			std::array<double, UnknownCount> correction{};
 			for (std::size_t row = 0; row < UnknownCount; ++row)
-			{
-				correction[row] = -residual[row].value;
-				for (std::size_t column = 0; column < UnknownCount; ++column)
-					matrix[row][column] = residual[row].derivative[column];
-			}
+				correction[row] = -residual[row];
 			if (!SolveLinear(matrix, correction))
 				break;
 			double damping = 1.0;

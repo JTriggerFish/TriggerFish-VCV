@@ -6,7 +6,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
-#include <type_traits>
 
 #include <Eigen/Dense>
 
@@ -247,137 +246,25 @@ public:
 	}
 
 private:
-	template <std::size_t Size>
-	struct Dual
-	{
-		double value{};
-		std::array<double, Size> derivative{};
-
-		Dual() = default;
-		Dual(double scalar) : value(scalar) {}
-		static Dual Variable(double scalar, std::size_t index)
-		{
-			Dual result(scalar);
-			result.derivative[index] = 1.0;
-			return result;
-		}
-	};
-
-	template <std::size_t N>
-	friend Dual<N> operator+(const Dual<N>& a, const Dual<N>& b)
-	{
-		Dual<N> result(a.value + b.value);
-		for (std::size_t i = 0; i < N; ++i)
-			result.derivative[i] = a.derivative[i] + b.derivative[i];
-		return result;
-	}
-	template <std::size_t N>
-	friend Dual<N> operator-(const Dual<N>& a, const Dual<N>& b)
-	{
-		Dual<N> result(a.value - b.value);
-		for (std::size_t i = 0; i < N; ++i)
-			result.derivative[i] = a.derivative[i] - b.derivative[i];
-		return result;
-	}
-	template <std::size_t N>
-	friend Dual<N> operator-(const Dual<N>& value)
-	{
-		Dual<N> result(-value.value);
-		for (std::size_t i = 0; i < N; ++i)
-			result.derivative[i] = -value.derivative[i];
-		return result;
-	}
-	template <std::size_t N>
-	friend Dual<N> operator*(const Dual<N>& a, const Dual<N>& b)
-	{
-		Dual<N> result(a.value * b.value);
-		for (std::size_t i = 0; i < N; ++i)
-			result.derivative[i] = a.derivative[i] * b.value +
-				a.value * b.derivative[i];
-		return result;
-	}
-	template <std::size_t N>
-	friend Dual<N> operator/(const Dual<N>& a, const Dual<N>& b)
-	{
-		Dual<N> result(a.value / b.value);
-		const double inverseSquare = 1.0 / (b.value * b.value);
-		for (std::size_t i = 0; i < N; ++i)
-			result.derivative[i] = (a.derivative[i] * b.value -
-				a.value * b.derivative[i]) * inverseSquare;
-		return result;
-	}
-	template <std::size_t N>
-	friend Dual<N> operator+(const Dual<N>& a, double b)
-	{
-		return a + Dual<N>(b);
-	}
-	template <std::size_t N>
-	friend Dual<N> operator+(double a, const Dual<N>& b)
-	{
-		return Dual<N>(a) + b;
-	}
-	template <std::size_t N>
-	friend Dual<N> operator-(const Dual<N>& a, double b)
-	{
-		return a - Dual<N>(b);
-	}
-	template <std::size_t N>
-	friend Dual<N> operator-(double a, const Dual<N>& b)
-	{
-		return Dual<N>(a) - b;
-	}
-	template <std::size_t N>
-	friend Dual<N> operator*(const Dual<N>& a, double b)
-	{
-		return a * Dual<N>(b);
-	}
-	template <std::size_t N>
-	friend Dual<N> operator*(double a, const Dual<N>& b)
-	{
-		return Dual<N>(a) * b;
-	}
-	template <std::size_t N>
-	friend Dual<N> operator/(const Dual<N>& a, double b)
-	{
-		return a / Dual<N>(b);
-	}
-	template <std::size_t N>
-	friend Dual<N> operator/(double a, const Dual<N>& b)
-	{
-		return Dual<N>(a) / b;
-	}
-
-	template <std::size_t N>
-	static Dual<N> LimitedExp(const Dual<N>& argument)
-	{
-		// Below -20 the exponential contributes less than 2.1e-9 of Is.
-		// Returning zero is below the KCL tolerance even for the leaky germanium
-		// proxy and avoids costly exp() calls for reverse-biased junctions.
-		if (argument.value <= -20.0)
-			return Dual<N>(0.0);
-		const double limited = std::min(argument.value, 40.0);
-		const double exponential = std::exp(limited);
-		Dual<N> result(exponential);
-		if (argument.value < 40.0)
-		{
-			for (std::size_t i = 0; i < N; ++i)
-				result.derivative[i] = exponential * argument.derivative[i];
-		}
-		return result;
-	}
 	static double LimitedExp(double argument)
 	{
 		return argument <= -20.0 ? 0.0 :
 			static_cast<double>(Exp2Taylor5(static_cast<float>(
 				std::min(argument, 40.0) * Log2E)));
 	}
+	static double ExactLimitedExp(double argument)
+	{
+		// Reset is off the audio path. Retain the original operating-point
+		// accuracy while the real-time solve uses the cheaper approximation.
+		return argument <= -20.0 ? 0.0 :
+			std::exp(std::min(argument, 40.0));
+	}
 
-	template <typename T>
 	struct TerminalCurrents
 	{
-		T collector;
-		T base;
-		T emitter;
+		double collector;
+		double base;
+		double emitter;
 	};
 
 	struct DeviceParameters
@@ -403,22 +290,29 @@ private:
 	};
 
 	static DeviceLinearization NpnLinearization(double collector, double base,
-		double emitter, const DeviceParameters& parameters)
+		double emitter, const DeviceParameters& parameters,
+		bool exactExponential = false)
 	{
 		const double forwardArgument = (base - emitter) /
 			parameters.thermalVoltage;
 		const double reverseArgument = (base - collector) /
 			parameters.thermalVoltage;
-		const double forwardExp = LimitedExp(forwardArgument);
-		const double reverseExp = LimitedExp(reverseArgument);
+		const double forwardExp = exactExponential ?
+			ExactLimitedExp(forwardArgument) : LimitedExp(forwardArgument);
+		const double reverseExp = exactExponential ?
+			ExactLimitedExp(reverseArgument) : LimitedExp(reverseArgument);
 		const double forward = parameters.saturationCurrent /
 			parameters.forwardAlpha * (forwardExp - 1.0);
 		const double reverse = parameters.saturationCurrent /
 			parameters.reverseAlpha * (reverseExp - 1.0);
+		const double forwardSlope = exactExponential && forwardArgument >= 40.0 ?
+			0.0 : forwardExp;
+		const double reverseSlope = exactExponential && reverseArgument >= 40.0 ?
+			0.0 : reverseExp;
 		const double gf = parameters.saturationCurrent /
-			(parameters.forwardAlpha * parameters.thermalVoltage) * forwardExp;
+			(parameters.forwardAlpha * parameters.thermalVoltage) * forwardSlope;
 		const double gr = parameters.saturationCurrent /
-			(parameters.reverseAlpha * parameters.thermalVoltage) * reverseExp;
+			(parameters.reverseAlpha * parameters.thermalVoltage) * reverseSlope;
 		DeviceLinearization result;
 		result.current[0] = parameters.forwardAlpha * forward - reverse;
 		result.current[2] = -forward + parameters.reverseAlpha * reverse;
@@ -436,38 +330,30 @@ private:
 	}
 
 	static DeviceLinearization PnpLinearization(double collector, double base,
-		double emitter, const DeviceParameters& parameters)
+		double emitter, const DeviceParameters& parameters,
+		bool exactExponential = false)
 	{
 		auto result = NpnLinearization(-collector, -base, -emitter,
-			parameters);
+			parameters, exactExponential);
 		for (double& current : result.current)
 			current = -current;
 		// Negating both terminal voltage and current leaves dI/dV unchanged.
 		return result;
 	}
 
-	template <typename T>
-	static TerminalCurrents<T> Npn(const T& collector, const T& base,
-		const T& emitter, const DeviceParameters& parameters)
+	static TerminalCurrents Npn(double collector, double base,
+		double emitter, const DeviceParameters& parameters)
 	{
-		const T forward = (parameters.saturationCurrent /
+		const double forward = (parameters.saturationCurrent /
 			parameters.forwardAlpha) *
 			(LimitedExp((base - emitter) / parameters.thermalVoltage) - 1.0);
-		const T reverse = (parameters.saturationCurrent /
+		const double reverse = (parameters.saturationCurrent /
 			parameters.reverseAlpha) *
 			(LimitedExp((base - collector) / parameters.thermalVoltage) - 1.0);
-		const T collectorCurrent = parameters.forwardAlpha * forward - reverse;
-		const T emitterCurrent = -forward + parameters.reverseAlpha * reverse;
+		const double collectorCurrent = parameters.forwardAlpha * forward - reverse;
+		const double emitterCurrent = -forward + parameters.reverseAlpha * reverse;
 		return {collectorCurrent, -(collectorCurrent + emitterCurrent),
 			emitterCurrent};
-	}
-
-	template <typename T>
-	static TerminalCurrents<T> Pnp(const T& collector, const T& base,
-		const T& emitter, const DeviceParameters& parameters)
-	{
-		const auto mirrored = Npn(-collector, -base, -emitter, parameters);
-		return {-mirrored.collector, -mirrored.base, -mirrored.emitter};
 	}
 
 	struct CapacitorCompanion
@@ -516,21 +402,18 @@ private:
 		UnknownCount
 	};
 
-	template <typename T>
-	static T CapacitorCurrent(const T& voltage, double capacitance,
+	static double CapacitorCurrent(double voltage, double capacitance,
 		double timeStep, double history)
 	{
 		return (capacitance / timeStep) * voltage + history;
 	}
 
-	template <typename T>
-	static T UpperWindingSource(double railVoltage, const T& primaryVoltage)
+	static double UpperWindingSource(double railVoltage, double primaryVoltage)
 	{
 		return railVoltage + primaryVoltage / TransformerTurnsRatio;
 	}
-	template <typename T>
-	static T LowerWindingSource(const T& outputVoltage,
-		const T& primaryVoltage)
+	static double LowerWindingSource(double outputVoltage,
+		double primaryVoltage)
 	{
 		// The lower DTG110B is also PNP. Its secondary is referenced to the
 		// audio output and wound with the opposite phase, making this device a
@@ -538,92 +421,72 @@ private:
 		return outputVoltage - primaryVoltage / TransformerTurnsRatio;
 	}
 
-	template <typename T>
-	static T MagnetizingCurrent(const T& flux)
+	static double MagnetizingCurrent(double flux)
 	{
 		// Preserve the transformer's dynamic magnetising branch and its reflected
 		// loading without inventing an unmeasured saturation knee. A nonlinear
 		// core belongs here only after identification from an original T1.
 		return flux / MagnetizingInductance;
 	}
-	template <typename T>
-	std::array<T, UnknownCount> EvaluateCircuit(
-		const std::array<T, UnknownCount>& x, double inputVoltage,
+	std::array<double, UnknownCount> EvaluateCircuit(
+		const std::array<double, UnknownCount>& x, double inputVoltage,
 		double railVoltage, const CompanionHistories& histories,
 		double loadHistory, double loadCurrentSlope, double timeStep,
 		bool dcMode) const
 	{
-		const T collectorQ2 = PositiveRegulatedRail - x[PrimaryVoltage];
-		const T upperBase = x[UpperBaseNode];
-		const T lowerBase = x[LowerBaseNode];
-		const T upperWindingSource = UpperWindingSource(railVoltage,
+		const double collectorQ2 = PositiveRegulatedRail - x[PrimaryVoltage];
+		const double upperBase = x[UpperBaseNode];
+		const double lowerBase = x[LowerBaseNode];
+		const double upperWindingSource = UpperWindingSource(railVoltage,
 			x[PrimaryVoltage]);
-		const T lowerWindingSource = LowerWindingSource(x[Output],
+		const double lowerWindingSource = LowerWindingSource(x[Output],
 			x[PrimaryVoltage]);
-		TerminalCurrents<T> q1;
-		TerminalCurrents<T> q2;
-		TerminalCurrents<T> upper;
-		TerminalCurrents<T> lower;
-		if constexpr (std::is_same_v<T, double>)
+		realtimeDevices_.q1 = NpnLinearization(x[CollectorQ1BaseQ2],
+			x[BaseQ1], x[EmitterQ1], SmallSignalNpn, dcMode);
+		realtimeDevices_.q2 = NpnLinearization(collectorQ2,
+			x[CollectorQ1BaseQ2], x[EmitterQ2], SmallSignalNpn, dcMode);
+		realtimeDevices_.upper = PnpLinearization(x[Output], upperBase,
+			x[UpperEmitter], GermaniumPowerDevice, dcMode);
+		realtimeDevices_.lower = PnpLinearization(x[LowerCollector],
+			lowerBase, x[Output], GermaniumPowerDevice, dcMode);
+		auto currents = [](const DeviceLinearization& device)
 		{
-			realtimeDevices_.q1 = NpnLinearization(x[CollectorQ1BaseQ2],
-				x[BaseQ1], x[EmitterQ1], SmallSignalNpn);
-			realtimeDevices_.q2 = NpnLinearization(collectorQ2,
-				x[CollectorQ1BaseQ2], x[EmitterQ2], SmallSignalNpn);
-			realtimeDevices_.upper = PnpLinearization(x[Output], upperBase,
-				x[UpperEmitter], GermaniumPowerDevice);
-			realtimeDevices_.lower = PnpLinearization(x[LowerCollector],
-				lowerBase, x[Output], GermaniumPowerDevice);
-			auto currents = [](const DeviceLinearization& device)
-			{
-				return TerminalCurrents<double>{device.current[0],
-					device.current[1], device.current[2]};
-			};
-			q1 = currents(realtimeDevices_.q1);
-			q2 = currents(realtimeDevices_.q2);
-			upper = currents(realtimeDevices_.upper);
-			lower = currents(realtimeDevices_.lower);
-		}
-		else
-		{
-			q1 = Npn(x[CollectorQ1BaseQ2], x[BaseQ1], x[EmitterQ1],
-				SmallSignalNpn);
-			q2 = Npn(collectorQ2, x[CollectorQ1BaseQ2], x[EmitterQ2],
-				SmallSignalNpn);
-			upper = Pnp(x[Output], upperBase, x[UpperEmitter],
-				GermaniumPowerDevice);
-			lower = Pnp(x[LowerCollector], lowerBase, x[Output],
-				GermaniumPowerDevice);
-		}
+			return TerminalCurrents{device.current[0], device.current[1],
+				device.current[2]};
+		};
+		const TerminalCurrents q1 = currents(realtimeDevices_.q1);
+		const TerminalCurrents q2 = currents(realtimeDevices_.q2);
+		const TerminalCurrents upper = currents(realtimeDevices_.upper);
+		const TerminalCurrents lower = currents(realtimeDevices_.lower);
 
-		const T inputCapCurrent = dcMode ? T(0.0) : CapacitorCurrent(
+		const double inputCapCurrent = dcMode ? 0.0 : CapacitorCurrent(
 			x[BaseQ1] - inputVoltage, InputCapacitance, timeStep,
 			histories.input);
-		const T feedbackCapCurrent = dcMode ? T(0.0) : CapacitorCurrent(
+		const double feedbackCapCurrent = dcMode ? 0.0 : CapacitorCurrent(
 			x[EmitterQ1] - x[Output], FeedbackCapacitance, timeStep,
 			histories.feedback);
-		const T driverMillerCurrent = dcMode ? T(0.0) : CapacitorCurrent(
+		const double driverMillerCurrent = dcMode ? 0.0 : CapacitorCurrent(
 			x[CollectorQ1BaseQ2] - collectorQ2, DriverMillerCapacitance,
 			timeStep, histories.driverMiller);
-		const T upperMillerCurrent = dcMode ? T(0.0) : CapacitorCurrent(
+		const double upperMillerCurrent = dcMode ? 0.0 : CapacitorCurrent(
 			upperBase - x[Output], OutputMillerCapacitance, timeStep,
 			histories.upperMiller);
-		const T lowerMillerCurrent = dcMode ? T(0.0) : CapacitorCurrent(
+		const double lowerMillerCurrent = dcMode ? 0.0 : CapacitorCurrent(
 			lowerBase - x[LowerCollector], OutputMillerCapacitance, timeStep,
 			histories.lowerMiller);
 
-		const T upperWindingCurrent =
+		const double upperWindingCurrent =
 			(upperBase - upperWindingSource) / SecondaryWindingResistance;
-		const T lowerWindingCurrent =
+		const double lowerWindingCurrent =
 			(lowerBase - lowerWindingSource) / SecondaryWindingResistance;
-		const T flux = dcMode ? T(primaryFlux_) : T(primaryFlux_) +
+		const double flux = dcMode ? primaryFlux_ : primaryFlux_ +
 			timeStep * x[PrimaryVoltage];
-		const T primaryCurrent = dcMode ? T(operatingMagnetizingCurrent_) :
+		const double primaryCurrent = dcMode ? operatingMagnetizingCurrent_ :
 			operatingMagnetizingCurrent_ + MagnetizingCurrent(flux) -
 				(upperWindingCurrent - lowerWindingCurrent) /
 				TransformerTurnsRatio;
 
-		std::array<T, UnknownCount> residual;
+		std::array<double, UnknownCount> residual;
 		residual[BaseQ1] = q1.base +
 			(x[BaseQ1] - x[CollectorQ1BaseQ2]) / InputBiasResistance +
 			inputCapCurrent;
@@ -654,7 +517,7 @@ private:
 		residual[LowerCollector] = lower.collector +
 			(x[LowerCollector] + railVoltage) / OutputEmitterResistance -
 			lowerMillerCurrent;
-		const T loadCurrent = dcMode ? x[Output] /
+		const double loadCurrent = dcMode ? x[Output] /
 			LoadDcResistance : loadHistory + loadCurrentSlope * x[Output];
 		residual[Output] = upper.collector + lower.emitter + loadCurrent +
 			(x[Output] - x[EmitterQ1]) / FeedbackResistance -
@@ -794,21 +657,18 @@ private:
 		const CompanionHistories histories{};
 		for (int iteration = 0; iteration < 40; ++iteration)
 		{
-			std::array<Dual<UnknownCount>, UnknownCount> variables;
-			for (std::size_t i = 0; i < UnknownCount; ++i)
-				variables[i] = Dual<UnknownCount>::Variable(unknowns_[i], i);
-			const auto residual = EvaluateCircuit(variables, 0.0, railVoltage,
+			const auto residual = EvaluateCircuit(unknowns_, 0.0, railVoltage,
 				histories, 0.0, 1.0 / LoadDcResistance, 1.0 / sampleRate_, true);
 			double matrix[UnknownCount][UnknownCount]{};
+			BuildJacobian(matrix, railVoltage, 1.0 / LoadDcResistance,
+				1.0 / sampleRate_, true);
 			std::array<double, UnknownCount> correction{};
 			double maximumResidual = 0.0;
 			for (std::size_t row = 0; row < UnknownCount; ++row)
 			{
-				correction[row] = -residual[row].value;
+				correction[row] = -residual[row];
 				maximumResidual = std::max(maximumResidual,
-					std::abs(residual[row].value));
-				for (std::size_t column = 0; column < UnknownCount; ++column)
-					matrix[row][column] = residual[row].derivative[column];
+					std::abs(residual[row]));
 			}
 			if (maximumResidual < NewtonTolerance)
 				break;
