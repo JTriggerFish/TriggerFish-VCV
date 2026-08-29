@@ -42,6 +42,7 @@ struct Diagnostic {
 enum class CursorLane : std::size_t {
   Sequence,
   Notes,
+  Rhythm,
   Octave,
   Velocity,
   Duration,
@@ -86,16 +87,32 @@ struct PitchValue {
   SourceSpan span;
 };
 
+// A chord factor retains its harmonic spelling as well as its sounding
+// interval.  Voicing recipes operate on factors (3, b7, 9...) rather than on
+// anonymous pitch classes so that guide tones and optional roots/fifths can
+// be treated deliberately.
+struct ChordTone {
+  int degree = 1;
+  int accidental = 0;
+  int semitones = 0;
+};
+
+enum class VoicingStyle { Basic, Rootless3Notes, Rootless4Notes };
+
 struct ChordValue {
   enum class Meaning { SinglePitch, ExplicitVoicing, JazzSymbol, RomanSymbol };
   Meaning meaning = Meaning::SinglePitch;
-  // Preserve harmonic intent beside the current default realization so a
-  // future interpreter can voice or arpeggiate the chord contextually.
+  // Preserve harmonic intent beside the current realization so the voicing
+  // engine and future interpreters do not have to reparse display text.
   std::string jazzSymbol;
   int rootPitchClass = 0;
+  PitchValue harmonicRoot;
   PitchValue romanRoot;
   std::vector<int> intervals;
+  std::vector<ChordTone> tones;
   std::vector<PitchValue> voices;
+  bool altered = false;
+  bool hasFactorOverride = false;
   bool hasBass = false;
   PitchValue bass;
   SourceSpan span;
@@ -115,6 +132,21 @@ struct PitchItem {
   double randomSecond = 0.0;
   std::uint64_t randomIdentity = 0;
   std::vector<ChordValue> values;
+  SourceSpan span;
+};
+
+// When pitch and rhythm are separated, this is the slower held-value
+// timeline. A value may contain one pitch or a polyphonic voicing. Rhythm hits
+// sample the active entry; they never advance this timeline themselves.
+struct PitchTimelineStep {
+  enum class Kind { Pitch, Rest };
+  Kind kind = Kind::Pitch;
+  PitchItem pitch;
+  double durationMultiplier = 1.0;
+  bool slideOnEntry = false;
+  bool hasSlide = false;
+  float slide = 0.f;
+  bool slideMilliseconds = false;
   SourceSpan span;
 };
 
@@ -209,6 +241,7 @@ enum class TransformKind {
   ModulateDegree,
   ShiftDegree,
   TransposeSemitone,
+  TransposeKey,
   TransposeOctave,
   Fast,
   Slow,
@@ -254,7 +287,19 @@ struct Sequence {
   double subdivisionBeats = 1.0;
   float glideBeats = 0.25f;
   Scale scale;
+  // A chord key is an explicit transposition anchor and piece of harmonic
+  // metadata. It never changes the meaning of an explicitly named chord root.
+  bool hasKey = false;
+  int keyPitchClass = 0;
+  VoicingStyle voicing = VoicingStyle::Basic;
   std::vector<PitchItem> notes;
+  std::vector<PitchTimelineStep> pitchTimeline;
+  double pitchTimelineBeats = 0.0;
+  double rhythmSubdivisionBeats = 1.0;
+  // In compact form each pitched event owns its onset. With a rhythm lane,
+  // pitchTimeline supplies held values and articulation supplies independent
+  // attacks. Single pitches and chords use this same representation.
+  bool separateRhythm = false;
   std::vector<ScalarItem> octave;
   std::vector<ArticulationStep> articulation;
   std::vector<ScalarItem> velocity;
@@ -305,8 +350,15 @@ struct SequencePlaybackState {
   // Notes pass. partStartBeat_ supplies the within-pass portion.
   double freeLaneBeat = 0.0;
   double lastBaseDuration = 0.0;
+  double pitchTimelineBeat = 0.0;
+  std::size_t activePitchTimelineStep = std::numeric_limits<std::size_t>::max();
+  bool pitchEntryConsumed = false;
   bool hasSoundingPitch = false;
   std::size_t soundingVoiceCount = 0;
+  // Contextual chord voicing is kept independently from sounding polyphony so
+  // a slash bass does not participate in upper-structure voice leading.
+  std::array<int, MaximumPolyphony> previousVoicingSemitones{};
+  std::size_t previousVoicingCount = 0;
 };
 
 struct SemanticProgram {
@@ -402,8 +454,12 @@ struct StepEvents {
 
 class Runtime {
 public:
+  enum class ReplacementResult { PreservedPhase, RestartedCurrentTerm };
+
   void setProgram(const CompiledProgram *program) noexcept;
-  void replaceProgram(const CompiledProgram *program, double beat) noexcept;
+  bool canPreserveCurrentPhase(const CompiledProgram *program) const noexcept;
+  ReplacementResult replaceProgram(const CompiledProgram *program,
+                                   double beat) noexcept;
   void reset() noexcept;
   void snapshot(Runtime &destination) const noexcept;
   StepEvents next(double beat) noexcept;

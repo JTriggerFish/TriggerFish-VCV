@@ -14,7 +14,7 @@
       "version": "2.6.6",
       "params": [],
       "data": {
-        "text": "TriggerFish musical two-source Room Reverb test\n\nAt 96 BPM, two independent Prog Sequencers play an interlocking D-Dorian texture. Source 1 is a slow two-saw Unison Oscillator bass with a centred sub oscillator, analogue drift, and long 4072 filter and amplifier envelopes. Source 2 is a louder, driven descending folded arpeggio with a shorter, brighter 4072 voice. Its cutoff follows a slow 18-beat bipolar CV triangle across the four-beat note phrase, while a per-note AD envelope animates the wavefolder depth.\n\nThe shared Transport drives Clock, Run, and Reset into both sequencers. RESTART plays from beat zero, PAUSE preserves the current position, PLAY continues it, and STOP returns to zero. Both voices therefore remain synchronized through every action.\n\nScene Pack 4 keeps the voices as two independent room sources. Room Reverb uses the Superlush scene with its wet high cut lowered to 3 kHz. Drag their numbered amber markers to audition position, early reflections, and the late-field handoff; disconnect either Scene Pack input to confirm that only its marker disappears. The scope shows the packed sources and stereo result. Select an output device in Audio-8, then start with monitor volume low."
+        "text": "TriggerFish musical three-sequencer Room Reverb test\n\nAt 96 BPM, three independent Prog Sequencers play an interlocking D-Dorian texture. Source 1 is a slow two-saw Unison Oscillator bass with a centred sub oscillator, analogue drift, and long 4072 filter and amplifier envelopes. Source 2 is a driven descending folded arpeggio with a shorter, brighter 4072 voice. A velocity-sensitive MIDI keyboard plays an Electric Piano with restrained Suitcase vibrato. A third sequencer adds exact three-note piano voicings while Event Merge 2 keeps those three sequenced voices separate from the live MIDI voices. Its LEFT and RIGHT outputs remain separate Scene Pack sources so the reverb retains the piano's stereo motion instead of folding it to mono. The folded voice's cutoff follows a slow 18-beat bipolar CV triangle across the four-beat note phrase, while a per-note AD envelope animates the wavefolder depth.\n\nThe shared Transport drives Clock, Run, and Reset into all three sequencers. RESTART plays from beat zero, PAUSE preserves the current position, PLAY continues it, and STOP returns to zero. All sequences therefore remain synchronized through every action. Select the same MIDI device in MIDI-CV and MIDI CC-CV; the latter is preassigned to sustain pedal CC64.\n\nScene Pack 4 keeps the bass, folded voice, and two piano sides as four independent room sources. Room Reverb uses the Superlush scene with its wet high cut lowered to 3 kHz. Drag their numbered amber markers to audition position, early reflections, and the late-field handoff; disconnect any Scene Pack input to confirm that only its marker disappears. The scope shows the packed sources and stereo result. Select an output device in Audio-8, then start with monitor volume low."
       },
       "pos": [
         -11,
@@ -78,12 +78,29 @@
       "version": "2.5.0",
       "params": [],
       "data": {
-        "source": "arpeggio = sequence {\n  subdiv 16n\n  tonic D@4\n  scale dorian\n  notes 3' 1' 5 3 ; 1' 5 3 1 ; 2' 7 5 2 ; 7 5 2 1\n  gate .52\n  cv1 4 -4 |> interp linear |> rate 1/9\n  cv2 env ad 5ms 16n depth 2 curve 0\n}\n\nplay arpeggio\n",
+        "source": "arpeggio = sequence {\n  subdiv 16n\n  tonic D@4\n  scale dorian\n  notes 3' 1' 5 3 ; 1' 5 3 1 ; 2' 7 5 2 ; 7 5 2 1\n  gate .52\n  cv1 2 -2 |> interp linear |> rate 1/9\n  cv2 env ad 5ms 16n depth 2 curve 0\n}\n\nplay arpeggio\n",
         "languageVersion": 1,
         "editorHeatmap": 5
       },
       "pos": [
         55,
+        0
+      ]
+    },
+    {
+      "id": 16,
+      "plugin": "TriggerFish-Elements",
+      "model": "TfProgSequencer",
+      "version": "2.5.0",
+      "params": [],
+      "data": {
+        "source": "comp = rhythm {\n  subdiv 16n\n  // Three sixteenths, an upbeat hit, then repeat from beat 3-and.\n  events x_3 x ~!6 x_3 x ~!2\n}\n\nkeys = sequence {\n  subdiv 2n\n  chords (C F A)_2 (C D G)_2 (B, D G)_2 (A, C F) (G, C E)\n  rhythm comp\n  gate .95 .8\n  velocity .72 .8\n}\n\nplay keys\n",
+        "languageVersion": 1,
+        "editorHeatmap": 2,
+        "panelWidthHp": 38
+      },
+      "pos": [
+        85,
         0
       ]
     },
@@ -403,7 +420,7 @@
         },
         {
           "id": 7,
-          "value": 1.0
+          "value": 0.97
         },
         {
           "id": 8,
@@ -480,13 +497,173 @@
       ]
     },
     {
+      "id": 13,
+      "plugin": "TriggerFish-Elements",
+      "model": "TfElectricPiano",
+      "version": "2.5.0",
+      "params": [
+        {
+          "id": 0,
+          "value": 0.5
+        },
+        {
+          "id": 1,
+          "value": 1.0
+        },
+        {
+          "id": 2,
+          "value": 0.62
+        },
+        {
+          "id": 3,
+          "value": 0.52
+        },
+        {
+          "id": 4,
+          "value": 0.5
+        },
+        {
+          "id": 5,
+          "value": 0.52
+        },
+        {
+          "id": 6,
+          "value": 0.55
+        },
+        {
+          "id": 7,
+          "value": 0.48
+        },
+        {
+          "id": 8,
+          "value": 0.5
+        },
+        {
+          "id": 9,
+          "value": 0.12
+        },
+        {
+          "id": 10,
+          "value": 0.18
+        },
+        {
+          "id": 11,
+          "value": 0.32
+        },
+        {
+          "id": 12,
+          "value": 0.5
+        },
+        {
+          "id": 13,
+          "value": 0.5
+        },
+        {
+          "id": 14,
+          "value": 0.5
+        },
+        {
+          "id": 15,
+          "value": 0.32
+        },
+        {
+          "id": 16,
+          "value": 0.18
+        },
+        {
+          "id": 17,
+          "value": 0.0
+        },
+        {
+          "id": 18,
+          "value": 2.0
+        },
+        {
+          "id": 19,
+          "value": 0.5
+        }
+      ],
+      "pos": [
+        101,
+        1
+      ]
+    },
+    {
+      "id": 14,
+      "plugin": "Core",
+      "model": "MIDIToCVInterface",
+      "version": "2.6.6",
+      "params": [],
+      "data": {
+        "channels": 12,
+        "pwRange": 2,
+        "midi": {
+          "driver": -1,
+          "channel": -1
+        }
+      },
+      "pos": [
+        123,
+        0
+      ]
+    },
+    {
+      "id": 15,
+      "plugin": "Core",
+      "model": "MIDICCToCVInterface",
+      "version": "2.6.6",
+      "params": [],
+      "data": {
+        "ccs": [
+          64,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1
+        ],
+        "midi": {
+          "driver": -1,
+          "channel": -1
+        },
+        "smooth": false,
+        "mpeMode": false,
+        "lsbMode": false
+      },
+      "pos": [
+        135,
+        0
+      ]
+    },
+    {
+      "id": 17,
+      "plugin": "TriggerFish-Elements",
+      "model": "TfEventMerge2",
+      "version": "2.5.0",
+      "params": [],
+      "pos": [
+        119,
+        1
+      ]
+    },
+    {
       "id": 9,
       "plugin": "TriggerFish-Elements",
       "model": "TfScenePack4",
       "version": "2.5.0",
       "params": [],
       "pos": [
-        85,
+        145,
         0
       ]
     },
@@ -510,7 +687,7 @@
         },
         {
           "id": 3,
-          "value": 0.5
+          "value": 0.22
         },
         {
           "id": 4,
@@ -570,7 +747,7 @@
         },
         {
           "id": 18,
-          "value": 0.5
+          "value": 0.78
         },
         {
           "id": 19,
@@ -578,7 +755,7 @@
         },
         {
           "id": 20,
-          "value": 0.5
+          "value": 0.4
         },
         {
           "id": 21,
@@ -586,7 +763,7 @@
         },
         {
           "id": 22,
-          "value": 0.5
+          "value": 0.6
         },
         {
           "id": 23,
@@ -623,10 +800,42 @@
         {
           "id": 31,
           "value": 0.32
+        },
+        {
+          "id": 32,
+          "value": 0.0
+        },
+        {
+          "id": 33,
+          "value": 0.0
+        },
+        {
+          "id": 34,
+          "value": 0.0
+        },
+        {
+          "id": 35,
+          "value": 0.0
+        },
+        {
+          "id": 36,
+          "value": 1.0
+        },
+        {
+          "id": 37,
+          "value": 1.0
+        },
+        {
+          "id": 38,
+          "value": 1.0
+        },
+        {
+          "id": 39,
+          "value": 1.0
         }
       ],
       "pos": [
-        91,
+        151,
         0
       ]
     },
@@ -647,7 +856,7 @@
         "dcFilter": true
       },
       "pos": [
-        107,
+        167,
         0
       ]
     },
@@ -691,7 +900,7 @@
         }
       ],
       "pos": [
-        117,
+        177,
         0
       ]
     }
@@ -747,163 +956,315 @@
     },
     {
       "id": 1006,
-      "outputModuleId": 3,
+      "outputModuleId": 2,
       "outputId": 0,
-      "inputModuleId": 5,
+      "inputModuleId": 16,
       "inputId": 0,
       "color": "#f3374b"
     },
     {
       "id": 1007,
-      "outputModuleId": 3,
-      "outputId": 0,
-      "inputModuleId": 6,
-      "inputId": 2,
+      "outputModuleId": 2,
+      "outputId": 2,
+      "inputModuleId": 16,
+      "inputId": 1,
       "color": "#ffcc00"
     },
     {
       "id": 1008,
-      "outputModuleId": 3,
+      "outputModuleId": 2,
       "outputId": 1,
-      "inputModuleId": 6,
-      "inputId": 6,
+      "inputModuleId": 16,
+      "inputId": 2,
       "color": "#0c8e15"
     },
     {
       "id": 1009,
       "outputModuleId": 3,
-      "outputId": 2,
-      "inputModuleId": 6,
-      "inputId": 7,
+      "outputId": 0,
+      "inputModuleId": 5,
+      "inputId": 0,
       "color": "#0986ad"
     },
     {
       "id": 1010,
-      "outputModuleId": 5,
+      "outputModuleId": 3,
       "outputId": 0,
       "inputModuleId": 6,
-      "inputId": 0,
+      "inputId": 2,
       "color": "#c91847"
     },
     {
       "id": 1011,
-      "outputModuleId": 6,
+      "outputModuleId": 3,
       "outputId": 1,
-      "inputModuleId": 9,
-      "inputId": 0,
+      "inputModuleId": 6,
+      "inputId": 6,
       "color": "#7a3ec8"
     },
     {
       "id": 1012,
-      "outputModuleId": 4,
-      "outputId": 0,
-      "inputModuleId": 7,
-      "inputId": 0,
+      "outputModuleId": 3,
+      "outputId": 2,
+      "inputModuleId": 6,
+      "inputId": 7,
       "color": "#f3374b"
     },
     {
       "id": 1013,
-      "outputModuleId": 4,
+      "outputModuleId": 5,
       "outputId": 0,
-      "inputModuleId": 8,
-      "inputId": 2,
+      "inputModuleId": 6,
+      "inputId": 0,
       "color": "#ffcc00"
     },
     {
       "id": 1014,
-      "outputModuleId": 4,
+      "outputModuleId": 6,
       "outputId": 1,
-      "inputModuleId": 8,
-      "inputId": 6,
+      "inputModuleId": 9,
+      "inputId": 0,
       "color": "#0c8e15"
     },
     {
       "id": 1015,
       "outputModuleId": 4,
-      "outputId": 2,
-      "inputModuleId": 8,
-      "inputId": 7,
+      "outputId": 0,
+      "inputModuleId": 7,
+      "inputId": 0,
       "color": "#0986ad"
     },
     {
       "id": 1016,
       "outputModuleId": 4,
-      "outputId": 5,
+      "outputId": 0,
       "inputModuleId": 8,
-      "inputId": 3,
+      "inputId": 2,
       "color": "#c91847"
     },
     {
       "id": 1017,
       "outputModuleId": 4,
-      "outputId": 6,
-      "inputModuleId": 7,
-      "inputId": 3,
+      "outputId": 1,
+      "inputModuleId": 8,
+      "inputId": 6,
       "color": "#7a3ec8"
     },
     {
       "id": 1018,
-      "outputModuleId": 7,
-      "outputId": 1,
+      "outputModuleId": 4,
+      "outputId": 2,
       "inputModuleId": 8,
-      "inputId": 0,
+      "inputId": 7,
       "color": "#f3374b"
     },
     {
       "id": 1019,
-      "outputModuleId": 8,
-      "outputId": 1,
-      "inputModuleId": 9,
-      "inputId": 1,
+      "outputModuleId": 4,
+      "outputId": 5,
+      "inputModuleId": 8,
+      "inputId": 3,
       "color": "#ffcc00"
     },
     {
       "id": 1020,
-      "outputModuleId": 9,
-      "outputId": 0,
-      "inputModuleId": 10,
-      "inputId": 0,
+      "outputModuleId": 4,
+      "outputId": 6,
+      "inputModuleId": 7,
+      "inputId": 3,
       "color": "#0c8e15"
     },
     {
       "id": 1021,
-      "outputModuleId": 10,
-      "outputId": 0,
-      "inputModuleId": 11,
+      "outputModuleId": 7,
+      "outputId": 1,
+      "inputModuleId": 8,
       "inputId": 0,
       "color": "#0986ad"
     },
     {
       "id": 1022,
-      "outputModuleId": 10,
+      "outputModuleId": 8,
       "outputId": 1,
-      "inputModuleId": 11,
+      "inputModuleId": 9,
       "inputId": 1,
       "color": "#c91847"
     },
     {
       "id": 1023,
-      "outputModuleId": 9,
+      "outputModuleId": 16,
       "outputId": 0,
-      "inputModuleId": 12,
+      "inputModuleId": 17,
       "inputId": 0,
       "color": "#7a3ec8"
     },
     {
       "id": 1024,
-      "outputModuleId": 10,
-      "outputId": 0,
-      "inputModuleId": 12,
+      "outputModuleId": 16,
+      "outputId": 1,
+      "inputModuleId": 17,
       "inputId": 1,
       "color": "#f3374b"
     },
     {
       "id": 1025,
+      "outputModuleId": 16,
+      "outputId": 2,
+      "inputModuleId": 17,
+      "inputId": 2,
+      "color": "#ffcc00"
+    },
+    {
+      "id": 1026,
+      "outputModuleId": 16,
+      "outputId": 3,
+      "inputModuleId": 17,
+      "inputId": 3,
+      "color": "#0c8e15"
+    },
+    {
+      "id": 1027,
+      "outputModuleId": 16,
+      "outputId": 4,
+      "inputModuleId": 17,
+      "inputId": 4,
+      "color": "#0986ad"
+    },
+    {
+      "id": 1028,
+      "outputModuleId": 14,
+      "outputId": 0,
+      "inputModuleId": 17,
+      "inputId": 5,
+      "color": "#c91847"
+    },
+    {
+      "id": 1029,
+      "outputModuleId": 14,
+      "outputId": 1,
+      "inputModuleId": 17,
+      "inputId": 6,
+      "color": "#7a3ec8"
+    },
+    {
+      "id": 1030,
+      "outputModuleId": 14,
+      "outputId": 6,
+      "inputModuleId": 17,
+      "inputId": 7,
+      "color": "#f3374b"
+    },
+    {
+      "id": 1031,
+      "outputModuleId": 14,
+      "outputId": 2,
+      "inputModuleId": 17,
+      "inputId": 8,
+      "color": "#ffcc00"
+    },
+    {
+      "id": 1032,
+      "outputModuleId": 17,
+      "outputId": 0,
+      "inputModuleId": 13,
+      "inputId": 0,
+      "color": "#0c8e15"
+    },
+    {
+      "id": 1033,
+      "outputModuleId": 17,
+      "outputId": 1,
+      "inputModuleId": 13,
+      "inputId": 1,
+      "color": "#0986ad"
+    },
+    {
+      "id": 1034,
+      "outputModuleId": 17,
+      "outputId": 2,
+      "inputModuleId": 13,
+      "inputId": 4,
+      "color": "#c91847"
+    },
+    {
+      "id": 1035,
+      "outputModuleId": 17,
+      "outputId": 3,
+      "inputModuleId": 13,
+      "inputId": 2,
+      "color": "#7a3ec8"
+    },
+    {
+      "id": 1036,
+      "outputModuleId": 15,
+      "outputId": 0,
+      "inputModuleId": 13,
+      "inputId": 5,
+      "color": "#f3374b"
+    },
+    {
+      "id": 1037,
+      "outputModuleId": 13,
+      "outputId": 1,
+      "inputModuleId": 9,
+      "inputId": 2,
+      "color": "#ffcc00"
+    },
+    {
+      "id": 1038,
+      "outputModuleId": 13,
+      "outputId": 2,
+      "inputModuleId": 9,
+      "inputId": 3,
+      "color": "#0c8e15"
+    },
+    {
+      "id": 1039,
+      "outputModuleId": 9,
+      "outputId": 0,
+      "inputModuleId": 10,
+      "inputId": 0,
+      "color": "#0986ad"
+    },
+    {
+      "id": 1040,
+      "outputModuleId": 10,
+      "outputId": 0,
+      "inputModuleId": 11,
+      "inputId": 0,
+      "color": "#c91847"
+    },
+    {
+      "id": 1041,
+      "outputModuleId": 10,
+      "outputId": 1,
+      "inputModuleId": 11,
+      "inputId": 1,
+      "color": "#7a3ec8"
+    },
+    {
+      "id": 1042,
+      "outputModuleId": 9,
+      "outputId": 0,
+      "inputModuleId": 12,
+      "inputId": 0,
+      "color": "#f3374b"
+    },
+    {
+      "id": 1043,
+      "outputModuleId": 10,
+      "outputId": 0,
+      "inputModuleId": 12,
+      "inputId": 1,
+      "color": "#ffcc00"
+    },
+    {
+      "id": 1044,
       "outputModuleId": 10,
       "outputId": 1,
       "inputModuleId": 12,
       "inputId": 2,
-      "color": "#ffcc00"
+      "color": "#0c8e15"
     }
   ]
 }

@@ -2,6 +2,7 @@
 #include "tfseq_editor.hpp"
 #include "tfseq_envelope.hpp"
 #include "tfseq_parser.hpp"
+#include "tfseq_voicing.hpp"
 #include "tfui_animation.hpp"
 #include "tfui_colormap.hpp"
 
@@ -93,16 +94,16 @@ void heatmapMapsScalarIntensity() {
             close(bright.blue, tfui::MagmaHeatmap.back().blue),
         "heatmap clamps intensity above one to its bright endpoint");
 
-  for (const auto palette : {
-           tfui::HeatmapPalette::Magma, tfui::HeatmapPalette::Inferno,
-           tfui::HeatmapPalette::Plasma, tfui::HeatmapPalette::Viridis,
-           tfui::HeatmapPalette::Cividis, tfui::HeatmapPalette::CrtGreen,
-           tfui::HeatmapPalette::CrtBlue, tfui::HeatmapPalette::CrtYellow,
-           tfui::HeatmapPalette::CrtRed}) {
+  for (const auto palette :
+       {tfui::HeatmapPalette::Magma, tfui::HeatmapPalette::Inferno,
+        tfui::HeatmapPalette::Plasma, tfui::HeatmapPalette::Viridis,
+        tfui::HeatmapPalette::Cividis, tfui::HeatmapPalette::CrtGreen,
+        tfui::HeatmapPalette::CrtBlue, tfui::HeatmapPalette::CrtYellow,
+        tfui::HeatmapPalette::CrtRed}) {
     float previousLuminance = -1.f;
     for (int step = 0; step <= 100; ++step) {
-      const auto color = tfui::sampleHeatmap(
-          palette, static_cast<float>(step) / 100.f);
+      const auto color =
+          tfui::sampleHeatmap(palette, static_cast<float>(step) / 100.f);
       const float luminance =
           0.2126f * color.red + 0.7152f * color.green + 0.0722f * color.blue;
       check(luminance + 1e-6f >= previousLuminance,
@@ -121,9 +122,9 @@ void heatmapMapsScalarIntensity() {
             tfui::heatmapPaletteFromInt(99) == tfui::HeatmapPalette::Magma,
         "saved heatmap values restore valid choices and default safely");
 
-  for (const auto palette : {
-           tfui::HeatmapPalette::CrtGreen, tfui::HeatmapPalette::CrtBlue,
-           tfui::HeatmapPalette::CrtYellow, tfui::HeatmapPalette::CrtRed}) {
+  for (const auto palette :
+       {tfui::HeatmapPalette::CrtGreen, tfui::HeatmapPalette::CrtBlue,
+        tfui::HeatmapPalette::CrtYellow, tfui::HeatmapPalette::CrtRed}) {
     const auto unlit = tfui::sampleHeatmap(palette, 0.f);
     check(close(unlit.red, 0.f) && close(unlit.green, 0.f) &&
               close(unlit.blue, 0.f),
@@ -437,22 +438,20 @@ play a
   alternateDraft.replace(static_cast<std::size_t>(playBegin), 6, "play b");
   const auto alternateDocument = tfseq::syntax::Parse(alternateDraft);
   const auto alternateContext =
-      alternateDocument
-          ? tfseq::syntax::MergeSelectionDocuments(
-                evaluatedDocument.document, evaluated,
-                alternateDocument.document, alternateDraft, playBegin,
-                playBegin + 6)
-          : tfseq::syntax::SelectionDocumentResult{};
-  const auto alternate =
-      alternateContext ? tfseq::Compile(alternateContext.document)
-                       : tfseq::Compile("");
-  const bool playsB = alternate &&
-                      !alternate.program->semantic().arrangement.empty() &&
-                      alternate.program->semantic()
-                              .sequences[alternate.program->semantic()
-                                             .arrangement.front()
-                                             .sequence]
-                              .name == "b";
+      alternateDocument ? tfseq::syntax::MergeSelectionDocuments(
+                              evaluatedDocument.document, evaluated,
+                              alternateDocument.document, alternateDraft,
+                              playBegin, playBegin + 6)
+                        : tfseq::syntax::SelectionDocumentResult{};
+  const auto alternate = alternateContext
+                             ? tfseq::Compile(alternateContext.document)
+                             : tfseq::Compile("");
+  const bool playsB =
+      alternate && !alternate.program->semantic().arrangement.empty() &&
+      alternate.program->semantic()
+              .sequences
+                  [alternate.program->semantic().arrangement.front().sequence]
+              .name == "b";
   check(alternateContext && playsB,
         "a selected play statement replaces the active arrangement selection");
 
@@ -936,9 +935,8 @@ play a
               close(velocity[6], .1f) && close(velocity[7], .5f),
           "a middle ellipsis overrides both edges and leaves the gap at the "
           "lane default");
-    check(close(gate[0], .25f) && close(gate[1], .25f) &&
-              close(gate[2], .8f) && close(gate[5], .8f) &&
-              close(gate[6], .5f) && close(gate[7], .5f),
+    check(close(gate[0], .25f) && close(gate[1], .25f) && close(gate[2], .8f) &&
+              close(gate[5], .8f) && close(gate[6], .5f) && close(gate[7], .5f),
           "repetition counts expand independently on both sides of an "
           "ellipsis");
     check(close(cv[0], 4.f) && close(cv[1], 3.f) && close(cv[2], 0.f) &&
@@ -960,8 +958,8 @@ play a
     const auto first = runtime.next(0.0);
     const auto firstVelocity = first.count ? first.events[0].velocity : 0.f;
     const auto last = runtime.next(1.0);
-    check(first.count == 1 && last.count == 1 &&
-              close(firstVelocity, .1f) && close(last.events[0].velocity, .9f),
+    check(first.count == 1 && last.count == 1 && close(firstVelocity, .1f) &&
+              close(last.events[0].velocity, .9f),
           "overlapping edge groups retain their outermost values after "
           "presence omissions");
   }
@@ -1725,7 +1723,7 @@ play harmony
   check(semanticChord.meaning == tfseq::ChordValue::Meaning::JazzSymbol &&
             semanticChord.jazzSymbol == "D7@3" &&
             semanticChord.rootPitchClass == 2,
-        "jazz harmonic intent survives compilation for future interpreters");
+        "jazz harmonic intent survives compilation for voicing interpreters");
   const auto &explicitChord =
       compiled.program->semantic().sequences[0].notes[4].values[0];
   check(explicitChord.meaning == tfseq::ChordValue::Meaning::ExplicitVoicing,
@@ -1750,11 +1748,18 @@ play harmony
               std::to_string(dominant.events[voice].pitchVolts) + " V");
 
   const auto minor = runtime.next(2.0);
-  const float minorExpected[] = {-1.f, -9.f / 12.f, -5.f / 12.f, -2.f / 12.f};
   check(minor.count == 4, "Cm7 expands to a minor seventh chord");
+  std::array<int, 4> minorClasses{};
   for (std::size_t voice = 0; voice < minor.count; ++voice)
-    check(close(minor.events[voice].pitchVolts, minorExpected[voice]),
-          "minor seventh chord intervals are voiced in close position");
+    minorClasses[voice] =
+        (static_cast<int>(std::lround(minor.events[voice].pitchVolts * 12.f)) %
+             12 +
+         12) %
+        12;
+  std::sort(minorClasses.begin(), minorClasses.end());
+  constexpr std::array<int, 4> ExpectedMinorClasses{0, 3, 7, 10};
+  check(minorClasses == ExpectedMinorClasses,
+        "contextual inversion preserves all minor-seventh chord tones");
 
   const auto slash = runtime.next(3.0);
   check(slash.count == 5 && close(slash.events[0].pitchVolts, -22.f / 12.f),
@@ -1891,14 +1896,31 @@ play harmony
   check(minor.count == 3 && close(minor.events[1].pitchVolts, 3.f / 12.f),
         "lowercase Roman degrees imply a minor triad");
   const auto supertonic = runtime.next(2.0);
-  check(supertonic.count == 4 &&
-            close(supertonic.events[0].pitchVolts, 2.f / 12.f) &&
-            close(supertonic.events[3].pitchVolts, 1.f),
-        "Roman chord extensions preserve the scale-relative root");
+  std::array<int, 3> supertonicClasses{};
+  for (std::size_t voice = 0; voice < supertonic.count; ++voice)
+    supertonicClasses[voice] =
+        (static_cast<int>(
+             std::lround(supertonic.events[voice].pitchVolts * 12.f)) %
+             12 +
+         12) %
+        12;
+  std::sort(supertonicClasses.begin(), supertonicClasses.end());
+  constexpr std::array<int, 3> ExpectedSupertonicClasses{0, 2, 5};
+  check(supertonic.count == 3 && supertonicClasses == ExpectedSupertonicClasses,
+        "Roman seventh preserves the preceding triad's voice count by "
+        "omitting its fifth");
   const auto flatSeven = runtime.next(3.0);
-  check(flatSeven.count == 3 &&
-            close(flatSeven.events[0].pitchVolts, 10.f / 12.f),
-        "accidentals apply to a Roman chord root");
+  std::array<int, 3> flatSevenClasses{};
+  for (std::size_t voice = 0; voice < flatSeven.count; ++voice)
+    flatSevenClasses[voice] = (static_cast<int>(std::lround(
+                                   flatSeven.events[voice].pitchVolts * 12.f)) %
+                                   12 +
+                               12) %
+                              12;
+  std::sort(flatSevenClasses.begin(), flatSevenClasses.end());
+  constexpr std::array<int, 3> ExpectedFlatSevenClasses{2, 5, 10};
+  check(flatSeven.count == 3 && flatSevenClasses == ExpectedFlatSevenClasses,
+        "accidentals apply to a Roman chord root through inversions");
   check(!tfseq::Compile(R"(a = sequence {
   notes Im7
 }
@@ -2817,18 +2839,22 @@ play a
               close(static_cast<float>(envelope.decay.value), .375f),
           "envelope segments accept straight and dotted note values");
     const auto &transforms =
-        sequence.transforms[static_cast<std::size_t>(tfseq::CursorLane::Sequence)];
-    const auto swing = std::find_if(
-        transforms.begin(), transforms.end(), [](const tfseq::Transform &value) {
-          return value.kind == tfseq::TransformKind::Swing;
-        });
-    const auto late = std::find_if(
-        transforms.begin(), transforms.end(), [](const tfseq::Transform &value) {
-          return value.kind == tfseq::TransformKind::Late;
-        });
+        sequence
+            .transforms[static_cast<std::size_t>(tfseq::CursorLane::Sequence)];
+    const auto swing =
+        std::find_if(transforms.begin(), transforms.end(),
+                     [](const tfseq::Transform &value) {
+                       return value.kind == tfseq::TransformKind::Swing;
+                     });
+    const auto late =
+        std::find_if(transforms.begin(), transforms.end(),
+                     [](const tfseq::Transform &value) {
+                       return value.kind == tfseq::TransformKind::Late;
+                     });
     check(swing != transforms.end() &&
               close(static_cast<float>(swing->swingSubdivisionBeats), .25f) &&
-              late != transforms.end() && close(static_cast<float>(late->number), .125f),
+              late != transforms.end() &&
+              close(static_cast<float>(late->number), .125f),
           "swing grids and timing offsets accept note values");
 
     tfseq::Runtime runtime;
@@ -2839,13 +2865,11 @@ play a
           "a note-valued gate reaches runtime as an absolute beat duration");
   }
 
-  check(!tfseq::Compile(
-            "a = sequence {\n notes 1\n velocity 16n\n}\nplay a\n"),
+  check(!tfseq::Compile("a = sequence {\n notes 1\n velocity 16n\n}\nplay a\n"),
         "velocity rejects musical time units");
   check(!tfseq::Compile("a = sequence {\n notes 1\n cv1 16n\n}\nplay a\n"),
         "ordinary CV values remain volts");
-  check(!tfseq::Compile(
-            "a = sequence {\n notes 1{len=16n}\n}\nplay a\n"),
+  check(!tfseq::Compile("a = sequence {\n notes 1{len=16n}\n}\nplay a\n"),
         "len remains a structural span multiplier");
 }
 
@@ -2867,6 +2891,795 @@ void unsafeNumericInputsAreDiagnostics() {
   check(!tfseq::Compile(
             "a = sequence {\n notes 999999999999999999999\n}\nplay a\n"),
         "overflowing scale degrees are rejected safely");
+}
+
+void openKeyboardCompingMotifIsPreciselyTimed() {
+  const auto compiled = tfseq::Compile(R"(comp = rhythm {
+  subdiv 16n
+  events x_3 x ~!6 x_3 x ~!2
+}
+
+keys = sequence {
+  subdiv 2n
+  chords (C F A)_2 (C D G)_2 (B, D G)_2 (A, C F) (G, C E)
+  rhythm comp
+  gate .95 .8
+  velocity .72 .8
+}
+play keys
+)");
+  check(static_cast<bool>(compiled),
+        "open keyboard comping program: " + compiled.diagnostic.message);
+  if (!compiled)
+    return;
+
+  const auto &sequence = compiled.program->semantic().sequences.front();
+  check(sequence.separateRhythm && sequence.notes.empty() &&
+            sequence.pitchTimeline.size() == 5 &&
+            close(static_cast<float>(sequence.pitchTimelineBeats), 16.f) &&
+            close(static_cast<float>(sequence.rhythmSubdivisionBeats), .25f) &&
+            sequence.articulation.size() == 12,
+        "chords and a reusable rhythm compile as independent timed patterns");
+
+  tfseq::Runtime runtime;
+  runtime.setProgram(compiled.program.get());
+  const std::array<double, 16> attackBeats{0.0,  .75,   2.5,  3.25, 4.0,  4.75,
+                                           6.5,  7.25,  8.0,  8.75, 10.5, 11.25,
+                                           12.0, 12.75, 14.5, 15.25};
+  std::size_t attack = 0;
+  double beat = 0.0;
+  while (beat < 16.0 - 1.e-9) {
+    const auto events = runtime.next(beat);
+    const double eventBeat = beat;
+    beat += events.durationBeats;
+    if (events.count == 0 || events.events[0].kind == tfseq::EventKind::Rest)
+      continue;
+    check(attack < attackBeats.size() &&
+              std::abs(eventBeat - attackBeats[attack]) < 1.e-9,
+          "keyboard comping attacks land on the specified sixteenth grid");
+    check(events.count == 3,
+          "open keyboard voicings remain exact three-note chords");
+    check(events.events[0]
+                  .cursors[static_cast<std::size_t>(tfseq::CursorLane::Notes)]
+                  .valid() &&
+              events.events[0]
+                  .cursors[static_cast<std::size_t>(tfseq::CursorLane::Rhythm)]
+                  .valid(),
+          "separate chord and rhythm lanes retain independent live cursors");
+    std::array<int, 3> semitones{};
+    std::array<int, 3> pitchClasses{};
+    for (std::size_t voice = 0; voice < events.count; ++voice) {
+      const int semitone = static_cast<int>(
+          std::llround(events.events[voice].pitchVolts * 12.0));
+      semitones[voice] = semitone;
+      pitchClasses[voice] = (semitone % 12 + 12) % 12;
+    }
+    std::sort(pitchClasses.begin(), pitchClasses.end());
+    check(std::adjacent_find(pitchClasses.begin(), pitchClasses.end()) ==
+              pitchClasses.end(),
+          "each keyboard voicing contains three distinct chord tones");
+    constexpr std::array<int, 3> CFA{0, 5, 9};
+    constexpr std::array<int, 3> CDG{0, 2, 7};
+    constexpr std::array<int, 3> BDG{2, 7, 11};
+    constexpr std::array<int, 3> ACF{0, 5, 9};
+    constexpr std::array<int, 3> GCE{0, 4, 7};
+    const auto &expectedHarmony = attack < 4    ? CFA
+                                  : attack < 8  ? CDG
+                                  : attack < 12 ? BDG
+                                  : attack < 14 ? ACF
+                                                : GCE;
+    check(pitchClasses == expectedHarmony,
+          "keyboard harmony follows the requested upper-note sequence");
+    constexpr std::array<int, 3> CFARegister{0, 5, 9};
+    constexpr std::array<int, 3> CDGRegister{0, 2, 7};
+    constexpr std::array<int, 3> BDGRegister{-1, 2, 7};
+    constexpr std::array<int, 3> ACFRegister{-3, 0, 5};
+    constexpr std::array<int, 3> GCERegister{-5, 0, 4};
+    const auto &expectedRegister = attack < 4    ? CFARegister
+                                   : attack < 8  ? CDGRegister
+                                   : attack < 12 ? BDGRegister
+                                   : attack < 14 ? ACFRegister
+                                                 : GCERegister;
+    const auto registerText = [](const std::array<int, 3> &values) {
+      return std::to_string(values[0]) + "," + std::to_string(values[1]) + "," +
+             std::to_string(values[2]);
+    };
+    check(semitones == expectedRegister,
+          "voice-leading register expected " + registerText(expectedRegister) +
+              ", got " + registerText(semitones));
+    const bool upbeat = attack % 2 == 1;
+    check(close(events.events[0].velocity, upbeat ? .8f : .72f),
+          "keyboard upbeat uses the requested light velocity accent");
+    check(upbeat || close(events.events[0].gateFraction, .95f),
+          "three-sixteenth keyboard attacks use tenuto gates");
+    ++attack;
+  }
+  check(attack == attackBeats.size(),
+        "keyboard comping pattern produces four attacks per bar");
+
+  check(!tfseq::Compile(R"(bad = sequence {
+  chords 1{stacc} 3
+  rhythm x ~ x
+}
+play bad
+)"),
+        "held pitch timelines reject attack articulation");
+}
+
+void reusableRhythmComposesWithNotesChordsAndSlides() {
+  for (const char *reserved : {"x", "_", "x_2", "x__"}) {
+    const auto ambiguous = tfseq::Compile(std::string(reserved) + R"( = rhythm {
+  events x ~
+}
+line = sequence {
+  notes 1 2
+  rhythm )" + reserved + R"(
+}
+play line
+)");
+    check(!ambiguous && ambiguous.diagnostic.message.find("reserved") !=
+                            std::string::npos,
+          std::string("standalone rhythm syntax cannot be used as the name '") +
+              reserved + "'");
+  }
+  check(static_cast<bool>(tfseq::Compile(R"(xbeat = rhythm {
+  events x ~
+}
+pulse_2 = rhythm {
+  events x x
+}
+line = sequence {
+  notes 1 2
+  rhythm xbeat
+}
+play line
+)")),
+        "ordinary descriptive rhythm names remain available");
+
+  const auto separators = tfseq::Compile(R"(plain = sequence {
+  notes 1 ; 2  ; 3
+}
+play plain
+)");
+  check(static_cast<bool>(separators) && separators.program->semantic()
+                                                 .sequences.front()
+                                                 .articulation.size() == 3,
+        "semicolons remain whitespace-only visual separators");
+
+  const auto notes = tfseq::Compile(R"(pulse = rhythm {
+  subdiv 4n
+  events x!4
+}
+
+line = sequence {
+  subdiv 2n
+  notes 1_2 ; 3
+  rhythm pulse
+}
+play line
+)");
+  check(static_cast<bool>(notes),
+        "reusable rhythm composes with single notes: " +
+            notes.diagnostic.message);
+  if (notes) {
+    tfseq::Runtime runtime;
+    runtime.setProgram(notes.program.get());
+    double beat = 0.0;
+    for (int hit = 0; hit < 6; ++hit) {
+      const auto events = runtime.next(beat);
+      check(events.count == 1,
+            "single-note held timeline emits one voice per rhythm hit");
+      if (events.count == 1) {
+        const int semitone =
+            static_cast<int>(std::llround(events.events[0].pitchVolts * 12.0));
+        check(semitone == (hit < 4 ? 0 : 4),
+              "single-note timeline advances by time, not by hit count");
+      }
+      beat += events.durationBeats;
+    }
+    check(std::abs(beat - 6.0) < 1e-9,
+          "the held note timeline defines the six-beat sequence pass");
+  }
+
+  const auto pitchRest = tfseq::Compile(R"(pulse = rhythm {
+  subdiv 4n
+  events x!3
+}
+line = sequence {
+  subdiv 4n
+  notes 1 ~ 3
+  rhythm pulse
+  velocity .1 .2 .3
+}
+play line
+)");
+  check(static_cast<bool>(pitchRest),
+        "held pitch timelines accept silent spans: " +
+            pitchRest.diagnostic.message);
+  if (pitchRest) {
+    tfseq::Runtime runtime;
+    runtime.setProgram(pitchRest.program.get());
+    const auto first = runtime.next(0.0);
+    const auto rest = runtime.next(first.durationBeats);
+    const bool silentMiddle =
+        rest.count == 1 && rest.events[0].kind == tfseq::EventKind::Rest;
+    const auto third = runtime.next(first.durationBeats + rest.durationBeats);
+    check(silentMiddle && third.count == 1 &&
+              close(third.events[0].velocity, .3f),
+          "a rhythm hit over a pitch rest stays silent and advances hit lanes");
+  }
+
+  const auto heldRandom = tfseq::Compile(R"(pulse = rhythm {
+  subdiv 4n
+  events x!2
+}
+line = sequence {
+  subdiv 4n
+  notes [1|3]_2
+  rhythm pulse
+}
+seed 17
+play line
+)");
+  check(static_cast<bool>(heldRandom),
+        "random held pitches compile with a reusable rhythm: " +
+            heldRandom.diagnostic.message);
+  if (heldRandom) {
+    tfseq::Runtime runtime;
+    runtime.setProgram(heldRandom.program.get());
+    const auto first = runtime.next(0.0);
+    const float firstPitch = first.events[0].pitchVolts;
+    const auto second = runtime.next(first.durationBeats);
+    check(second.count == 1 && close(second.events[0].pitchVolts, firstPitch),
+          "repeated hits sample one stable random value for its held span");
+  }
+
+  const auto directChord = tfseq::Compile(R"(changes = sequence {
+  subdiv 4n
+  chords (1 3 5)_2 ; (2 4 6)
+}
+play changes
+)");
+  check(static_cast<bool>(directChord),
+        "chords works directly without a separate rhythm: " +
+            directChord.diagnostic.message);
+  if (directChord) {
+    tfseq::Runtime runtime;
+    runtime.setProgram(directChord.program.get());
+    const auto first = runtime.next(0.0);
+    const auto second = runtime.next(first.durationBeats);
+    check(first.count == 3 && second.count == 3 &&
+              std::abs(first.durationBeats - 2.0) < 1e-9,
+          "direct chord sequencing retains ordinary note-event timing");
+  }
+  check(static_cast<bool>(tfseq::Compile(R"(changes = sequence {
+  subdiv 8n
+  chords Cmaj9_2 [Dm11 G13] ^Am11 ~ Fmaj9*3
+}
+play changes
+)")),
+        "the documented complex direct-chord example compiles");
+
+  const auto targetSlide = tfseq::Compile(R"(legato = rhythm {
+  subdiv 4n
+  events x!2
+}
+line = sequence {
+  subdiv 4n
+  notes 1 >3
+  rhythm legato
+}
+play line
+)");
+  check(static_cast<bool>(targetSlide),
+        "pitch-entry slides compile with a rhythm gesture: " +
+            targetSlide.diagnostic.message);
+  if (targetSlide) {
+    tfseq::Runtime runtime;
+    runtime.setProgram(targetSlide.program.get());
+    const auto first = runtime.next(0.0);
+    const bool sourceLegato = first.count == 1 && first.events[0].legatoToNext;
+    const auto second = runtime.next(first.durationBeats);
+    check(sourceLegato, ">pitch keeps the preceding source connected");
+    check(second.count == 1 && second.events[0].kind == tfseq::EventKind::Slide,
+          ">pitch slides on the first target hit");
+  }
+
+  const auto gestureSlide = tfseq::Compile(R"(legato = rhythm {
+  subdiv 4n
+  events x >x
+}
+line = sequence {
+  subdiv 4n
+  notes 1 3
+  rhythm legato
+}
+play line
+)");
+  check(static_cast<bool>(gestureSlide),
+        "gesture-directed >x slides compile: " +
+            gestureSlide.diagnostic.message);
+  if (gestureSlide) {
+    tfseq::Runtime runtime;
+    runtime.setProgram(gestureSlide.program.get());
+    const auto first = runtime.next(0.0);
+    const auto second = runtime.next(first.durationBeats);
+    check(first.count == 1 && second.count == 1 &&
+              second.events[0].kind == tfseq::EventKind::Slide,
+          ">x makes the gesture position legato for single notes or chords");
+  }
+}
+
+void structuralHotSwapRestartsOnlyTheCurrentTerm() {
+  auto direct = tfseq::Compile(R"(riff = sequence {
+  subdiv 4n
+  notes 1 2 3 4
+}
+play riff
+)");
+  auto gesture = tfseq::Compile(R"(pulse = rhythm {
+  subdiv 4n
+  events x
+}
+riff = sequence {
+  subdiv 4n
+  notes 1 2 3 4
+  rhythm pulse
+}
+play riff
+)");
+  check(direct && gesture, "structural hot-swap fixtures compile");
+  if (direct && gesture) {
+    tfseq::Runtime runtime;
+    runtime.setProgram(direct.program.get());
+    runtime.next(0.0);
+    runtime.next(1.0);
+    check(!runtime.canPreserveCurrentPhase(gesture.program.get()),
+          "direct and separated schedulers report incompatible phase state");
+    const auto replacement = runtime.replaceProgram(gesture.program.get(), 2.0);
+    const auto restarted = runtime.next(2.0);
+    check(replacement ==
+                  tfseq::Runtime::ReplacementResult::RestartedCurrentTerm &&
+              restarted.count == 1 &&
+              close(restarted.events[0].pitchVolts, 0.f),
+          "an incompatible hot swap restarts the current sequence pass at its "
+          "activation beat");
+  }
+
+  auto gestureEdit = tfseq::Compile(R"(pulse = rhythm {
+  subdiv 4n
+  events x
+}
+riff = sequence {
+  subdiv 4n
+  notes 1 2 7 4
+  rhythm pulse
+}
+play riff
+)");
+  check(gesture && gestureEdit, "compatible gesture hot-swap fixtures compile");
+  if (gesture && gestureEdit) {
+    tfseq::Runtime runtime;
+    runtime.setProgram(gesture.program.get());
+    runtime.next(0.0);
+    runtime.next(1.0);
+    check(runtime.canPreserveCurrentPhase(gestureEdit.program.get()),
+          "two separated schedulers report compatible phase state");
+    const auto replacement =
+        runtime.replaceProgram(gestureEdit.program.get(), 2.0);
+    const auto continued = runtime.next(2.0);
+    check(replacement == tfseq::Runtime::ReplacementResult::PreservedPhase &&
+              continued.count == 1 &&
+              close(continued.events[0].pitchVolts, 11.f / 12.f),
+          "a compatible gesture edit preserves its held-timeline phase");
+  }
+}
+
+void jazzVoicingRecipesAndVoiceLeadingAreDeterministic() {
+  const auto smokeNotation = tfseq::Compile(R"(comp = rhythm {
+  subdiv 16n
+  events x_3 x ~!6 x_3 x ~!2
+}
+keys = sequence {
+  subdiv 2n
+  chords (C F A)_2 (C D G)_2 (B, D G)_2 (A, C F) (G, C E)
+  rhythm comp
+}
+play keys
+)");
+  check(static_cast<bool>(smokeNotation),
+        "the updated piano smoke-patch notation compiles: " +
+            smokeNotation.diagnostic.message);
+
+  const auto compiled = tfseq::Compile(R"(changes = sequence {
+  key C
+  voicing rootless_4notes
+  chords Dm9 G13 Cmaj9 C7alt
+}
+play changes
+)");
+  check(static_cast<bool>(compiled),
+        "voicing recipe program: " + compiled.diagnostic.message);
+  if (!compiled)
+    return;
+  const auto &sequence = compiled.program->semantic().sequences.front();
+  check(sequence.hasKey && sequence.keyPitchClass == 0 &&
+            sequence.voicing == tfseq::VoicingStyle::Rootless4Notes,
+        "key and rootless recipe survive semantic compilation");
+  const auto &thirteen = sequence.notes[1].values.front();
+  check(std::none_of(
+            thirteen.tones.begin(), thirteen.tones.end(),
+            [](const tfseq::ChordTone &tone) { return tone.degree == 11; }),
+        "a standard 13 chord does not insert the normally avoided natural 11");
+
+  struct CapturedChord {
+    std::size_t count = 0;
+    std::array<int, tfseq::MaximumPolyphony> pitchClasses{};
+    std::array<int, tfseq::MaximumPolyphony> semitones{};
+  };
+  auto capture = [](const tfseq::StepEvents &events, std::size_t first = 0) {
+    CapturedChord result;
+    result.count = events.count - first;
+    for (std::size_t voice = first; voice < events.count; ++voice) {
+      const int semitone =
+          static_cast<int>(std::lround(events.events[voice].pitchVolts * 12.f));
+      result.semitones[voice - first] = semitone;
+      result.pitchClasses[voice - first] = (semitone % 12 + 12) % 12;
+    }
+    std::sort(result.pitchClasses.begin(),
+              result.pitchClasses.begin() + result.count);
+    return result;
+  };
+
+  const auto bareMajor = tfseq::Compile(R"(changes = sequence {
+  chords C F#
+}
+play changes
+)");
+  const auto bareNote = tfseq::Compile(R"(melody = sequence {
+  notes C
+}
+play melody
+)");
+  check(static_cast<bool>(bareMajor) && static_cast<bool>(bareNote),
+        "bare chord roots and ordinary named notes compile");
+  if (bareMajor && bareNote) {
+    tfseq::Runtime chords;
+    chords.setProgram(bareMajor.program.get());
+    const auto cMajor = capture(chords.next(0.0));
+    const auto fSharpMajor = capture(chords.next(1.0));
+    tfseq::Runtime melody;
+    melody.setProgram(bareNote.program.get());
+    const auto cNote = capture(melody.next(0.0));
+    check(cMajor.count == 3 &&
+              std::equal(cMajor.pitchClasses.begin(),
+                         cMajor.pitchClasses.begin() + 3,
+                         std::array<int, 3>{0, 4, 7}.begin()) &&
+              fSharpMajor.count == 3 &&
+              std::equal(fSharpMajor.pitchClasses.begin(),
+                         fSharpMajor.pitchClasses.begin() + 3,
+                         std::array<int, 3>{1, 6, 10}.begin()),
+          "bare names in a chords lane mean standard major triads");
+    check(cNote.count == 1 && cNote.pitchClasses[0] == 0,
+          "the same bare name remains a single pitch in a notes lane");
+  }
+
+  const auto keyed = tfseq::Compile(R"(changes = sequence {
+  key C
+  chords C Dm7
+}
+|> transpose_key D
+play changes
+)");
+  check(static_cast<bool>(keyed),
+        "target-key transposition compiles: " + keyed.diagnostic.message);
+  if (keyed) {
+    tfseq::Runtime transposed;
+    transposed.setProgram(keyed.program.get());
+    const auto dMajor = capture(transposed.next(0.0));
+    const auto eMinorSeven = capture(transposed.next(1.0));
+    check(dMajor.count == 3 &&
+              std::equal(dMajor.pitchClasses.begin(),
+                         dMajor.pitchClasses.begin() + 3,
+                         std::array<int, 3>{2, 6, 9}.begin()) &&
+              eMinorSeven.count == 3 &&
+              std::equal(eMinorSeven.pitchClasses.begin(),
+                         eMinorSeven.pitchClasses.begin() + 3,
+                         std::array<int, 3>{2, 4, 7}.begin()),
+          "transpose_key moves explicit chord roots by the written-key delta");
+  }
+  check(!tfseq::Compile(R"(changes = sequence {
+  chords C7
+}
+|> transpose_key D
+play changes
+)") && !tfseq::Compile(R"(changes = sequence {
+  key C
+  chords C7
+}
+|> transpose_key H
+play changes
+)") && !tfseq::Compile(R"(changes = sequence {
+  chords C7
+}
+shifted = changes |> transpose_key D
+play shifted
+)"),
+        "transpose_key requires both a written key and a valid target key");
+
+  tfseq::Runtime runtime;
+  runtime.setProgram(compiled.program.get());
+  const auto dm9 = capture(runtime.next(0.0));
+  const auto g13 = capture(runtime.next(1.0));
+  const auto cmaj9 = capture(runtime.next(2.0));
+  const auto altered = capture(runtime.next(3.0));
+  check(dm9.count == 4 &&
+            std::equal(dm9.pitchClasses.begin(), dm9.pitchClasses.begin() + 4,
+                       std::array<int, 4>{0, 4, 5, 9}.begin()),
+        "rootless minor-nine recipe retains 3, 5, 7, and 9");
+  check(g13.count == 4 &&
+            std::equal(g13.pitchClasses.begin(), g13.pitchClasses.begin() + 4,
+                       std::array<int, 4>{4, 5, 9, 11}.begin()),
+        "rootless dominant-thirteen recipe retains 3, 7, 9, and 13");
+  check(cmaj9.count == 4 && std::equal(cmaj9.pitchClasses.begin(),
+                                       cmaj9.pitchClasses.begin() + 4,
+                                       std::array<int, 4>{2, 4, 7, 11}.begin()),
+        "rootless major-nine recipe uses the documented four-note set");
+  const int dmLowest = (dm9.semitones[0] % 12 + 12) % 12;
+  const int dominantLowest = (g13.semitones[0] % 12 + 12) % 12;
+  check((dmLowest == 5 || dmLowest == 0) &&
+            (dominantLowest == 11 || dominantLowest == 5),
+        "rootless A/B forms begin on the third or seventh");
+  const bool hasFlatNine =
+      std::find(altered.pitchClasses.begin(),
+                altered.pitchClasses.begin() + altered.count,
+                1) != altered.pitchClasses.begin() + altered.count;
+  const bool hasSharpNine =
+      std::find(altered.pitchClasses.begin(),
+                altered.pitchClasses.begin() + altered.count,
+                3) != altered.pitchClasses.begin() + altered.count;
+  check(altered.count == 4 && hasFlatNine != hasSharpNine,
+        "automatic alt voicing contains exactly one altered ninth");
+  for (const auto *events : {&dm9, &g13, &cmaj9, &altered}) {
+    bool ascending = true;
+    for (std::size_t voice = 1; voice < events->count; ++voice)
+      ascending &= events->semitones[voice - 1] < events->semitones[voice];
+    check(ascending, "automatic recipes never cross adjacent voices");
+  }
+
+  const auto &altChord = sequence.notes[3].values.front();
+  std::array<int, tfseq::MaximumPolyphony> flatContext{4, 8, 10, 13};
+  const auto flat = tfseq::RealizeChordVoicing(
+      altChord, tfseq::VoicingStyle::Rootless4Notes, 0, flatContext, 4);
+  std::array<int, tfseq::MaximumPolyphony> sharpContext{4, 8, 10, 15};
+  const auto sharp = tfseq::RealizeChordVoicing(
+      altChord, tfseq::VoicingStyle::Rootless4Notes, 0, sharpContext, 4);
+  auto hasClass = [](const tfseq::VoicingResult &voicing, const int wanted) {
+    for (std::size_t voice = 0; voice < voicing.count; ++voice)
+      if ((voicing.semitones[voice] % 12 + 12) % 12 == wanted)
+        return true;
+    return false;
+  };
+  check(hasClass(flat, 1) && !hasClass(flat, 3),
+        "flat-nine context selects the flat-nine altered candidate");
+  check(hasClass(sharp, 3) && !hasClass(sharp, 1),
+        "sharp-nine context selects the sharp-nine altered candidate");
+
+  const auto overrides = tfseq::Compile(R"(forced = sequence {
+  key C
+  voicing basic
+  chords Cm9:(3) C7alt:(3 7 b9 b13) C7alt:(3 b7 #9 #5)
+}
+play forced
+)");
+  check(static_cast<bool>(overrides),
+        "factor overrides compile: " + overrides.diagnostic.message);
+  if (overrides) {
+    tfseq::Runtime forced;
+    forced.setProgram(overrides.program.get());
+    const auto one = capture(forced.next(0.0));
+    const auto flatAlt = capture(forced.next(1.0));
+    const auto sharpAlt = capture(forced.next(2.0));
+    check(one.count == 1 && one.pitchClasses[0] == 3,
+          "Cm9:(3) emits only its quality-relative minor third");
+    check(flatAlt.count == 4 &&
+              hasClass(tfseq::RealizeChordVoicing(overrides.program->semantic()
+                                                      .sequences.front()
+                                                      .notes[1]
+                                                      .values.front(),
+                                                  tfseq::VoicingStyle::Basic, 0,
+                                                  {}, 0),
+                       1),
+          "an explicit flat-nine altered formula remains exact");
+    check(sharpAlt.count == 4,
+          "the enharmonic #5 spelling is accepted by an alt override");
+  }
+  check(!tfseq::Compile(R"(bad = sequence {
+  chords Cm9:(3 b3)
+}
+play bad
+)") && !tfseq::Compile(R"(bad = sequence {
+  chords Cmaj7:(b3)
+}
+play bad
+)"),
+        "factor overrides reject duplicate and contradictory factors");
+  check(static_cast<bool>(tfseq::Compile(R"(deliberate = sequence {
+  chords C7alt:(3 7 b9 #9)
+}
+play deliberate
+)")),
+        "an explicit override may deliberately request both altered ninths");
+  check(!tfseq::Compile(R"(bad = sequence {
+  key H
+  chords C7
+}
+play bad
+)") && !tfseq::Compile(R"(bad = sequence {
+  voicing nearestish
+  chords C7
+}
+play bad
+)") && !tfseq::Compile(R"(bad = sequence {
+  chords Cm7alt
+}
+play bad
+)"),
+        "invalid keys, recipes, and non-dominant alt symbols are diagnostics");
+
+  const auto registered = tfseq::Compile(R"(one = sequence {
+  chords Cm9:(3)@3
+}
+play one
+)");
+  check(static_cast<bool>(registered),
+        "factor voicings accept a chord register suffix");
+  if (registered) {
+    tfseq::Runtime exact;
+    exact.setProgram(registered.program.get());
+    const auto note = capture(exact.next(0.0));
+    check(note.count == 1 && note.semitones[0] == -9,
+          "a registered minor-third override sounds Eb3");
+  }
+
+  const auto preserved = tfseq::Compile(R"(changes = sequence {
+  key C
+  voicing basic
+  chords C7 F13 Bbmaj7
+}
+play changes
+)");
+  check(static_cast<bool>(preserved),
+        "count-preserving progression: " + preserved.diagnostic.message);
+  if (preserved) {
+    tfseq::Runtime leading;
+    leading.setProgram(preserved.program.get());
+    const auto c7 = capture(leading.next(0.0));
+    const auto f13 = capture(leading.next(1.0));
+    const auto bbmaj7 = capture(leading.next(2.0));
+    check(
+        c7.count == 4 && f13.count == 4 && bbmaj7.count == 4,
+        "basic recipe preserves four voices across differently sized formulas");
+    check(std::find(f13.pitchClasses.begin(), f13.pitchClasses.begin() + 4,
+                    0) == f13.pitchClasses.begin() + 4 &&
+              std::find(f13.pitchClasses.begin(), f13.pitchClasses.begin() + 4,
+                        5) == f13.pitchClasses.begin() + 4,
+          "count preservation omits F13's perfect fifth and then its root");
+  }
+
+  const auto rootlessThree = tfseq::Compile(R"(changes = sequence {
+  key C
+  voicing rootless_3notes
+  chords Dm9 G13 Cmaj
+}
+play changes
+)");
+  check(static_cast<bool>(rootlessThree),
+        "three-note rootless recipe compiles");
+  if (rootlessThree) {
+    tfseq::Runtime leading;
+    leading.setProgram(rootlessThree.program.get());
+    const auto dm = capture(leading.next(0.0));
+    const auto dominant = capture(leading.next(1.0));
+    const auto triad = capture(leading.next(2.0));
+    check(dm.count == 3 && dominant.count == 3 && triad.count == 3,
+          "rootless recipe uses three notes and falls back for a plain triad");
+    check(std::find(dm.pitchClasses.begin(), dm.pitchClasses.begin() + 3, 2) ==
+                  dm.pitchClasses.begin() + 3 &&
+              std::find(dominant.pitchClasses.begin(),
+                        dominant.pitchClasses.begin() + 3,
+                        7) == dominant.pitchClasses.begin() + 3,
+          "rootless extended chords omit their written roots");
+  }
+
+  const auto rootlessColours = tfseq::Compile(R"(changes = sequence {
+  voicing rootless_3notes
+  chords Dm11 C6add9 G9sus
+}
+play changes
+)");
+  check(static_cast<bool>(rootlessColours),
+        "rootless sixth and suspended guide-tone recipes compile");
+  if (rootlessColours) {
+    tfseq::Runtime leading;
+    leading.setProgram(rootlessColours.program.get());
+    const auto minorEleven = capture(leading.next(0.0));
+    const auto sixNine = capture(leading.next(1.0));
+    const auto suspended = capture(leading.next(2.0));
+    check(minorEleven.count == 3 && sixNine.count == 3 &&
+              suspended.count == 3 &&
+              std::equal(minorEleven.pitchClasses.begin(),
+                         minorEleven.pitchClasses.begin() + 3,
+                         std::array<int, 3>{0, 5, 7}.begin()) &&
+              std::equal(sixNine.pitchClasses.begin(),
+                         sixNine.pitchClasses.begin() + 3,
+                         std::array<int, 3>{2, 4, 9}.begin()) &&
+              std::equal(suspended.pitchClasses.begin(),
+                         suspended.pitchClasses.begin() + 3,
+                         std::array<int, 3>{0, 5, 9}.begin()),
+          "written elevenths, sixth colours, and suspended guides survive "
+          "three-note rootless reduction without reintroducing roots");
+  }
+
+  const auto restContext = tfseq::Compile(R"(changes = sequence {
+  voicing basic
+  chords C7 ~ F13
+}
+play changes
+)");
+  check(static_cast<bool>(restContext), "voice-leading rest fixture compiles");
+  if (restContext) {
+    tfseq::Runtime leading;
+    leading.setProgram(restContext.program.get());
+    const auto first = capture(leading.next(0.0));
+    leading.next(1.0);
+    const auto afterRest = capture(leading.next(2.0));
+    check(first.count == 4 && afterRest.count == 4,
+          "a rest retains harmonic context and its useful voice count");
+  }
+
+  const auto repeated = tfseq::Compile(R"(pulse = rhythm {
+  subdiv 4n
+  events x x
+}
+changes = sequence {
+  subdiv 2n
+  voicing rootless_4notes
+  chords C7alt
+  rhythm pulse
+}
+play changes
+)");
+  check(static_cast<bool>(repeated), "repeated-hit voicing fixture compiles");
+  if (repeated) {
+    tfseq::Runtime leading;
+    leading.setProgram(repeated.program.get());
+    const auto first = capture(leading.next(0.0));
+    const auto repeat = capture(leading.next(1.0));
+    check(first.count == repeat.count && first.semitones == repeat.semitones,
+          "repeated rhythm hits reuse an identical altered voicing");
+    leading.reset();
+    const auto reset = capture(leading.next(0.0));
+    check(first.count == reset.count && first.semitones == reset.semitones,
+          "reset reproduces deterministic first-chord voicing");
+  }
+
+  const auto slash = tfseq::Compile(R"(changes = sequence {
+  key C
+  voicing rootless_4notes
+  chords Dm9/B G13
+}
+play changes
+)");
+  check(static_cast<bool>(slash), "rootless slash progression compiles");
+  if (slash) {
+    tfseq::Runtime leading;
+    leading.setProgram(slash.program.get());
+    const auto first = capture(leading.next(0.0));
+    const auto second = capture(leading.next(1.0));
+    check(first.count == 5 && second.count == 4,
+          "slash bass is emitted but excluded from upper-voice count memory");
+  }
 }
 
 } // namespace
@@ -2924,6 +3737,10 @@ int main() {
   cvEnvelopeEngineHasMusicalGateSemantics();
   musicalNoteValuesAreSharedAcrossTimeControls();
   unsafeNumericInputsAreDiagnostics();
+  openKeyboardCompingMotifIsPreciselyTimed();
+  reusableRhythmComposesWithNotesChordsAndSlides();
+  structuralHotSwapRestartsOnlyTheCurrentTerm();
+  jazzVoicingRecipesAndVoiceLeadingAreDeterministic();
   if (failures != 0)
     std::cerr << failures << " text sequencer test(s) failed\n";
   return failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;

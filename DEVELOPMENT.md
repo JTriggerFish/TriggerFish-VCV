@@ -164,15 +164,16 @@ stereo output path, but replaces Clocked and Foundry with TriggerFish Transport
 and Prog Sequencer. Its visible program is both a
 playable test and a compact-syntax regression fixture.
 
-[test-room-reverb-two-sources.vcv](test-room-reverb-two-sources.vcv) feeds a
-slow, drifting two-saw/sub bass and a descending folded arpeggio through
-separate 4072 voices. Independent Prog Sequencers drive both parts, and Scene
-Pack 4 keeps them as independently draggable Room Reverb sources. The reverb
-uses Superlush with a 3 kHz wet high cut. Arpeggio CV1 drives an 18-beat bipolar
-cutoff triangle across the four-beat note phrase. One TriggerFish Transport
-fans its fixed 24 PPQN Clock, Run, and Reset signals to both sequencers. Its
-four controls restart, pause, play, or stop the complete patch while keeping
-both programs aligned. The scope shows the packed input and stereo result.
+[test-room-reverb-two-sources.vcv](test-room-reverb-two-sources.vcv) combines a
+slow, drifting two-saw/sub bass, a descending folded arpeggio, and rootless
+extended Electric Piano chords. Three Prog Sequencers share one Transport;
+the piano path is merged with live MIDI and keeps its Suitcase left/right
+outputs as separate Scene Pack sources. The reverb uses Superlush with a 3 kHz
+wet high cut. Arpeggio CV1 drives an 18-beat bipolar cutoff triangle across the
+four-beat note phrase. The Transport fans its fixed 24 PPQN Clock, Run, and
+Reset signals to all three sequencers, while Ctrl+R can restart one focused
+sequencer at the next shared quarter boundary. The scope shows the packed input
+and stereo result.
 
 [test-4072-voice.vcv](test-4072-voice.vcv) connects a Fundamental saw
 oscillator to 4072 Voice Core, with MIDI pitch tracking both oscillator and

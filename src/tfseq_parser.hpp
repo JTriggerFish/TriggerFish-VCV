@@ -29,6 +29,7 @@ enum class PatternKind {
   ScaleDegree,
   JazzChord,
   RomanChord,
+  ChordFactor,
   RandomPitch,
   RandomScalar,
   Event,
@@ -78,14 +79,25 @@ struct Pattern {
 };
 
 struct Lane {
-  enum class Kind { Notes, Scalar, Cv, Setting };
+  enum class Kind { Notes, Chords, Rhythm, Scalar, Cv, Setting };
   Token name;
   Pattern pattern;
   std::vector<Token> envelopeArguments;
   SourceSpan envelopeSpan;
   bool envelopeOnly = false;
   std::vector<Pipeline> pipelines;
+  // A rhythm lane either contains an inline pattern or names a reusable
+  // top-level rhythm definition. Other lane kinds leave this empty.
+  Token rhythmReference;
   Kind kind = Kind::Scalar;
+};
+
+struct RhythmDefinition {
+  Token name;
+  Token subdivision;
+  Pattern events;
+  std::vector<Pipeline> pipelines;
+  SourceSpan span;
 };
 
 struct SequenceDefinition {
@@ -133,7 +145,8 @@ struct SeedCommand {
 };
 
 using Statement =
-    std::variant<SequenceDefinition, Assignment, PlayCommand, SeedCommand>;
+    std::variant<SequenceDefinition, RhythmDefinition, Assignment, PlayCommand,
+                 SeedCommand>;
 
 struct Document {
   std::vector<Statement> statements;

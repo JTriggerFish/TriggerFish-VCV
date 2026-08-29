@@ -49,6 +49,7 @@ Circuit-modelled sound generators and processors, plus pitch utilities for VCV R
 | Wavefold Oscillator | Fully polyphonic, with independent oscillator, folder, and resampling state; mono controls are broadcast | Widest connected input, up to 16 |
 | Unison Oscillator | Fully polyphonic, with an independent oscillator stack and drift state per channel; mono controls are broadcast | Widest connected input, up to 16 |
 | Scene Pack 4 | Concatenates four mono/poly source bundles in jack order | One polyphonic audio output, up to 8 channels |
+| Event Merge 2 | Concatenates two aligned performance-event bundles without summing pitch | Up to 16 Pitch/Gate/Trigger/Velocity/Accent channels |
 | Room Reverb | Mono by default; accepts and places up to eight source channels | Independent stereo left/right outputs |
 | Transport | Monophonic shared clock, run state, and reset | Clock pulse, Run gate, and Reset pulse |
 | Prog Sequencer | Polyphonic chord-capable program with independently cycling control lanes and optional Notes-pass edge alignment | Up to 16 pitch/gate/trigger/velocity/accent channels plus CV1-CV3 |
@@ -492,15 +493,32 @@ The right-click **Presets** menu provides the default Medium Hall, a restrained
 Small Room ambience, and a filtered Superlush synth texture. Applying a preset
 preserves the module's output LEVEL.
 
-The [two-source Room Reverb test patch](test-room-reverb-two-sources.vcv) uses
+The [three-sequence Room Reverb test patch](test-room-reverb-two-sources.vcv) uses
 a slow two-saw/sub bass and a descending folded arpeggio, each driven by its
-own Prog Sequencer and shaped by a 4072 voice. Scene Pack 4 preserves them as
-independent left/right room-plan sources for auditioning the spatial direct,
-early, and late fields with a musical input. The patch uses Superlush with a
-3 kHz wet high cut; arpeggio CV1 drives an 18-beat bipolar cutoff triangle
-across the four-beat note phrase, and CV2 sends a per-note AD envelope to the
-wavefolder Fold input. One Transport supplies Clock, Run, and Reset
-to both sequencers so all transport operations act on them together.
+own Prog Sequencer and shaped by a 4072 voice. A third Prog Sequencer plays
+the exact C-F-A, C-D-G, B-D-G, A-C-F, and G-C-E upper voicings with a reusable
+syncopated four-beat comping gesture. The lower B, A, and G are explicitly
+registered below middle C for compact, readable voice leading.
+Event Merge 2 appends its three chord voices to a separate 12-channel MIDI-CV
+keyboard path without summing pitch voltages; velocity, retrigger, CC64 sustain,
+and restrained Suitcase vibrato remain available. Scene Pack 4 preserves the
+bass and folded voice as individual sources and the piano's LEFT and RIGHT as
+a manually positioned stereo pair, so Room Reverb retains some of its stereo
+motion rather than receiving a mono sum. The patch uses Superlush with a 3 kHz
+wet high cut;
+arpeggio CV1 drives an 18-beat bipolar cutoff triangle across the four-beat
+note phrase, and CV2 sends a per-note AD envelope to the wavefolder Fold input.
+One Transport supplies Clock, Run, and Reset to all three sequencers so all
+transport operations act on them together.
+
+### Event Merge 2
+
+Event Merge 2 concatenates two polyphonic performance bundles while preserving
+voice alignment across **Pitch**, **Gate**, **Trigger**, **Velocity**, and
+**Accent**. It is intended for combining sources such as a live MIDI keyboard
+and Prog Sequencer before a polyphonic voice. Source A is appended before B and
+the result is capped at Rack's 16-channel limit; unlike stacking cables at a
+destination input, pitch voltages are never added together.
 
 ### Transport
 
@@ -535,9 +553,12 @@ Prog Sequencer is a 24 PPQN externally clocked live-coding sequencer with
 up to 16 polyphonic V/OCT, Gate, Trigger, Velocity, and Accent channels, plus
 three monophonic CV lanes. Edit the program
 directly on the module. Ctrl+`.` compiles the complete document; Ctrl+Enter
-evaluates the top-level statement containing the selection or current line.
+evaluates the top-level statement containing the selection or current line on
+the next quarter beat. Ctrl+Shift+Enter evaluates the same source on the next
+scheduler step when playback phase is compatible.
 Ctrl+Shift+`.` compiles the document and restarts it on the next quarter beat;
-Ctrl+Space toggles local transport. With RUN connected directly to a
+Ctrl+Space toggles local transport and Ctrl+R restarts only this sequencer on
+the next shared quarter beat. With RUN connected directly to a
 TriggerFish Transport, Ctrl+Shift+Space pauses or plays the shared Transport,
 Ctrl+Shift+R restarts it, and Ctrl+Shift+Backspace stops it. Ctrl+`/` toggles
 line comments and Ctrl+D duplicates the current line or selection without
@@ -545,8 +566,10 @@ evaluating the draft. Ctrl+Z undoes editor changes; Ctrl+Shift+Z and Ctrl+Y
 redo them.
 Other edited statements remain inactive until separately evaluated; unrelated
 malformed draft text does not block a complete valid selected statement. A
-successful edit swaps in on the next quarter beat while preserving the
-arrangement phase and the lane cursors of sequences whose names still exist.
+successful ordinary edit swaps in on the next quarter beat while preserving
+the arrangement phase and lane cursors. A direct-event/gesture representation
+change instead restarts only the current sequence pass on that beat; it leaves
+the current arrangement term, sibling sequencers, and shared Transport intact.
 Successfully executed code flashes in the editor. The final executed
 `play NAME` statement selects the looping sequence or arrangement. Diagnostics
 wrap in the status strip, and the last valid program keeps playing after an
@@ -671,7 +694,8 @@ scale degree four indices upward (tonic to fifth), staying in the current key;
 this diatonic operation may change the semitone shape of the riff. In harmonic
 minor, for example, that in-key shift produces the major V without a separate
 `scale major`. `transpose_semitone` remains the separate operation for exact
-chromatic movement.
+chromatic movement. A chord sequence with a written `key` may instead use
+`transpose_key D` to move the entire progression to the nearest D key.
 Supported scale names include `harmonic_minor`, `major_pentatonic`,
 `minor_pentatonic`, `octatonic_whole_half`, and `octatonic_half_whole`.
 
@@ -684,14 +708,61 @@ notes I i iim7 bVII (1 b3 5) Cm7 D7 Bbm7b5@3 / D@2 Cmaj9 C7#9
 ```
 
 Jazz chord syntax supports major, minor, diminished, augmented, suspended,
-power, sixth, seventh, ninth, eleventh, and thirteenth chords, plus `add` and
-`b`/`#` alterations. Close-position voices are emitted as Rack polyphonic
-channels on Pitch, Gate, Trigger, Velocity, and Accent. A slash bass is channel
-1 and is placed below the chord unless its octave is explicit. Rack's native
-16-channel cable capacity is the chord-size limit.
+power, sixth, seventh, ninth, eleventh, and thirteenth chords, plus `add`,
+`alt`, and `b`/`#` alterations. Named `basic`, `rootless_3notes`, and
+`rootless_4notes` recipes choose smooth, non-crossing inversions. They retain
+voice count where useful, protecting guide and altered tones while normally
+omitting the fifth and then the root. `C7alt` chooses separate b9 or #9
+candidates instead of combining both. A slash bass is channel 1 and is placed
+below the chord unless its octave is explicit.
+In a `chords` lane, a bare named root such as `C` means a C major triad; in a
+`notes` lane it remains the single pitch C.
 Inside an explicit voicing, bare named pitches are unambiguous, so
 `(C E G)@4` shares octave 4 across the three tones while
 `(C@3 E@4 G@4)` remains available for a spread voicing.
+
+`chords` is a readability alias for `notes`, not a separate timing system, so
+complex progressions can be sequenced directly:
+
+```text
+changes = sequence {
+  subdiv 8n
+  key C
+  voicing rootless_4notes
+  chords Cmaj9_2 [Dm11 G13] ^Am11 ~ Fmaj9*3
+}
+```
+
+The key is used by `transpose_key`; it is not an implied scale or chord
+validator, and every Jazz chord keeps its explicit root. A factor override such as
+`Cm9:(3)` emits only the quality-relative minor third, while
+`G13:(3 7 9 13)` fixes chord content but leaves inversion and register to the
+recipe. Explicit factors take precedence, so a requested root is retained even
+under a rootless recipe. See the [complete sequencer reference](docs/TfProgSequencer-reference.md#chords-and-voicings)
+for omission rules and altered-chord selection.
+
+Pitch and attack structure can instead be separated when a gesture should be
+reused across a longer melody or progression:
+
+```text
+comp = rhythm {
+  subdiv 16n
+  events x_3 x ~!6 x_3 x ~!2
+}
+
+keys = sequence {
+  subdiv 2n
+  chords (C F A)_2 (C D G)_2 (B, D G)_2 (A, C F) (G, C E)
+  rhythm comp
+}
+```
+
+The chord durations are written musical time: the `_2` chords last four beats
+and the final unsuffixed chords last two. The four-beat rhythm loops inside the
+16-beat progression, and every `x` attacks the note or chord active at that
+time. The same rhythm can drive a `notes` lane of single pitches. `>x` marks a
+gesture-position slide; `>pitch` slides on the first hit after entering that
+pitch span. Semicolons remain visual whitespace and have no musical effect.
 
 Whole-sequence timing transformations are explicitly quantified:
 

@@ -3,6 +3,7 @@
 #include "tfseq_editor.hpp"
 #include "tfseq_envelope.hpp"
 #include "tfseq_parser.hpp"
+#include "tfseq_program_mailbox.hpp"
 #include "tftransport.hpp"
 #include "tfui_animation.hpp"
 #include "tfui_colormap.hpp"
@@ -134,6 +135,7 @@ struct TfProgSequencer : Module {
   enum LightIds { RUN_LIGHT, NUM_LIGHTS };
 
   enum class TransportStatus { Waiting, Playing, Paused, Stopped };
+  enum class ActivationQuantization { QuarterBeat, SchedulerStep };
 
   std::string source = DefaultSource;
   std::string evaluatedSource = DefaultSource;
@@ -143,19 +145,26 @@ struct TfProgSequencer : Module {
   std::atomic<std::uint64_t> sourceRevision{1};
   std::atomic<int> restoredEditorCursor{-1};
   std::atomic<int> restoredEditorSelection{-1};
-  // CompiledProgram is at least two-byte aligned, leaving the low pointer bit
-  // available to carry the restart-on-activation request in the same atomic
-  // publication as the program itself.
-  static_assert(alignof(tfseq::CompiledProgram) >= 2);
+  // CompiledProgram is at least four-byte aligned, leaving two low pointer
+  // bits for publication policy without a second cross-thread mailbox.
+  static_assert(alignof(tfseq::CompiledProgram) >= 4);
   static constexpr std::uintptr_t PendingRestartBit = 1;
-  std::atomic<std::uintptr_t> pendingProgram{0};
+  static constexpr std::uintptr_t PendingSchedulerStepBit = 2;
+  static constexpr std::uintptr_t PendingPolicyMask =
+      PendingRestartBit | PendingSchedulerStepBit;
+  tfseq::ProgramMailbox<tfseq::CompiledProgram, PendingPolicyMask>
+      pendingPrograms;
   std::atomic<tfseq::CompiledProgram *> retiredProgram{nullptr};
   tfseq::CompiledProgram *activeProgram = nullptr;
   tfseq::Runtime runtime;
+  // The scheduling runtime necessarily runs ahead to accommodate early
+  // events. This shadow advances only as real playback crosses score-step
+  // boundaries, providing an exact allocation-free state for live swaps.
   tfseq::Runtime activationRuntime;
-  double activationCheckpointBeat = 0.0;
   double activationNextStepBeat = 0.0;
-  bool activationCheckpointValid = false;
+  bool activationRuntimeValid = false;
+  std::uintptr_t trackedStepProgram = 0;
+  double trackedStepActivationBeat = 0.0;
 
   std::array<std::atomic<std::uint64_t>,
              static_cast<std::size_t>(tfseq::CursorLane::Count)>
@@ -177,6 +186,7 @@ struct TfProgSequencer : Module {
   std::atomic<int> panelWidthHp{30};
   std::atomic<tfui::HeatmapPalette> editorHeatmap{tfui::HeatmapPalette::Magma};
   std::atomic<bool> editorRunEnabled{true};
+  std::atomic<bool> localRestartRequested{false};
 
   dsp::SchmittTrigger clockTrigger;
   dsp::SchmittTrigger resetTrigger;
@@ -218,8 +228,10 @@ struct TfProgSequencer : Module {
   bool clockSeen = false;
   bool periodKnown = false;
   bool clockTimedOut = false;
+  bool skipNextPeriodMeasurement = false;
   std::int64_t samplesSinceClock = 0;
   std::int64_t transportPulseCount = 0;
+  tftransport::PulseGrid masterPulseGrid;
   std::int64_t resetIgnoreSamples = 0;
   double periodSamples = 0.0;
   double pulseBeat = 0.0;
@@ -248,20 +260,7 @@ struct TfProgSequencer : Module {
     publishSource(source);
   }
 
-  static tfseq::CompiledProgram *
-  pendingProgramPointer(std::uintptr_t tagged) noexcept {
-    return reinterpret_cast<tfseq::CompiledProgram *>(tagged &
-                                                      ~PendingRestartBit);
-  }
-
-  static std::uintptr_t tagPendingProgram(tfseq::CompiledProgram *program,
-                                          bool restart) noexcept {
-    return reinterpret_cast<std::uintptr_t>(program) |
-           (restart ? PendingRestartBit : 0);
-  }
-
   ~TfProgSequencer() override {
-    delete pendingProgramPointer(pendingProgram.exchange(0));
     delete retiredProgram.exchange(nullptr);
     delete activeProgram;
   }
@@ -274,7 +273,9 @@ struct TfProgSequencer : Module {
 
   bool publishDocument(const tfseq::syntax::Document &document,
                        const std::string &editorSource,
-                       bool restartOnActivation = false) {
+                       bool restartOnActivation = false,
+                       ActivationQuantization quantization =
+                           ActivationQuantization::QuarterBeat) {
     tfseq::CompileResult compiled;
     try {
       compiled = tfseq::Compile(document);
@@ -294,26 +295,35 @@ struct TfProgSequencer : Module {
     // sees a program matching the retained evaluated document.
     tfseq::syntax::Document nextDocument = document;
     std::string nextSource = editorSource;
-    std::string nextMessage = "QUEUED - activates on the next quarter beat";
+    std::string nextMessage =
+        quantization == ActivationQuantization::SchedulerStep
+            ? "QUEUED - activates on the next scheduler step; structural "
+              "changes use the next quarter beat"
+            : "QUEUED - activates on the next quarter beat";
     evaluatedDocument.statements.swap(nextDocument.statements);
     evaluatedSource.swap(nextSource);
     compileMessage.swap(nextMessage);
     auto *candidate = compiled.program.release();
-    delete pendingProgramPointer(pendingProgram.exchange(
-        tagPendingProgram(candidate, restartOnActivation),
-        std::memory_order_acq_rel));
+    const std::uintptr_t policy =
+        (restartOnActivation ? PendingRestartBit : 0) |
+        (quantization == ActivationQuantization::SchedulerStep
+             ? PendingSchedulerStepBit
+             : 0);
+    pendingPrograms.publish(candidate, policy);
     return true;
   }
 
-  bool publishSource(const std::string &text,
-                     bool restartOnActivation = false) {
+  bool publishSource(const std::string &text, bool restartOnActivation = false,
+                     ActivationQuantization quantization =
+                         ActivationQuantization::QuarterBeat) {
     try {
       const auto parsed = tfseq::syntax::Parse(text);
       if (!parsed) {
         reportDiagnostic(parsed.diagnostic);
         return false;
       }
-      return publishDocument(parsed.document, text, restartOnActivation);
+      return publishDocument(parsed.document, text, restartOnActivation,
+                             quantization);
     } catch (const std::bad_alloc &) {
       compileMessage = "ERROR not enough memory to parse this program";
       return false;
@@ -331,7 +341,9 @@ struct TfProgSequencer : Module {
     executionPulse.fetch_add(1, std::memory_order_release);
   }
 
-  bool publishSelection(const std::string &selection, int begin) {
+  bool publishSelection(const std::string &selection, int begin,
+                        ActivationQuantization quantization =
+                            ActivationQuantization::QuarterBeat) {
     try {
       auto draft = tfseq::syntax::Parse(source);
       if (!draft) {
@@ -349,7 +361,8 @@ struct TfProgSequencer : Module {
         reportDiagnostic(contextual.diagnostic);
         return false;
       }
-      const bool accepted = publishDocument(contextual.document, source);
+      const bool accepted =
+          publishDocument(contextual.document, source, false, quantization);
       if (accepted)
         flashExecution(begin, begin + static_cast<int>(selection.size()));
       return accepted;
@@ -364,6 +377,7 @@ struct TfProgSequencer : Module {
 
   void collectRetired() {
     delete retiredProgram.exchange(nullptr, std::memory_order_acq_rel);
+    pendingPrograms.collect();
   }
 
   json_t *dataToJson() override {
@@ -408,8 +422,7 @@ struct TfProgSequencer : Module {
         // saved source. A compile failure preserves any already-active valid
         // program; on initial construction there is no active program, so the
         // module remains silent instead of falling back to factory notes.
-        delete pendingProgramPointer(
-            pendingProgram.exchange(0, std::memory_order_acq_rel));
+        pendingPrograms.clear();
         evaluatedSource.clear();
         evaluatedDocument.statements.clear();
         if (storedLanguageVersion == LanguageVersion) {
@@ -423,8 +436,7 @@ struct TfProgSequencer : Module {
     }
   }
 
-  void restoreEditedSource(const std::string &text, int cursor,
-                           int selection) {
+  void restoreEditedSource(const std::string &text, int cursor, int selection) {
     if (source == text)
       return;
     source = text;
@@ -440,8 +452,11 @@ struct TfProgSequencer : Module {
     clockSeen = false;
     periodKnown = false;
     clockTimedOut = false;
+    skipNextPeriodMeasurement = false;
     samplesSinceClock = 0;
     transportPulseCount = 0;
+    masterPulseGrid.reset();
+    localRestartRequested.store(false, std::memory_order_relaxed);
     periodSamples = 0.0;
     pulseBeat = 0.0;
     programStartBeat = 0.0;
@@ -462,32 +477,55 @@ struct TfProgSequencer : Module {
       span.store(0, std::memory_order_relaxed);
     for (auto &value : visibleCvValues)
       value.store(0.f, std::memory_order_relaxed);
-    activationCheckpointValid = false;
+    activationRuntimeValid = false;
+    activationNextStepBeat = 0.0;
+    trackedStepProgram = 0;
+    trackedStepActivationBeat = 0.0;
     workspaceOverflow.store(false, std::memory_order_relaxed);
     for (auto &span : cursorSpans)
       span.store(0, std::memory_order_relaxed);
     lastArrangementCursorGroup = std::numeric_limits<std::int64_t>::min();
     lastArrangementCursorSpan = 0;
     transportStatus.store(TransportStatus::Stopped, std::memory_order_relaxed);
+    if (activeProgram) {
+      runtime.snapshot(activationRuntime);
+      activationNextStepBeat = nextStepBeat;
+      activationRuntimeValid = true;
+    }
   }
 
-  void swapProgramAtClock(double beat) noexcept {
-    if (retiredProgram.load(std::memory_order_acquire) != nullptr)
-      return;
-    const auto pending = pendingProgram.exchange(0, std::memory_order_acq_rel);
-    auto *candidate = pendingProgramPointer(pending);
+  // Restart only this arrangement while preserving the external clock-period
+  // estimate and the independent master pulse grid. The caller invokes this
+  // on a known master quarter boundary, so the first processed clock edge is
+  // the new local beat zero without disturbing any sibling sequencer.
+  void restartArrangementAtClock() noexcept {
+    const bool retainedPeriodKnown = periodKnown;
+    const double retainedPeriodSamples = periodSamples;
+    const auto retainedMasterPulseGrid = masterPulseGrid;
+    resetTransport();
+    periodKnown = retainedPeriodKnown;
+    periodSamples = retainedPeriodSamples;
+    masterPulseGrid = retainedMasterPulseGrid;
+  }
+
+  void activateProgram(std::uintptr_t pending, double beat) noexcept {
+    auto *candidate = decltype(pendingPrograms)::pointer(pending);
     if (!candidate)
       return;
     const bool restartOnActivation = (pending & PendingRestartBit) != 0;
     auto *previousProgram = activeProgram;
-    const bool preservePhase = !restartOnActivation && previousProgram &&
-                               activationCheckpointValid &&
-                               std::abs(activationCheckpointBeat - beat) < 1e-7;
+    const bool preservePhase =
+        !restartOnActivation && previousProgram && activationRuntimeValid;
     activeProgram = candidate;
+    bool restartedCurrentTerm = false;
     if (preservePhase) {
       runtime = activationRuntime;
-      runtime.replaceProgram(activeProgram, beat - programStartBeat);
-      nextStepBeat = activationNextStepBeat;
+      const auto replacement =
+          runtime.replaceProgram(activeProgram, beat - programStartBeat);
+      restartedCurrentTerm =
+          replacement ==
+          tfseq::Runtime::ReplacementResult::RestartedCurrentTerm;
+      nextStepBeat = restartedCurrentTerm ? beat : activationNextStepBeat;
     } else {
       runtime.setProgram(activeProgram);
       programStartBeat = beat;
@@ -496,14 +534,19 @@ struct TfProgSequencer : Module {
     scheduledCount = 0;
     nextScheduleOrder = 0;
     workspaceOverflow.store(false, std::memory_order_relaxed);
-    activationCheckpointValid = false;
-    if (!preservePhase) {
+    runtime.snapshot(activationRuntime);
+    activationNextStepBeat = nextStepBeat;
+    activationRuntimeValid = true;
+    trackedStepProgram = 0;
+    trackedStepActivationBeat = 0.0;
+    if (!preservePhase || restartedCurrentTerm) {
       outputVoiceCount = 1;
       for (auto &voice : outputVoices) {
         voice.gateHigh = false;
         voice.sliding = false;
         voice.triggerPulse.reset();
       }
+      cvOutputs = {};
     }
     for (auto &span : cursorSpans)
       span.store(0, std::memory_order_relaxed);
@@ -514,13 +557,80 @@ struct TfProgSequencer : Module {
       retiredProgram.store(previousProgram, std::memory_order_release);
   }
 
-  void captureActivationCheckpoint() noexcept {
-    if (!activeProgram || activationCheckpointValid ||
-        nextStepBeat + 1e-9 < activationCheckpointBeat)
+  void swapPendingAtQuarter(double beat) noexcept {
+    if (retiredProgram.load(std::memory_order_acquire) != nullptr)
       return;
-    runtime.snapshot(activationRuntime);
-    activationNextStepBeat = nextStepBeat;
-    activationCheckpointValid = true;
+    const auto pending = pendingPrograms.protect();
+    auto *candidate = decltype(pendingPrograms)::pointer(pending);
+    if (!candidate)
+      return;
+    const bool wantsSchedulerStep = (pending & PendingSchedulerStepBit) != 0;
+    const bool compatibleAtStep =
+        wantsSchedulerStep && activationRuntimeValid && activeProgram &&
+        activationRuntime.canPreserveCurrentPhase(candidate);
+    if (compatibleAtStep) {
+      pendingPrograms.release();
+      return;
+    }
+    if (pendingPrograms.claim(pending))
+      activateProgram(pending, beat);
+  }
+
+  void maybeSwapPendingAtSchedulerStep(double phase) noexcept {
+    const auto pending = pendingPrograms.protect();
+    auto *candidate = decltype(pendingPrograms)::pointer(pending);
+    if (!candidate || (pending & PendingSchedulerStepBit) == 0 ||
+        !activationRuntimeValid || !activeProgram ||
+        !activationRuntime.canPreserveCurrentPhase(candidate)) {
+      pendingPrograms.release();
+      trackedStepProgram = 0;
+      return;
+    }
+    if (trackedStepProgram != pending) {
+      trackedStepProgram = pending;
+      trackedStepActivationBeat = activationNextStepBeat;
+    }
+    if (phase + 1e-9 < trackedStepActivationBeat) {
+      pendingPrograms.release();
+      return;
+    }
+    if (retiredProgram.load(std::memory_order_acquire) != nullptr) {
+      // The UI has not reclaimed the preceding program yet. Retarget the next
+      // still-future step rather than activating late inside this one.
+      pendingPrograms.release();
+      trackedStepProgram = 0;
+      return;
+    }
+    if (!pendingPrograms.claim(pending)) {
+      trackedStepProgram = 0;
+      return;
+    }
+    const double activationBeat = trackedStepActivationBeat;
+    activateProgram(pending, activationBeat);
+  }
+
+  void advanceActivationRuntime(double phase) noexcept {
+    if (!activeProgram || !activationRuntimeValid)
+      return;
+    std::size_t advanced = 0;
+    const auto maximum =
+        std::max<std::size_t>(1, activeProgram->scheduleCapacity);
+    while (activationNextStepBeat <= phase + 1e-9 && advanced++ < maximum) {
+      const auto step =
+          activationRuntime.next(activationNextStepBeat - programStartBeat);
+      if (step.overflowed || step.durationBeats <= 0.0) {
+        activationRuntimeValid = false;
+        return;
+      }
+      const double following = activationNextStepBeat + step.durationBeats;
+      if (!(following > activationNextStepBeat)) {
+        activationRuntimeValid = false;
+        return;
+      }
+      activationNextStepBeat = following;
+    }
+    if (activationNextStepBeat <= phase + 1e-9)
+      activationRuntimeValid = false;
   }
 
   bool enqueue(const tfseq::RuntimeEvent &sourceEvent,
@@ -569,10 +679,8 @@ struct TfProgSequencer : Module {
     std::size_t preparedSteps = 0;
     const auto maximumPreparedSteps =
         std::max<std::size_t>(1, activeProgram->scheduleCapacity);
-    captureActivationCheckpoint();
     while (nextStepBeat <= horizon + 1e-9 &&
            preparedSteps++ < maximumPreparedSteps) {
-      captureActivationCheckpoint();
       const double localBeat = nextStepBeat - programStartBeat;
       const auto step = runtime.next(localBeat);
       if (step.overflowed) {
@@ -593,14 +701,17 @@ struct TfProgSequencer : Module {
       }
       nextStepBeat = followingStep;
     }
-    captureActivationCheckpoint();
     if (nextStepBeat <= horizon + 1e-9)
       workspaceOverflow.store(true, std::memory_order_relaxed);
   }
 
   void showCursors(const tfseq::RuntimeEvent &event) noexcept {
     const auto notesLane = static_cast<std::size_t>(tfseq::CursorLane::Notes);
-    const auto noteSpan = packSpan(event.cursors[notesLane]);
+    const auto rhythmLane = static_cast<std::size_t>(tfseq::CursorLane::Rhythm);
+    const auto activeSpan = event.cursors[notesLane].valid()
+                                ? event.cursors[notesLane]
+                                : event.cursors[rhythmLane];
+    const auto noteSpan = packSpan(activeSpan);
     activeStepBeginBeat.store(event.beat - programStartBeat,
                               std::memory_order_relaxed);
     activeStepEndBeat.store(event.beat - programStartBeat + event.spanBeats,
@@ -697,8 +808,7 @@ struct TfProgSequencer : Module {
     voice.velocity = event.velocity * 10.f;
     voice.accent = event.accent * 10.f;
     double gateDuration =
-        event.gateBeats >= 0.f
-            ? event.gateBeats
+        event.gateBeats >= 0.f ? event.gateBeats
         : event.gateMilliseconds >= 0.f && periodKnown && periodSamples > 0.0
             ? event.gateMilliseconds * 0.001 * sampleRateHz / periodSamples
             : event.spanBeats * event.gateFraction;
@@ -772,12 +882,21 @@ struct TfProgSequencer : Module {
   }
 
   void process(const ProcessArgs &args) override {
-    if (periodKnown && sampleRateHz > 0.0 && args.sampleRate > 0.0 &&
+    if (sampleRateHz > 0.0 && args.sampleRate > 0.0 &&
         args.sampleRate != sampleRateHz) {
-      periodSamples *= args.sampleRate / sampleRateHz;
+      const double ratio = args.sampleRate / sampleRateHz;
+      if (periodKnown)
+        periodSamples *= ratio;
+      samplesSinceClock = tftransport::RescaleSampleCount(
+          samplesSinceClock, sampleRateHz, args.sampleRate);
+      resetIgnoreSamples = tftransport::RescaleSampleCount(
+          resetIgnoreSamples, sampleRateHz, args.sampleRate);
     }
     sampleRateHz = args.sampleRate;
     if (resetTrigger.process(inputs[RESET_INPUT].getVoltage(), 0.1f, 2.f)) {
+      // A shared RESET is an explicit request to bring every sequencer back,
+      // so it also clears any module-local pause left by Ctrl+Space.
+      editorRunEnabled.store(true, std::memory_order_relaxed);
       resetTransport();
       resetIgnoreSamples =
           std::max<std::int64_t>(1, std::llround(args.sampleRate * 0.001));
@@ -785,19 +904,35 @@ struct TfProgSequencer : Module {
     if (resetIgnoreSamples > 0)
       --resetIgnoreSamples;
 
-    const bool running = editorRunEnabled.load(std::memory_order_relaxed) &&
-                         (!inputs[RUN_INPUT].isConnected() ||
-                          inputs[RUN_INPUT].getVoltage() >= 1.f);
+    const bool transportRunning = !inputs[RUN_INPUT].isConnected() ||
+                                  inputs[RUN_INPUT].getVoltage() >= 1.f;
     bool clockEdge =
         clockTrigger.process(inputs[CLOCK_INPUT].getVoltage(), 0.1f, 2.f);
     if (resetIgnoreSamples > 0)
       clockEdge = false;
+
+    // Keep following the common grid while this sequencer is locally paused.
+    // Otherwise it cannot know where the next master quarter begins when a
+    // local restart is requested.
+    const bool masterQuarterBoundary =
+        transportRunning && clockEdge && masterPulseGrid.advance();
+    if (masterQuarterBoundary &&
+        localRestartRequested.exchange(false, std::memory_order_acq_rel)) {
+      restartArrangementAtClock();
+      editorRunEnabled.store(true, std::memory_order_relaxed);
+    }
+    const bool running =
+        editorRunEnabled.load(std::memory_order_relaxed) && transportRunning;
 
     if (!running) {
       if (wasRunning) {
         clockLightPulse.reset();
         for (auto &voice : outputVoices)
           voice.triggerPulse.reset();
+        // Clock edges occurring during a local pause are not part of this
+        // arrangement's elapsed time. Retain the established tempo rather
+        // than folding the paused interval into its next measurement.
+        skipNextPeriodMeasurement = true;
       }
       if (transportStatus.load(std::memory_order_relaxed) !=
           TransportStatus::Stopped) {
@@ -806,18 +941,15 @@ struct TfProgSequencer : Module {
       }
     } else if (clockEdge) {
       bool beatBoundary = false;
-      if (clockSeen && samplesSinceClock > 0) {
-        const double measured =
-            tftransport::BeatPeriodFromPulseSamples(samplesSinceClock);
+      if (clockSeen) {
         // A stopped external clock produces one very long apparent interval.
         // Retain the last valid period on the returning edge; folding the gap
         // into the smoother would make subdivisions crawl for several beats.
-        if (!clockTimedOut) {
-          periodSamples =
-              periodKnown ? 0.75 * periodSamples + 0.25 * measured : measured;
-        }
-        periodKnown = true;
+        tftransport::UpdateBeatPeriodEstimate(
+            samplesSinceClock, !clockTimedOut && !skipNextPeriodMeasurement,
+            periodKnown, periodSamples);
         clockTimedOut = false;
+        skipNextPeriodMeasurement = false;
         ++transportPulseCount;
         pulseBeat = tftransport::BeatAtPulse(transportPulseCount);
         beatBoundary = tftransport::IsQuarterNotePulse(transportPulseCount);
@@ -827,14 +959,16 @@ struct TfProgSequencer : Module {
         transportPulseCount = 0;
         pulseBeat = 0.0;
         beatBoundary = true;
+        // The next edge follows this newly acquired edge continuously even if
+        // RUN arrived one engine frame late during multithreaded patch startup.
+        skipNextPeriodMeasurement = false;
       }
       samplesSinceClock = 0;
       if (beatBoundary) {
         clockLightPulse.trigger(0.075f);
-        swapProgramAtClock(pulseBeat);
-        activationCheckpointBeat = pulseBeat + 1.0;
-        activationCheckpointValid = false;
+        swapPendingAtQuarter(pulseBeat);
       }
+      maybeSwapPendingAtSchedulerStep(pulseBeat);
       // A subdivision exactly on this clock, and any first-beat subdivisions
       // held while the clock period was still unknown, already occupy the
       // prepared queue. Apply them before filling the next lookahead window so
@@ -846,11 +980,11 @@ struct TfProgSequencer : Module {
                                          periodSamples, sampleRateHz));
       processScheduled(pulseBeat);
       transportStatus.store(activeProgram ? TransportStatus::Playing
-                                           : TransportStatus::Waiting,
+                                          : TransportStatus::Waiting,
                             std::memory_order_relaxed);
     } else if (!wasRunning) {
       transportStatus.store(activeProgram ? TransportStatus::Playing
-                                           : TransportStatus::Waiting,
+                                          : TransportStatus::Waiting,
                             std::memory_order_relaxed);
     }
 
@@ -864,6 +998,7 @@ struct TfProgSequencer : Module {
       phase += withinBeat;
     }
     if (running && clockSeen) {
+      maybeSwapPendingAtSchedulerStep(phase);
       if (activeProgram)
         scheduleDueSteps(pulseBeat + tfseq::SchedulingLookaheadBeats(
                                          *activeProgram, periodKnown,
@@ -882,6 +1017,9 @@ struct TfProgSequencer : Module {
       }
     }
 
+    if (running && clockSeen)
+      advanceActivationRuntime(phase);
+
     for (std::size_t index = 0; index < outputVoiceCount; ++index) {
       auto &voice = outputVoices[index];
       if (voice.sliding) {
@@ -898,8 +1036,9 @@ struct TfProgSequencer : Module {
           voice.sliding = false;
         }
       }
-      if (voice.gateHigh && phase >= voice.gateOffBeat)
+      if (voice.gateHigh && phase >= voice.gateOffBeat) {
         voice.gateHigh = false;
+      }
     }
 
     for (auto &state : cvOutputs) {
@@ -1102,8 +1241,7 @@ struct TfSequenceEditor : app::LedDisplayTextField {
   }
 
   bool sourcePositionsMatchActiveProgram() const noexcept {
-    return module &&
-           module->pendingProgram.load(std::memory_order_acquire) == 0 &&
+    return module && module->pendingPrograms.pending() == 0 &&
            module->source == module->evaluatedSource;
   }
 
@@ -1203,10 +1341,9 @@ struct TfSequenceEditor : app::LedDisplayTextField {
   }
 
   void onChange(const ChangeEvent &) override {
-    synchronizeEditedSource(changeSnapshotValid ? cursorBeforeChange
-                                                : synchronizedCursor,
-                            changeSnapshotValid ? selectionBeforeChange
-                                                : synchronizedSelection);
+    synchronizeEditedSource(
+        changeSnapshotValid ? cursorBeforeChange : synchronizedCursor,
+        changeSnapshotValid ? selectionBeforeChange : synchronizedSelection);
   }
 
   void applyEdit(tfseq::editor::EditResult edit) {
@@ -1223,8 +1360,7 @@ struct TfSequenceEditor : app::LedDisplayTextField {
   void loadExample(const std::string &example) {
     if (!module || example == module->source)
       return;
-    auto *change =
-        new TfProgSequencerSourceChange("load sequencer example");
+    auto *change = new TfProgSequencerSourceChange("load sequencer example");
     change->moduleId = module->id;
     change->oldSource = module->source;
     change->newSource = example;
@@ -1983,6 +2119,22 @@ struct TfSequenceEditor : app::LedDisplayTextField {
     return false;
   }
 
+  void evaluateSelection(TfProgSequencer::ActivationQuantization quantization) {
+    if (!module)
+      return;
+    module->source = getText();
+    if (cursor != selection) {
+      const int begin = std::min(cursor, selection);
+      module->publishSelection(getSelectedText(), begin, quantization);
+      return;
+    }
+    const auto span = lineSpanAt(cursor);
+    module->publishSelection(
+        text.substr(static_cast<std::size_t>(span.first),
+                    static_cast<std::size_t>(span.second - span.first)),
+        span.first, quantization);
+  }
+
   void onButton(const ButtonEvent &event) override {
     app::LedDisplayTextField::onButton(event);
     synchronizedCursor = cursor;
@@ -2047,19 +2199,17 @@ struct TfSequenceEditor : app::LedDisplayTextField {
       return;
     }
     if (module && event.action == GLFW_PRESS &&
+        (event.isKeyCommand(GLFW_KEY_ENTER, RACK_MOD_CTRL | RACK_MOD_SHIFT) ||
+         event.isKeyCommand(GLFW_KEY_KP_ENTER,
+                            RACK_MOD_CTRL | RACK_MOD_SHIFT))) {
+      evaluateSelection(TfProgSequencer::ActivationQuantization::SchedulerStep);
+      event.consume(this);
+      return;
+    }
+    if (module && event.action == GLFW_PRESS &&
         (event.isKeyCommand(GLFW_KEY_ENTER, RACK_MOD_CTRL) ||
          event.isKeyCommand(GLFW_KEY_KP_ENTER, RACK_MOD_CTRL))) {
-      module->source = getText();
-      if (cursor != selection) {
-        const int begin = std::min(cursor, selection);
-        module->publishSelection(getSelectedText(), begin);
-      } else {
-        const auto span = lineSpanAt(cursor);
-        module->publishSelection(
-            text.substr(static_cast<std::size_t>(span.first),
-                        static_cast<std::size_t>(span.second - span.first)),
-            span.first);
-      }
+      evaluateSelection(TfProgSequencer::ActivationQuantization::QuarterBeat);
       event.consume(this);
       return;
     }
@@ -2069,10 +2219,8 @@ struct TfSequenceEditor : app::LedDisplayTextField {
       event.consume(this);
       return;
     }
-    if (module &&
-        (event.action == GLFW_PRESS || event.action == GLFW_REPEAT) &&
-        event.isKeyCommand(GLFW_KEY_SPACE,
-                           RACK_MOD_CTRL | RACK_MOD_SHIFT)) {
+    if (module && (event.action == GLFW_PRESS || event.action == GLFW_REPEAT) &&
+        event.isKeyCommand(GLFW_KEY_SPACE, RACK_MOD_CTRL | RACK_MOD_SHIFT)) {
       suppressShortcutSpace = true;
       if (event.action == GLFW_PRESS)
         requestConnectedTransport(tftransport::Command::TogglePlayPause,
@@ -2088,14 +2236,21 @@ struct TfSequenceEditor : app::LedDisplayTextField {
       return;
     }
     if (module && event.action == GLFW_PRESS &&
+        event.isKeyCommand(GLFW_KEY_R, RACK_MOD_CTRL)) {
+      module->localRestartRequested.store(true, std::memory_order_release);
+      module->compileMessage =
+          "LOCAL RESTART - queued for the next master quarter beat";
+      event.consume(this);
+      return;
+    }
+    if (module && event.action == GLFW_PRESS &&
         event.isKeyCommand(GLFW_KEY_BACKSPACE,
                            RACK_MOD_CTRL | RACK_MOD_SHIFT)) {
       requestConnectedTransport(tftransport::Command::Stop, "STOP");
       event.consume(this);
       return;
     }
-    if (module &&
-        (event.action == GLFW_PRESS || event.action == GLFW_REPEAT) &&
+    if (module && (event.action == GLFW_PRESS || event.action == GLFW_REPEAT) &&
         event.isKeyCommand(GLFW_KEY_SPACE, RACK_MOD_CTRL)) {
       suppressShortcutSpace = true;
       if (event.action == GLFW_PRESS) {
@@ -2369,9 +2524,7 @@ struct TfSequenceStatus : Widget {
     if (status.rfind("READY", 0) == 0)
       status = "READY";
     else if (status.rfind("QUEUED", 0) == 0)
-      status = module->pendingProgram.load(std::memory_order_acquire)
-                   ? "QUEUED"
-                   : "ACTIVE";
+      status = module->pendingPrograms.pending() ? "QUEUED" : "ACTIVE";
     if (module->workspaceOverflow.load(std::memory_order_relaxed))
       status = "INTERNAL ERROR - prepared event workspace exhausted";
     return std::string(name) + " " +
@@ -2559,36 +2712,31 @@ struct TfProgSequencerWidget : ModuleWidget {
       for (const auto &example :
            {std::make_pair("Acid bassline", AcidBasslineExample),
             std::make_pair("Slow bassline", SlowBasslineExample),
-            std::make_pair("Descending arpeggio",
-                           DescendingArpeggioExample)}) {
+            std::make_pair("Descending arpeggio", DescendingArpeggioExample)}) {
         examplesMenu->addChild(createMenuItem(
             example.first, "", [=]() { editor->loadExample(example.second); }));
       }
     }));
     menu->addChild(createSubmenuItem("Editor", "", [=](Menu *editorMenu) {
-      editorMenu->addChild(
-          createSubmenuItem("Width", "", [=](Menu *widthMenu) {
-            for (const int width : {22, 30, 38}) {
-              widthMenu->addChild(createCheckMenuItem(
-                  rack::string::f("%d HP", width), "",
-                  [=]() {
-                    return prog->panelWidthHp.load(std::memory_order_relaxed) ==
-                           width;
-                  },
-                  [=]() {
-                    prog->panelWidthHp.store(width, std::memory_order_relaxed);
-                  }));
-            }
-          }));
+      editorMenu->addChild(createSubmenuItem("Width", "", [=](Menu *widthMenu) {
+        for (const int width : {22, 30, 38}) {
+          widthMenu->addChild(createCheckMenuItem(
+              rack::string::f("%d HP", width), "",
+              [=]() {
+                return prog->panelWidthHp.load(std::memory_order_relaxed) ==
+                       width;
+              },
+              [=]() {
+                prog->panelWidthHp.store(width, std::memory_order_relaxed);
+              }));
+        }
+      }));
       editorMenu->addChild(
           createSubmenuItem("Heatmap", "", [=](Menu *heatmapMenu) {
             for (const auto palette :
-                 {tfui::HeatmapPalette::Magma,
-                  tfui::HeatmapPalette::Inferno,
-                  tfui::HeatmapPalette::Plasma,
-                  tfui::HeatmapPalette::Viridis,
-                  tfui::HeatmapPalette::Cividis,
-                  tfui::HeatmapPalette::CrtGreen,
+                 {tfui::HeatmapPalette::Magma, tfui::HeatmapPalette::Inferno,
+                  tfui::HeatmapPalette::Plasma, tfui::HeatmapPalette::Viridis,
+                  tfui::HeatmapPalette::Cividis, tfui::HeatmapPalette::CrtGreen,
                   tfui::HeatmapPalette::CrtBlue,
                   tfui::HeatmapPalette::CrtYellow,
                   tfui::HeatmapPalette::CrtRed}) {

@@ -20,6 +20,7 @@
 #include "models/VCAcore.hpp"
 #include "models/VdpSplitOscillator.hpp"
 #include "tfdsp/control.hpp"
+#include "tfdsp/event_merge.hpp"
 #include "tfdsp/minblep.hpp"
 #include "tfdsp/noise.hpp"
 #include "tfdsp/nonlinear.hpp"
@@ -123,6 +124,30 @@ namespace
 
 int main()
 {
+	{
+		tfdsp::EventBundle sequenced;
+		sequenced.voiceCount = 4;
+		tfdsp::EventBundle live;
+		live.voiceCount = 13;
+		for (std::size_t signal = 0; signal < tfdsp::EventSignalCount; ++signal)
+		{
+			for (std::size_t voice = 0; voice < sequenced.voiceCount; ++voice)
+				sequenced.signals[signal][voice] =
+					static_cast<float>(100 * signal + voice);
+			for (std::size_t voice = 0; voice < live.voiceCount; ++voice)
+				live.signals[signal][voice] =
+					static_cast<float>(1000 + 100 * signal + voice);
+		}
+		live.signals[0][1] = std::numeric_limits<float>::quiet_NaN();
+		const auto merged = tfdsp::MergeEventBundles(sequenced, live);
+		Check(merged.voiceCount == tfdsp::EventVoiceLimit,
+			"event merger clips two bundles at Rack's 16-channel limit");
+		Check(merged.signals[3][3] == 303.f && merged.signals[3][4] == 1300.f,
+			"event merger preserves signal alignment at the bundle boundary");
+		Check(merged.signals[0][5] == 0.f,
+			"event merger sanitizes non-finite voltages");
+	}
+
 	{
 		// The production pickup uses a precomputed two-dimensional calibrated
 		// field. Bound bilinear lookup error against direct evaluation of the same

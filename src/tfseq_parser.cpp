@@ -13,10 +13,17 @@ namespace tfseq::syntax {
 namespace {
 
 constexpr const char *Grammar = R"PEG(
-  Document    <- (Sequence / Play / Seed / Assignment / BlankLine)* Trailing End
+  Document    <- (Sequence / RhythmDefinition / Play / Seed / Assignment / BlankLine)* Trailing End
+
+  RhythmDefinition <- H Identifier H '=' H 'rhythm' H '{' H Comment? Newline
+                      (RhythmDefSubdiv / RhythmDefEvents / RhythmDefContinuation / BlankLine)*
+                      H '}' H Comment? LineEnd
+  RhythmDefSubdiv <- H 'subdiv' S SettingValue H Comment? LineEnd
+  RhythmDefEvents <- H 'events' S RhythmPattern (H Pipeline)* H Comment? LineEnd
+  RhythmDefContinuation <- H Pipeline (H Pipeline)* H Comment? LineEnd
 
   Sequence    <- H Identifier H '=' H 'sequence' H '{' H Comment? Newline
-                 (NotesLane / ScalarLane / CvLane / SettingLine /
+                 (ChordsLane / NotesLane / RhythmLane / ScalarLane / CvLane / SettingLine /
                   BodyContinuation / BlankLine)*
                  H '}' H Comment? LineEnd SequenceContinuation*
   Play        <- H 'play' S Identifier H Comment? LineEnd
@@ -25,16 +32,22 @@ constexpr const char *Grammar = R"PEG(
                  AssignmentContinuation*
 
   NotesLane    <- H NotesLaneName S NotePattern (H Pipeline)* H Comment? LineEnd
+  ChordsLane   <- H ChordsLaneName S NotePattern (H Pipeline)* H Comment? LineEnd
+  RhythmLane   <- H RhythmLaneName S
+                  (RhythmPattern (H Pipeline)* H Comment? LineEnd /
+                   RhythmReference (H Pipeline)* H Comment? LineEnd)
   ScalarLane   <- H ScalarLaneName S ScalarPattern (H Pipeline)* H Comment? LineEnd
   CvLane       <- H CvLaneName S (EnvelopeSource / ScalarPattern)
                   (H Pipeline)* H Comment? LineEnd
   SettingLine  <- H SettingName S SettingValue H Comment? LineEnd
   NotesLaneName  <- < 'notes' >
+  ChordsLaneName <- < 'chords' >
+  RhythmLaneName <- < 'rhythm' >
   ScalarLaneName <- < 'octave' / 'velocity' / 'vel' /
                       'duration' / 'dur' / 'gate' / 'slide' / 'ratchet' /
                       'offset' >
   CvLaneName     <- < 'cv' PositiveInteger >
-  SettingName    <- < 'subdiv' / 'tonic' / 'scale' / 'glide' >
+  SettingName    <- < 'subdiv' / 'tonic' / 'scale' / 'glide' / 'key' / 'voicing' >
   BodyContinuation     <- H Pipeline (H Pipeline)* H Comment? LineEnd
   SequenceContinuation <- H Pipeline (H Pipeline)* H Comment? LineEnd
   AssignmentContinuation <- H Pipeline (H Pipeline)* H Comment? LineEnd
@@ -58,6 +71,13 @@ constexpr const char *Grammar = R"PEG(
   RestMark        <- < '~' >
   TieMark         <- < '_' >
 
+  RhythmPattern   <- RhythmElement (PatternSeparator RhythmElement)*
+  RhythmElement   <- RhythmHit / RestEvent / TieExtension
+  RhythmHit       <- SlidePrefix? HitMark DurationSuffix? EuclideanSuffix? RatchetSuffix?
+                     EventProbabilitySuffix? ReplicationSuffix? Attributes?
+  HitMark         <- < 'x' >
+  RhythmReference <- Identifier
+
   OnsetPrefix     <- SlidePrefix? DynamicPrefix?
   SlidePrefix     <- < '>' >
   DynamicPrefix   <- < '^^' / '^' / 'x' >
@@ -65,7 +85,7 @@ constexpr const char *Grammar = R"PEG(
   PitchedValue    <- RandomPitch / ChordValue (H SlashSuffix)? / PitchValue
   RandomPitch     <- '$' (PitchRandomDistribution? RandomArguments)?
   PitchRandomDistribution <- < 'cn' / 'c' / 'n' / 'u' >
-  ChordValue      <- (ExplicitVoicing / RomanChord / JazzChord) RegisterSuffix?
+  ChordValue      <- (ExplicitVoicing / RomanChord / JazzChord FactorVoicing?) RegisterSuffix?
   PitchValue      <- (NamedPitch / ScaleDegree) RegisterSuffix?
   ExplicitVoicing <- '(' H PitchValue (S PitchValue)+ H ')'
   SlashSuffix     <- '/' H SlashBass
@@ -73,12 +93,17 @@ constexpr const char *Grammar = R"PEG(
 
   RomanChord      <- < RootAccidental* (UpperRoman / LowerRoman) ChordSuffix? >
   JazzChord       <- < NamedRoot ChordSuffix >
-  ChordSuffix     <- TriadQuality ChordExtension? ChordModification* /
-                     ChordExtension ChordModification* / ChordModification+
+  ChordSuffix     <- TriadQuality ChordExtension? ChordModification* AlteredQuality? /
+                     ChordExtension PostExtensionQuality? ChordModification* AlteredQuality? /
+                     ChordModification+ AlteredQuality? / AlteredQuality
   TriadQuality    <- 'sus2' / 'sus4' / 'maj' / 'min' / 'dim' / 'aug' / 'm'
   ChordExtension  <- '13' / '11' / '9' / '7' / '6' / '5'
   ChordModification <- ('b' / '#') ChordDegree / 'add' ChordDegree
+  AlteredQuality  <- 'alt'
+  PostExtensionQuality <- 'sus2' / 'sus4' / 'sus'
   ChordDegree     <- '13' / '11' / '9' / '7' / '6' / '5' / '4' / '3' / '2' / '1'
+  FactorVoicing   <- ':' H '(' H ChordFactor (S ChordFactor)* H ')'
+  ChordFactor     <- < RootAccidental* ChordDegree >
   RootAccidental  <- 'b' / '#'
   UpperRoman      <- 'VII' / 'VI' / 'V' / 'IV' / 'III' / 'II' / 'I'
   LowerRoman      <- 'vii' / 'vi' / 'v' / 'iv' / 'iii' / 'ii' / 'i'
@@ -258,6 +283,15 @@ PatternNode ReadPitchedValue(const Ast &pitched, Diagnostic &diagnostic) {
         value.atom.text += AstToken(suffix).text;
       value.atom.span = Span(chord);
       value.span = value.atom.span;
+      if (const auto factors = FirstChildNamed(chord, "FactorVoicing")) {
+        for (const auto &factor : ChildrenNamed(factors, "ChordFactor")) {
+          PatternNode child;
+          child.kind = PatternKind::ChordFactor;
+          child.atom = AstToken(factor);
+          child.span = child.atom.span;
+          value.children.push_back(std::move(child));
+        }
+      }
     }
     if (const auto slash = FirstChildNamed(pitched, "SlashSuffix")) {
       const auto bassPitch = FirstDescendantNamed(slash, "PitchValue");
@@ -428,6 +462,42 @@ Pattern ReadNotePattern(const Ast &node, Diagnostic &diagnostic) {
   return pattern;
 }
 
+Pattern ReadRhythmPattern(const Ast &node) {
+  Pattern pattern;
+  pattern.span = Span(node);
+  for (const auto &element : ChildrenNamed(node, "RhythmElement")) {
+    PatternNode event;
+    event.span = Span(element);
+    if (const auto hit = FirstChildNamed(element, "RhythmHit")) {
+      event.kind = PatternKind::Event;
+      event.span = Span(hit);
+      if (const auto slide = FirstChildNamed(hit, "SlidePrefix"))
+        event.slidePrefix = AstToken(slide);
+      // The articulation compiler already supports attacks whose pitch is
+      // supplied by a separate cycling lane. A temporary degree is parsed by
+      // that shared compiler and removed during rhythm-lane lowering.
+      PatternNode placeholder;
+      placeholder.kind = PatternKind::ScaleDegree;
+      placeholder.atom = {"1", Span(FirstDescendantNamed(hit, "HitMark"))};
+      placeholder.span = placeholder.atom.span;
+      event.children.push_back(std::move(placeholder));
+      ReadSuffixes(hit, event);
+    } else if (const auto rest = FirstChildNamed(element, "RestEvent")) {
+      event.kind = PatternKind::Rest;
+      event.atom = AstToken(FirstDescendantNamed(rest, "RestMark"));
+      event.span = Span(rest);
+      ReadSuffixes(rest, event);
+    } else if (const auto tie = FirstChildNamed(element, "TieExtension")) {
+      event.kind = PatternKind::Tie;
+      event.atom = AstToken(FirstDescendantNamed(tie, "TieMark"));
+      event.span = Span(tie);
+      ReadSuffixes(tie, event);
+    }
+    pattern.steps.push_back(std::move(event));
+  }
+  return pattern;
+}
+
 PatternNode ReadScalarTerm(const Ast &term) {
   PatternNode node;
   node.span = Span(term);
@@ -504,6 +574,20 @@ Lane ReadLane(const Ast &node, Diagnostic &diagnostic) {
     lane.name = AstToken(FirstChildNamed(node, "NotesLaneName"));
     lane.pattern =
         ReadNotePattern(FirstChildNamed(node, "NotePattern"), diagnostic);
+  } else if (node->name == "ChordsLane") {
+    lane.kind = Lane::Kind::Chords;
+    lane.name = AstToken(FirstChildNamed(node, "ChordsLaneName"));
+    lane.pattern =
+        ReadNotePattern(FirstChildNamed(node, "NotePattern"), diagnostic);
+  } else if (node->name == "RhythmLane") {
+    lane.kind = Lane::Kind::Rhythm;
+    lane.name = AstToken(FirstChildNamed(node, "RhythmLaneName"));
+    if (const auto pattern = FirstChildNamed(node, "RhythmPattern"))
+      lane.pattern = ReadRhythmPattern(pattern);
+    else if (const auto reference =
+                 FirstChildNamed(node, "RhythmReference"))
+      lane.rhythmReference =
+          AstToken(FirstChildNamed(reference, "Identifier"));
   } else if (node->name == "CvLane") {
     lane.kind = Lane::Kind::Cv;
     lane.name = AstToken(FirstChildNamed(node, "CvLaneName"));
@@ -535,12 +619,53 @@ Lane ReadLane(const Ast &node, Diagnostic &diagnostic) {
   return lane;
 }
 
+RhythmDefinition ReadRhythmDefinition(const Ast &node,
+                                      Diagnostic &diagnostic) {
+  RhythmDefinition definition;
+  definition.name = AstToken(FirstChildNamed(node, "Identifier"));
+  definition.span = Span(node);
+  bool sawEvents = false;
+  for (const auto &child : node->nodes) {
+    if (child->name == "RhythmDefSubdiv") {
+      if (!definition.subdivision.text.empty()) {
+        diagnostic = {"duplicate rhythm setting 'subdiv'",
+                      static_cast<int>(child->line),
+                      static_cast<int>(child->column)};
+        return definition;
+      }
+      definition.subdivision =
+          AstToken(FirstChildNamed(child, "SettingValue"));
+    } else if (child->name == "RhythmDefEvents") {
+      if (sawEvents) {
+        diagnostic = {"duplicate rhythm lane 'events'",
+                      static_cast<int>(child->line),
+                      static_cast<int>(child->column)};
+        return definition;
+      }
+      sawEvents = true;
+      definition.events =
+          ReadRhythmPattern(FirstChildNamed(child, "RhythmPattern"));
+      for (const auto &pipeline : ChildrenNamed(child, "Pipeline"))
+        definition.pipelines.push_back(ReadPipeline(pipeline));
+    } else if (child->name == "RhythmDefContinuation") {
+      for (const auto &pipeline : ChildrenNamed(child, "Pipeline"))
+        definition.pipelines.push_back(ReadPipeline(pipeline));
+    }
+  }
+  if (!sawEvents)
+    diagnostic = {"a rhythm definition requires an events lane",
+                  definition.name.span.line, definition.name.span.column};
+  return definition;
+}
+
 SequenceDefinition ReadSequence(const Ast &node, Diagnostic &diagnostic) {
   SequenceDefinition sequence;
   sequence.span = Span(node);
   sequence.name = AstToken(FirstChildNamed(node, "Identifier"));
   for (const auto &child : node->nodes) {
-    if (child->name == "NotesLane" || child->name == "ScalarLane" ||
+    if (child->name == "NotesLane" || child->name == "ChordsLane" ||
+        child->name == "RhythmLane" ||
+        child->name == "ScalarLane" ||
         child->name == "CvLane" || child->name == "SettingLine")
       sequence.lanes.push_back(ReadLane(child, diagnostic));
     else if (child->name == "BodyContinuation") {
@@ -623,6 +748,11 @@ ParseResult ParseUsing(peg::parser &parser, const std::string &source) {
     if (node->name == "Sequence") {
       result.document.statements.emplace_back(
           ReadSequence(node, result.diagnostic));
+      if (!result.diagnostic.message.empty())
+        return result;
+    } else if (node->name == "RhythmDefinition") {
+      result.document.statements.emplace_back(
+          ReadRhythmDefinition(node, result.diagnostic));
       if (!result.diagnostic.message.empty())
         return result;
     } else if (node->name == "Assignment") {
@@ -775,6 +905,8 @@ SourceSpan StatementSpan(const Statement &statement) {
 std::string DefinitionKey(const Statement &statement) {
   if (const auto *sequence = std::get_if<SequenceDefinition>(&statement))
     return sequence->name.text;
+  if (const auto *rhythm = std::get_if<RhythmDefinition>(&statement))
+    return rhythm->name.text;
   if (const auto *assignment = std::get_if<Assignment>(&statement))
     return assignment->name.text;
   return {};
@@ -858,10 +990,17 @@ void Invalidate(Statement &statement) {
           Invalidate(value.name);
           for (auto &lane : value.lanes) {
             Invalidate(lane.name);
+            Invalidate(lane.rhythmReference);
             Invalidate(lane.pattern);
             for (auto &pipeline : lane.pipelines)
               Invalidate(pipeline);
           }
+          for (auto &pipeline : value.pipelines)
+            Invalidate(pipeline);
+        } else if constexpr (std::is_same_v<Value, RhythmDefinition>) {
+          Invalidate(value.name);
+          Invalidate(value.subdivision);
+          Invalidate(value.events);
           for (auto &pipeline : value.pipelines)
             Invalidate(pipeline);
         } else if constexpr (std::is_same_v<Value, Assignment>) {

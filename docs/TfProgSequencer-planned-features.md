@@ -100,10 +100,12 @@ use the same binding model.
 
 ## Harmony and instrument interpretation
 
-Jazz and Roman chords already retain semantic roots, intervals, bass notes,
-scale, and register information. Planned interpreters can use that information
-for contextual voicing and voice leading without placing instrument-specific
-rules in chord spelling.
+Jazz and Roman chords retain semantic roots, spelled factors, bass notes,
+scale, and register information. The implemented `basic`,
+`rootless_3notes`, and `rootless_4notes` recipes now use that representation
+for allocation-free contextual voice leading. Factor overrides select exact
+chord content independently of inversion, and altered dominants expose
+separate b9/#9 and #11/b13 candidates.
 
 An interpreter is intended to receive the transformed current item, neighboring
 items, active scale and tonic, register and range, event span and beat, previous
@@ -111,12 +113,11 @@ realized voicing, deterministic seed, and the current performance snapshot.
 It must consume the effective transformed chord or pitch, not reconstruct
 meaning from the original jazz-symbol text.
 
-Intended applications include:
+Further instrument interpreters can build on the same boundary. Intended
+applications include:
 
-- simple and rootless piano voicings;
 - two-feel and walking bass;
 - chord-aware arpeggiation;
-- continuity-aware voice leading using the previous realized voicing; and
 - simultaneous voicings or bounded rhythmic figures inside the current event.
 
 A scale-stacked chord generator is also planned as a distinct operation, with a
@@ -125,8 +126,10 @@ explicitly means a major chord rooted on scale degree 2. Keeping these separate
 prevents a scale change from silently changing an explicitly written chord
 quality.
 
-A `chords` lane may be added as a readability alias for chord-focused material;
-it will not introduce a second incompatible timing model.
+The implemented `notes` and `chords` spellings share one pitched-value model.
+They may sequence attacks directly or form a held musical-time timeline sampled
+by an inline or named reusable rhythm. Semicolons remain whitespace-only visual
+separators in every pattern lane.
 
 ## Pattern structure and rhythmic vocabularies
 
@@ -134,12 +137,10 @@ The current language executes atomic alternatives such as `[1|3|5]`. Planned
 pattern work includes:
 
 - alternatives whose branches contain several events;
-- recursively nested random and alternating branches; and
-- a drum or rhythm-mask vocabulary in which standalone `x` can mean a hit while
-  `x1` remains a ghosted pitched event in note syntax.
+- recursively nested random and alternating branches.
 
-The exact drum-lane surface is still exploratory. It should reuse the prepared,
-bounded pattern model rather than overload pitch tokens ambiguously.
+The implemented rhythm-mask vocabulary uses standalone `x` for a hit while
+`x1` remains a ghosted pitched event in note syntax.
 
 ## CV and signal expressions
 

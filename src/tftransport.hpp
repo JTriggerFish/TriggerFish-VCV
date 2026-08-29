@@ -32,6 +32,68 @@ BeatPeriodFromPulseSamples(std::int64_t samples) noexcept {
   return static_cast<double>(samples) * PulsesPerQuarterNote;
 }
 
+// Preserve elapsed wall-clock time when Rack changes the engine sample rate.
+// Period estimates and partially measured pulse intervals must be converted
+// together; converting only the period makes the first interval after an
+// audio-device change appear spuriously early or late.
+inline std::int64_t RescaleSampleCount(std::int64_t samples,
+                                      double previousSampleRate,
+                                      double nextSampleRate) noexcept {
+  if (samples <= 0 || !std::isfinite(previousSampleRate) ||
+      !std::isfinite(nextSampleRate) || previousSampleRate <= 0.0 ||
+      nextSampleRate <= 0.0)
+    return std::max<std::int64_t>(0, samples);
+  return std::max<std::int64_t>(
+      1, std::llround(static_cast<double>(samples) * nextSampleRate /
+                      previousSampleRate));
+}
+
+// Incorporate a complete adjacent-pulse interval only when it is continuous.
+// In particular, skipping the first measurement after a local/RUN pause must
+// not claim that a previously unknown period is now valid: a zero-valued
+// "known" period would immediately trip downstream clock-timeout guards.
+inline bool UpdateBeatPeriodEstimate(std::int64_t pulseIntervalSamples,
+                                     bool continuous,
+                                     bool &periodKnown,
+                                     double &periodSamples) noexcept {
+  if (!continuous || pulseIntervalSamples <= 0)
+    return false;
+  const double measured =
+      BeatPeriodFromPulseSamples(pulseIntervalSamples);
+  periodSamples =
+      periodKnown ? 0.75 * periodSamples + 0.25 * measured : measured;
+  periodKnown = true;
+  return true;
+}
+
+// Tracks the absolute 24-PPQN grid independently of a sequencer's local
+// pause state. This lets a locally paused sequencer re-enter on a real master
+// quarter-note boundary instead of guessing from the next arbitrary pulse.
+class PulseGrid {
+public:
+  void reset() noexcept {
+    seen_ = false;
+    pulse_ = 0;
+  }
+
+  bool advance() noexcept {
+    if (seen_)
+      ++pulse_;
+    else {
+      seen_ = true;
+      pulse_ = 0;
+    }
+    return IsQuarterNotePulse(pulse_);
+  }
+
+  bool seen() const noexcept { return seen_; }
+  std::int64_t pulse() const noexcept { return pulse_; }
+
+private:
+  bool seen_ = false;
+  std::int64_t pulse_ = 0;
+};
+
 enum class State { Stopped = 0, Paused = 1, Playing = 2 };
 enum class Command { PlayFromBeginning, Pause, Play, Stop, TogglePlayPause };
 

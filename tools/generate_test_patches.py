@@ -146,6 +146,7 @@ DEFAULT_PARAMS = {
         0.0,
     ],
     "TfScenePack4": [],
+    "TfEventMerge2": [],
     "TfTransport": [120.0, 0.0, 0.0, 0.0, 0.0],
     "TfReverb": [
         0.60,
@@ -868,24 +869,34 @@ def generate_two_source_reverb_patch() -> None:
     patch.add(
         notes(
             1,
-            "TriggerFish musical two-source Room Reverb test\n\n"
-            "At 96 BPM, two independent Prog Sequencers play an interlocking "
+            "TriggerFish musical three-sequencer Room Reverb test\n\n"
+            "At 96 BPM, three independent Prog Sequencers play an interlocking "
             "D-Dorian texture. Source 1 is a slow two-saw Unison "
             "Oscillator bass with a centred sub oscillator, analogue drift, "
             "and long 4072 filter and amplifier envelopes. Source 2 is a "
-            "louder, driven descending folded arpeggio with a shorter, "
-            "brighter 4072 voice. Its cutoff follows a slow 18-beat bipolar "
+            "driven descending folded arpeggio with a shorter, "
+            "brighter 4072 voice. A velocity-sensitive MIDI keyboard plays an "
+            "Electric Piano with restrained Suitcase vibrato. A third sequencer "
+            "adds exact three-note piano voicings while Event Merge 2 keeps those three "
+            "sequenced voices separate from the live MIDI voices. Its "
+            "LEFT and RIGHT outputs "
+            "remain separate Scene Pack sources so the reverb retains the "
+            "piano's stereo motion instead of folding it to mono. The folded "
+            "voice's cutoff follows a slow 18-beat bipolar "
             "CV triangle across the four-beat note phrase, while a per-note "
             "AD envelope animates the wavefolder depth.\n\n"
-            "The shared Transport drives Clock, Run, and Reset into both "
+            "The shared Transport drives Clock, Run, and Reset into all three "
             "sequencers. RESTART plays from beat zero, PAUSE preserves the "
             "current position, PLAY continues it, and STOP returns to zero. "
-            "Both voices therefore remain synchronized through every action.\n\n"
-            "Scene Pack 4 keeps the voices as two independent room sources. "
+            "All sequences therefore remain synchronized through every action. "
+            "Select the same MIDI device in MIDI-CV and MIDI CC-CV; the latter "
+            "is preassigned to sustain pedal CC64.\n\n"
+            "Scene Pack 4 keeps the bass, folded voice, and two piano sides "
+            "as four independent room sources. "
             "Room Reverb uses the Superlush scene with its wet high cut "
             "lowered to 3 kHz. "
             "Drag their numbered amber markers to audition position, early "
-            "reflections, and the late-field handoff; disconnect either Scene "
+            "reflections, and the late-field handoff; disconnect any Scene "
             "Pack input to confirm that only its marker disappears. The scope "
             "shows the packed sources and stereo result. Select an output "
             "device in Audio-8, then start with monitor volume low.",
@@ -920,7 +931,7 @@ play bass
   scale dorian
   notes 3' 1' 5 3 ; 1' 5 3 1 ; 2' 7 5 2 ; 7 5 2 1
   gate .52
-  cv1 4 -4 |> interp linear |> rate 1/9
+  cv1 2 -2 |> interp linear |> rate 1/9
   cv2 env ad 5ms 16n depth 2 curve 0
 }
 
@@ -947,6 +958,37 @@ play arpeggio
                 # tfui::HeatmapPalette::CrtGreen. The bass remains Magma so
                 # both live programs are immediately distinguishable.
                 "editorHeatmap": 5,
+            },
+        )
+    )
+
+    chord_program = """comp = rhythm {
+  subdiv 16n
+  // Three sixteenths, an upbeat hit, then repeat from beat 3-and.
+  events x_3 x ~!6 x_3 x ~!2
+}
+
+keys = sequence {
+  subdiv 2n
+  chords (C F A)_2 (C D G)_2 (B, D G)_2 (A, C F) (G, C E)
+  rhythm comp
+  gate .95 .8
+  velocity .72 .8
+}
+
+play keys
+"""
+    patch.add(
+        module(
+            16,
+            "TriggerFish-Elements",
+            "TfProgSequencer",
+            (85, 0),
+            data={
+                "source": chord_program,
+                "languageVersion": 1,
+                "editorHeatmap": 2,
+                "panelWidthHp": 38,
             },
         )
     )
@@ -1023,7 +1065,7 @@ play arpeggio
     arpeggio_voice_values[2] = 3.5975842475891113
     arpeggio_voice_values[3] = 0.5493977069854736
     arpeggio_voice_values[4] = 0.8789158463478088
-    arpeggio_voice_values[7] = 1.0
+    arpeggio_voice_values[7] = 0.97  # about -3 dB at the exponential-envelope peak
     arpeggio_voice_values[8] = 0.7283129692077637
     arpeggio_voice_values[9] = math.log10(0.004)
     arpeggio_voice_values[10] = 0.04110236465930939
@@ -1046,7 +1088,22 @@ play arpeggio
         )
     )
 
-    patch.add(module(9, "TriggerFish-Elements", "TfScenePack4", (85, 0)))
+    piano_values = [*DEFAULT_PARAMS["TfElectricPiano"]]
+    piano_values[16] = 0.18  # restrained Suitcase stereo vibrato
+    patch.add(
+        module(
+            13,
+            "TriggerFish-Elements",
+            "TfElectricPiano",
+            (101, 1),
+            values=piano_values,
+        )
+    )
+
+    patch.add(midi(14, (123, 0), channels=12))
+    patch.add(midi_cc(15, (135, 0), first_cc=64))
+    patch.add(module(17, "TriggerFish-Elements", "TfEventMerge2", (119, 1)))
+    patch.add(module(9, "TriggerFish-Elements", "TfScenePack4", (145, 0)))
 
     reverb_values = [*DEFAULT_PARAMS["TfReverb"]]
     # Superlush, with a deliberately darker 3 kHz wet high cut. LEVEL remains
@@ -1072,19 +1129,28 @@ play arpeggio
     for source in range(1, 8):
         reverb_values[18 + 2 * (source - 1)] = 0.50
         reverb_values[19 + 2 * (source - 1)] = 0.32
+    # Keep the two mono synth voices wide and place the piano's left/right
+    # amplifier outputs as a narrower stereo pair. Explicit manual X positions
+    # prevent the four-source auto spread from moving both piano sides to the
+    # same half of the room simply because they are sources 3 and 4.
+    reverb_values[3] = 0.22
+    reverb_values[18] = 0.78
+    reverb_values[20] = 0.40
+    reverb_values[22] = 0.60
+    reverb_values.extend([0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0])
     patch.add(
         module(
             10,
             "TriggerFish-Elements",
             "TfReverb",
-            (91, 0),
+            (151, 0),
             values=reverb_values,
         )
     )
-    patch.add(audio(11, (107, 0)))
-    patch.add(scope(12, (117, 0)))
+    patch.add(audio(11, (167, 0)))
+    patch.add(scope(12, (177, 0)))
 
-    for sequencer_id in (3, 4):
+    for sequencer_id in (3, 4, 16):
         patch.cable(2, 0, sequencer_id, 0)  # fixed 24 PPQN master clock
         patch.cable(2, 2, sequencer_id, 1)  # shared reset
         patch.cable(2, 1, sequencer_id, 2)  # shared run/pause gate
@@ -1104,6 +1170,23 @@ play arpeggio
     patch.cable(4, 6, 7, 3)  # per-note CV2 AD -> wavefolder Fold modulation
     patch.cable(7, 1, 8, 0)  # folded oscillator -> 4072 filter
     patch.cable(8, 1, 9, 1)  # enveloped arpeggio -> source 2
+
+    patch.cable(16, 0, 17, 0)  # chord pitch -> Event Merge A pitch
+    patch.cable(16, 1, 17, 1)  # chord gate -> Event Merge A gate
+    patch.cable(16, 2, 17, 2)  # chord trigger -> Event Merge A trigger
+    patch.cable(16, 3, 17, 3)  # chord velocity -> Event Merge A velocity
+    patch.cable(16, 4, 17, 4)  # chord accent -> Event Merge A accent
+    patch.cable(14, 0, 17, 5)  # MIDI pitch -> Event Merge B pitch
+    patch.cable(14, 1, 17, 6)  # MIDI gate -> Event Merge B gate
+    patch.cable(14, 6, 17, 7)  # MIDI retrigger -> Event Merge B trigger
+    patch.cable(14, 2, 17, 8)  # MIDI velocity -> Event Merge B velocity
+    patch.cable(17, 0, 13, 0)  # merged pitch -> piano pitch
+    patch.cable(17, 1, 13, 1)  # merged gate -> piano key gate
+    patch.cable(17, 2, 13, 4)  # merged trigger -> piano retrigger
+    patch.cable(17, 3, 13, 2)  # merged velocity -> piano strike velocity
+    patch.cable(15, 0, 13, 5)  # MIDI CC64 -> piano sustain pedal
+    patch.cable(13, 1, 9, 2)  # piano Suitcase left -> source 3
+    patch.cable(13, 2, 9, 3)  # piano Suitcase right -> source 4
 
     patch.cable(9, 0, 10, 0)
     patch.cable(10, 0, 11, 0)

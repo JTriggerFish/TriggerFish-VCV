@@ -51,6 +51,9 @@ def test_prog_sequencer_has_three_valid_3u_widths_with_outlined_runtime_text():
     parser_source = (ROOT / "src" / "tfseq_parser.cpp").read_text(encoding="utf-8")
     compiler_source = (ROOT / "src" / "tfseq_compiler.cpp").read_text(encoding="utf-8")
     runtime_source = (ROOT / "src" / "tfseq_runtime.cpp").read_text(encoding="utf-8")
+    mailbox_source = (ROOT / "src" / "tfseq_program_mailbox.hpp").read_text(
+        encoding="utf-8"
+    )
     assert "ScrewSilver" not in module_source
     assert "MergeSelectionDocuments" in module_source
     assert "SplitPatternChildren" not in parser_source
@@ -71,13 +74,19 @@ def test_prog_sequencer_has_three_valid_3u_widths_with_outlined_runtime_text():
     assert "drawCvTrace(args, lane, now, span, sourcePositionsCurrent)" in module_source
     assert "visibleCvValues[index].store(cvOutputs[index].output" in module_source
     assert "stateTransferOrder" in runtime_source
-    assert "activationCheckpointBeat" in module_source
+    assert "activationRuntimeValid" in module_source
+    assert "advanceActivationRuntime" in module_source
+    assert "maybeSwapPendingAtSchedulerStep" in module_source
+    assert "canPreserveCurrentPhase" in runtime_source
     assert "activationNextStepBeat" in module_source
     assert "executionPulse.fetch_add(1, std::memory_order_release)" in module_source
     assert "cursorPulses[lane].fetch_add(1, std::memory_order_release)" in module_source
     assert "SchedulingLookaheadBeats" in module_source
     assert "guard++ < 64" not in module_source
-    assert "delete pendingProgramPointer(pendingProgram.exchange(0" in module_source
+    assert "pendingPrograms.protect()" in module_source
+    assert "pendingPrograms.claim(pending)" in module_source
+    assert "std::memory_order_seq_cst" in mailbox_source
+    assert "compare_exchange_strong" in mailbox_source
     assert "PendingRestartBit" in module_source
     assert "publishSource(module->source, true)" in module_source
     assert "isKeyCommand(GLFW_KEY_SLASH, RACK_MOD_CTRL)" in module_source
@@ -86,10 +95,16 @@ def test_prog_sequencer_has_three_valid_3u_widths_with_outlined_runtime_text():
     assert "suppressShortcutSpace = true" in module_source
     assert "event.codepoint == static_cast<std::uint32_t>(' ')" in module_source
     assert (
-        "isKeyCommand(GLFW_KEY_SPACE,\n                           RACK_MOD_CTRL | RACK_MOD_SHIFT)"
-        in module_source
+        "isKeyCommand(GLFW_KEY_SPACE, RACK_MOD_CTRL | RACK_MOD_SHIFT)" in module_source
     )
     assert "isKeyCommand(GLFW_KEY_R, RACK_MOD_CTRL | RACK_MOD_SHIFT)" in module_source
+    assert "isKeyCommand(GLFW_KEY_R, RACK_MOD_CTRL)" in module_source
+    assert (
+        "localRestartRequested.store(true, std::memory_order_release)" in module_source
+    )
+    assert "masterPulseGrid.advance()" in module_source
+    assert "RescaleSampleCount" in module_source
+    assert "editorRunEnabled.store(true, std::memory_order_relaxed)" in module_source
     assert (
         "isKeyCommand(GLFW_KEY_BACKSPACE,\n                           RACK_MOD_CTRL | RACK_MOD_SHIFT)"
         in module_source

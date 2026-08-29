@@ -211,6 +211,7 @@ EXPECTED_DEFAULTS = {
         18: 0.0,
     },
     "TfScenePack4": {},
+    "TfEventMerge2": {},
     "TfReverb": {
         0: 0.60,
         1: 0.5,
@@ -352,6 +353,7 @@ def test_smoke_patches_collectively_contain_every_triggerfish_module():
         "TfWavefoldOscillator",
         "TfUnisonOscillator",
         "TfScenePack4",
+        "TfEventMerge2",
         "TfReverb",
         "TfTransport",
         "TfProgSequencer",
@@ -382,6 +384,7 @@ def test_smoke_patches_use_triggerfish_parameter_defaults(name):
             musical_overrides = {
                 "TfUnisonOscillator": {2, 7, 8, 9, 11, 12, 13, 14},
                 "TfWavefoldOscillator": {2, 3, 4, 7, 10, 11, 12, 13, 14},
+                "TfElectricPiano": {16},
                 "Tf4072VoiceCore": {
                     0,
                     1,
@@ -402,7 +405,7 @@ def test_smoke_patches_use_triggerfish_parameter_defaults(name):
                     18,
                     19,
                 },
-                "TfReverb": set(range(32)),
+                "TfReverb": set(range(40)),
                 "TfTransport": {0},
             }.get(triggerfish_module["model"], set())
         assert {
@@ -447,7 +450,7 @@ def test_smoke_patch_has_playable_control_and_stereo_audio_paths(name):
     if name == "scene_pack":
         assert len(modules(patch, "VCO")) == 4
     elif name == "reverb_two_sources":
-        assert len(modules(patch, "TfProgSequencer")) == 2
+        assert len(modules(patch, "TfProgSequencer")) == 3
         assert len(modules(patch, "Tf4072VoiceCore")) == 2
         assert modules(patch, "TfTransport")
     elif modules(patch, "MIDIToCVInterface"):
@@ -806,7 +809,7 @@ def test_scene_pack_patch_connects_four_sources_and_packed_outputs():
     assert modules(patch, "VCMixer") == []
 
 
-def test_two_source_reverb_patch_builds_two_independently_sequenced_voices():
+def test_three_sequence_reverb_patch_merges_live_and_comping_piano_events():
     patch = load_patch("reverb_two_sources")
     clock = modules(patch, "TfTransport")[0]
     sequencers = modules(patch, "TfProgSequencer")
@@ -832,11 +835,16 @@ def test_two_source_reverb_patch_builds_two_independently_sequenced_voices():
         if has_cable(patch, wavefolder["id"], 1, voice["id"], 0)
     )
     scene_pack = modules(patch, "TfScenePack4")[0]
+    piano = modules(patch, "TfElectricPiano")[0]
+    event_merge = modules(patch, "TfEventMerge2")[0]
+    midi_to_cv = modules(patch, "MIDIToCVInterface")[0]
+    midi_cc_to_cv = modules(patch, "MIDICCToCVInterface")[0]
     reverb = modules(patch, "TfReverb")[0]
     scope = modules(patch, "Scope")[0]
     audio = modules(patch, "AudioInterface")[0]
 
-    assert len(sequencers) == len(voices) == 2
+    assert len(sequencers) == 3
+    assert len(voices) == 2
     assert param_values(clock)[0] == 96.0
     assert param_values(clock) == {
         0: 96.0,
@@ -878,7 +886,7 @@ def test_two_source_reverb_patch_builds_two_independently_sequenced_voices():
     arpeggio_source = arpeggio_sequencer["data"]["source"]
     assert "tonic D@4" in arpeggio_source
     assert "notes 3' 1' 5 3 ; 1' 5 3 1 ; 2' 7 5 2 ; 7 5 2 1" in arpeggio_source
-    assert "cv1 4 -4 |> interp linear |> rate 1/9" in arpeggio_source
+    assert "cv1 2 -2 |> interp linear |> rate 1/9" in arpeggio_source
     assert "cv2 env ad 5ms 16n depth 2 curve 0" in arpeggio_source
     assert arpeggio_sequencer["data"]["editorHeatmap"] == 5
     assert param_values(wavefolder)[3] == pytest.approx(0.5012047290802002)
@@ -895,7 +903,7 @@ def test_two_source_reverb_patch_builds_two_independently_sequenced_voices():
     assert param_values(arpeggio_voice)[8] == pytest.approx(0.7283129692077637)
     assert param_values(arpeggio_voice)[10] == pytest.approx(0.04110236465930939)
     assert param_values(arpeggio_voice)[16] == pytest.approx(0.043807897716760635)
-    assert param_values(arpeggio_voice)[7] == pytest.approx(1.0)
+    assert param_values(arpeggio_voice)[7] == pytest.approx(0.97)
     assert has_cable(patch, arpeggio_sequencer["id"], 0, wavefolder["id"], 0)
     assert has_cable(patch, arpeggio_sequencer["id"], 0, arpeggio_voice["id"], 2)
     assert has_cable(patch, arpeggio_sequencer["id"], 1, arpeggio_voice["id"], 6)
@@ -903,6 +911,42 @@ def test_two_source_reverb_patch_builds_two_independently_sequenced_voices():
     assert has_cable(patch, arpeggio_sequencer["id"], 5, arpeggio_voice["id"], 3)
     assert has_cable(patch, arpeggio_sequencer["id"], 6, wavefolder["id"], 3)
     assert has_cable(patch, arpeggio_voice["id"], 1, scene_pack["id"], 1)
+
+    assert param_values(piano)[16] == pytest.approx(0.18)
+    chord_sequencer = next(
+        sequencer
+        for sequencer in sequencers
+        if "keys = sequence" in sequencer["data"]["source"]
+    )
+    chord_source = chord_sequencer["data"]["source"]
+    assert "comp = rhythm" in chord_source
+    assert "events x_3 x ~!6 x_3 x ~!2" in chord_source
+    assert "subdiv 2n" in chord_source
+    assert "key " not in chord_source
+    assert "voicing " not in chord_source
+    assert "chords (C F A)_2 (C D G)_2 (B, D G)_2 (A, C F) (G, C E)" in chord_source
+    assert chord_sequencer["data"]["panelWidthHp"] == 38
+    assert "rhythm comp" in chord_source
+    assert "gate .95 .8" in chord_source
+    assert "velocity .72 .8" in chord_source
+    assert "~!6" in chord_source and "~!2" in chord_source
+    assert midi_to_cv["data"]["channels"] == 12
+    assert midi_cc_to_cv["data"]["ccs"][0] == 64
+    for output, input_ in enumerate(range(5)):
+        assert has_cable(
+            patch, chord_sequencer["id"], output, event_merge["id"], input_
+        )
+    assert has_cable(patch, midi_to_cv["id"], 0, event_merge["id"], 5)
+    assert has_cable(patch, midi_to_cv["id"], 1, event_merge["id"], 6)
+    assert has_cable(patch, midi_to_cv["id"], 6, event_merge["id"], 7)
+    assert has_cable(patch, midi_to_cv["id"], 2, event_merge["id"], 8)
+    assert has_cable(patch, event_merge["id"], 0, piano["id"], 0)
+    assert has_cable(patch, event_merge["id"], 1, piano["id"], 1)
+    assert has_cable(patch, event_merge["id"], 3, piano["id"], 2)
+    assert has_cable(patch, event_merge["id"], 2, piano["id"], 4)
+    assert has_cable(patch, midi_cc_to_cv["id"], 0, piano["id"], 5)
+    assert has_cable(patch, piano["id"], 1, scene_pack["id"], 2)
+    assert has_cable(patch, piano["id"], 2, scene_pack["id"], 3)
 
     assert has_cable(patch, scene_pack["id"], 0, reverb["id"], 0)
     assert has_cable(patch, reverb["id"], 0, audio["id"], 0)
@@ -915,7 +959,7 @@ def test_two_source_reverb_patch_builds_two_independently_sequenced_voices():
         0: 0.78,
         1: 0.55,
         2: 0.112,
-        3: 0.50,
+        3: 0.22,
         4: 0.32,
         5: 0.50,
         6: 0.68,
@@ -936,9 +980,13 @@ def test_two_source_reverb_patch_builds_two_independently_sequenced_voices():
     assert 1000.0 * math.exp(reverb_values[14] * math.log(20.0)) == pytest.approx(
         3000.0
     )
+    expected_source_x = [0.22, 0.78, 0.40, 0.60, 0.50, 0.50, 0.50, 0.50]
     for source in range(8):
-        assert reverb_values[3 if source == 0 else 18 + 2 * (source - 1)] == 0.5
+        assert reverb_values[3 if source == 0 else 18 + 2 * (source - 1)] == (
+            expected_source_x[source]
+        )
         assert reverb_values[4 if source == 0 else 19 + 2 * (source - 1)] == 0.32
+        assert reverb_values[32 + source] == (0.0 if source < 4 else 1.0)
 
 
 def test_diode_ladder_default_cutoff_cv_range_reaches_fully_open():

@@ -21,6 +21,7 @@ upgrading.
 
 - [Quick start](#quick-start)
 - [Editing and execution](#editing-and-execution)
+  - [Live activation and phase](#live-activation-and-phase)
 - [Clock and shared transport](#clock-and-shared-transport)
 - [Musical time values](#musical-time-values)
 - [Program structure](#program-structure)
@@ -29,13 +30,16 @@ upgrading.
   - [Named pitches and registers](#named-pitches-and-registers)
   - [Chords and voicings](#chords-and-voicings)
 - [Rhythm and articulation](#rhythm-and-articulation)
+  - [Direct events](#direct-events)
+  - [Reusable rhythmic gestures](#reusable-rhythmic-gestures)
+  - [Slides with a gesture](#slides-with-a-gesture)
   - [Probability: silence and omission](#probability-silence-and-omission)
   - [Groups and choices](#groups-and-choices)
   - [Ties, slides, and gates](#ties-slides-and-gates)
   - [Event attributes](#event-attributes)
 - [Random notes and values](#random-notes-and-values)
 - [Numerical lanes](#numerical-lanes)
-  - [Aligning a lane to Notes](#aligning-a-lane-to-notes)
+  - [Aligning a lane to events](#aligning-a-lane-to-events)
 - [CV1, CV2, and CV3](#cv1-cv2-and-cv3)
   - [CV envelopes](#cv-envelopes)
 - [Transforms](#transforms)
@@ -80,10 +84,14 @@ The essential live controls are:
 
 - Ctrl+Enter evaluates the selected source or the top-level statement
   containing the cursor;
+- Ctrl+Shift+Enter evaluates the same source on the next scheduler step when
+  its playback representation is compatible;
 - Ctrl+`.` evaluates the complete document while preserving playback phase;
 - Ctrl+Shift+`.` evaluates the complete document and restarts the arrangement
-  on the next quarter beat; and
-- Ctrl+Space pauses or resumes the module at its current position.
+  on the next quarter beat;
+- Ctrl+Space pauses or resumes the module at its current position; and
+- Ctrl+R restarts only this module on the next shared quarter beat without
+  recompiling its draft.
 
 When RUN is connected directly to a TriggerFish Transport, Ctrl+Shift+Space
 pauses or plays that Transport, Ctrl+Shift+R restarts it from beat zero, and
@@ -92,11 +100,11 @@ sequencer receiving the same Transport outputs.
 
 Ctrl+Z undoes program edits. Ctrl+Shift+Z and Ctrl+Y redo them.
 
-A successful evaluation takes effect on the next quarter beat. The active
-arrangement term follows that named sequence across insertions and reordering;
-if the active term was removed, the nearest remaining structural position
-starts cleanly on the activation beat. If an edit has an error, the last valid
-program keeps playing.
+A successful ordinary evaluation takes effect on the next quarter beat and
+preserves playback phase whenever the old and new representations are
+compatible. Structural changes have a deliberately stricter restart policy,
+described under [Live activation and phase](#live-activation-and-phase). If an
+edit has an error, the last valid program keeps playing.
 
 During playback, the active note, rest, or tie remains softly illuminated and
 an underline advances across it for its complete duration. The RUN light is dim
@@ -113,10 +121,12 @@ not alter the active program.
 
 | Shortcut | Action |
 | --- | --- |
-| Ctrl+Enter | Evaluate the selection, or the containing top-level statement when there is no selection |
+| Ctrl+Enter | Evaluate the selection, or the containing top-level statement when there is no selection, on the next quarter beat |
+| Ctrl+Shift+Enter | Evaluate the same source on the next scheduler step when phase can be preserved |
 | Ctrl+`.` | Evaluate the complete document and preserve the phase of sequences whose names remain active |
 | Ctrl+Shift+`.` | Evaluate the complete document and restart its arrangement from the beginning on the next quarter beat |
 | Ctrl+Space | Pause or resume this module locally and retain its current position |
+| Ctrl+R | Restart only this module from its active arrangement on the next master quarter beat |
 | Ctrl+Shift+Space | Pause or play the TriggerFish Transport connected directly to RUN |
 | Ctrl+Shift+R | Restart the connected TriggerFish Transport from beat zero |
 | Ctrl+Shift+Backspace | Stop the connected TriggerFish Transport and return it to beat zero |
@@ -125,13 +135,57 @@ not alter the active program.
 | Ctrl+Z | Undo the last program edit |
 | Ctrl+Shift+Z or Ctrl+Y | Redo the last undone program edit |
 
+### Live activation and phase
+
+Evaluation has two independent concerns: the boundary at which compiled source
+becomes active, and the playback state carried into it. Compilation itself is
+immediate, but a successful program remains pending until its musical
+activation boundary. Typing and compiling therefore never replace code halfway
+through an audio sample or an existing scheduler step.
+
+Ctrl+Enter is the normal live-evaluation command. It activates on the strictly
+following quarter-note beat and preserves the active arrangement term,
+repetition count, sequence cursor, independent lane phases, random cycle, and
+transform phase. Ctrl+`.` applies the same quarter-beat policy to the complete
+document.
+
+Ctrl+Shift+Enter is the faster alternative for a selected statement or source
+region. It activates on the next scheduler-step boundary while preserving the
+same state. A scheduler step is the next boundary produced by the currently
+active event scheduler, not merely a division of the clock grid. It therefore
+respects duration suffixes, the Duration lane, omissions, and—in separated
+mode—the rhythm gesture's own subdivision.
+
+Direct pitched events and a separated held-pitch/rhythm gesture use different
+playback representations. There is no reliable one-to-one cursor conversion
+between them. If an edit changes the active sequence from one representation
+to the other, its activation is promoted to the next quarter beat regardless
+of shortcut. At that beat:
+
+- the current arrangement term and its repetition count are retained;
+- the current sequence pass restarts from its beginning;
+- its pitch, rhythm, numerical, and CV lane states restart together;
+- stale Gates and Slides are cleared; and
+- the shared Transport and all sibling sequencers continue untouched.
+
+Removing the active term is also incompatible: the nearest remaining
+arrangement position begins cleanly on the activation beat. Ctrl+Shift+`.` is
+the explicit stronger operation; it evaluates the complete document and
+restarts the entire arrangement on the next quarter beat. If playback is
+paused or stopped, a pending change waits until score time advances to its
+requested boundary.
+
 The local transport starts enabled. It is combined with the RUN input, so both
 must permit playback. The RUN jack is normalled high, and an unpatched module
 therefore follows the local transport. A connected RUN voltage below 1 V pauses
 playback: Gate, Trigger, and Accent go low while pitch, CV values, sequence
 position, clock period, slides, and lane phases are retained. Raising RUN
 continues from that position. RESET is the separate operation that returns the
-arrangement and all lanes to their beginnings.
+arrangement and all lanes to their beginnings. A shared RESET also clears a
+local Ctrl+Space pause, so a Transport Restart reliably brings every connected
+sequencer back into playback. Ctrl+R instead leaves the shared Transport and
+the other sequencers untouched; an independently tracked 24-PPQN grid queues
+that local restart on the next true master quarter-note boundary.
 
 The transport shortcuts leave the program source unchanged. A connected
 Transport command is handed to the Transport's audio processing through an
@@ -200,6 +254,10 @@ Ctrl+Shift+Backspace requests Stop. The keyboard request changes only the
 connected Transport; its Clock, Run, and Reset outputs remain the source of
 synchronization for the sequencers.
 
+Changing Rack's audio driver or sample rate preserves both the learned clock
+period and the elapsed fraction of the current pulse. This avoids a false
+short or long interval on the first edge after an audio-device change.
+
 ## Musical time values
 
 Tempo-relative durations have an explicit note-value form:
@@ -237,9 +295,11 @@ valid where signed timing is meaningful, including Offset.
 
 ## Program structure
 
-A sequence has one `notes` lane, optional settings, and optional numerical or
-CV lanes. Articulation normally belongs directly to the note; add another lane
-when it supplies an independent repeating pattern or an external CV signal.
+A sequence has one pitched lane, spelled `notes` or `chords`, plus optional
+settings and numerical or CV lanes. The two spellings have identical syntax;
+`chords` simply makes harmonic intent easier to see. Normally each pitched
+event owns its attack. A reusable `rhythm` definition can instead supply the
+attacks for a slower held-pitch timeline.
 
 ```text
 name = sequence {
@@ -255,6 +315,7 @@ name = sequence {
 A document is assembled from a small number of building blocks:
 
 - a `sequence` definition creates an independently playable musical section;
+- a `rhythm` definition creates a reusable unpitched gesture;
 - an assignment such as `song = verse * 2 + chorus` names an arrangement or a
   transformed variation;
 - `play NAME` selects the sequence or arrangement that should loop;
@@ -264,6 +325,10 @@ Definitions and assignments may appear in any order, but every name must be
 unique. Names use letters, digits, and underscores and cannot begin with a
 digit. Names such as `cv1`, `cv2`, and other `cv` followed by a non-zero number
 are reserved for control-voltage lanes and future signal values.
+Names which are themselves complete inline rhythm patterns are also reserved
+for that syntax. In particular, a reusable rhythm cannot be named `x`, `_`,
+`x_2`, or `x__`; descriptive names such as `comp`, `xbeat`, and `pulse_2` are
+unambiguous.
 
 Blank lines and `//` comments may appear between definitions or inside a
 sequence, and a comment may follow any complete line. If an evaluated document
@@ -271,10 +336,11 @@ contains several `seed` commands, the last seed takes effect. The final `play`
 command selects the active arrangement. Playback state is controlled locally
 with Ctrl+Space or by the connected Transport.
 
-Every sequence requires exactly one `notes` lane. Settings and auxiliary lanes
-are optional, but the same lane cannot be declared twice. `vel` is a shorter
-spelling of `velocity`, and `dur` is a shorter spelling of `duration`; each
-alias refers to the same lane as its long form.
+Every sequence requires exactly one pitched lane: either `notes` or `chords`.
+Settings and auxiliary lanes are optional, but the same lane cannot be declared
+twice. `notes` and `chords` therefore cannot both occur in one sequence; a
+single lane may freely mix individual notes and voicings. `vel` is a shorter
+spelling of `velocity`, and `dur` is a shorter spelling of `duration`.
 
 Settings do not cycle:
 
@@ -283,17 +349,22 @@ Settings do not cycle:
 | `subdiv` | note value of an unsuffixed note | `4n` |
 | `tonic` | tonal centre and optional default octave | `C@4` |
 | `scale` | scale used by degrees and Roman chords | `major` |
+| `key` | written key used by `transpose_key` | none |
+| `voicing` | automatic Jazz-chord voicing recipe | `basic` |
 | `glide` | default slide time in beats or note values | `16n` |
 
-One complete top-level Notes pass is the sequence boundary. Its actual elapsed
-length follows the default subdivision, explicit duration suffixes, the
-Duration lane, `??` presence decisions, and timing transforms. At the boundary
-the Notes pattern repeats, independently cycling auxiliary lanes continue from
-their current positions, and an arrangement advances after the requested
-number of complete passes. A bracket group such as `[1 2]` subdivides one step
-and therefore still occupies one top-level position. When the arrangement
-moves to a different named sequence, that sequence starts its independent lane
-cursors and phases from the beginning.
+Without a separate rhythm, one complete top-level pitched pass is the sequence
+boundary. Its elapsed length follows `subdiv`, duration suffixes, the Duration
+lane, `??` presence decisions, and timing transforms. With a separate rhythm,
+the held pitched timeline defines the boundary and the shorter rhythm gesture
+loops inside it. At the boundary the pitched pattern and gesture restart;
+independently cycling numerical and CV lanes retain their normal phases while
+the same sequence continues. An arrangement advances after the requested
+number of complete pitched passes.
+
+A bracket group such as `[1 2]` subdivides one direct event and therefore still
+occupies one top-level position. When an arrangement moves to a different named
+sequence, that sequence starts its lane cursors and phases from the beginning.
 
 ## Notes and pitch
 
@@ -355,12 +426,231 @@ Jazz chords support major, minor, diminished, augmented, suspended, power,
 sixth, seventh, ninth, eleventh, and thirteenth forms, plus `add` and `b`/`#`
 alterations. Roman roots are limited to `I` through `VII`; uppercase implies a
 major triad and lowercase a minor triad. Roman chords follow the active scale.
+In a `chords` lane only, a bare named root such as `C` or `F#` is its standard
+major triad. The same spelling in `notes` remains one pitch; use `Cmaj:(1)` for
+an explicit one-note factor inside a chord lane.
+
+For a chord progression, prefer an explicit `key` and named chord roots:
+
+```text
+changes = sequence {
+  key C
+  voicing basic
+  chords Dm9 G13 Cm9 F13 Bbm9 Eb13 Abm9 Db13
+}
+```
+
+`key` records the progression's written transposition anchor; it does not
+infer harmony, constrain chord roots, or make a chord diatonic. `Dm9` always
+has D as its written root. `transpose_key D` on a sequence written with
+`key C` shifts every realized pitch up two semitones. A target key chooses the
+nearest chromatic interval (an exact tritone goes upward); octave transforms
+remain explicit. `transpose_key` is a compile error without `key`. `tonic` and
+`scale` remain the pitch system for scale degrees and Roman chords, so a fast
+sequence of ii-V changes never needs a second synchronized centre lane.
+
+#### Automatic voicing recipes
+
+`voicing` accepts three recipes:
+
+| Recipe | Behaviour |
+| --- | --- |
+| `basic` | ordinary stacked chord formula, followed by smooth inversions |
+| `rootless_3notes` | three-note rootless guide-tone voicings |
+| `rootless_4notes` | four-note Bill Evans-style A/B voicings |
+
+The first `basic` chord uses the obvious root-position stack. Later automatic
+chords choose inversions by shortest ordered semitone motion, then smallest
+individual leap, stationary voices, register, and a deterministic recipe
+order. Automatic voices never cross.
+
+The engine tries to retain the previous note count when the next formula has
+enough useful tones. It protects thirds, sevenths, written upper extensions,
+and altered tones; the
+`basic` recipe omits a perfect fifth first and then the root. For example, a
+four-note `C7` followed by `F13` realizes the latter as `3 7 9 13`, rather than
+abruptly growing to six voices. Rootless recipes omit the root by definition
+unless an explicit factor override requests it, usually omit the fifth, and
+fall back to a normal triad when no useful guide pair exists. Suspended seventh
+chords use the suspension and seventh as their guides; sixth chords such as
+`C6add9` use the third and sixth. A three-note `Dm11`, for example, retains its
+third, seventh, and defining eleventh rather than silently becoming `Dm9`.
+
+Recipes are contextual but deterministic. Repeated rhythm hits reuse the same
+realized chord. Rests retain the last harmonic context, slash basses do not
+enter the upper-voice calculation, and a continuing loop voice-leads across
+its seam.
+
+#### Explicit factors
+
+Append a factor list to retain exact chord content while allowing the recipe
+to choose its inversion and register:
+
+```text
+chords Cm9:(1 3 5 7 9) Cm9:(3)
+chords G13:(3 7 9 13) C6add9:(1 3 6 9)
+```
+
+Factors inherit the written chord quality. Thus `3` in `Cm9:(3)` is the minor
+third; the redundant spelling `b3` means the same thing. Omitted factors are
+not emitted, so that example really is one note. A contradictory factor such
+as `Cmaj7:(b3)`, or the duplicate `Cm9:(3 b3)`, is a compile error. The older
+pitch voicing `(C@3 E@4 G@4)` remains the form for fixing exact pitches and
+registers instead of chord factors.
+
+`C7alt` creates separate altered candidates. Each contains exactly one of
+`b9` or `#9` and exactly one of `#11` or `b13`; the closest legal candidate is
+selected from the preceding voicing. It never automatically produces a
+simultaneous `b9/#9` cluster. An explicit override can deliberately request an
+unusual combination:
+
+```text
+chords C7alt C7alt:(3 7 b9 b13) C7alt:(3 b7 #9 #5)
+```
+
+`13` chords include 9 and 13 but not the normally avoided natural 11.
+Conventional post-extension suspension spellings such as `G9sus`, `G7sus4`,
+and `G7sus2` are accepted.
+
+The recipe split follows the practical distinction between chord vocabulary
+and voice-leading selection. The motion policy is informed by Dmitri
+Tymoczko's discussion of short, non-crossing voice leading in
+[*The Geometry of Musical Chords*](https://www.brainmusic.org/EducationalActivities/Tymoczko_chords2006.pdf);
+crossing and overlap are kept as explicit constraints, as in the
+[music21 voice-leading model](https://music21.org/music21docs/moduleReference/moduleVoiceLeading.html).
+The rootless A/B factor sets follow the common 3-5-7-9 / 7-9-3-5 and
+3-13-7-9 / 7-9-3-13 practice summarized in
+[Piano Encyclopaedia's rootless-voicing reference](https://piano.org/theory/rootless-voicings/).
 
 A slash bass is emitted first and placed below the chord unless it has an
 explicit octave. Chords and voicings use matching Pitch, Gate, Trigger,
 Velocity, and Accent channels, up to Rack's 16-channel limit.
 
+`chords` is an optional readability alias for `notes`. It does not select a
+different scheduler, so chords may be sequenced directly with all ordinary
+event syntax:
+
+```text
+changes = sequence {
+  subdiv 8n
+  chords Cmaj9_2 [Dm11 G13] ^Am11 ~ Fmaj9*3
+}
+```
+
+Conversely, `notes` may contain chords, and either spelling may mix single
+pitches with voicings.
+
 ## Rhythm and articulation
+
+### Direct events
+
+In the compact form, pitch and rhythm stay together. This remains the best
+form for a melody, bass line, or progression whose attacks do not repeat as a
+separate idea:
+
+```text
+lead = sequence {
+  subdiv 8n
+  notes 1_2 ^3 [4 5] >6{ten} ~ 8*3
+}
+```
+
+Each pitched token attacks at the beginning of its own span. All the familiar
+duration, articulation, probability, subdivision, and ratchet syntax applies.
+
+### Reusable rhythmic gestures
+
+Define a gesture once when the same attack pattern should play different notes
+or chords. A rhythm has its own subdivision and uses `x` for an unpitched hit:
+
+```text
+comp = rhythm {
+  subdiv 16n
+  events x_3 x ~!6 x_3 x ~!2
+}
+```
+
+The gesture above lasts four beats. Applying it to a held chord timeline keeps
+the harmonic durations separate and visible:
+
+```text
+keys = sequence {
+  subdiv 2n
+  chords (C F A)_2 (C D G)_2 (B, D G)_2 (A, C F) (G, C E)
+  rhythm comp
+  velocity .72 .8
+  gate .95 .8
+}
+```
+
+The sequence subdivision is a half note. The first three `_2` chords therefore
+last four beats each, and the final two unsuffixed chords last two beats each:
+`4 + 4 + 4 + 2 + 2 = 16` beats. The four-beat `comp` gesture loops four times
+inside that phrase. At every `x`, the sequencer samples whichever pitched value
+is active at that written musical time. Hits never advance the chord cursor,
+so editing a rest, probability, or ratchet cannot move a later chord boundary.
+A random or alternate pitched value is resolved once for its held span rather
+than being redrawn by every hit. These explicit three-note voicings retain
+their written notes and registers at every change.
+
+The same gesture works without polyphony:
+
+```text
+bass = sequence {
+  subdiv 2n
+  notes 1_2 ; b7_2 ; 4_2 ; 5 7
+  rhythm comp
+}
+```
+
+Single notes, chords, and mixtures of both are the same kind of pitched value.
+`notes` and `chords` are interchangeable readability choices, but only one may
+appear in a sequence.
+
+An inline rhythm is still useful when it shares the sequence subdivision:
+
+```text
+notes 1_2 4_2
+rhythm x ~ x x
+```
+
+With a rhythm gesture, the pitched lane owns values and their held durations;
+the rhythm owns attacks, rests, attack probability, ratchets, and attack-local
+attributes. The `duration` lane consequently affects rhythm cells. Gate,
+Velocity, Slide, Ratchet, and other event-indexed lanes advance on rhythm hits.
+Ambiguous attack modifiers in the held pitch lane are rejected instead of
+being silently overridden.
+
+Standalone `x` is a rhythm hit only in a rhythm pattern. `x1` in a direct
+`notes` or `chords` lane remains a ghosted pitched event.
+
+### Slides with a gesture
+
+A slide can express either a particular pitch transition or a particular
+gesture position. Mark a target value to slide on the first successful hit in
+its span:
+
+```text
+notes 1_2 >4_2 5_2 >b7_2
+rhythm comp
+```
+
+Or put the slide in a reusable gesture:
+
+```text
+legato = rhythm {
+  subdiv 8n
+  events x >x x ~
+}
+```
+
+`>x` connects that hit from the preceding sounding value. `>pitch` is consumed
+by the first successful hit after entering its pitch span; later hits in the
+same span are ordinary attacks. With no valid predecessor, either form becomes
+a normal attack. Chord slides retain the existing rule that source and target
+must have the same statically known voice count. An explicit slide time may be
+placed on the target or the rhythm hit, but not both; the `slide` lane and then
+the sequence `glide` value provide the usual fallbacks.
 
 Common note forms are:
 
@@ -632,18 +922,21 @@ notes 1 2 3 4 ; 5 6 7 8
 ```
 
 This is especially useful with `subdiv 16n`, where groups of four terms make
-the beats visible. Semicolons work in Notes, numerical, and CV patterns. They
-must occur between terms; they are neither barlines nor statement terminators.
+the beats visible. Semicolons work in pitched, rhythm, numerical, and CV
+patterns. They must occur between terms; they are neither barlines nor
+statement terminators.
 
 An accent prefix raises Velocity to its built-in accent floor and drives the
 separate Accent output for the effective Gate. A Slide value is read for every
 pitched event but matters only when the note uses `>`.
 
-### Aligning a lane to Notes
+### Aligning a lane to events
 
-A leading `...` right-aligns explicit values with one realized Notes pass; a
-trailing `...` left-aligns them. An ellipsis between two groups applies values
-at both edges and leaves the middle positions at the lane's normal default:
+A leading `...` right-aligns explicit values with one realized event-pattern
+pass; a trailing `...` left-aligns them. That is the pitched pattern in direct
+mode and one rhythm-gesture pass in separated mode. An ellipsis between two
+groups applies values at both edges and leaves the middle positions at the
+lane's normal default:
 
 ```text
 notes 1 2 3 4 5 6 7 8
@@ -670,7 +963,8 @@ alignment uses the first values. Values on both sides of a middle ellipsis stay
 attached to their respective edges. If omissions make the pass shorter than
 the two edge groups together, each cell uses the value from the nearer outer
 edge; a central tie uses the left group. Aligned lanes are recalculated from
-the start of every realized Notes pass; free lanes continue independently.
+the start of every realized event-pattern pass; free lanes continue
+independently.
 
 ## CV1, CV2, and CV3
 
@@ -799,6 +1093,7 @@ Transform scope is explicit:
 | Target | Available transforms |
 | --- | --- |
 | Notes lane | `rev`, `rotate`, and pitch transforms |
+| Rhythm lane or definition | `rev` and `rotate` |
 | Numerical lane | `rev`, `rotate`, `rate` |
 | CV lane | numerical-lane transforms plus `interp` and a final `add env` |
 | Complete sequence/arrangement | `rev`, `rotate`, pitch, scale, and timing transforms |
@@ -815,6 +1110,7 @@ Transform scope is explicit:
 | `shift_degree N` | move notes by scale indices, staying in key |
 | `modulate_degree N` | move the tonal centre by a scale degree |
 | `transpose_semitone N` | transpose chromatically |
+| `transpose_key KEY` | transpose from the sequence's written `key` to the nearest occurrence of `KEY` |
 | `octave N`, `transpose_octave N` | transpose by octaves |
 | `scale NAME` | change the active scale |
 
@@ -846,7 +1142,7 @@ Swing `.5` is straight; larger values lengthen the first member of each grid
 pair. Timing transforms move events without changing the arrangement window.
 
 `rate R` is lane-local: it changes the phase speed of Offset or another
-free-running numerical/CV lane without speeding up the Notes lane.
+free-running numerical/CV lane without speeding up the pitched lane.
 
 ### Conditional transforms
 
@@ -867,7 +1163,8 @@ unconditional CV-lane operation.
 An arrangement may combine independently defined sequences, transformed
 versions of existing material, or both. Each named sequence keeps its own
 settings, lanes, and length; arrangement playback moves to the next term after
-the current sequence completes its Notes pass. See
+the current sequence completes its pitched pass. In gesture mode that means
+the complete held-value timeline, not one repetition of the gesture. See
 [Song with distinct sections](#song-with-distinct-sections) for a complete
 multi-section example.
 
@@ -900,9 +1197,9 @@ Parentheses group arrangement expressions:
 song = (verse * 2 + fill) * 2 + ending
 ```
 
-A section boundary occurs only after the final Notes step, including its
-ratchets or subdivisions, has completed. The new section owns the next attack;
-ties and slides do not cross between different sections.
+A section boundary occurs only after the final direct event or held pitch span
+has completed. The new section owns the next attack; ties and slides do not
+cross between different sections.
 
 ## Musical examples
 
@@ -960,8 +1257,8 @@ play song
 ```
 
 `verse`, `chorus`, and `fill` are independent sequences. Each owns its
-subdivision, tonal settings, Notes pass, and optional lanes. The arrangement
-advances after each sequence completes its own Notes pass, so sections can have
+subdivision, tonal settings, pitched pass, and optional lanes. The arrangement
+advances after each sequence completes its own pitched pass, so sections can have
 different lengths without padding them to a shared grid.
 
 ### Seeded generative melody
@@ -1024,6 +1321,8 @@ adds a repeatable small variation.
 The following are not available yet:
 
 - multi-event or recursively nested random/alternate branches;
+- grouped subdivisions and attack-local dynamics inside a held `notes` or
+  `chords` timeline; put those attacks in its rhythm gesture instead;
 - `??` presence probability inside a subdividing group or beside a Euclidean
   suffix;
 - continuous interpolation on `...`-aligned CV lanes;
@@ -1048,8 +1347,12 @@ punctuation are literal source text.
 ### Top-level statements and names
 
 ```text
-program     ::= { sequence | assignment | play | seed | comment }
+program     ::= { sequence | rhythm-definition | assignment | play | seed |
+                  comment }
 sequence    ::= NAME "=" "sequence" "{" sequence-line+ "}" pipeline*
+rhythm-definition ::= NAME "=" "rhythm" "{" rhythm-definition-line+ "}"
+rhythm-definition-line ::= "subdiv" positive-note-value |
+                           "events" rhythm-pattern pipeline*
 assignment  ::= NAME "=" expression pipeline*
 play        ::= "play" NAME
 seed        ::= "seed" UNSIGNED_INTEGER
@@ -1062,17 +1365,19 @@ NAME        ::= (LETTER | "_") { LETTER | DIGIT | "_" }
 comment     ::= "//" text-to-end-of-line
 ```
 
-A sequence name or assignment name may be defined once. `+` concatenates
+A sequence, rhythm, or assignment name may be defined once. `+` concatenates
 arrangement parts, `*` repeats its immediately preceding name or parenthesized
 expression, and parentheses group an expression. Repetition therefore binds
 more tightly than concatenation. Pipelines apply after the complete expression.
-An assignment names an arrangement expression; `play` accepts either a sequence
-or an assignment. The selected arrangement loops until another executed `play`
-command replaces it. The final `play` command selects the arrangement, and the
-final `seed` command selects the random seed.
+An assignment names an arrangement expression; `play` accepts a sequence or an
+arrangement, not a rhythm definition. The selected arrangement loops until
+another executed `play` command replaces it. The final `play` command selects
+the arrangement, and the final `seed` command selects the random seed.
 
 Names beginning with `cv` followed only by a non-zero decimal integer are
 reserved for CV lanes and future typed signal values.
+An identifier which is also a complete inline rhythm pattern is reserved for
+that pattern and cannot name a reusable rhythm.
 
 Blank lines and comments may appear between statements and sequence lines. A
 comment may also follow any complete line. Statements are line-oriented; the
@@ -1081,12 +1386,17 @@ closing brace and a pipeline continuation may begin subsequent lines.
 ### Sequence lines and pipeline attachment
 
 ```text
-sequence-line ::= setting-line | notes-line | scalar-line | cv-line
+sequence-line ::= setting-line | notes-line | chords-line | rhythm-line |
+                  scalar-line | cv-line
 setting-line  ::= "subdiv" positive-note-value |
                   "tonic" named-pitch ["@" SIGNED_INTEGER] |
                   "scale" SCALE_NAME |
+                  "key" named-pitch |
+                  "voicing" VOICING_RECIPE |
                   "glide" nonnegative-time
 notes-line    ::= "notes" note-pattern pipeline*
+chords-line   ::= "chords" note-pattern pipeline*
+rhythm-line   ::= "rhythm" (NAME | rhythm-pattern) pipeline*
 scalar-line   ::= scalar-lane scalar-pattern pipeline*
 cv-line       ::= cv-name envelope-source |
                   cv-name scalar-pattern cv-pipeline*
@@ -1113,9 +1423,12 @@ scalar-lane   ::= "octave" | "velocity" | "vel" |
                   "ratchet" | "offset"
 ```
 
-`vel` and `dur` are aliases. Settings accept one value and cannot have an
+`VOICING_RECIPE` is `basic`, `rootless_3notes`, or `rootless_4notes`. `vel` and
+`dur` are scalar aliases. Settings accept one value and cannot have an
 inline pipeline. `SCALE_NAME` is one of the names listed under
-[Scale degrees](#scale-degrees). A sequence requires exactly one Notes lane.
+[Scale degrees](#scale-degrees). A sequence requires exactly one `notes` or
+`chords` lane. A `rhythm` lane is optional and may contain an inline pattern or
+name a reusable rhythm definition.
 Each setting and canonical lane may appear at most once, so `velocity` and its
 `vel` alias cannot both occur in the same sequence. A pipeline on the same line
 as a lane transforms that lane. A pipeline on a following line inside the
@@ -1150,6 +1463,11 @@ rest         ::= "~" [duration] [presence-probability] [replication]
                  ["{" "len=" value "}"]
 tie          ::= "_" [replication]
 
+rhythm-pattern ::= rhythm-event { pattern-separator rhythm-event }
+rhythm-event   ::= rhythm-hit | rest | tie
+rhythm-hit     ::= [">"] "x" [duration] [euclidean] [ratchet]
+                   [event-probability] [replication] [attributes]
+
 group        ::= group-primary [duration] [euclidean]
                  [event-probability] [replication]
 group-primary ::= "[" note-pattern "]" |
@@ -1158,20 +1476,25 @@ group-primary ::= "[" note-pattern "]" |
 
 pitched-value ::= random-pitch | pitch | chord ["/" pitch]
 pitch         ::= (named-pitch | scale-degree) [register]
-chord         ::= (explicit-voicing | roman-chord | jazz-chord) [register]
+chord         ::= (explicit-voicing | roman-chord |
+                   jazz-chord [factor-voicing]) [register]
 named-pitch   ::= ("A" | "B" | "C" | "D" | "E" | "F" | "G")
                   ["b" | "#"]
 scale-degree  ::= {"b" | "#"} SIGNED_INTEGER
 explicit-voicing ::= "(" pitch SPACE pitch { SPACE pitch } ")"
+factor-voicing ::= ":" "(" chord-factor { SPACE chord-factor } ")"
+chord-factor  ::= {"b" | "#"} chord-degree
 roman-chord   ::= {"b" | "#"} roman-root [chord-suffix]
 roman-root    ::= "I" | "II" | "III" | "IV" | "V" | "VI" | "VII" |
                   "i" | "ii" | "iii" | "iv" | "v" | "vi" | "vii"
 jazz-chord    ::= named-pitch chord-suffix
-chord-suffix  ::= triad-quality [extension] {modification} |
-                  extension {modification} |
-                  modification {modification}
+chord-suffix  ::= triad-quality [extension] {modification} ["alt"] |
+                  extension [post-extension-quality] {modification} ["alt"] |
+                  modification {modification} ["alt"] |
+                  "alt"
 triad-quality ::= "maj" | "min" | "m" | "dim" | "aug" |
                   "sus2" | "sus4"
+post-extension-quality ::= "sus" | "sus2" | "sus4"
 extension     ::= "5" | "6" | "7" | "9" | "11" | "13"
 modification  ::= ("b" | "#" | "add") chord-degree
 chord-degree  ::= "1" | "2" | "3" | "4" | "5" | "6" | "7" |
@@ -1250,7 +1573,7 @@ SPACE               ::= one or more spaces or tabs
 
 Euclidean pulses may be zero and must not exceed the positive step count.
 Presence probability is restricted to top-level events, rests, and complete
-top-level groups, and cannot accompany a Euclidean suffix. A Notes pass must
+top-level groups, and cannot accompany a Euclidean suffix. A direct pitched pass must
 contain at least one element whose presence is guaranteed. Bare `?` and `??`
 suffixes mean probability `0.5`. `NUMBER` may be an integer, decimal, or
 fraction where the surrounding feature permits it. A note value uses a
@@ -1268,7 +1591,7 @@ zero to one. An envelope-only CV line accepts no pipeline. On a scalar CV line,
 Scalar patterns contain flat values rather than note groups. `.` consumes a
 position and inherits that lane's normal value. One ellipsis may occur at an
 edge, or between two sets of values, to align the supplied values with the
-beginning, end, or both edges of the Notes structure. A semicolon is accepted
+beginning, end, or both edges of the active event structure. A semicolon is accepted
 where whitespace would separate two pattern terms and has no semantic effect.
 
 ### Pipelines

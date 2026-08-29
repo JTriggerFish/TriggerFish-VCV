@@ -19,6 +19,7 @@ extern Model *modelTfElectricPiano;
 extern Model *modelTfWavefoldOscillator;
 extern Model *modelTfUnisonOscillator;
 extern Model *modelTfScenePack4;
+extern Model *modelTfEventMerge2;
 extern Model *modelTfReverb;
 extern Model *modelTfTransport;
 extern Model *modelTfProgSequencer;

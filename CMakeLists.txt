@@ -13,9 +13,13 @@ add_library(triggerfish_dsp STATIC
 	src/tfseq_editor.hpp
 	src/tfseq_parser.cpp
 	src/tfseq_parser.hpp
+	src/tfseq_program_mailbox.hpp
 	src/tfseq_runtime.cpp
+	src/tfseq_voicing.cpp
+	src/tfseq_voicing.hpp
 	src/tfdsp/sampleRate.cpp
 	src/tfdsp/early_reflections.hpp
+	src/tfdsp/event_merge.hpp
 	src/tfdsp/early_reflections_worker.cpp
 	src/tfdsp/early_reflections_worker.hpp
 	src/tfdsp/late_reverb.hpp
@@ -56,6 +60,7 @@ if(EXISTS "${RACK_SDK_DIR}/include/rack.hpp")
 		src/TfWavefoldOscillator.cpp
 		src/TfUnisonOscillator.cpp
 		src/TfScenePack4.cpp
+		src/TfEventMerge2.cpp
 		src/TfReverb.cpp
 		src/TfTransport.cpp
 		src/TfProgSequencer.cpp
