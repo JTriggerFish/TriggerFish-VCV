@@ -97,6 +97,11 @@ private:
     auto *candidate = pointer(tagged);
     if (!candidate)
       return;
+    // Reclamation needs the other half of the hazard-pointer store/load
+    // ordering pair. The reader's seq_cst hazard publication and validation
+    // do not by themselves force this scan to observe the publication on a
+    // weak-memory target when pending_ was removed with acquire/release.
+    std::atomic_thread_fence(std::memory_order_seq_cst);
     auto *hazard = hazard_.load(std::memory_order_seq_cst);
     if (deferred_ && deferred_ != hazard) {
       delete deferred_;

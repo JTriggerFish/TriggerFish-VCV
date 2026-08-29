@@ -232,6 +232,7 @@ struct TfProgSequencer : Module {
   std::int64_t samplesSinceClock = 0;
   std::int64_t transportPulseCount = 0;
   tftransport::PulseGrid masterPulseGrid;
+  tftransport::RunSynchronizedClockEdge runSynchronizedClockEdge;
   std::int64_t resetIgnoreSamples = 0;
   double periodSamples = 0.0;
   double pulseBeat = 0.0;
@@ -456,6 +457,7 @@ struct TfProgSequencer : Module {
     samplesSinceClock = 0;
     transportPulseCount = 0;
     masterPulseGrid.reset();
+    runSynchronizedClockEdge.reset();
     localRestartRequested.store(false, std::memory_order_relaxed);
     periodSamples = 0.0;
     pulseBeat = 0.0;
@@ -906,10 +908,13 @@ struct TfProgSequencer : Module {
 
     const bool transportRunning = !inputs[RUN_INPUT].isConnected() ||
                                   inputs[RUN_INPUT].getVoltage() >= 1.f;
-    bool clockEdge =
-        clockTrigger.process(inputs[CLOCK_INPUT].getVoltage(), 0.1f, 2.f);
+    const float clockVoltage = inputs[CLOCK_INPUT].getVoltage();
+    bool detectedClockEdge =
+        clockTrigger.process(clockVoltage, 0.1f, 2.f);
     if (resetIgnoreSamples > 0)
-      clockEdge = false;
+      detectedClockEdge = false;
+    const bool clockEdge = runSynchronizedClockEdge.process(
+        detectedClockEdge, clockVoltage >= 0.1f, transportRunning);
 
     // Keep following the common grid while this sequencer is locally paused.
     // Otherwise it cannot know where the next master quarter begins when a

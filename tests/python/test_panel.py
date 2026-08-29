@@ -86,6 +86,7 @@ def test_prog_sequencer_has_three_valid_3u_widths_with_outlined_runtime_text():
     assert "pendingPrograms.protect()" in module_source
     assert "pendingPrograms.claim(pending)" in module_source
     assert "std::memory_order_seq_cst" in mailbox_source
+    assert "std::atomic_thread_fence(std::memory_order_seq_cst)" in mailbox_source
     assert "compare_exchange_strong" in mailbox_source
     assert "PendingRestartBit" in module_source
     assert "publishSource(module->source, true)" in module_source

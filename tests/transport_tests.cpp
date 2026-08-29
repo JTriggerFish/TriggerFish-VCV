@@ -109,6 +109,25 @@ int main() {
   check(grid.advance() && grid.pulse() == 0,
         "reset realigns the independent pulse grid to beat zero");
 
+  tftransport::RunSynchronizedClockEdge synchronizedEdge;
+  check(!synchronizedEdge.process(true, true, false) &&
+            synchronizedEdge.pending(),
+        "a clock edge waits while its RUN cable is one frame behind");
+  check(synchronizedEdge.process(false, true, true) &&
+            !synchronizedEdge.pending(),
+        "the still-high clock edge is delivered when RUN catches up");
+  check(!synchronizedEdge.process(false, true, true),
+        "a synchronized clock edge is delivered only once");
+  check(!synchronizedEdge.process(true, true, false) &&
+            !synchronizedEdge.process(false, false, false) &&
+            !synchronizedEdge.process(false, false, true),
+        "a pulse that returned low while stopped is never replayed");
+  synchronizedEdge.process(true, true, false);
+  synchronizedEdge.reset();
+  check(!synchronizedEdge.pending() &&
+            !synchronizedEdge.process(false, true, true),
+        "reset discards a pending RUN-synchronization edge");
+
   constexpr double PulsePeriodAt60Bpm = 1.0 / 24.0;
   constexpr double PulsePeriodStep = PulsePeriodAt60Bpm / 4.0;
   transport.command(tftransport::Command::Play);

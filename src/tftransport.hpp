@@ -94,6 +94,42 @@ private:
   std::int64_t pulse_ = 0;
 };
 
+// A transport module's RUN and CLOCK cables can become visible to different
+// downstream workers one engine frame apart. Rack's Schmitt trigger consumes
+// the CLOCK edge immediately, so retain that edge only while the same pulse is
+// still high and deliver it when RUN catches up. A genuinely stopped or stale
+// pulse is discarded as soon as CLOCK returns low.
+class RunSynchronizedClockEdge {
+public:
+  void reset() noexcept { pending_ = false; }
+
+  bool process(bool detectedEdge, bool clockHigh,
+               bool transportRunning) noexcept {
+    if (!clockHigh)
+      pending_ = false;
+    if (detectedEdge && !transportRunning) {
+      pending_ = clockHigh;
+      return false;
+    }
+    if (!transportRunning)
+      return false;
+    if (detectedEdge) {
+      pending_ = false;
+      return true;
+    }
+    if (pending_ && clockHigh) {
+      pending_ = false;
+      return true;
+    }
+    return false;
+  }
+
+  bool pending() const noexcept { return pending_; }
+
+private:
+  bool pending_ = false;
+};
+
 enum class State { Stopped = 0, Paused = 1, Playing = 2 };
 enum class Command { PlayFromBeginning, Pause, Play, Stop, TogglePlayPause };
 
