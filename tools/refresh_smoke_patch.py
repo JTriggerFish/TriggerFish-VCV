@@ -9,6 +9,13 @@ import tempfile
 from pathlib import Path
 
 
+def _has_selected_driver(settings: object) -> bool:
+    if not isinstance(settings, dict):
+        return False
+    driver = settings.get("driver")
+    return isinstance(driver, int) and not isinstance(driver, bool) and driver >= 0
+
+
 def _device_settings(template_path: Path) -> dict[str, dict]:
     """Read only Rack MIDI/audio selections from an uncompressed local patch."""
     try:
@@ -19,11 +26,12 @@ def _device_settings(template_path: Path) -> dict[str, dict]:
     for module in document.get("modules", []):
         model = module.get("model")
         data = module.get("data", {})
-        if model in {"MIDIToCVInterface", "MIDICCToCVInterface"} and isinstance(
-            data.get("midi"), dict
-        ):
+        if model in {
+            "MIDIToCVInterface",
+            "MIDICCToCVInterface",
+        } and _has_selected_driver(data.get("midi")):
             settings[model] = {"midi": data["midi"]}
-        elif model == "AudioInterface" and isinstance(data.get("audio"), dict):
+        elif model == "AudioInterface" and _has_selected_driver(data.get("audio")):
             settings[model] = {"audio": data["audio"]}
     return settings
 

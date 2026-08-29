@@ -1,26 +1,12 @@
 {
   "version": "2.6.6",
   "path": "",
-  "zoom": 0.66,
+  "zoom": 0.93338090181350708,
   "gridOffset": [
-    -7.0,
-    -0.1
+    -5.3927083015441895,
+    -0.076356910169124603
   ],
   "modules": [
-    {
-      "id": 1,
-      "plugin": "Core",
-      "model": "Notes",
-      "version": "2.6.6",
-      "params": [],
-      "data": {
-        "text": "TriggerFish musical three-sequencer Room Reverb test\n\nAt 96 BPM, three independent Prog Sequencers play an interlocking D-Dorian texture. Source 1 is a slow two-saw Unison Oscillator bass with a centred sub oscillator, analogue drift, and long 4072 filter and amplifier envelopes. Source 2 is a driven descending folded arpeggio with a shorter, brighter 4072 voice. A velocity-sensitive MIDI keyboard plays an Electric Piano with restrained Suitcase vibrato. A third sequencer adds exact three-note piano voicings while Event Merge 2 keeps those three sequenced voices separate from the live MIDI voices. Its LEFT and RIGHT outputs remain separate Scene Pack sources so the reverb retains the piano's stereo motion instead of folding it to mono. The folded voice's cutoff follows a slow 18-beat bipolar CV triangle across the four-beat note phrase, while a per-note AD envelope animates the wavefolder depth.\n\nThe shared Transport drives Clock, Run, and Reset into all three sequencers. RESTART plays from beat zero, PAUSE preserves the current position, PLAY continues it, and STOP returns to zero. All sequences therefore remain synchronized through every action. Select the same MIDI device in MIDI-CV and MIDI CC-CV; the latter is preassigned to sustain pedal CC64.\n\nScene Pack 4 keeps the bass, folded voice, and two piano sides as four independent room sources. Room Reverb uses the Superlush scene with its wet high cut lowered to 3 kHz. Drag their numbered amber markers to audition position, early reflections, and the late-field handoff; disconnect any Scene Pack input to confirm that only its marker disappears. The scope shows the packed sources and stereo result. Select an output device in Audio-8, then start with monitor volume low."
-      },
-      "pos": [
-        -11,
-        0
-      ]
-    },
     {
       "id": 2,
       "plugin": "TriggerFish-Elements",
@@ -52,7 +38,7 @@
         "state": 2
       },
       "pos": [
-        5,
+        34,
         0
       ]
     },
@@ -67,7 +53,7 @@
         "languageVersion": 1
       },
       "pos": [
-        25,
+        4,
         0
       ]
     },
@@ -83,7 +69,7 @@
         "editorHeatmap": 5
       },
       "pos": [
-        55,
+        42,
         0
       ]
     },
@@ -100,7 +86,7 @@
         "panelWidthHp": 38
       },
       "pos": [
-        85,
+        72,
         0
       ]
     },
@@ -188,7 +174,7 @@
         }
       ],
       "pos": [
-        29,
+        0,
         1
       ]
     },
@@ -300,7 +286,7 @@
         }
       ],
       "pos": [
-        41,
+        12,
         1
       ]
     },
@@ -380,7 +366,7 @@
         }
       ],
       "pos": [
-        65,
+        36,
         1
       ]
     },
@@ -492,7 +478,7 @@
         }
       ],
       "pos": [
-        77,
+        48,
         1
       ]
     },
@@ -584,7 +570,7 @@
         }
       ],
       "pos": [
-        101,
+        72,
         1
       ]
     },
@@ -598,13 +584,14 @@
         "channels": 12,
         "pwRange": 2,
         "midi": {
-          "driver": -1,
+          "driver": 4,
+          "deviceName": "SL GRAND 1",
           "channel": -1
         }
       },
       "pos": [
-        123,
-        0
+        90,
+        1
       ]
     },
     {
@@ -633,7 +620,8 @@
           -1
         ],
         "midi": {
-          "driver": -1,
+          "driver": 4,
+          "deviceName": "SL GRAND 1",
           "channel": -1
         },
         "smooth": false,
@@ -641,8 +629,8 @@
         "lsbMode": false
       },
       "pos": [
-        135,
-        0
+        98,
+        1
       ]
     },
     {
@@ -652,7 +640,7 @@
       "version": "2.5.0",
       "params": [],
       "pos": [
-        119,
+        108,
         1
       ]
     },
@@ -663,7 +651,7 @@
       "version": "2.5.0",
       "params": [],
       "pos": [
-        145,
+        110,
         0
       ]
     },
@@ -835,7 +823,7 @@
         }
       ],
       "pos": [
-        151,
+        139,
         0
       ]
     },
@@ -847,16 +835,17 @@
       "params": [],
       "data": {
         "audio": {
-          "driver": -1,
+          "driver": 7,
+          "deviceName": "MOTU M Series",
           "sampleRate": 48000,
-          "blockSize": 256,
+          "blockSize": 64,
           "inputOffset": 0,
           "outputOffset": 0
         },
         "dcFilter": true
       },
       "pos": [
-        167,
+        116,
         0
       ]
     },
@@ -900,7 +889,35 @@
         }
       ],
       "pos": [
-        177,
+        126,
+        0
+      ]
+    },
+    {
+      "id": 18,
+      "plugin": "VCV-Recorder",
+      "model": "Recorder",
+      "version": "2.0.3",
+      "params": [
+        {
+          "id": 0,
+          "value": 1.0
+        },
+        {
+          "id": 1,
+          "value": 0.0
+        }
+      ],
+      "data": {
+        "format": "wav",
+        "path": "",
+        "incrementPath": true,
+        "sampleRate": 48000,
+        "depth": 24,
+        "bitRate": 256000
+      },
+      "pos": [
+        155,
         0
       ]
     }
@@ -1265,6 +1282,22 @@
       "inputModuleId": 12,
       "inputId": 2,
       "color": "#0c8e15"
+    },
+    {
+      "id": 1045,
+      "outputModuleId": 10,
+      "outputId": 0,
+      "inputModuleId": 18,
+      "inputId": 2,
+      "color": "#0986ad"
+    },
+    {
+      "id": 1046,
+      "outputModuleId": 10,
+      "outputId": 1,
+      "inputModuleId": 18,
+      "inputId": 3,
+      "color": "#c91847"
     }
   ]
 }

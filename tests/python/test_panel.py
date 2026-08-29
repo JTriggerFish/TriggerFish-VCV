@@ -134,6 +134,7 @@ def test_prog_sequencer_has_three_valid_3u_widths_with_outlined_runtime_text():
     assert '"Acid bassline"' in module_source
     assert '"Slow bassline"' in module_source
     assert '"Descending arpeggio"' in module_source
+    assert "constexpr const char *DefaultSource = SlowBasslineExample;" in module_source
     assert 'TfProgSequencerSourceChange("load sequencer example")' in module_source
     assert '"EXAMPLE LOADED - Ctrl+. to evaluate"' in module_source
     assert "Cursor travel" not in module_source
@@ -155,6 +156,12 @@ def test_prog_sequencer_has_three_valid_3u_widths_with_outlined_runtime_text():
         ("PJ301MPort", 409.0, 356.0),
         ("PJ301MPort", 437.0, 356.0),
     )
+
+    preview_markup = PREVIEW_MODULE.module_preview_markup("TfProgSequencer")
+    assert "bass = sequence {" in preview_markup
+    assert "notes 1_2 7_2 4_2 5 7" in preview_markup
+    assert "play bass" in preview_markup
+    assert "notes 1 x2" not in preview_markup
     for suffix, width in (("", "330"), ("-30", "450"), ("-38", "570")):
         source = ET.parse(ROOT / "res-src" / f"TfProgSequencer{suffix}.svg").getroot()
         runtime = ET.parse(ROOT / "res" / f"TfProgSequencer{suffix}.svg").getroot()
@@ -924,6 +931,34 @@ def test_legacy_pitch_and_vca_modules_expose_polyphonic_state_and_routing():
     assert "outputs[MAIN_OUTPUT].setChannels(channels);" in vca
     assert "_vcaTransi[channel]->StepControls" in vca
     assert "maximumControl = std::max(maximumControl, reconstructedCv);" in vca
+
+
+def test_event_merge_panel_is_compact_and_keeps_its_three_columns_aligned():
+    widget_source = (ROOT / "src" / "TfEventMerge2.cpp").read_text(encoding="utf-8")
+    source_panel = ET.parse(ROOT / "res-src" / "TfEventMerge2.svg").getroot()
+    runtime_panel = ET.parse(ROOT / "res" / "TfEventMerge2.svg").getroot()
+
+    assert source_panel.attrib["width"] == runtime_panel.attrib["width"] == "120"
+    assert (
+        source_panel.attrib["viewBox"]
+        == runtime_panel.attrib["viewBox"]
+        == ("0 0 120 380")
+    )
+    assert source_panel.findall(f".//{SVG}text")
+    assert not runtime_panel.findall(f".//{SVG}text")
+    assert "Vec(5.f, rows[signal])" in widget_source
+    assert "Vec(45.f, rows[signal])" in widget_source
+    assert "Vec(85.f, rows[signal])" in widget_source
+
+    output_blocks = [
+        node
+        for node in source_panel.findall(f".//{SVG}rect")
+        if node.attrib.get("x") == "77"
+    ]
+    assert len(output_blocks) == 5
+    assert all(
+        node.attrib["width"] == node.attrib["height"] == "40" for node in output_blocks
+    )
 
 
 def test_scene_pack_panel_preview_covers_every_control_and_runtime_text_is_outlined():

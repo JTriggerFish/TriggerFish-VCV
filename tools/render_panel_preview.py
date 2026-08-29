@@ -49,6 +49,7 @@ MODULE_NAMES = (
     "TfReverb",
     "TfTransport",
     "TfProgSequencer",
+    "TfEventMerge2",
 )
 
 
@@ -172,6 +173,7 @@ MODULE_GRAPHICS = {
     "TfReverb": (),
     "TfTransport": (),
     "TfProgSequencer": (),
+    "TfEventMerge2": (),
 }
 
 MODULE_PANEL_FILES = {
@@ -243,16 +245,15 @@ def module_preview_markup(module_name: str) -> str:
     if module_name != "TfProgSequencer":
         return ""
     lines = (
-        "riff = sequence {",
-        "  subdiv 8n",
-        "  tonic C@4",
-        "  scale minor",
-        "  notes 1 x2 3{quiet} _ [>4 ^5{stacc}] 6*3 ~ 8{ten}",
-        "  offset -6ms 0 +6ms |> rate 1/2",
-        "  cv1 0 5 0 |> interp smooth",
+        "bass = sequence {",
+        "  subdiv 2n",
+        "  tonic D@1",
+        "  scale dorian",
+        "  notes 1_2 7_2 4_2 5 7",
+        "  gate .96",
         "}",
         "",
-        "play riff",
+        "play bass",
     )
     text = "".join(
         f'<text x="11" y="{40 + 20 * index}" fill="#fec274">'
@@ -342,6 +343,33 @@ def screw_positions(
 def centered_component_specs(
     module_name: str, widget_source: str, panel_width: float
 ) -> tuple[tuple[str, float, float], ...]:
+    if module_name == "TfEventMerge2":
+        rows_match = re.search(
+            r"constexpr std::array<float, tfdsp::EventSignalCount> rows\s*"
+            r"\{(?P<rows>[^}]+)\};",
+            widget_source,
+        )
+        if rows_match is None:
+            raise RuntimeError("No Event Merge port rows were found")
+        rows = tuple(
+            float(value)
+            for value in re.findall(r"([0-9.]+)f", rows_match.group("rows"))
+        )
+        columns = tuple(
+            float(value)
+            for value in re.findall(r"Vec\(([0-9.]+)f, rows\[signal\]\)", widget_source)
+        )
+        if len(rows) != 5 or len(columns) != 3:
+            raise RuntimeError("Event Merge preview requires three five-port columns")
+        # Rack's PJ301M component is 23.7 units square; C++ positions widgets
+        # by their upper-left corner while static preview components use centres.
+        port_half_size = 23.7 / 2.0
+        return tuple(
+            ("PJ301MPort", column + port_half_size, row + port_half_size)
+            for row in rows
+            for column in columns
+        )
+
     if module_name != "TfProgSequencer":
         return ()
 
@@ -718,6 +746,10 @@ def render_preview(
         )
     widgets = widget_source.read_text(encoding="utf-8")
     controls = list(control_pattern(module_name).finditer(widgets))
+    if module_name == "TfEventMerge2":
+        # Its fifteen ports are emitted by one indexed C++ loop and expanded
+        # into static preview components by centered_component_specs().
+        controls = []
     lights = list(light_pattern(module_name).finditer(widgets))
     static_components = centered_component_specs(module_name, widgets, panel_width)
     switch_values = switch_defaults(widgets)

@@ -430,6 +430,7 @@ def test_smoke_patch_dependencies_and_cables_are_valid(name):
         "Fundamental",
         "ImpromptuModular",
         "TriggerFish-Elements",
+        "VCV-Recorder",
     }
     assert len({cable["id"] for cable in patch["cables"]}) == len(patch["cables"])
     assert all(cable["outputModuleId"] in module_ids for cable in patch["cables"])
@@ -470,9 +471,27 @@ def test_smoke_patch_has_playable_control_and_stereo_audio_paths(name):
 
 
 @pytest.mark.parametrize("name", PATCH_PATHS)
-def test_smoke_patch_does_not_name_local_hardware(name):
+def test_smoke_patch_uses_expected_hardware_configuration(name):
     patch = load_patch(name)
     audio = modules(patch, "AudioInterface")[0]
+
+    if name == "reverb_two_sources":
+        expected_midi = {
+            "driver": 4,
+            "deviceName": "SL GRAND 1",
+            "channel": -1,
+        }
+        for model in ("MIDIToCVInterface", "MIDICCToCVInterface"):
+            assert modules(patch, model)[0]["data"]["midi"] == expected_midi
+        assert audio["data"]["audio"] == {
+            "driver": 7,
+            "deviceName": "MOTU M Series",
+            "sampleRate": 48000,
+            "blockSize": 64,
+            "inputOffset": 0,
+            "outputOffset": 0,
+        }
+        return
 
     for model in ("MIDIToCVInterface", "MIDICCToCVInterface"):
         for midi_module in modules(patch, model):
@@ -842,7 +861,32 @@ def test_three_sequence_reverb_patch_merges_live_and_comping_piano_events():
     reverb = modules(patch, "TfReverb")[0]
     scope = modules(patch, "Scope")[0]
     audio = modules(patch, "AudioInterface")[0]
+    recorder = modules(patch, "Recorder")[0]
 
+    assert not modules(patch, "Notes")
+    assert patch["zoom"] == pytest.approx(0.93338090181350708)
+    assert patch["gridOffset"] == pytest.approx(
+        [-5.3927083015441895, -0.076356910169124603]
+    )
+    assert {module["id"]: module["pos"] for module in patch["modules"]} == {
+        3: [4, 0],
+        2: [34, 0],
+        4: [42, 0],
+        16: [72, 0],
+        9: [110, 0],
+        11: [116, 0],
+        12: [126, 0],
+        10: [139, 0],
+        18: [155, 0],
+        5: [0, 1],
+        6: [12, 1],
+        7: [36, 1],
+        8: [48, 1],
+        13: [72, 1],
+        14: [90, 1],
+        15: [98, 1],
+        17: [108, 1],
+    }
     assert len(sequencers) == 3
     assert len(voices) == 2
     assert param_values(clock)[0] == 96.0
@@ -951,6 +995,17 @@ def test_three_sequence_reverb_patch_merges_live_and_comping_piano_events():
     assert has_cable(patch, scene_pack["id"], 0, reverb["id"], 0)
     assert has_cable(patch, reverb["id"], 0, audio["id"], 0)
     assert has_cable(patch, reverb["id"], 1, audio["id"], 1)
+    assert has_cable(patch, reverb["id"], 0, recorder["id"], 2)
+    assert has_cable(patch, reverb["id"], 1, recorder["id"], 3)
+    assert param_values(recorder) == {0: 1.0, 1: 0.0}
+    assert recorder["data"] == {
+        "format": "wav",
+        "path": "",
+        "incrementPath": True,
+        "sampleRate": 48000,
+        "depth": 24,
+        "bitRate": 256000,
+    }
     assert has_cable(patch, scene_pack["id"], 0, scope["id"], 0)
     assert has_cable(patch, reverb["id"], 0, scope["id"], 1)
     assert has_cable(patch, reverb["id"], 1, scope["id"], 2)

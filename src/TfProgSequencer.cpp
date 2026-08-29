@@ -36,17 +36,18 @@ NVGcolor editorColor(tfui::HeatmapPalette palette, float intensity) noexcept {
   return nvgRGBf(rgb.red, rgb.green, rgb.blue);
 }
 
-constexpr const char *DefaultSource = R"(riff = sequence {
-  subdiv 8n
-  tonic C@4
-  scale minor
-  notes 1 x2 3{quiet} _ [>4 ^5{stacc}] 6*3 ~ 8{ten}
-  offset -6ms 0 +6ms |> rate 1/2
-  cv1 0 5 0 |> interp smooth
+constexpr const char *SlowBasslineExample = R"(bass = sequence {
+  subdiv 2n
+  tonic D@1
+  scale dorian
+  notes 1_2 7_2 4_2 5 7
+  gate .96
 }
 
-play riff
+play bass
 )";
+
+constexpr const char *DefaultSource = SlowBasslineExample;
 
 constexpr const char *AcidBasslineExample = R"(acid = sequence {
   subdiv 16n
@@ -62,17 +63,6 @@ iv = acid |> modulate_degree 4 |> octave -1
 v  = acid |> modulate_degree 5 |> octave -1 |> scale major
 song = acid * 8 + iv * 4 + v * 4
 play song
-)";
-
-constexpr const char *SlowBasslineExample = R"(bass = sequence {
-  subdiv 2n
-  tonic D@1
-  scale dorian
-  notes 1_2 7_2 4_2 5 7
-  gate .96
-}
-
-play bass
 )";
 
 constexpr const char *DescendingArpeggioExample = R"(arpeggio = sequence {

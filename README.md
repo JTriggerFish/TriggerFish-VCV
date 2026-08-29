@@ -30,7 +30,7 @@ Circuit-modelled sound generators and processors, plus pitch utilities for VCV R
   <tr>
     <td align="center"><a href="#transport"><img src="doc/TfTransport.png" height="260" alt="Transport module"><br><strong>Transport</strong></a></td>
     <td align="center"><a href="#prog-sequencer"><img src="doc/TfProgSequencer.png" height="260" alt="Prog Sequencer module"><br><strong>Prog Sequencer</strong></a></td>
-    <td></td>
+    <td align="center"><a href="#event-merge-2"><img src="doc/TfEventMerge2.png" height="260" alt="Event Merge 2 module"><br><strong>Event Merge 2</strong></a></td>
   </tr>
 </table>
 
@@ -510,6 +510,9 @@ arpeggio CV1 drives an 18-beat bipolar cutoff triangle across the four-beat
 note phrase, and CV2 sends a per-note AD envelope to the wavefolder Fold input.
 One Transport supplies Clock, Run, and Reset to all three sequencers so all
 transport operations act on them together.
+The checked-in patch selects the SL GRAND 1 MIDI ports and MOTU M Series audio
+device used by the development machine. A 48 kHz, 24-bit VCV Recorder receives
+the final stereo Room Reverb output in parallel with Audio and Scope.
 
 ### Event Merge 2
 

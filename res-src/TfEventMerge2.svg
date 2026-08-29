@@ -1,30 +1,30 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="180" height="380" viewBox="0 0 180 380">
-  <rect width="180" height="380" fill="#cecece"/>
-  <path d="M28 27h124" stroke="#777" stroke-width="0.7"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="380" viewBox="0 0 120 380">
+  <rect width="120" height="380" fill="#cecece"/>
+  <path d="M18 27h84" stroke="#777" stroke-width="0.7"/>
 
   <g font-family="DejaVu Sans, sans-serif" text-anchor="middle" fill="#1f1f1f">
-    <text x="90" y="17" font-size="9.2" font-weight="bold" letter-spacing="0.75">TRIGGERFISH</text>
-    <text x="90" y="38" font-size="7" font-weight="bold" letter-spacing="0.75">EVENT MERGE 2</text>
+    <text x="60" y="17" font-size="9.2" font-weight="bold" letter-spacing="0.75">TRIGGERFISH</text>
+    <text x="60" y="38" font-size="7" font-weight="bold" letter-spacing="0.75">EVENT MERGE 2</text>
     <g font-size="5.8" font-weight="bold" letter-spacing="0.45">
-      <text x="30" y="57">A</text>
-      <text x="90" y="57">B</text>
-      <text x="150" y="57">OUT</text>
+      <text x="17" y="57">A</text>
+      <text x="57" y="57">B</text>
+      <text x="97" y="57">OUT</text>
     </g>
     <g font-size="5" font-weight="bold" fill="#555">
-      <text x="90" y="68">PITCH</text>
-      <text x="90" y="122">GATE</text>
-      <text x="90" y="176">TRIGGER</text>
-      <text x="90" y="230">VELOCITY</text>
-      <text x="90" y="284">ACCENT</text>
+      <text x="57" y="68">PITCH</text>
+      <text x="57" y="122">GATE</text>
+      <text x="57" y="176">TRIGGER</text>
+      <text x="57" y="230">VELOCITY</text>
+      <text x="57" y="284">ACCENT</text>
     </g>
   </g>
 
   <g fill="#555" stroke="#333" stroke-width="0.45">
-    <rect x="130" y="64" width="40" height="40" rx="7"/>
-    <rect x="130" y="118" width="40" height="40" rx="7"/>
-    <rect x="130" y="172" width="40" height="40" rx="7"/>
-    <rect x="130" y="226" width="40" height="40" rx="7"/>
-    <rect x="130" y="280" width="40" height="40" rx="7"/>
+    <rect x="77" y="62" width="40" height="40" rx="7"/>
+    <rect x="77" y="116" width="40" height="40" rx="7"/>
+    <rect x="77" y="170" width="40" height="40" rx="7"/>
+    <rect x="77" y="224" width="40" height="40" rx="7"/>
+    <rect x="77" y="278" width="40" height="40" rx="7"/>
   </g>
 </svg>

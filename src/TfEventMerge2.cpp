@@ -92,13 +92,13 @@ struct TfEventMerge2Widget : ModuleWidget {
     constexpr std::array<float, tfdsp::EventSignalCount> rows{
         70.f, 124.f, 178.f, 232.f, 286.f};
     for (std::size_t signal = 0; signal < rows.size(); ++signal) {
-      addInput(createInput<PJ301MPort>(Vec(18.f, rows[signal]), module,
+      addInput(createInput<PJ301MPort>(Vec(5.f, rows[signal]), module,
                                       TfEventMerge2::A_PITCH_INPUT +
                                           static_cast<int>(signal)));
-      addInput(createInput<PJ301MPort>(Vec(78.f, rows[signal]), module,
+      addInput(createInput<PJ301MPort>(Vec(45.f, rows[signal]), module,
                                       TfEventMerge2::B_PITCH_INPUT +
                                           static_cast<int>(signal)));
-      addOutput(createOutput<PJ301MPort>(Vec(138.f, rows[signal]), module,
+      addOutput(createOutput<PJ301MPort>(Vec(85.f, rows[signal]), module,
                                         TfEventMerge2::PITCH_OUTPUT +
                                             static_cast<int>(signal)));
     }
