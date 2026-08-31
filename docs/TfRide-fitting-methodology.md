@@ -110,20 +110,27 @@ and generated audio hashes. A result without this manifest is exploratory.
 
 ## Tool layout
 
-The replacement tooling will be built as small modules with one responsibility:
+The implemented numerical foundation is the installable
+`python/triggerfish_percussion/` package:
 
 ```text
-tools/percussion_fit/
-  audio_io.py       loading, channel policy, resampling, hashes
-  dataset.py        manifest validation and cell metadata
-  segmentation.py   onset and perceptual-region boundaries
-  descriptors.py    named observable measurements
-  objectives.py     explicit loss terms and hard gates
-  optimizer.py      search adapter only
-  report.py         tables, plots, and manifests
-  audition.py       deterministic A/B and sweep assembly
+python/triggerfish_percussion/
+  audio_io.py          level-preserving audio, resampling, hashes
+  alignment.py         impact onset and sample-only alignment
+  segmentation.py      explicit perceptual-region boundaries
+  transforms.py        canonical multiresolution STFT
+  erb.py               energy-conserving ERB aggregation
+  decay.py             noise-aware curves and band fits
+  descriptors.py       named contact and dense-response measurements
+  modes.py             ESPRIT baseline and optimal mode matching
+  modal_evidence.py    subband, repeated-hit evidence and uncertainty
+  distances.py         explicit scalar loss terms
+  comparison.py        shared reference/synthesis analysis contract
+  transform_cache.py   versioned reusable transforms
 ```
 
-Instrument rendering remains separate from analysis. Individual files and
-functions should stay focused; orchestration code may compose components but
-must not contain their DSP or measurement algorithms.
+Dataset validation, renderer orchestration, optimization, audition assembly,
+and Plotly reporting will remain separate under `tools/percussion_fit/` when
+the first instrument graph is selected. Instrument rendering remains separate
+from analysis. Orchestration code may compose components but must not contain
+their DSP or measurement algorithms.

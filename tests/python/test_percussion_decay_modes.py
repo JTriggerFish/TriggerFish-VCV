@@ -1,0 +1,164 @@
+import numpy as np
+import pytest
+
+from triggerfish_percussion.decay import band_decay_fits, energy_decay_db, fit_decay
+from triggerfish_percussion.descriptors import (
+    contact_descriptors,
+    spectral_trajectories,
+)
+from triggerfish_percussion.distances import (
+    decay_time_distance,
+    energy_matching_gain,
+    erb_trajectory_distance,
+    log_spectral_distance,
+    log_ratio_relationship_distance,
+    modal_distance,
+)
+from triggerfish_percussion.modes import (
+    DampedMode,
+    estimate_damped_modes,
+    estimate_mode_count,
+    match_modes,
+    refit_mode_amplitudes,
+    resynthesize_modes,
+)
+from triggerfish_percussion.modal_evidence import (
+    EspritPass,
+    estimate_modal_evidence,
+    estimate_subband_modes,
+)
+
+
+def test_energy_decay_recovers_a_known_t60():
+    sample_rate = 1_000
+    time = np.arange(2_000) / sample_rate
+    energy = 10.0 ** (-6.0 * time / 0.5)
+    decay = energy_decay_db(energy)
+    fit = fit_decay(time, decay, -5.0, -25.0, robust=False)
+    assert fit.t60_seconds == pytest.approx(0.5, rel=0.01)
+    assert fit.r_squared > 0.999
+    fits = band_decay_fits(time, np.vstack((energy, 10.0 ** (-6.0 * time))))
+    assert [item.t60_seconds for item in fits] == pytest.approx([0.5, 1.0], rel=0.03)
+
+
+def test_esprit_recovers_close_damped_sinusoids():
+    sample_rate = 8_000
+    time = np.arange(2_048) / sample_rate
+    signal = np.sin(2 * np.pi * 347.0 * time) * np.exp(-time / 0.5) + 0.4 * np.sin(
+        2 * np.pi * 371.0 * time + 0.3
+    ) * np.exp(-time / 0.2)
+    modes = estimate_damped_modes(signal, sample_rate, 2, pencil_samples=256)
+    assert [mode.frequency_hz for mode in modes] == pytest.approx(
+        [347.0, 371.0], abs=0.02
+    )
+    assert [mode.decay_seconds for mode in modes] == pytest.approx(
+        [0.5, 0.2], rel=1.0e-3
+    )
+    assert [mode.amplitude for mode in modes] == pytest.approx([1.0, 0.4], rel=1.0e-3)
+    residual = signal - resynthesize_modes(modes, sample_rate, signal.size)
+    assert np.sqrt(np.mean(residual**2)) < 1.0e-8
+
+
+def test_multiresolution_modal_evidence_requires_repeatable_candidates():
+    sample_rate = 8_000
+    time = np.arange(2_048) / sample_rate
+    clean = np.sin(2 * np.pi * 347.0 * time) * np.exp(-time / 0.5) + 0.4 * np.sin(
+        2 * np.pi * 371.0 * time + 0.3
+    ) * np.exp(-time / 0.2)
+    generator = np.random.default_rng(9)
+    hits = tuple(clean + 1.0e-4 * generator.normal(size=clean.size) for _ in range(2))
+    passes = (
+        EspritPass(300.0, 430.0, 2, 128),
+        EspritPass(300.0, 430.0, 2, 256),
+    )
+    evidence = estimate_modal_evidence(hits, sample_rate, passes, merge_cents=10.0)
+    accepted = [
+        item for item in evidence if item.hit_count == 2 and item.observation_count == 4
+    ]
+    assert [item.mode.frequency_hz for item in accepted] == pytest.approx(
+        [347.0, 371.0], abs=0.15
+    )
+    structural = tuple(item.mode for item in accepted)
+    fitted = refit_mode_amplitudes(clean, sample_rate, structural)
+    residual = clean - resynthesize_modes(fitted, sample_rate, clean.size)
+    assert np.sqrt(np.mean(residual**2)) < 1.0e-3
+
+
+def test_mdl_model_order_is_evidence_for_known_modes_in_white_noise():
+    sample_rate = 8_000
+    time = np.arange(2_048) / sample_rate
+    generator = np.random.default_rng(12)
+    signal = (
+        np.sin(2 * np.pi * 347.0 * time) * np.exp(-time / 0.5)
+        + 0.4 * np.sin(2 * np.pi * 711.0 * time + 0.3) * np.exp(-time / 0.2)
+        + 0.01 * generator.normal(size=time.size)
+    )
+    evidence = estimate_mode_count(signal, 6, pencil_samples=256)
+    assert evidence.selected_mode_count == 2
+    assert evidence.mdl_values.shape == evidence.candidate_mode_counts.shape
+    lowpass_modes = estimate_subband_modes(
+        signal, sample_rate, EspritPass(0.0, 500.0, 1, 128)
+    )
+    assert lowpass_modes[0].frequency_hz == pytest.approx(347.0, abs=0.1)
+
+
+def test_hungarian_mode_matching_reports_errors_and_unmatched_modes():
+    reference = (
+        DampedMode(300.0, 1.0, 1.0, 0.0),
+        DampedMode(600.0, 0.5, 0.5, 0.0),
+    )
+    candidate = (
+        DampedMode(606.0, 0.45, 0.45, 0.0),
+        DampedMode(303.0, 1.1, 0.9, 0.0),
+        DampedMode(1_200.0, 0.2, 0.1, 0.0),
+    )
+    matching = match_modes(reference, candidate)
+    assert {
+        (match.reference_index, match.candidate_index) for match in matching.matches
+    } == {
+        (0, 1),
+        (1, 0),
+    }
+    assert matching.extra_candidate == (2,)
+    assert modal_distance(matching)[-1].value == 1.0
+
+    rejected = match_modes(
+        (DampedMode(300.0, 1.0, 1.0, 0.0),),
+        (DampedMode(1_200.0, 1.0, 1.0, 0.0),),
+    )
+    assert not rejected.matches
+    assert rejected.missing_reference == (0,)
+    assert rejected.extra_candidate == (0,)
+
+
+def test_named_distances_are_zero_only_for_matching_descriptors():
+    reference = np.array([[1.0, 0.5], [0.25, 0.125]])
+    assert energy_matching_gain(reference, 0.5 * reference) == pytest.approx(2.0)
+    assert log_spectral_distance(reference, reference).value == pytest.approx(0.0)
+    level, change = erb_trajectory_distance(reference, reference)
+    assert level.value == pytest.approx(0.0)
+    assert change.value == pytest.approx(0.0)
+    assert decay_time_distance(
+        np.array([1.0, 2.0]), np.array([1.0, 2.0])
+    ).value == pytest.approx(0.0)
+    assert log_ratio_relationship_distance(
+        np.array([1.0, 2.0]),
+        np.array([2.0, 3.0]),
+        np.array([0.5, 1.0]),
+        np.array([1.0, 1.5]),
+        "velocity_relation",
+    ).value == pytest.approx(0.0)
+
+
+def test_contact_and_dense_descriptors_have_declared_units_and_shapes():
+    sample_rate = 8_000
+    time = np.arange(256) / sample_rate
+    contact = np.hanning(256) * np.sin(2 * np.pi * 1_000 * time)
+    descriptor = contact_descriptors(contact, sample_rate)
+    assert descriptor.energy > 0
+    assert descriptor.spectral_centroid_hz == pytest.approx(1_000, abs=5)
+    frequencies = np.array([100.0, 1_000.0, 4_000.0])
+    power = np.array([[1.0, 0.5], [2.0, 2.0], [0.5, 1.0]])
+    trajectories = spectral_trajectories(frequencies, power)
+    assert trajectories.centroid_hz.shape == (2,)
+    assert np.isfinite(trajectories.flatness).all()

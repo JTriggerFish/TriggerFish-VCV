@@ -1,7 +1,10 @@
 #include "tfdsp/percussion/contact_exciter.hpp"
+#include "tfdsp/percussion/correlated_fm_burst.hpp"
 #include "tfdsp/percussion/coupled_resonator_network.hpp"
 #include "tfdsp/percussion/dispersion_loop.hpp"
 #include "tfdsp/percussion/frequency_shifter.hpp"
+#include "tfdsp/percussion/micro_contact_process.hpp"
+#include "tfdsp/percussion/observation_model.hpp"
 
 #include <chrono>
 #include <cmath>
@@ -54,6 +57,44 @@ void BenchmarkContactExciter() {
   });
 }
 
+void BenchmarkCorrelatedFm() {
+  tfdsp::percussion::CorrelatedFmBurst burst;
+  burst.Prepare(48000.f);
+  tfdsp::percussion::CorrelatedFmBurstParameters parameters;
+  parameters.amplitude.segments[0] = {1.f, .001f};
+  parameters.amplitude.segments[1] = {0.f, .05f};
+  parameters.amplitude.segmentCount = 2;
+  parameters.carrierFrequencyHz.initialValue = 80.f;
+  parameters.frequencyDeviationHz.initialValue = 2000.f;
+  Measure("correlated FM burst", [&](const std::size_t sample) {
+    if (sample % 4096 == 0)
+      burst.Trigger(parameters);
+    return burst.Process();
+  });
+}
+
+void BenchmarkMicroContacts() {
+  tfdsp::percussion::MicroContactProcess process;
+  process.Prepare(48000.f);
+  tfdsp::percussion::MicroContactProcessParameters parameters;
+  parameters.densityHz = 8000.f;
+  process.StartStream(parameters);
+  Measure("micro-contact stream", [&](const std::size_t) {
+    return process.Process();
+  });
+}
+
+void BenchmarkObservation() {
+  using Model = tfdsp::percussion::ObservationModel<4>;
+  Model model;
+  Model::Parameters parameters{};
+  model.Prepare(48000.f, .1f, parameters);
+  Measure("four-source observation", [&](const std::size_t sample) {
+    const float input = std::sin(.071f * static_cast<float>(sample));
+    return model.Process({input, .5f * input, -.25f * input, .1f * input});
+  });
+}
+
 void BenchmarkResonators() {
   using Network = tfdsp::percussion::CoupledResonatorNetwork<12>;
   Network::Parameters parameters{};
@@ -84,7 +125,10 @@ void BenchmarkDispersion() {
 
 int main() {
   BenchmarkContactExciter();
+  BenchmarkCorrelatedFm();
+  BenchmarkMicroContacts();
   BenchmarkFrequencyShifter();
   BenchmarkResonators();
   BenchmarkDispersion();
+  BenchmarkObservation();
 }

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "passive_constraint.hpp"
 #include "tfdsp/finite_audio.hpp"
 
 #include <algorithm>
@@ -39,6 +40,10 @@ public:
   }
 
   float Process(float input) noexcept {
+    return Process(input, {});
+  }
+
+  float Process(float input, const PassiveConstraintGains constraint) noexcept {
     if (!std::isfinite(input)) {
       Reset();
       return 0.f;
@@ -51,8 +56,12 @@ public:
     const float low = lowState_;
     const float middle = belowHighState_ - lowState_;
     const float high = safeInput - belowHighState_;
-    const float output =
-        lowGain_ * low + middleGain_ * middle + highGain_ * high;
+    const PassiveConstraintGains bounded =
+        SanitizePassiveConstraint(constraint);
+    const float output = bounded.broadband *
+        (bounded.low * lowGain_ * low +
+         bounded.middle * middleGain_ * middle +
+         bounded.high * highGain_ * high);
     if (!std::isfinite(output)) {
       Reset();
       return 0.f;

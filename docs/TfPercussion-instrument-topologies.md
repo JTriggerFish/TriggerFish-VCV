@@ -98,6 +98,13 @@ candidate reduced implementation.
 
 #### Passive resonator coupling and acoustic cavity
 
+**Status: deferred structured-model extension.** None of the compact
+video-derived ride, hi-hat, snare, or kick graphs requires a generic
+bidirectional body coupler. The existing orthogonal resonator mixer already
+covers passive exchange among lines within one resonator bank. Do not implement
+`EnergyCoupler` or `AcousticCavity` until a coupled membrane/body candidate is
+selected and exposes energy-normalized contact ports.
+
 An `EnergyCoupler` exchanges state bidirectionally without creating energy. It
 connects two membranes through an `AcousticCavity`, whose reduced model may
 contain low acoustic modes, propagation delay, frequency-dependent loss, and a
@@ -113,6 +120,13 @@ The cavity is not room reverberation. It is part of the instrument and affects
 its poles. The external room remains a separate renderer.
 
 #### Distributed one-sided contact
+
+**Status: deferred higher-fidelity extension.** It is not required by the
+compact video-derived graphs or by the first ride and hi-hat implementations.
+First test pedal-controlled passive loss plus driven stochastic contact for the
+hi-hat, and the compact bright residual for the snare. Implement distributed
+contact only if matched references expose state-dependent plate or wire
+interaction that those smaller graphs cannot reproduce.
 
 A `DistributedContactCoupler` converts relative displacement and velocity
 between resonating objects into many bounded, one-sided collisions. It should
@@ -153,10 +167,13 @@ concealing an incorrect body model.
 
 #### Bounded nonlinear output processing
 
-An oversampled saturator or wave shaper is useful for contact crack and for
-microphone/preamp coloration. It belongs to an optional observation or output
-stage and must be bypassable during body calibration. Otherwise an optimizer
-can use clipping to disguise incorrect contact levels and resonances.
+**Status: deferred pending feature design.** A single saturator is too narrow
+an abstraction for the intended optional production stage. The later design
+should consider oversampled saturation, compression, trigger-aware envelope
+shaping, filtering, and deliberately high-quality sample-rate or bit-depth
+reduction as one composable character processor. It must be exactly bypassable
+during body calibration, expose every gain change, and never let an optimizer
+use processing to disguise incorrect contact levels or resonances.
 
 ### Candidate snare topology
 

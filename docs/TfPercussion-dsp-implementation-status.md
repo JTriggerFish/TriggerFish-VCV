@@ -11,12 +11,14 @@ instrument or Rack module.
 
 | Family | Components | Current analytic coverage |
 | --- | --- | --- |
-| Contact | half-sine force pulse, tonal chirp, enveloped noise with neutral-white and shelf-tilt settings, stochastic micro-contacts, explicit direct/body router | duration, endpoints, strength-to-energy mapping, deterministic seeds, bounds, routing |
+| Control | fixed-capacity linear/geometric breakpoint trajectory, asymmetric passive-loss controller | exact endpoints, continuous retrigger, sanitization, fast loss/slow release, ordered attenuation-only gains |
+| Contact and compact body | half-sine force pulse, tonal chirp, enveloped noise, finite micro-contact burst, gated/finite renewal micro-contact process, 2x correlated FM burst with 4x reference, explicit direct/body router | duration, endpoints, strength-to-energy mapping, deterministic seeds, gate release, FM spectral convergence, bounds, routing |
 | Delay and diffusion | 12-tap/2048-phase moving sinc delay, static Thiran delay, shared cubic Lagrange delay, fractional Schroeder all-pass | tone gain, low-frequency delay, polynomial exactness, integer-boundary continuity, impulse energy, five sample rates |
 | Spectral motion | 255-tap antisymmetric FIR Hilbert transformer, phase-continuous signed SSB frequency shifter, and fourth-order translation-band guards | wanted level, image rejection, exact zero shift, through-zero automation, DC/Nyquist translated-content rejection, five sample rates |
-| Resonance and loss | complementary three-band T60 loss, orthogonal Givens mixer, wet-only coupled fractional-comb network | exact identity at zero coupling, scattering energy, T60 recurrence, dry isolation |
+| Resonance and loss | complementary three-band T60 loss, passive constraint gains, orthogonal Givens mixer, projected wet-only fractional-comb network, explicit output submix | exact identity at zero coupling, scattering energy, T60 recurrence, passive attenuation, excitation isolation, group routing |
 | Cymbal bloom | slow stochastic delay, 2x oversampled bounded self-phase delay with a 4x reference implementation, serial two-all-pass dispersion loop with explicit outer feedback | 1x/2x comparison against 4x, causal onset and declared recurrence delay, zero-drive linear reduction, no hidden feedback sample, long contractive stress |
 | Radiation | guarded TDF2 biquad designs and a static high-pass/colour/low-pass chain | centre gain, pass/reject bands, sample-rate sweep, non-finite recovery |
+| Observation | zero-capable static fractional delay and per-source gain, polarity, delay, and radiation paths | exact zero and integer delay, source isolation, polarity, non-finite recovery |
 
 All sample loops are allocation-free. Tables and delay storage are created in
 `Prepare`; filter and recurrence coefficients are built during preparation,
@@ -40,11 +42,19 @@ environment from inside a component.
 
 ## Deliberate distinctions
 
-`EnvelopedNoiseBurst` and `MicroContactBurst` are separate. The first is a
+`EnvelopedNoiseBurst`, `MicroContactBurst`, and `MicroContactProcess` are
+separate. The first is a
 compact oscillator-plus-noise source for tutorial-style cymbal/hi-hat graphs;
 zero tilt is exactly white before its envelope. The second represents many
-small implement contacts and is appropriate for mallets and brushes. Neither
-is mixed into an instrument output implicitly.
+small implement contacts in one finite hit. The process adds finite clusters
+and gated streams driven by a Poisson scheduler and smooth overlapping contact
+windows. Density and incident amplitude remain separate controls. None is
+mixed into an instrument output implicitly.
+
+`CorrelatedFmBurst` is a general compact body/contact source rather than a kick
+voice. Amplitude, carrier frequency, and frequency-deviation trajectories are
+independent. The modulator continuously blends seeded band-limited irregular
+motion with a periodic oscillator, and optional perturbation is explicit.
 
 The dispersion return is stored in its base propagation delay. The signal is
 read, passed serially through slow delay, two all-passes, self-phase delay and
@@ -67,9 +77,9 @@ distance, humidity, and frequency when that distinction matters.
 These tests are the first analytic quality level only. The following gates are
 still open:
 
-- add smoothed, state-preserving live retuning for size, tune, location, mute
-  and other controls; current delay-network retuning is explicitly static and
-  clears state;
+- add smoothed, state-preserving live retuning for size and tune; use dynamic
+  excitation projections for location and integrate the implemented passive
+  constraint controller for mute without clearing stored state;
 - extend the existing five-rate, non-finite, denormal, retrigger and automation
   tests to rapid simultaneous control changes across the assembled graph;
 - produce isolated ablation WAVs and then assemble the first neutral ride graph;
@@ -77,3 +87,17 @@ still open:
 
 Calibration must not begin by optimizing around any of these open numerical or
 control-path questions.
+
+The Python numerical-analysis implementation and its remaining real-data gates
+are recorded in `TfPercussion-analysis-toolkit.md`. No Plotly report or browser
+renderer is part of the present component pass.
+
+## Deferred structured-model extensions
+
+`EnergyCoupler`, `AcousticCavity`, and `DistributedContactCoupler` remain
+documented future components rather than prerequisites for the compact
+video-derived instruments. Existing orthogonal mixing covers passive exchange
+inside one resonator bank. Cross-body energy coupling waits for a selected
+membrane/body model with energy-normalized ports; distributed collision waits
+until compact hi-hat or snare fits demonstrate a state-dependent interaction
+that passive loss and driven stochastic contact cannot reproduce.

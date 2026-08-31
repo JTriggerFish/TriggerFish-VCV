@@ -132,6 +132,8 @@ The remaining design is split by responsibility:
 - [Cymbal analysis methods](TfCymbal-analysis-methods.md) and
   [ride reference corpus](TfRide-reference-corpus.md): analysis research and
   source-data policy.
+- [Percussion analysis toolkit](TfPercussion-analysis-toolkit.md): implemented
+  numerical contracts and the future Plotly/WebAssembly reporting boundary.
 
 ## Open architectural questions
 

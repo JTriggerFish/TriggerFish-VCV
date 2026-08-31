@@ -26,6 +26,11 @@ public:
   using Parameters = std::array<ResonatorLineParameters, LineCount>;
   using Frame = std::array<float, LineCount>;
 
+  struct Output {
+    Frame lines{};
+    float sum{};
+  };
+
   void Prepare(const float sampleRate, const float maximumDelaySamples,
                const Parameters &parameters, const float lowCrossoverHz,
                const float highCrossoverHz) {
@@ -70,19 +75,32 @@ public:
   }
 
   float Process(float input) noexcept {
+    Frame projection{};
+    projection.fill(1.f);
+    return ProcessProjected(input, projection).sum;
+  }
+
+  Output ProcessProjected(float input, const Frame &excitationProjection,
+                          const PassiveConstraintGains constraint = {}) noexcept {
     input = tfdsp::FiniteNormalOrZero(input);
     Frame wet{};
-    float output = 0.f;
+    Output output{};
     for (std::size_t line = 0; line < LineCount; ++line) {
       wet[line] = delays_[line].Read();
-      output += parameters_[line].outputGain * wet[line];
+      output.lines[line] = tfdsp::FiniteNormalOrZero(
+          parameters_[line].outputGain * wet[line]);
+      output.sum += output.lines[line];
     }
     const Frame feedback = mixer_.Process(wet);
     for (std::size_t line = 0; line < LineCount; ++line) {
-      const float drive = parameters_[line].inputGain * input;
-      delays_[line].Push(drive + losses_[line].Process(feedback[line]));
+      const float projection = std::clamp(
+          tfdsp::FiniteNormalOrZero(excitationProjection[line]), -16.f, 16.f);
+      const float drive = parameters_[line].inputGain * projection * input;
+      delays_[line].Push(
+          drive + losses_[line].Process(feedback[line], constraint));
     }
-    return tfdsp::FiniteNormalOrZero(output);
+    output.sum = tfdsp::FiniteNormalOrZero(output.sum);
+    return output;
   }
 
 private:

@@ -2,6 +2,7 @@
 
 #include "tfdsp/percussion/coupled_resonator_network.hpp"
 #include "tfdsp/percussion/orthogonal_mixer.hpp"
+#include "tfdsp/percussion/resonator_submix.hpp"
 #include "tfdsp/percussion/three_band_decay_filter.hpp"
 
 #include <algorithm>
@@ -63,6 +64,53 @@ void TestDecayFilter() {
   filter.Reset();
   Check(filter.Process(std::numeric_limits<float>::denorm_min()) == 0.f,
         "decay filter flushes subnormal state to exact silence");
+
+  filter.Reset();
+  filter.SetDecayTimes(.01f, equal);
+  const tfdsp::percussion::PassiveConstraintGains constraint{.8f, .5f, .5f,
+                                                             .5f};
+  largestError = 0.0;
+  for (std::size_t sample = 0; sample < 10000; ++sample) {
+    const float input = percussion_test::Sine(sample, 2173.f, 48000.f);
+    largestError = std::max(largestError,
+        std::abs(static_cast<double>(filter.Process(input, constraint) -
+                                    .4f * gain * input)));
+  }
+  CheckNear(largestError, 0.0, 2.e-6,
+            "equal constraint gains add exact passive loop attenuation");
+}
+
+void TestResonatorProjectionAndSubmix() {
+  using Network = tfdsp::percussion::CoupledResonatorNetwork<3>;
+  Network::Parameters parameters{};
+  for (auto &line : parameters) {
+    line.delaySamples = 12.f;
+    line.decay = {10.f, 10.f, 10.f};
+    line.inputGain = 1.f;
+    line.outputGain = 1.f;
+  }
+  Network network;
+  network.Prepare(48000.f, 64.f, parameters, 400.f, 5000.f);
+  const Network::Frame excitation{1.f, 0.f, .25f};
+  Network::Output output{};
+  for (std::size_t sample = 0; sample <= 12; ++sample)
+    output = network.ProcessProjected(sample == 0 ? 1.f : 0.f, excitation);
+  CheckNear(output.lines[0], 1.0, 1.e-7,
+            "projection excites the selected resonator line");
+  CheckNear(output.lines[1], 0.0, 1.e-7,
+            "zero projection leaves a resonator line unexcited");
+  CheckNear(output.lines[2], .25, 1.e-7,
+            "projection preserves continuous location weights");
+
+  using Submix = tfdsp::percussion::ResonatorSubmix<3, 2>;
+  Submix submix;
+  Submix::Weights weights{{{{1.f, 1.f, 0.f}}, {{0.f, 0.f, 2.f}}}};
+  submix.SetWeights(weights);
+  const Submix::BusFrame buses = submix.Process(output.lines);
+  CheckNear(buses[0], 1.0, 1.e-7,
+            "resonator submix exposes an ordinary line group");
+  CheckNear(buses[1], .5, 1.e-7,
+            "resonator submix permits calibrated group weights");
 }
 
 void TestIndependentResonator() {
@@ -132,6 +180,7 @@ void TestStaticRetuneClearsEveryState() {
 int main() {
   TestOrthogonalMixer();
   TestDecayFilter();
+  TestResonatorProjectionAndSubmix();
   TestIndependentResonator();
   TestStaticRetuneClearsEveryState();
   if (percussion_test::failures == 0)

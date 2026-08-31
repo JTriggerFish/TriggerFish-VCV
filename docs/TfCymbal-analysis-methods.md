@@ -23,6 +23,15 @@ found more than 100 modes plus split partners in an 18-inch cymbal, while
 nonlinear cymbal models and measurements describe a wide-band energy cascade.
 At high modal overlap, individual peaks in an FFT cease to be reliable objects.
 
+The first implementation of the shared numerical layer is documented in
+[the percussion analysis toolkit](TfPercussion-analysis-toolkit.md). It now
+provides the canonical STFT, ERB, decay, and descriptor representations, a
+tested full-band ESPRIT baseline, settled FIR subband passes, repeated-hit
+evidence aggregation, uncertainty, and full-signal resynthesis. Explicit
+singular-value/MDL model-order evidence is also available, but external
+challenge validation below remains a gate before real ride ridges become
+accepted targets.
+
 ## Modal estimator candidates
 
 ### First baseline: SAMPLE and BeatsDROP

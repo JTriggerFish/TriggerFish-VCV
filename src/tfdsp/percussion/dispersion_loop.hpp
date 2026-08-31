@@ -62,13 +62,18 @@ public:
   }
 
   float Process(float bodyDrive) noexcept {
+    return Process(bodyDrive, {});
+  }
+
+  float Process(float bodyDrive,
+                const PassiveConstraintGains constraint) noexcept {
     bodyDrive = tfdsp::FiniteNormalOrZero(bodyDrive);
     float circulating = base_.Read();
     circulating = slow_.Process(circulating);
     circulating = firstAllpass_.Process(circulating);
     circulating = secondAllpass_.Process(circulating);
     circulating = selfPhase_.Process(circulating);
-    const float feedback = feedbackGain_ * loss_.Process(circulating);
+    const float feedback = feedbackGain_ * loss_.Process(circulating, constraint);
     base_.Push(bodyDrive + feedback);
     return tfdsp::FiniteNormalOrZero(circulating);
   }

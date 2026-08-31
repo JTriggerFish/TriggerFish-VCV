@@ -144,6 +144,35 @@ void TestExplicitFeedbackCausality() {
         "dispersion declares the oversampled stage's nominal latency");
 }
 
+void TestPassiveConstraintDampsWithoutExciting() {
+  const auto parameters = LinearLoopParameters();
+  tfdsp::percussion::DispersionLoop neutral;
+  tfdsp::percussion::DispersionLoop constrained;
+  neutral.Prepare(48000.f, 64.f, parameters);
+  constrained.Prepare(48000.f, 64.f, parameters);
+  const tfdsp::percussion::PassiveConstraintGains mute{.5f, .5f, .5f, .5f};
+  double neutralTail = 0.0;
+  double constrainedTail = 0.0;
+  bool silentStateRemainsSilent = true;
+  tfdsp::percussion::DispersionLoop silent;
+  silent.Prepare(48000.f, 64.f, parameters);
+  for (std::size_t sample = 0; sample < 4096; ++sample) {
+    const float input = sample == 0 ? 1.f : 0.f;
+    const float neutralOutput = neutral.Process(input);
+    const float constrainedOutput = constrained.Process(input, mute);
+    if (sample > 256) {
+      neutralTail += neutralOutput * neutralOutput;
+      constrainedTail += constrainedOutput * constrainedOutput;
+    }
+    silentStateRemainsSilent =
+        silentStateRemainsSilent && silent.Process(0.f, mute) == 0.f;
+  }
+  Check(constrainedTail < .1 * neutralTail,
+        "passive constraint removes energy inside dispersion feedback");
+  Check(silentStateRemainsSilent,
+        "changing dispersion loss cannot excite a silent loop");
+}
+
 template <typename Stage>
 std::vector<float> RenderNonlinear(Stage &stage, const float sampleRate) {
   constexpr std::size_t Warmup = 4096;
@@ -262,6 +291,7 @@ int main() {
   TestZeroDriveSelfPhaseReference();
   TestSelfPhaseReportsItsEffectiveDelay();
   TestExplicitFeedbackCausality();
+  TestPassiveConstraintDampsWithoutExciting();
   TestTwoTimesNonlinearityAgainstFourTimesReference();
   TestNonlinearStress();
   if (percussion_test::failures == 0)

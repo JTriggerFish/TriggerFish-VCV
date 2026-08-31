@@ -145,6 +145,27 @@ if(BUILD_TESTING)
 	add_test(NAME triggerfish_percussion_contact_tests
 		COMMAND triggerfish_percussion_contact_tests)
 
+	add_executable(triggerfish_percussion_control_tests
+		tests/percussion_control_tests.cpp)
+	target_link_libraries(triggerfish_percussion_control_tests PRIVATE
+		triggerfish_dsp)
+	add_test(NAME triggerfish_percussion_control_tests
+		COMMAND triggerfish_percussion_control_tests)
+
+	add_executable(triggerfish_percussion_fm_tests
+		tests/percussion_fm_tests.cpp)
+	target_link_libraries(triggerfish_percussion_fm_tests PRIVATE
+		triggerfish_dsp)
+	add_test(NAME triggerfish_percussion_fm_tests
+		COMMAND triggerfish_percussion_fm_tests)
+
+	add_executable(triggerfish_percussion_micro_contact_tests
+		tests/percussion_micro_contact_tests.cpp)
+	target_link_libraries(triggerfish_percussion_micro_contact_tests PRIVATE
+		triggerfish_dsp)
+	add_test(NAME triggerfish_percussion_micro_contact_tests
+		COMMAND triggerfish_percussion_micro_contact_tests)
+
 	add_executable(triggerfish_percussion_resonator_tests
 		tests/percussion_resonator_tests.cpp)
 	target_link_libraries(triggerfish_percussion_resonator_tests PRIVATE
@@ -165,6 +186,13 @@ if(BUILD_TESTING)
 		triggerfish_dsp)
 	add_test(NAME triggerfish_percussion_radiation_tests
 		COMMAND triggerfish_percussion_radiation_tests)
+
+	add_executable(triggerfish_percussion_observation_tests
+		tests/percussion_observation_tests.cpp)
+	target_link_libraries(triggerfish_percussion_observation_tests PRIVATE
+		triggerfish_dsp)
+	add_test(NAME triggerfish_percussion_observation_tests
+		COMMAND triggerfish_percussion_observation_tests)
 
 	add_executable(triggerfish_percussion_benchmark EXCLUDE_FROM_ALL
 		tests/percussion_benchmark.cpp)

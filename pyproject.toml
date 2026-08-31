@@ -21,12 +21,12 @@ dev = [
 reverb = ["scipy>=1.14", "torch>=2.7"]
 
 [project.optional-dependencies]
-analysis = ["matplotlib>=3.9", "scipy>=1.14"]
+analysis = ["scipy>=1.14"]
 
 [tool.scikit-build]
 cmake.args = ["-DTRIGGERFISH_BUILD_PYTHON=ON", "-DBUILD_TESTING=OFF"]
 build-dir = "build/python/{wheel_tag}"
-wheel.packages = ["python/triggerfish_reverb"]
+wheel.packages = ["python/triggerfish_reverb", "python/triggerfish_percussion"]
 
 # Windows development uses the same MinGW ABI as the Rack SDK.  Pin both the
 # generator and compiler discovery here so a plain `uv run` cannot silently
