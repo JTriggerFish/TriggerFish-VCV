@@ -34,7 +34,11 @@ public:
     sampleCount_ = std::max<std::size_t>(
         1, static_cast<std::size_t>(std::lround(
                std::clamp(durationSeconds, 0.f, 1.f) * sampleRate_)));
-    amplitude_ = std::max(0.f, amplitude);
+    amplitude_ = std::clamp(amplitude, 0.f, 16.f);
+    if (amplitude_ == 0.f) {
+      sampleCount_ = 0;
+      return;
+    }
     sample_ = 0;
     constexpr double Pi = 3.1415926535897932384626433832795;
     const double step = Pi / (static_cast<double>(sampleCount_) + 1.0);

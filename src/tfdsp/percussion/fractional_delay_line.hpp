@@ -1,5 +1,7 @@
 #pragma once
 
+#include "tfdsp/finite_audio.hpp"
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -38,7 +40,7 @@ public:
   void Push(const float input) noexcept {
     if (buffer_.empty())
       return;
-    buffer_[writeIndex_] = std::isfinite(input) ? input : 0.f;
+    buffer_[writeIndex_] = tfdsp::FiniteNormalOrZero(input);
     if (++writeIndex_ == buffer_.size())
       writeIndex_ = 0;
   }

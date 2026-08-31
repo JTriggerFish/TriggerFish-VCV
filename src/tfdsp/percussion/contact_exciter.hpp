@@ -5,6 +5,7 @@
 #include "micro_contact_burst.hpp"
 #include "tonal_contact_chirp.hpp"
 
+#include <algorithm>
 #include <cmath>
 
 namespace tfdsp::percussion {
@@ -55,6 +56,7 @@ public:
 
   void Trigger(const ContactExciterParameters &parameters) noexcept {
     routing_ = parameters.routing;
+    SanitizeRouting();
     pulse_.Trigger(parameters.pulseDurationSeconds, parameters.pulseAmplitude);
     chirp_.Trigger(parameters.chirp);
     noise_.Trigger(parameters.noise);
@@ -86,6 +88,21 @@ public:
   }
 
 private:
+  static float BoundedGain(const float gain) noexcept {
+    return std::clamp(std::isfinite(gain) ? gain : 0.f, -16.f, 16.f);
+  }
+
+  void SanitizeRouting() noexcept {
+    routing_.pulseDirect = BoundedGain(routing_.pulseDirect);
+    routing_.pulseBody = BoundedGain(routing_.pulseBody);
+    routing_.chirpDirect = BoundedGain(routing_.chirpDirect);
+    routing_.chirpBody = BoundedGain(routing_.chirpBody);
+    routing_.noiseDirect = BoundedGain(routing_.noiseDirect);
+    routing_.noiseBody = BoundedGain(routing_.noiseBody);
+    routing_.microDirect = BoundedGain(routing_.microDirect);
+    routing_.microBody = BoundedGain(routing_.microBody);
+  }
+
   FiniteForcePulse pulse_{};
   TonalContactChirp chirp_{};
   EnvelopedNoiseBurst noise_{};

@@ -40,8 +40,8 @@ void BenchmarkContactExciter() {
   tfdsp::percussion::ContactExciter exciter;
   exciter.Prepare(48000.f);
   tfdsp::percussion::ContactExciterParameters parameters;
-  Measure("contact exciter", [&](const std::size_t sample) {
-    if (sample % 24000 == 0)
+  Measure("active contact exciter", [&](const std::size_t sample) {
+    if (sample % 128 == 0)
       exciter.Trigger(parameters);
     const auto output = exciter.Process();
     return output.directRadiation + output.bodyDrive;

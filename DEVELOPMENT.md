@@ -49,6 +49,7 @@ Run the usual tasks from PowerShell:
 .\dev.ps1 smoke-scene-pack4 # Install and open the Scene Pack 4 patch
 .\dev.ps1 dist         # Build the release .vcvplugin package
 .\dev.ps1 test         # Build and run standalone C++ DSP tests
+.\dev.ps1 test-percussion # Build all tests, then run the percussion subset
 .\dev.ps1 benchmark-er # Benchmark generated-FIR ER at 1, 4, and 8 sources
 .\dev.ps1 benchmark-percussion # Benchmark the percussion DSP components
 .\dev.ps1 python-test  # Build Python bindings and run pytest

@@ -73,6 +73,14 @@ public:
     return std::isfinite(circulating) ? circulating : 0.f;
   }
 
+  float MinimumPropagationSamples() const noexcept {
+    return minimumPropagationSamples_;
+  }
+
+  float NominalPropagationSamples() const noexcept {
+    return nominalPropagationSamples_;
+  }
+
 private:
   void ConfigurePreparedParameters(
       const DispersionLoopParameters &parameters) noexcept {
@@ -86,10 +94,14 @@ private:
     feedbackGain_ = std::clamp(
         std::isfinite(parameters.feedbackGain) ? parameters.feedbackGain : 0.f,
         0.f, .999f);
-    const float pathSamples = base_.DelaySamples() + slow_.CentreDelaySamples() +
+    minimumPropagationSamples_ =
+        base_.DelaySamples() + slow_.CentreDelaySamples() +
         firstAllpass_.DelaySamples() + secondAllpass_.DelaySamples() +
         selfPhase_.CentreDelaySamples();
-    loss_.SetDecayTimes(pathSamples / sampleRate_, parameters.decay);
+    nominalPropagationSamples_ = minimumPropagationSamples_ +
+        static_cast<float>(selfPhase_.NominalLatencySamples());
+    loss_.SetDecayTimes(nominalPropagationSamples_ / sampleRate_,
+                        parameters.decay);
   }
 
   StaticFractionalDelay base_{};
@@ -100,6 +112,8 @@ private:
   ThreeBandDecayFilter loss_{};
   float sampleRate_{48000.f};
   float feedbackGain_{};
+  float minimumPropagationSamples_{};
+  float nominalPropagationSamples_{};
 };
 
 } // namespace tfdsp::percussion

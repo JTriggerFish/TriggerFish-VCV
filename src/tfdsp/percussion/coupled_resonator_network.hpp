@@ -56,6 +56,7 @@ public:
   void SetStaticParameters(const Parameters &parameters) {
     for (std::size_t line = 0; line < LineCount; ++line) {
       delays_[line].SetDelaySamples(parameters[line].delaySamples);
+      losses_[line].Reset();
       parameters_[line] = parameters[line];
       parameters_[line].delaySamples = delays_[line].DelaySamples();
       if (!std::isfinite(parameters_[line].inputGain))

@@ -53,7 +53,13 @@ public:
   }
 
   float Process(const float input) noexcept {
-    return outputGain_ * lowpass_.Process(colour_.Process(highpass_.Process(input)));
+    const float output = outputGain_ *
+        lowpass_.Process(colour_.Process(highpass_.Process(input)));
+    if (!std::isfinite(output)) {
+      Reset();
+      return 0.f;
+    }
+    return output;
   }
 
 private:

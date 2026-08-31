@@ -21,6 +21,7 @@ param(
         "smoke-unison",
         "smoke-scene-pack4",
         "test",
+        "test-percussion",
         "benchmark-er",
         "benchmark-percussion",
         "python-test",
@@ -292,6 +293,9 @@ switch ($Command) {
     "smoke-scene-pack4" { Start-SmokePatch "test-scene-pack4.vcv" }
     "test" {
         Invoke-Mingw "cd '$repoMsys' && cmake -S . -B build/dsp-tests -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DTRIGGERFISH_BUILD_PYTHON=OFF && cmake --build build/dsp-tests -j$Jobs && ctest --test-dir build/dsp-tests --output-on-failure"
+    }
+    "test-percussion" {
+        Invoke-Mingw "cd '$repoMsys' && cmake -S . -B build/dsp-tests -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DTRIGGERFISH_BUILD_PYTHON=OFF && cmake --build build/dsp-tests -j$Jobs && ctest --test-dir build/dsp-tests --output-on-failure -R 'percussion|cubic_lagrange'"
     }
     "benchmark-er" {
         Invoke-Mingw "cd '$repoMsys' && cmake -S . -B build/dsp-tests -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DTRIGGERFISH_BUILD_PYTHON=OFF && cmake --build build/dsp-tests --target triggerfish_early_reflections_benchmark -j$Jobs && ./build/dsp-tests/triggerfish_early_reflections_benchmark.exe"

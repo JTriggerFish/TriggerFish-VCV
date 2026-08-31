@@ -1,5 +1,7 @@
 #pragma once
 
+#include "tfdsp/finite_audio.hpp"
+
 #include <cmath>
 
 namespace tfdsp::percussion {
@@ -32,7 +34,9 @@ public:
       Reset();
       return 0.f;
     }
-    return output;
+    state1_ = tfdsp::FiniteNormalOrZero(state1_);
+    state2_ = tfdsp::FiniteNormalOrZero(state2_);
+    return tfdsp::FiniteNormalOrZero(output);
   }
 
 private:

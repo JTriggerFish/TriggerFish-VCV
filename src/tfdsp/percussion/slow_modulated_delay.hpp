@@ -42,6 +42,7 @@ public:
                                0.f, std::max(0.f, margin));
     rateHz_ = std::clamp(std::isfinite(rateHz) ? rateHz : .1f, .01f, 20.f);
     modulator_.Prepare(sampleRate, rateHz_, seed);
+    delay_.Reset();
   }
 
   float Process(const float input) noexcept {

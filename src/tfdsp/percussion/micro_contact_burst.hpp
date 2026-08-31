@@ -55,7 +55,11 @@ public:
     const float brightness = std::clamp(FiniteOr(parameters.brightness, 0.f), 0.f, 1.f);
     const float cutoffHz = 800.f * std::pow(.45f * sampleRate_ / 800.f, brightness);
     lowpassCoefficient_ = std::exp(-6.283185307179586f * cutoffHz / sampleRate_);
-    amplitude_ = std::max(0.f, FiniteOr(parameters.amplitude, 0.f));
+    amplitude_ = std::clamp(FiniteOr(parameters.amplitude, 0.f), 0.f, 16.f);
+    if (amplitude_ == 0.f) {
+      sampleCount_ = 0;
+      return;
+    }
     random_.Seed(parameters.seed);
     constexpr double Pi = 3.1415926535897932384626433832795;
     const double windowStep = Pi / (static_cast<double>(sampleCount_) + 1.0);

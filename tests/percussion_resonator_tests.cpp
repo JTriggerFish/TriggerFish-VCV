@@ -60,6 +60,9 @@ void TestDecayFilter() {
   Check(ThreeBandDecayFilter::GainForT60(
             .25f, std::numeric_limits<float>::infinity()) == 1.f,
         "infinite T60 is an explicit lossless traversal");
+  filter.Reset();
+  Check(filter.Process(std::numeric_limits<float>::denorm_min()) == 0.f,
+        "decay filter flushes subnormal state to exact silence");
 }
 
 void TestIndependentResonator() {
@@ -101,12 +104,36 @@ void TestIndependentResonator() {
   Check(std::isfinite(sanitized), "resonator sanitizes non-finite drive");
 }
 
+void TestStaticRetuneClearsEveryState() {
+  using Network = tfdsp::percussion::CoupledResonatorNetwork<2>;
+  Network::Parameters parameters{};
+  for (std::size_t line = 0; line < parameters.size(); ++line) {
+    parameters[line].delaySamples = 12.f + static_cast<float>(line);
+    parameters[line].decay = {4.f, 3.f, 2.f};
+  }
+  Network network;
+  network.Prepare(48000.f, 64.f, parameters, 400.f, 5000.f);
+  network.SetCoupling(.7f);
+  for (std::size_t sample = 0; sample < 256; ++sample)
+    (void)network.Process(sample == 0 ? 1.f : 0.f);
+
+  parameters[0].delaySamples = 19.25f;
+  parameters[1].delaySamples = 23.5f;
+  network.SetStaticParameters(parameters);
+  double residual = 0.0;
+  for (std::size_t sample = 0; sample < 256; ++sample)
+    residual += std::abs(network.Process(0.f));
+  CheckNear(residual, 0.0, 0.0,
+            "static retuning clears delay and loss-filter state");
+}
+
 } // namespace
 
 int main() {
   TestOrthogonalMixer();
   TestDecayFilter();
   TestIndependentResonator();
+  TestStaticRetuneClearsEveryState();
   if (percussion_test::failures == 0)
     std::cout << "All percussion resonator tests passed\n";
   return percussion_test::failures == 0 ? 0 : 1;

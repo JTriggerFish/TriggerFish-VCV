@@ -236,6 +236,37 @@ void TestContactRouting() {
         "contact exciter returns to exact silence");
 }
 
+void TestContactSampleRatesAndBounds() {
+  for (const float sampleRate : {44100.f, 48000.f, 88200.f, 96000.f, 192000.f}) {
+    tfdsp::percussion::FiniteForcePulse pulse;
+    pulse.Prepare(sampleRate);
+    pulse.Trigger(.001f, std::numeric_limits<float>::max());
+    std::size_t samples = 0;
+    float peak = 0.f;
+    while (pulse.Active()) {
+      peak = std::max(peak, pulse.Process());
+      ++samples;
+    }
+    Check(samples == static_cast<std::size_t>(std::lround(.001f * sampleRate)),
+          "contact duration is equivalent at every supported sample rate");
+    Check(std::isfinite(peak) && peak <= 16.f,
+          "contact amplitude remains bounded for every finite control value");
+    pulse.Trigger(.1f, 0.f);
+    Check(!pulse.Active(), "zero-amplitude contact does no idle processing");
+  }
+
+  tfdsp::percussion::ContactExciter exciter;
+  exciter.Prepare(48000.f);
+  tfdsp::percussion::ContactExciterParameters silent;
+  silent.pulseAmplitude = 0.f;
+  silent.chirp.amplitude = 0.f;
+  silent.noise.amplitude = 0.f;
+  silent.microContacts.amplitude = 0.f;
+  exciter.Trigger(silent);
+  Check(!exciter.Active(),
+        "a zero-amplitude composite contact is immediately inactive");
+}
+
 } // namespace
 
 int main() {
@@ -245,6 +276,7 @@ int main() {
   TestEnvelopedWhiteNoise();
   TestNoiseTilt();
   TestContactRouting();
+  TestContactSampleRatesAndBounds();
   if (percussion_test::failures == 0)
     std::cout << "All percussion contact tests passed\n";
   return percussion_test::failures == 0 ? 0 : 1;

@@ -1,88 +1,121 @@
 #pragma once
 
-#include "modulated_fractional_delay.hpp"
+#include "self_phase_delay_core.hpp"
+#include "tfdsp/sampleRate.hpp"
 
+#include <Eigen/Dense>
 #include <algorithm>
 #include <cmath>
-#include <stdexcept>
+#include <cstddef>
+#include <memory>
 
 namespace tfdsp::percussion {
 
-struct SelfPhaseDelayParameters {
-  float centreDelaySamples{12.f};
-  float maximumExcursionSamples{2.f};
-  float drive{1.f};
-  float toneHz{5000.f};
-  float envelopeReleaseSeconds{.01f};
-  float normalization{.5f};
+template <typename ResamplerType> struct SelfPhaseResamplerFactory;
+
+template <> struct SelfPhaseResamplerFactory<tfdsp::DummyResampler> {
+  static auto Create() { return tfdsp::CreateDummyResampler(); }
 };
 
-// Signed audio controls a bounded moving delay, creating correlated sidebands.
-// The envelope only controls partial level normalization; it is not the PM source.
-class SelfPhaseDelay {
+template <> struct SelfPhaseResamplerFactory<tfdsp::X2Resampler_Order7> {
+  static auto Create() { return tfdsp::CreateX2Resampler_Chebychev7(); }
+};
+
+template <> struct SelfPhaseResamplerFactory<tfdsp::X4Resampler_Order7> {
+  static auto Create() { return tfdsp::CreateX4Resampler_Cheby7(); }
+};
+
+// The production stage uses 2x oversampling. The template remains public so
+// tests and offline tools can render the identical nonlinear core at 4x.
+template <typename ResamplerType> class OversampledSelfPhaseDelay {
 public:
+  static constexpr int OversamplingFactor = ResamplerType::ResamplingFactor;
+
+  OversampledSelfPhaseDelay()
+      : interpolator_(SelfPhaseResamplerFactory<ResamplerType>::Create()),
+        decimator_(SelfPhaseResamplerFactory<ResamplerType>::Create()) {}
+
   void Prepare(const float sampleRate, const float maximumDelaySamples) {
-    if (!std::isfinite(sampleRate) || sampleRate < 1.f)
-      throw std::invalid_argument("self-phase sample rate must be positive");
-    sampleRate_ = sampleRate;
-    maximumDelaySamples_ = maximumDelaySamples;
-    delay_.Prepare(maximumDelaySamples);
-    SetParameters({});
+    core_.Prepare(sampleRate * OversamplingFactor,
+                  maximumDelaySamples * OversamplingFactor);
+    MeasureResamplingLatency(maximumDelaySamples);
+    ConfigureCore(parameters_);
     Reset();
   }
 
   void Reset() noexcept {
-    delay_.Reset();
-    toneState_ = envelope_ = 0.f;
+    interpolator_->Reset();
+    decimator_->Reset();
+    core_.Reset();
   }
 
   void SetParameters(const SelfPhaseDelayParameters &parameters) noexcept {
-    centreDelaySamples_ = std::clamp(FiniteOr(parameters.centreDelaySamples, 12.f),
-        ModulatedFractionalDelay::MinimumDelaySamples, maximumDelaySamples_);
-    const float margin = std::min(
-        centreDelaySamples_ - ModulatedFractionalDelay::MinimumDelaySamples,
-        maximumDelaySamples_ - centreDelaySamples_);
-    excursionSamples_ = std::clamp(
-        FiniteOr(parameters.maximumExcursionSamples, 0.f), 0.f, std::max(0.f, margin));
-    drive_ = std::clamp(FiniteOr(parameters.drive, 0.f), 0.f, 32.f);
-    normalization_ = std::clamp(FiniteOr(parameters.normalization, 0.f), 0.f, 1.f);
-    const float toneHz = std::clamp(FiniteOr(parameters.toneHz, 0.f), 0.f,
-                                    .45f * sampleRate_);
-    toneCoefficient_ = 1.f - std::exp(-6.283185307179586f * toneHz / sampleRate_);
-    const float release = std::clamp(
-        FiniteOr(parameters.envelopeReleaseSeconds, .01f), 1.f / sampleRate_, 1.f);
-    envelopeRelease_ = std::exp(-1.f / (release * sampleRate_));
+    parameters_ = parameters;
+    ConfigureCore(parameters);
   }
 
+  std::size_t NominalLatencySamples() const noexcept {
+    return resamplingLatencySamples_;
+  }
+
+private:
+  void ConfigureCore(const SelfPhaseDelayParameters &parameters) noexcept {
+    auto scaled = parameters;
+    scaled.centreDelaySamples *= OversamplingFactor;
+    scaled.maximumExcursionSamples *= OversamplingFactor;
+    core_.SetParameters(scaled);
+  }
+
+  void MeasureResamplingLatency(const float maximumDelaySamples) noexcept {
+    SelfPhaseDelayParameters linear;
+    linear.centreDelaySamples = std::clamp(12.f, 4.f, maximumDelaySamples);
+    linear.maximumExcursionSamples = 0.f;
+    linear.drive = 0.f;
+    ConfigureCore(linear);
+    Reset();
+    float peak = 0.f;
+    std::size_t peakSample = 0;
+    const auto count = static_cast<std::size_t>(maximumDelaySamples) + 64;
+    for (std::size_t sample = 0; sample < count; ++sample) {
+      const float output = Process(sample == 0 ? 1.f : 0.f);
+      if (std::abs(output) > peak) {
+        peak = std::abs(output);
+        peakSample = sample;
+      }
+    }
+    const auto centre = static_cast<std::size_t>(std::lround(
+        linear.centreDelaySamples));
+    resamplingLatencySamples_ = peakSample > centre ? peakSample - centre : 0;
+  }
+
+public:
   float Process(float input) noexcept {
     if (!std::isfinite(input))
       input = 0.f;
-    toneState_ += toneCoefficient_ * (input - toneState_);
-    envelope_ = std::max(std::abs(input), envelopeRelease_ * envelope_);
-    const float denominator = std::pow(1.e-5f + envelope_, normalization_);
-    const float control = toneState_ / denominator;
-    const float offset = excursionSamples_ * std::tanh(drive_ * control);
-    return delay_.Process(input, centreDelaySamples_ + offset);
+    const auto upsampled = interpolator_->Upsample(input);
+    Eigen::Array<double, OversamplingFactor, 1> processed;
+    for (int phase = 0; phase < OversamplingFactor; ++phase)
+      processed(phase) = core_.Process(static_cast<float>(upsampled(phase)));
+    const float output = static_cast<float>(decimator_->Downsample(processed));
+    return std::isfinite(output) ? output : 0.f;
   }
 
-  float CentreDelaySamples() const noexcept { return centreDelaySamples_; }
+  float CentreDelaySamples() const noexcept {
+    return parameters_.centreDelaySamples;
+  }
 
 private:
-  static float FiniteOr(const float value, const float fallback) noexcept {
-    return std::isfinite(value) ? value : fallback;
-  }
-
-  ModulatedFractionalDelay delay_{};
-  float sampleRate_{48000.f};
-  float maximumDelaySamples_{64.f};
-  float centreDelaySamples_{12.f};
-  float excursionSamples_{2.f};
-  float drive_{1.f};
-  float normalization_{.5f};
-  float toneCoefficient_{};
-  float envelopeRelease_{};
-  float toneState_{};
-  float envelope_{};
+  std::unique_ptr<ResamplerType> interpolator_;
+  std::unique_ptr<ResamplerType> decimator_;
+  SelfPhaseDelayCore core_{};
+  SelfPhaseDelayParameters parameters_{};
+  std::size_t resamplingLatencySamples_{};
 };
+
+using SelfPhaseDelay = OversampledSelfPhaseDelay<tfdsp::X2Resampler_Order7>;
+using SelfPhaseDelayReference1x =
+    OversampledSelfPhaseDelay<tfdsp::DummyResampler>;
+using SelfPhaseDelayReference4x =
+    OversampledSelfPhaseDelay<tfdsp::X4Resampler_Order7>;
 
 } // namespace tfdsp::percussion

@@ -1,4 +1,5 @@
 #include "tfdsp/late_reverb.hpp"
+#include "tfdsp/multiband_decay_filter.hpp"
 #include "tfdsp/windowed_pitch_shifter.hpp"
 
 #include <algorithm>
@@ -19,6 +20,42 @@ void Check(const bool condition, const std::string &message) {
   if (!condition) {
     std::cerr << "FAIL: " << message << '\n';
     std::exit(EXIT_FAILURE);
+  }
+}
+
+void TestDecayFilterRejectsInvalidT60() {
+  tfdsp::MultibandDecayFilter filter;
+  filter.Prepare(48000.0);
+  const float infinity = std::numeric_limits<float>::infinity();
+  Check(std::abs(filter.Process(.75f, .01f, infinity, infinity, infinity) -
+                 .75f) < 1.e-6f,
+        "positive-infinite T60 remains the explicit lossless setting");
+  filter.Reset();
+  const float nan = std::numeric_limits<float>::quiet_NaN();
+  Check(filter.Process(.75f, .01f, nan, nan, nan) == 0.f,
+        "NaN T60 cannot silently enable lossless feedback");
+  filter.Reset();
+  Check(filter.Process(.75f, .01f, -infinity, -infinity, -infinity) == 0.f,
+        "negative-infinite T60 cannot silently enable lossless feedback");
+  filter.Reset();
+  Check(filter.Process(std::numeric_limits<float>::denorm_min(), .01f,
+                       1.f, 1.f, 1.f) == 0.f,
+        "reverb decay filter flushes subnormal state to exact silence");
+}
+
+void TestLateReverbAtEverySupportedRate() {
+  for (const double sampleRate : {44'100.0, 48'000.0, 88'200.0,
+                                  96'000.0, 192'000.0}) {
+    tfdsp::LateReverb reverb;
+    reverb.SetSampleRate(sampleRate);
+    tfdsp::LateReverbControls controls;
+    bool finite = true;
+    const auto count = static_cast<std::size_t>(sampleRate * .08);
+    for (std::size_t sample = 0; sample < count; ++sample) {
+      const auto output = reverb.Process(sample == 0 ? 1.f : 0.f, controls);
+      finite = finite && std::isfinite(output[0]) && std::isfinite(output[1]);
+    }
+    Check(finite, "late reverb remains finite at every supported sample rate");
   }
 }
 
@@ -1373,6 +1410,8 @@ void DiagnoseSmoke303ImpulseResponse() {
 } // namespace
 
 int main() {
+  TestDecayFilterRejectsInvalidT60();
+  TestLateReverbAtEverySupportedRate();
   TestVelvetFeedbackMatrixIsParaunitaryAndDense();
   TestVelvetFractionalModulationPreservesTheStaticPath();
   TestLateReverbFlavourSelectionAndTransition();

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "tfdsp/finite_audio.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -36,13 +38,25 @@ public:
     highGain_ = GainForT60(pathSeconds, times.highSeconds);
   }
 
-  float Process(const float input) noexcept {
+  float Process(float input) noexcept {
+    if (!std::isfinite(input)) {
+      Reset();
+      return 0.f;
+    }
     lowState_ += lowCoefficient_ * (input - lowState_);
     belowHighState_ += highCoefficient_ * (input - belowHighState_);
+    lowState_ = tfdsp::FiniteNormalOrZero(lowState_);
+    belowHighState_ = tfdsp::FiniteNormalOrZero(belowHighState_);
     const float low = lowState_;
     const float middle = belowHighState_ - lowState_;
     const float high = input - belowHighState_;
-    return lowGain_ * low + middleGain_ * middle + highGain_ * high;
+    const float output =
+        lowGain_ * low + middleGain_ * middle + highGain_ * high;
+    if (!std::isfinite(output)) {
+      Reset();
+      return 0.f;
+    }
+    return tfdsp::FiniteNormalOrZero(output);
   }
 
   static float GainForT60(const float pathSeconds,

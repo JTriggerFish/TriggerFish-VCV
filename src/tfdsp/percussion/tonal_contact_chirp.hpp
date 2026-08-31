@@ -41,7 +41,11 @@ public:
                std::clamp(duration, 0.f, 1.f) * sampleRate_)));
     startHz_ = BoundFrequency(parameters.startFrequencyHz);
     endHz_ = BoundFrequency(parameters.endFrequencyHz);
-    amplitude_ = std::max(0.f, FiniteOr(parameters.amplitude, 0.f));
+    amplitude_ = std::clamp(FiniteOr(parameters.amplitude, 0.f), 0.f, 16.f);
+    if (amplitude_ == 0.f) {
+      sampleCount_ = 0;
+      return;
+    }
     decayNepers_ = std::clamp(FiniteOr(parameters.decayNepers, 0.f), 0.f, 20.f);
     sample_ = 0;
     phase_ = 0.0;

@@ -103,6 +103,32 @@ void TestPhaseContinuousAutomation() {
         "frequency shifter sanitizes non-finite controls and input");
 }
 
+double ShiftedToneLevel(const float inputHz, const float shiftHz,
+                        const float measuredHz) {
+  constexpr std::size_t Warmup = 16384;
+  constexpr std::size_t Count = 65536;
+  static float output[Count];
+  tfdsp::percussion::FrequencyShifter shifter;
+  shifter.Prepare(48000.f);
+  shifter.SetShiftHz(shiftHz);
+  for (std::size_t sample = 0; sample < Warmup + Count; ++sample) {
+    const float value = shifter.Process(
+        percussion_test::Sine(sample, inputHz, 48000.f));
+    if (sample >= Warmup)
+      output[sample - Warmup] = value;
+  }
+  return ToneMagnitude(output, Count, measuredHz, 48000.f);
+}
+
+void TestTranslationBoundariesAreRejected() {
+  const double upperFold = ShiftedToneLevel(23000.f, 4000.f, 21000.f);
+  const double lowerFold = ShiftedToneLevel(1000.f, -3000.f, 2000.f);
+  Check(upperFold < .12,
+        "source limiting rejects content translated beyond Nyquist");
+  Check(lowerFold < .12,
+        "source limiting rejects content translated below DC");
+}
+
 void TestOscillatorNorm() {
   tfdsp::percussion::QuadratureOscillator oscillator;
   oscillator.Prepare(192000.f);
@@ -123,6 +149,7 @@ int main() {
   TestSignedShiftsAtSupportedRates();
   TestZeroShiftIsExactDelay();
   TestPhaseContinuousAutomation();
+  TestTranslationBoundariesAreRejected();
   TestOscillatorNorm();
   if (percussion_test::failures == 0)
     std::cout << "All percussion frequency-shift tests passed\n";

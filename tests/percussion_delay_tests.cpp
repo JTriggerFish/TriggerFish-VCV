@@ -112,12 +112,35 @@ void TestSchroederAllpass() {
             "fractional Schroeder allpass preserves impulse energy");
 }
 
+void TestDelayAtEverySupportedRate() {
+  for (const float sampleRate : {44100.f, 48000.f, 88200.f, 96000.f, 192000.f}) {
+    const float scale = sampleRate / 48000.f;
+    tfdsp::percussion::StaticFractionalDelay delay;
+    delay.Prepare(512.f, 23.375f * scale);
+    const auto gain = ToneGain(delay, .12f * sampleRate, sampleRate);
+    CheckNear(gain, 1.0, 3.e-4,
+              "static fractional delay preserves gain at supported rates");
+
+    tfdsp::percussion::ModulatedFractionalDelay moving;
+    moving.Prepare(512.f);
+    bool finite = true;
+    for (std::size_t sample = 0; sample < 8192; ++sample) {
+      const float tap = scale * (31.f + 2.2f * std::sin(
+          6.283185307179586f * .37f * sample / sampleRate));
+      finite = finite && std::isfinite(moving.Process(
+          percussion_test::Sine(sample, .08f * sampleRate, sampleRate), tap));
+    }
+    Check(finite, "moving delay remains finite at every supported sample rate");
+  }
+}
+
 } // namespace
 
 int main() {
   TestStaticDelay();
   TestMovingDelay();
   TestSchroederAllpass();
+  TestDelayAtEverySupportedRate();
   if (percussion_test::failures == 0)
     std::cout << "All percussion delay tests passed\n";
   return percussion_test::failures == 0 ? 0 : 1;
