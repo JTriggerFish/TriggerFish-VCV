@@ -1,6 +1,7 @@
 #include "percussion_test_support.hpp"
 
 #include "tfdsp/percussion/micro_contact_process.hpp"
+#include "tfdsp/percussion/stochastic_event_scheduler.hpp"
 
 #include <cmath>
 #include <cstddef>
@@ -103,12 +104,40 @@ void TestSupportedSampleRates() {
   }
 }
 
+void TestSchedulerPreservesRequestedRate() {
+  constexpr float SampleRate = 48000.f;
+  constexpr std::size_t SampleCount = 10 * 48000;
+  for (const float requested : {1000.f, 4000.f, 8000.f, 12000.f}) {
+    tfdsp::percussion::StochasticEventScheduler scheduler;
+    scheduler.Prepare(SampleRate);
+    scheduler.Reset(73);
+    scheduler.SetRateHz(requested);
+    std::size_t events = 0;
+    for (std::size_t sample = 0; sample < SampleCount; ++sample)
+      events += scheduler.Process();
+    const double measured = events / (SampleCount / SampleRate);
+    Check(std::abs(measured / requested - 1.0) < .025,
+          "micro-contact scheduler preserves its requested mean rate");
+  }
+
+  tfdsp::percussion::StochasticEventScheduler dense;
+  dense.Prepare(SampleRate);
+  dense.Reset(19);
+  dense.SetRateHz(.45f * SampleRate);
+  bool observedCoincidentEvents = false;
+  for (std::size_t sample = 0; sample < SampleCount / 10; ++sample)
+    observedCoincidentEvents = observedCoincidentEvents || dense.Process() > 1;
+  Check(observedCoincidentEvents,
+        "continuous event timing retains coincident high-density contacts");
+}
+
 } // namespace
 
 int main() {
   TestFiniteCluster();
   TestContinuousGate();
   TestSupportedSampleRates();
+  TestSchedulerPreservesRequestedRate();
   if (percussion_test::failures == 0)
     std::cout << "All percussion micro-contact tests passed\n";
   return percussion_test::failures == 0 ? 0 : 1;

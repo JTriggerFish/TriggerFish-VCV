@@ -62,6 +62,32 @@ def test_impact_onset_and_pair_alignment_are_sample_preserving():
     aligned = shift_with_zeros(candidate, alignment.candidate_lag_samples)
     assert aligned == pytest.approx(reference)
 
+    refined = measure_alignment(
+        reference, candidate, sample_rate, refinement="waveform_copy"
+    )
+    assert refined.candidate_lag_samples == -37
+
+
+def test_reference_synthesis_alignment_does_not_correlate_unrelated_phase():
+    sample_rate = 48_000
+    onset = 2_000
+    length = 8_000
+    duration = 2_000
+    envelope = np.exp(-np.arange(duration) / (0.012 * sample_rate))
+    generator = np.random.default_rng(8)
+    reference = np.zeros(length)
+    candidate = np.zeros(length)
+    reference[onset : onset + duration] = envelope * generator.normal(size=duration)
+    candidate[onset : onset + duration] = envelope * generator.normal(size=duration)
+
+    alignment = measure_alignment(reference, candidate, sample_rate)
+    assert abs(alignment.candidate_lag_samples) <= 2
+
+    correlated = measure_alignment(
+        reference, candidate, sample_rate, refinement="waveform_copy"
+    )
+    assert abs(correlated.candidate_lag_samples) > 20
+
 
 def test_nominal_regions_are_named_and_nonoverlapping():
     regions = nominal_regions(100, 48_100, 48_000)

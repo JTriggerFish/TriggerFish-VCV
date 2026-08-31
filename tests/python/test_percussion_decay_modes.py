@@ -1,7 +1,12 @@
 import numpy as np
 import pytest
 
-from triggerfish_percussion.decay import band_decay_fits, energy_decay_db, fit_decay
+from triggerfish_percussion.decay import (
+    band_decay_fits,
+    energy_decay_db,
+    fit_decay,
+    pre_onset_noise_power,
+)
 from triggerfish_percussion.descriptors import (
     contact_descriptors,
     spectral_trajectories,
@@ -39,6 +44,36 @@ def test_energy_decay_recovers_a_known_t60():
     assert fit.r_squared > 0.999
     fits = band_decay_fits(time, np.vstack((energy, 10.0 ** (-6.0 * time))))
     assert [item.t60_seconds for item in fits] == pytest.approx([0.5, 1.0], rel=0.03)
+
+
+def test_band_decay_rejects_a_recording_too_short_for_the_fit_interval():
+    sample_rate = 1_000
+    time = np.arange(sample_rate) / sample_rate
+    energy = 10.0 ** (-6.0 * time / 4.0)
+    fit = band_decay_fits(time, energy[None, :], np.array([0.0]))[0]
+    assert fit.status == "recording_too_short"
+    assert np.isnan(fit.t60_seconds)
+
+
+def test_band_decay_uses_pre_onset_noise_without_treating_tail_as_noise():
+    sample_rate = 1_000
+    time = np.arange(2_000) / sample_rate
+    noise_power = 1.0e-7
+    pre_onset = np.full((1, 100), noise_power)
+    measured_noise = pre_onset_noise_power(pre_onset)
+    energy = 10.0 ** (-6.0 * time / 1.0) + noise_power
+    fit = band_decay_fits(time, energy[None, :], measured_noise)[0]
+    assert fit.status == "measured"
+    assert fit.t60_seconds == pytest.approx(1.0, rel=0.03)
+    assert fit.noise_limit_seconds > 0.5
+
+
+def test_silent_decay_is_finite_but_not_a_measurement():
+    time = np.arange(100, dtype=float) / 1_000
+    assert np.isfinite(energy_decay_db(np.zeros(time.size))).all()
+    fit = band_decay_fits(time, np.zeros((1, time.size)))[0]
+    assert fit.status == "insufficient_energy"
+    assert np.isnan(fit.t60_seconds)
 
 
 def test_esprit_recovers_close_damped_sinusoids():

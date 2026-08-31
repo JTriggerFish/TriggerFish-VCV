@@ -38,7 +38,9 @@ def log_spectral_distance(
     reference, candidate = _matching_arrays(reference_magnitude, candidate_magnitude)
     peak = max(float(np.max(reference)), np.finfo(float).tiny)
     floor = peak * 10.0 ** (floor_db / 20.0)
-    error = 20.0 * np.log10(np.maximum(candidate, floor) / np.maximum(reference, floor))
+    error = 20.0 * (
+        np.log10(np.maximum(candidate, floor)) - np.log10(np.maximum(reference, floor))
+    )
     selected = (
         np.ones(reference.shape, dtype=bool)
         if mask is None

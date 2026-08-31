@@ -12,7 +12,7 @@ instrument or Rack module.
 | Family | Components | Current analytic coverage |
 | --- | --- | --- |
 | Control | fixed-capacity linear/geometric breakpoint trajectory, asymmetric passive-loss controller | exact endpoints, continuous retrigger, sanitization, fast loss/slow release, ordered attenuation-only gains |
-| Contact and compact body | half-sine force pulse, tonal chirp, enveloped noise, finite micro-contact burst, gated/finite renewal micro-contact process, 2x correlated FM burst with 4x reference, explicit direct/body router | duration, endpoints, strength-to-energy mapping, deterministic seeds, gate release, FM spectral convergence, bounds, routing |
+| Contact and compact body | half-sine force pulse, tonal chirp, enveloped noise, finite micro-contact burst, gated/finite renewal micro-contact process, 2x correlated FM burst with 4x reference, explicit direct/body router | duration, endpoints, strength-to-energy mapping, deterministic seeds, requested stochastic event rate, coincident dense contacts, gate release, FM spectral convergence, bounds, routing |
 | Delay and diffusion | 12-tap/2048-phase moving sinc delay, static Thiran delay, shared cubic Lagrange delay, fractional Schroeder all-pass | tone gain, low-frequency delay, polynomial exactness, integer-boundary continuity, impulse energy, five sample rates |
 | Spectral motion | 255-tap antisymmetric FIR Hilbert transformer, phase-continuous signed SSB frequency shifter, and fourth-order translation-band guards | wanted level, image rejection, exact zero shift, through-zero automation, DC/Nyquist translated-content rejection, five sample rates |
 | Resonance and loss | complementary three-band T60 loss, passive constraint gains, orthogonal Givens mixer, projected wet-only fractional-comb network, explicit output submix | exact identity at zero coupling, scattering energy, T60 recurrence, passive attenuation, excitation isolation, group routing |
@@ -49,7 +49,9 @@ zero tilt is exactly white before its envelope. The second represents many
 small implement contacts in one finite hit. The process adds finite clusters
 and gated streams driven by a Poisson scheduler and smooth overlapping contact
 windows. Density and incident amplitude remain separate controls. None is
-mixed into an instrument output implicitly.
+mixed into an instrument output implicitly. The scheduler retains fractional
+continuous event times and can return several contacts in one audio sample;
+the optional contact exactly at gesture onset is a separate parameter.
 
 `CorrelatedFmBurst` is a general compact body/contact source rather than a kick
 voice. Amplitude, carrier frequency, and frequency-deviation trajectories are

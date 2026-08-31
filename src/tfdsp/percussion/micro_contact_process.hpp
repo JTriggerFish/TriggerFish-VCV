@@ -24,6 +24,7 @@ struct MicroContactProcessParameters {
   float releaseSeconds{.015f};
   float densityNormalization{1.f};
   std::uint32_t seed{1};
+  bool triggerInitialContact{true};
 };
 
 // A renewal-event stream whose events raise smooth overlapping contact
@@ -92,8 +93,11 @@ public:
     if (!Active())
       return 0.f;
     const bool scheduling = streaming_ || clusterSamplesRemaining_ > 0;
-    if (scheduling && scheduler_.Process())
-      TriggerContact();
+    if (scheduling) {
+      const std::size_t eventCount = scheduler_.Process();
+      for (std::size_t event = 0; event < eventCount; ++event)
+        TriggerContact();
+    }
     if (clusterSamplesRemaining_ > 0 && --clusterSamplesRemaining_ == 0)
       targetGate_ = streaming_ ? 1.f : 0.f;
     const float coefficient = targetGate_ > gate_ ? attackCoefficient_
@@ -152,6 +156,8 @@ private:
     attackCoefficient_ = Coefficient(parameters.attackSeconds, sampleRate_);
     releaseCoefficient_ = Coefficient(parameters.releaseSeconds, sampleRate_);
     UpdateDensityScale();
+    if (parameters.triggerInitialContact)
+      TriggerContact();
   }
 
   void UpdateDensityScale() noexcept {

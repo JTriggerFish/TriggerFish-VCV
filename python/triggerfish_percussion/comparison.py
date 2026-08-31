@@ -23,6 +23,7 @@ class ComparisonConfig:
     erb_maximum_hz: float = 18_000.0
     erb_band_count: int = 40
     level_mode: str = "preserve"
+    minimum_region_overlap: float = 1.0
     regions: tuple[tuple[str, float, float | None], ...] = (
         ("contact", 0.0, 0.015),
         ("bloom", 0.015, 0.120),
@@ -67,6 +68,8 @@ def compare_audio(
         raise ValueError("comparison audio must share one sample rate")
     if not config.stft_configs:
         raise ValueError("comparison requires at least one STFT resolution")
+    if not 0.0 < config.minimum_region_overlap <= 1.0:
+        raise ValueError("minimum region overlap must lie in (0, 1]")
     alignment = measure_alignment(ref.samples, current.samples, ref.sample_rate)
     shifted = shift_with_zeros(
         _same_length(current.samples, ref.samples.size), alignment.candidate_lag_samples
@@ -102,9 +105,14 @@ def _compare_resolution(
     losses: list[LossTerm] = []
     resolution = f"w{stft_config.window_samples}"
     for region, start, end in config.regions:
-        selected = ref_stft.times_seconds >= onset_seconds + start
-        if end is not None:
-            selected &= ref_stft.times_seconds < onset_seconds + end
+        selected = _region_frames(
+            ref_stft.times_seconds,
+            stft_config.window_samples / reference.sample_rate,
+            onset_seconds + start,
+            None if end is None else onset_seconds + end,
+            reference.samples.size / reference.sample_rate,
+            config.minimum_region_overlap,
+        )
         if not np.any(selected):
             continue
         spectral = log_spectral_distance(
@@ -143,3 +151,23 @@ def _same_length(samples: np.ndarray, length: int) -> np.ndarray:
     count = min(length, samples.size)
     result[:count] = samples[:count]
     return result
+
+
+def _region_frames(
+    frame_centers: np.ndarray,
+    window_seconds: float,
+    region_start: float,
+    region_end: float | None,
+    signal_end: float,
+    minimum_overlap: float,
+) -> np.ndarray:
+    half_window = 0.5 * window_seconds
+    frame_start = frame_centers - half_window
+    frame_end = frame_centers + half_window
+    bounded_end = signal_end if region_end is None else min(region_end, signal_end)
+    overlap = np.maximum(
+        0.0,
+        np.minimum(frame_end, bounded_end) - np.maximum(frame_start, region_start),
+    )
+    fraction = overlap / window_seconds
+    return fraction >= minimum_overlap - 1.0e-12

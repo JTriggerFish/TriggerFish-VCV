@@ -74,3 +74,42 @@ def test_comparison_contract_aligns_once_and_reuses_axes_for_losses():
         "bloom",
         "early_body",
     }
+
+
+def test_comparison_regions_require_stft_window_support():
+    sample_rate = 48_000
+    reference = np.zeros(48_000)
+    onset = 2_000
+    contact_samples = round(0.015 * sample_rate)
+    reference[onset : onset + contact_samples] = np.hanning(contact_samples)
+    candidate = reference.copy()
+    bloom_start = onset + contact_samples
+    bloom_samples = round(0.08 * sample_rate)
+    time = np.arange(bloom_samples) / sample_rate
+    candidate[bloom_start : bloom_start + bloom_samples] += np.sin(
+        2 * np.pi * 4_000 * time
+    )
+    config = ComparisonConfig(
+        (
+            StftConfig(256, 64, 512),
+            StftConfig(1_024, 256, 2_048),
+        )
+    )
+    comparison = compare_audio(
+        AudioBuffer(reference, sample_rate), AudioBuffer(candidate, sample_rate), config
+    )
+    names = {loss.name for loss in comparison.losses}
+    assert "log_spectral/contact/w256" in names
+    assert "log_spectral/contact/w1024" not in names
+    contact = next(
+        loss.value
+        for loss in comparison.losses
+        if loss.name == "log_spectral/contact/w256"
+    )
+    bloom = next(
+        loss.value
+        for loss in comparison.losses
+        if loss.name == "log_spectral/bloom/w256"
+    )
+    assert contact == pytest.approx(0.0)
+    assert bloom > 1.0

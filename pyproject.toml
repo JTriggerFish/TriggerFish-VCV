@@ -21,6 +21,7 @@ dev = [
 reverb = ["scipy>=1.14", "torch>=2.7"]
 
 [project.optional-dependencies]
+# Offline fitting and reporting only; never a dependency of the Rack plugin.
 analysis = ["scipy>=1.14"]
 
 [tool.scikit-build]

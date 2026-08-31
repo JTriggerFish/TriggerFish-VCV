@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <stdexcept>
 
@@ -22,36 +23,43 @@ public:
 
   void Reset(const std::uint32_t seed) noexcept {
     random_.Seed(seed);
+    rateHz_ = 0.f;
     samplesUntilEvent_ = 0.f;
   }
 
   void SetRateHz(const float rateHz) noexcept {
     const float next = std::clamp(
         std::isfinite(rateHz) ? rateHz : 0.f, 0.f, .45f * sampleRate_);
-    if (next > 0.f && rateHz_ > 0.f)
+    if (next > 0.f && rateHz_ > 0.f) {
       samplesUntilEvent_ *= rateHz_ / next;
-    else if (next > 0.f)
-      samplesUntilEvent_ = 0.f;
+    } else if (next > 0.f) {
+      rateHz_ = next;
+      samplesUntilEvent_ = NextIntervalSamples();
+      return;
+    }
     rateHz_ = next;
     if (rateHz_ == 0.f)
       samplesUntilEvent_ = 0.f;
   }
 
-  bool Process() noexcept {
+  std::size_t Process() noexcept {
     if (rateHz_ == 0.f)
-      return false;
-    if (samplesUntilEvent_ > 0.f) {
-      samplesUntilEvent_ -= 1.f;
-      return false;
+      return 0;
+    samplesUntilEvent_ -= 1.f;
+    std::size_t events = 0;
+    while (samplesUntilEvent_ <= 0.f && events < MaximumEventsPerSample) {
+      ++events;
+      samplesUntilEvent_ += NextIntervalSamples();
     }
-    ScheduleNext();
-    return true;
+    return events;
   }
 
 private:
-  void ScheduleNext() noexcept {
+  static constexpr std::size_t MaximumEventsPerSample = 16;
+
+  float NextIntervalSamples() noexcept {
     const float uniform = std::max(random_.Uniform(), 1.f / 16777216.f);
-    samplesUntilEvent_ = -std::log(uniform) * sampleRate_ / rateHz_;
+    return -std::log(uniform) * sampleRate_ / rateHz_;
   }
 
   DeterministicRandom random_{};

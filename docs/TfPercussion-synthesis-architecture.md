@@ -129,11 +129,11 @@ The remaining design is split by responsibility:
   and calibration.
 - [Ride fitting methodology](TfRide-fitting-methodology.md): the staged first
   instrument fit and its reproducibility requirements.
-- [Cymbal analysis methods](TfCymbal-analysis-methods.md) and
-  [ride reference corpus](TfRide-reference-corpus.md): analysis research and
-  source-data policy.
-- [Percussion analysis toolkit](TfPercussion-analysis-toolkit.md): implemented
-  numerical contracts and the future Plotly/WebAssembly reporting boundary.
+- [Percussion analysis toolkit](TfPercussion-analysis-toolkit.md): canonical
+  analysis and fitting method, implemented numerical contracts, dataset policy,
+  validation gates, and the future Plotly/WebAssembly reporting boundary.
+- [Ride reference corpus](TfRide-reference-corpus.md): source-data inventory and
+  provenance.
 
 ## Open architectural questions
 

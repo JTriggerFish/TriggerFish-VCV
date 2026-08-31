@@ -36,7 +36,10 @@ def detect_impact_onset(
     baseline = novelty[:baseline_count]
     median = float(np.median(baseline))
     deviation = float(np.median(np.abs(baseline - median)))
-    threshold = max(median + 8.0 * deviation, 0.12 * peak)
+    # Cymbals can bloom much louder than their first contact. A high fraction
+    # of the global peak therefore skips the physical onset; the pre-onset
+    # robust floor is primary and the peak term only rejects numerical dust.
+    threshold = max(median + 8.0 * deviation, 1.0e-6 * peak)
     candidates = np.flatnonzero(novelty >= threshold)
     return int(candidates[0]) if candidates.size else int(np.argmax(novelty))
 
@@ -47,11 +50,17 @@ def measure_alignment(
     sample_rate: float,
     correlation_seconds: float = 0.02,
     maximum_lag_seconds: float = 0.005,
+    refinement: str = "onset",
 ) -> Alignment:
     reference_signal = _mono_signal(reference)
     candidate_signal = _mono_signal(candidate)
     reference_onset = detect_impact_onset(reference_signal, sample_rate)
     candidate_onset = detect_impact_onset(candidate_signal, sample_rate)
+    onset_lag = reference_onset - candidate_onset
+    if refinement == "onset":
+        return Alignment(reference_onset, candidate_onset, onset_lag)
+    if refinement != "waveform_copy":
+        raise ValueError(f"unknown alignment refinement: {refinement}")
     radius = max(8, int(round(correlation_seconds * sample_rate)))
     maximum_lag = max(1, int(round(maximum_lag_seconds * sample_rate)))
     reference_window = _window(reference_signal, reference_onset, radius)
@@ -62,7 +71,7 @@ def measure_alignment(
     lags = correlation_lags(reference_window.size, candidate_window.size, mode="full")
     selected = np.abs(lags) <= maximum_lag
     local_lag = int(lags[selected][np.argmax(correlation[selected])])
-    candidate_lag = reference_onset - candidate_onset - local_lag
+    candidate_lag = onset_lag - local_lag
     return Alignment(reference_onset, candidate_onset, candidate_lag)
 
 
