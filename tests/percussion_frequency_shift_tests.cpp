@@ -76,6 +76,15 @@ void TestZeroShiftIsExactDelay() {
   }
   CheckNear(largestError, 0.0, 1.e-7,
             "zero frequency shift is an exact linear-phase delay");
+
+  shifter.Reset();
+  bool exactSilence = true;
+  for (std::size_t sample = 0; sample < 1024; ++sample)
+    exactSilence = exactSilence &&
+        shifter.Process(sample == 0 ? std::numeric_limits<float>::denorm_min()
+                                    : 0.f) == 0.f;
+  Check(exactSilence,
+        "frequency-shifter filters and Hilbert history flush subnormals");
 }
 
 void TestPhaseContinuousAutomation() {
@@ -129,6 +138,27 @@ void TestTranslationBoundariesAreRejected() {
         "source limiting rejects content translated below DC");
 }
 
+void TestWideAutomationRemainsBounded() {
+  tfdsp::percussion::FrequencyShifter shifter;
+  shifter.Prepare(48000.f);
+  float peak = 0.f;
+  bool finite = true;
+  for (std::size_t sample = 0; sample < 192000; ++sample) {
+    const float phase = static_cast<float>(sample % 48000) / 47999.f;
+    const float triangle = phase < .5f ? 4.f * phase - 1.f
+                                      : 3.f - 4.f * phase;
+    shifter.SetShiftHz(8000.f * triangle);
+    const float output = shifter.Process(
+        percussion_test::Sine(sample, 10000.f, 48000.f));
+    if (sample > 4096)
+      peak = std::max(peak, std::abs(output));
+    finite = finite && std::isfinite(output);
+  }
+  Check(finite, "frequency-shift filter interpolation remains finite");
+  Check(peak < 2.f,
+        "wide frequency-shift automation has no coefficient-update spikes");
+}
+
 void TestOscillatorNorm() {
   tfdsp::percussion::QuadratureOscillator oscillator;
   oscillator.Prepare(192000.f);
@@ -150,6 +180,7 @@ int main() {
   TestZeroShiftIsExactDelay();
   TestPhaseContinuousAutomation();
   TestTranslationBoundariesAreRejected();
+  TestWideAutomationRemainsBounded();
   TestOscillatorNorm();
   if (percussion_test::failures == 0)
     std::cout << "All percussion frequency-shift tests passed\n";

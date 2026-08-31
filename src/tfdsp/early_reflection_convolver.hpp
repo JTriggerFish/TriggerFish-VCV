@@ -1,6 +1,7 @@
 #pragma once
 
 #include "early_reflection_path_renderer.hpp"
+#include "finite_audio.hpp"
 #include "fixed_radix2_fft.hpp"
 
 namespace tfdsp {

@@ -106,14 +106,15 @@
     StereoFrame direct{};
     const std::size_t active = std::min(sourceCount, MaximumSources);
     for (std::size_t source = 0; source < active; ++source) {
-      const float sample =
-          std::isfinite(input[source]) ? input[source] : 0.f;
+      const float sample = FiniteNormalOrZero(input[source]);
       direct[0] += sample * directGains_[source][0];
       direct[1] += sample * directGains_[source][1];
     }
     for (std::size_t source = 0; source < MaximumSources; ++source)
       for (std::size_t channel = 0; channel < 2; ++channel)
         directGains_[source][channel] += directGainSteps_[source][channel];
+    direct[0] = FiniteNormalOrZero(direct[0]);
+    direct[1] = FiniteNormalOrZero(direct[1]);
     return direct;
   }
 

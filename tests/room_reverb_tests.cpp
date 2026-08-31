@@ -805,6 +805,25 @@ void TestRoomReverbAtEverySupportedRate() {
   }
 }
 
+void TestRoomReverbFlushesSubnormals() {
+  tfdsp::RoomReverb reverb;
+  tfdsp::RoomReverbControls controls;
+  tfdsp::RoomReverb::SourcePositions positions{};
+  positions[0] = tfdsp::reverb_defaults::Source;
+  bool exactSilence = true;
+  for (std::size_t sample = 0; sample < 8192; ++sample) {
+    tfdsp::RoomReverb::InputFrame input{};
+    if (sample == 0)
+      input[0] = std::numeric_limits<float>::denorm_min();
+    const auto output = reverb.Process(input, positions, 1, controls);
+    exactSilence = exactSilence && output.direct[0] == 0.f &&
+                   output.direct[1] == 0.f && output.wet[0] == 0.f &&
+                   output.wet[1] == 0.f;
+  }
+  Check(exactSilence,
+        "complete room-reverb direct, ER and tail paths flush subnormals");
+}
+
 } // namespace
 
 int main() {
@@ -827,5 +846,6 @@ int main() {
   TestWidthLevelAndFilterSweeps();
   TestMixAndOutputLevelLaws();
   TestRoomReverbAtEverySupportedRate();
+  TestRoomReverbFlushesSubnormals();
   std::cout << "Room reverb tests passed\n";
 }

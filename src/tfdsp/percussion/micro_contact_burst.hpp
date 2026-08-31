@@ -1,6 +1,7 @@
 #pragma once
 
 #include "deterministic_random.hpp"
+#include "tfdsp/finite_audio.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -55,7 +56,9 @@ public:
     const float brightness = std::clamp(FiniteOr(parameters.brightness, 0.f), 0.f, 1.f);
     const float cutoffHz = 800.f * std::pow(.45f * sampleRate_ / 800.f, brightness);
     lowpassCoefficient_ = std::exp(-6.283185307179586f * cutoffHz / sampleRate_);
-    amplitude_ = std::clamp(FiniteOr(parameters.amplitude, 0.f), 0.f, 16.f);
+    amplitude_ = std::clamp(
+        tfdsp::FiniteNormalOrZero(FiniteOr(parameters.amplitude, 0.f)),
+        0.f, 16.f);
     if (amplitude_ == 0.f) {
       sampleCount_ = 0;
       return;
@@ -76,12 +79,15 @@ public:
       contactEnvelope_ = std::max(contactEnvelope_, .5f + .5f * random_.Uniform());
     else
       contactEnvelope_ *= contactDecay_;
+    contactEnvelope_ = tfdsp::FiniteNormalOrZero(contactEnvelope_);
 
     const float noise = random_.Bipolar();
     lowpassState_ = (1.f - lowpassCoefficient_) * noise +
                     lowpassCoefficient_ * lowpassState_;
     highpassState_ = highpassCoefficient_ *
         (highpassState_ + lowpassState_ - previousLowpass_);
+    lowpassState_ = tfdsp::FiniteNormalOrZero(lowpassState_);
+    highpassState_ = tfdsp::FiniteNormalOrZero(highpassState_);
     previousLowpass_ = lowpassState_;
 
     const float output = .5f * amplitude_ * windowSine_ *
@@ -92,7 +98,7 @@ public:
                     windowSine_ * windowRotationSine_;
     windowSine_ = nextWindowSine;
     ++sample_;
-    return output;
+    return tfdsp::FiniteNormalOrZero(output);
   }
 
   bool Active() const noexcept { return sample_ < sampleCount_; }

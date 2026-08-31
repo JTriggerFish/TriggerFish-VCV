@@ -105,9 +105,16 @@ private:
                       const float maximumDepthSamples) const noexcept {
     const float base = static_cast<float>(baseSamples);
     const float causalDepth = std::max(0.f, base - 2.f);
+    const float relative = std::max(
+        0.f, std::isfinite(relativeDepth) ? relativeDepth : 0.f);
+    const float maximum = std::max(
+        0.f, std::isfinite(maximumDepthSamples) ? maximumDepthSamples : 0.f);
     const float depth = std::min(
-        {relativeDepth * base, maximumDepthSamples, causalDepth});
-    return Read(base + std::clamp(normalizedModulation, -1.f, 1.f) * depth);
+        {relative * base, maximum, causalDepth});
+    const float modulation = std::clamp(
+        std::isfinite(normalizedModulation) ? normalizedModulation : 0.f,
+        -1.f, 1.f);
+    return Read(base + modulation * depth);
   }
 
   std::vector<float> buffer_{};

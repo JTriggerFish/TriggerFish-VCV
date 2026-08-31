@@ -1,5 +1,7 @@
 #pragma once
 
+#include "tfdsp/finite_audio.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
@@ -30,9 +32,12 @@ public:
   }
 
   float Process(const float input) noexcept {
-    lowState_ += coefficient_ * (input - lowState_);
-    const float high = input - lowState_;
-    return lowGain_ * lowState_ + highGain_ * high;
+    const float safeInput = tfdsp::FiniteNormalOrZero(input);
+    lowState_ += coefficient_ * (safeInput - lowState_);
+    lowState_ = tfdsp::FiniteNormalOrZero(lowState_);
+    const float high = safeInput - lowState_;
+    return tfdsp::FiniteNormalOrZero(
+        lowGain_ * lowState_ + highGain_ * high);
   }
 
 private:

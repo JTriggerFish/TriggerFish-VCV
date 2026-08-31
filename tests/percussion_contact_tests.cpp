@@ -205,6 +205,11 @@ void TestNoiseTilt() {
   }
   Check(brightHighEnergy > 4.0 * darkHighEnergy,
         "positive noise tilt raises high-band energy relative to negative tilt");
+
+  neutral.Reset();
+  Check(neutral.Process(std::numeric_limits<float>::denorm_min()) == 0.f &&
+            neutral.Process(0.f) == 0.f,
+        "contact tilt filter flushes subnormal input and state");
 }
 
 void TestContactRouting() {
@@ -253,6 +258,9 @@ void TestContactSampleRatesAndBounds() {
           "contact amplitude remains bounded for every finite control value");
     pulse.Trigger(.1f, 0.f);
     Check(!pulse.Active(), "zero-amplitude contact does no idle processing");
+    pulse.Trigger(.1f, std::numeric_limits<float>::denorm_min());
+    Check(!pulse.Active(),
+          "subnormal contact strength is treated as exact silence");
   }
 
   tfdsp::percussion::ContactExciter exciter;

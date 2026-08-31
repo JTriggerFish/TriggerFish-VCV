@@ -1,6 +1,7 @@
 #pragma once
 
 #include "fractional_delay_line.hpp"
+#include "tfdsp/finite_audio.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -25,7 +26,7 @@ public:
       delaySamples = MinimumDelaySamples;
     const float output = line_.ReadSinc(delaySamples);
     line_.Push(input);
-    return std::isfinite(output) ? output : 0.f;
+    return tfdsp::FiniteNormalOrZero(output);
   }
 
   float MaximumDelaySamples() const noexcept {

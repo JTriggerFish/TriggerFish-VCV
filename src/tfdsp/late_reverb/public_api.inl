@@ -117,7 +117,7 @@ public:
                       const LateReverbControls &controls) noexcept {
     PollControlState(controls);
     LineFrame injection{};
-    const float safeInput = std::isfinite(input) ? input : 0.f;
+    const float safeInput = FiniteNormalOrZero(input);
     for (std::size_t line = 0; line < FdnLineCount; ++line)
       injection[line] =
           safeInput * late_reverb_coefficients::FixedInputVector[line];

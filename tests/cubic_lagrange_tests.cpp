@@ -1,9 +1,11 @@
 #include "percussion_test_support.hpp"
 
+#include "tfdsp/cubic_fractional_delay.hpp"
 #include "tfdsp/cubic_lagrange_interpolator.hpp"
 
 #include <cmath>
 #include <cstddef>
+#include <limits>
 
 namespace {
 
@@ -37,11 +39,36 @@ void TestIntegerBoundaryContinuity() {
   }
 }
 
+void TestInvalidInputsAreSafe() {
+  const float nan = std::numeric_limits<float>::quiet_NaN();
+  const float fallback = tfdsp::ReadCubicLagrange(
+      nan, 64, [](const std::size_t distance) {
+        return static_cast<float>(distance);
+      });
+  CheckNear(fallback, 2.0, 1.e-7,
+            "non-finite cubic delay uses the minimum causal tap");
+  Check(tfdsp::ReadCubicLagrange(
+            2.f, 0, [](const std::size_t) { return 1.f; }) == 0.f,
+        "undersized cubic storage cannot underflow its capacity");
+
+  tfdsp::CubicFractionalDelay delay;
+  delay.Prepare(16);
+  delay.Push(1.f);
+  Check(std::isfinite(delay.Read(nan)),
+        "fractional-delay wrapper sanitizes a non-finite read position");
+
+  tfdsp::LiveFractionalDelay live;
+  live.Prepare(16);
+  Check(live.Read(nan, nan) == 0.f,
+        "live fractional delay sanitizes position and current sample");
+}
+
 } // namespace
 
 int main() {
   TestCubicPolynomialIsExact();
   TestIntegerBoundaryContinuity();
+  TestInvalidInputsAreSafe();
   if (percussion_test::failures == 0)
     std::cout << "All cubic Lagrange tests passed\n";
   return percussion_test::failures == 0 ? 0 : 1;

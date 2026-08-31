@@ -4,6 +4,7 @@
 #include "self_phase_delay.hpp"
 #include "slow_modulated_delay.hpp"
 #include "static_fractional_delay.hpp"
+#include "tfdsp/finite_audio.hpp"
 #include "three_band_decay_filter.hpp"
 
 #include <algorithm>
@@ -61,8 +62,7 @@ public:
   }
 
   float Process(float bodyDrive) noexcept {
-    if (!std::isfinite(bodyDrive))
-      bodyDrive = 0.f;
+    bodyDrive = tfdsp::FiniteNormalOrZero(bodyDrive);
     float circulating = base_.Read();
     circulating = slow_.Process(circulating);
     circulating = firstAllpass_.Process(circulating);
@@ -70,7 +70,7 @@ public:
     circulating = selfPhase_.Process(circulating);
     const float feedback = feedbackGain_ * loss_.Process(circulating);
     base_.Push(bodyDrive + feedback);
-    return std::isfinite(circulating) ? circulating : 0.f;
+    return tfdsp::FiniteNormalOrZero(circulating);
   }
 
   float MinimumPropagationSamples() const noexcept {

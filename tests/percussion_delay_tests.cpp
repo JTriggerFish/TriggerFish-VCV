@@ -57,6 +57,15 @@ void TestStaticDelay() {
   delay.SetDelaySamples(7.f);
   Check(delay.Process(0.f) == 0.f,
         "changing a static delay clears its previous state");
+
+  delay.SetDelaySamples(7.5f);
+  bool exactSilence = true;
+  for (std::size_t sample = 0; sample < 32; ++sample)
+    exactSilence = exactSilence &&
+        delay.Process(sample == 0 ? std::numeric_limits<float>::denorm_min()
+                                  : 0.f) == 0.f;
+  Check(exactSilence,
+        "fractional-delay storage and Thiran state flush subnormals");
 }
 
 void TestMovingDelay() {

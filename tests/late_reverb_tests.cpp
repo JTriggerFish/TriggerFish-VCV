@@ -43,6 +43,29 @@ void TestDecayFilterRejectsInvalidT60() {
         "reverb decay filter flushes subnormal state to exact silence");
 }
 
+void TestCompleteLatePathsFlushSubnormals() {
+  const float denormal = std::numeric_limits<float>::denorm_min();
+  tfdsp::WindowedPitchShifter shifter;
+  shifter.Prepare(48000.0);
+  bool shifterSilent = true;
+  for (std::size_t sample = 0; sample < 8192; ++sample)
+    shifterSilent = shifterSilent &&
+        shifter.Process(sample == 0 ? denormal : 0.f) == 0.f;
+  Check(shifterSilent,
+        "windowed pitch shifter flushes subnormal filter and delay state");
+
+  tfdsp::LateReverb reverb;
+  tfdsp::LateReverbControls controls;
+  controls.shimmer = 1.f;
+  bool reverbSilent = true;
+  for (std::size_t sample = 0; sample < 8192; ++sample) {
+    const auto output = reverb.Process(sample == 0 ? denormal : 0.f, controls);
+    reverbSilent = reverbSilent && output[0] == 0.f && output[1] == 0.f;
+  }
+  Check(reverbSilent,
+        "complete late-reverb feedback and shimmer paths flush subnormals");
+}
+
 void TestLateReverbAtEverySupportedRate() {
   for (const double sampleRate : {44'100.0, 48'000.0, 88'200.0,
                                   96'000.0, 192'000.0}) {
@@ -1411,6 +1434,7 @@ void DiagnoseSmoke303ImpulseResponse() {
 
 int main() {
   TestDecayFilterRejectsInvalidT60();
+  TestCompleteLatePathsFlushSubnormals();
   TestLateReverbAtEverySupportedRate();
   TestVelvetFeedbackMatrixIsParaunitaryAndDense();
   TestVelvetFractionalModulationPreservesTheStaticPath();

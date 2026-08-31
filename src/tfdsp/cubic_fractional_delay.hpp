@@ -63,7 +63,8 @@ public:
   float Read(float delaySamples, const float liveSample) const noexcept {
     if (buffer_.empty())
       return 0.f;
-    delaySamples = std::max(0.f, delaySamples);
+    delaySamples = std::max(0.f, std::isfinite(delaySamples) ? delaySamples : 0.f);
+    const float safeLiveSample = FiniteNormalOrZero(liveSample);
     if (delaySamples < 2.f) {
       const auto history = [&](const std::size_t distance) {
         const auto index = writeIndex_ >= distance
@@ -72,7 +73,7 @@ public:
         return buffer_[index];
       };
       if (delaySamples < 1.f)
-        return liveSample + delaySamples * (history(1) - liveSample);
+        return safeLiveSample + delaySamples * (history(1) - safeLiveSample);
       const float fraction = delaySamples - 1.f;
       return history(1) + fraction * (history(2) - history(1));
     }

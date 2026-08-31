@@ -12,6 +12,10 @@ namespace tfdsp {
 template <typename IntegerReader>
 float ReadCubicLagrange(float delaySamples, const std::size_t capacity,
                         IntegerReader readInteger) noexcept {
+  if (capacity < 5)
+    return 0.f;
+  if (!std::isfinite(delaySamples))
+    delaySamples = 2.f;
   delaySamples = std::clamp(delaySamples, 2.f,
                             static_cast<float>(capacity - 3));
   const auto integer = static_cast<std::size_t>(std::floor(delaySamples));

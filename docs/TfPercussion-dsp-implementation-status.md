@@ -20,13 +20,23 @@ instrument or Rack module.
 
 All sample loops are allocation-free. Tables and delay storage are created in
 `Prepare`; filter and recurrence coefficients are built during preparation,
-static configuration, or hit creation. The active chirp evaluates one sine and
+static configuration, hit creation, or quantized/smoothed frequency-shift
+boundary updates. The active chirp evaluates one sine and
 the self-phase delay evaluates its intentional nonlinear map at 2x per sample.
 The reverb's velvet mixer advances its smoothed rotation algebraically, without
 per-sample trigonometric calls. The
 release micro-benchmark command, `dev.ps1 benchmark-percussion`, reports
 component cost through the MinGW launcher without imposing machine-dependent
 CI limits.
+
+Rack calls `rack::system::resetFpuFlags()` on the main engine thread and every
+engine worker. On x64 this enables FTZ and DAZ; on ARM64 it enables FTZ, with
+DAZ supplied by the architecture. These flags are thread-local, so setting them
+once during plugin initialization would not protect worker threads. Reusable
+DSP still flushes non-finite and subnormal values at recursive filter states,
+feedback delay writes, and public audio boundaries. This keeps the standalone
+tests and non-Rack consumers safe without changing a caller's floating-point
+environment from inside a component.
 
 ## Deliberate distinctions
 

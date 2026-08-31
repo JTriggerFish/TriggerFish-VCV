@@ -223,6 +223,7 @@
 		{
 			for (auto& mode : modes_)
 				mode = {};
+			hammerNoise_ = keyReleaseNoise_ = damperNoise_ = 0.0;
 		}
 
 		const double result = pickupOutput_;

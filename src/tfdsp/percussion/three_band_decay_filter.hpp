@@ -43,13 +43,14 @@ public:
       Reset();
       return 0.f;
     }
-    lowState_ += lowCoefficient_ * (input - lowState_);
-    belowHighState_ += highCoefficient_ * (input - belowHighState_);
+    const float safeInput = tfdsp::FiniteNormalOrZero(input);
+    lowState_ += lowCoefficient_ * (safeInput - lowState_);
+    belowHighState_ += highCoefficient_ * (safeInput - belowHighState_);
     lowState_ = tfdsp::FiniteNormalOrZero(lowState_);
     belowHighState_ = tfdsp::FiniteNormalOrZero(belowHighState_);
     const float low = lowState_;
     const float middle = belowHighState_ - lowState_;
-    const float high = input - belowHighState_;
+    const float high = safeInput - belowHighState_;
     const float output =
         lowGain_ * low + middleGain_ * middle + highGain_ * high;
     if (!std::isfinite(output)) {

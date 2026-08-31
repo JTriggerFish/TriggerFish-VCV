@@ -1,6 +1,7 @@
 #pragma once
 
 #include "static_fractional_delay.hpp"
+#include "tfdsp/finite_audio.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -26,10 +27,12 @@ public:
   }
 
   float Process(const float input) noexcept {
+    const float safeInput = tfdsp::FiniteNormalOrZero(input);
     const float delayed = delay_.Read();
-    const float output = delayed - feedbackGain_ * input;
-    delay_.Push(input + feedbackGain_ * output);
-    return std::isfinite(output) ? output : 0.f;
+    const float output = tfdsp::FiniteNormalOrZero(
+        delayed - feedbackGain_ * safeInput);
+    delay_.Push(safeInput + feedbackGain_ * output);
+    return output;
   }
 
   float DelaySamples() const noexcept { return delay_.DelaySamples(); }

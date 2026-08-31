@@ -1,6 +1,7 @@
 #pragma once
 
 #include "self_phase_delay_core.hpp"
+#include "tfdsp/finite_audio.hpp"
 #include "tfdsp/sampleRate.hpp"
 
 #include <Eigen/Dense>
@@ -61,8 +62,16 @@ public:
 private:
   void ConfigureCore(const SelfPhaseDelayParameters &parameters) noexcept {
     auto scaled = parameters;
-    scaled.centreDelaySamples *= OversamplingFactor;
-    scaled.maximumExcursionSamples *= OversamplingFactor;
+    scaled.centreDelaySamples =
+        (std::isfinite(parameters.centreDelaySamples)
+             ? parameters.centreDelaySamples
+             : SelfPhaseDelayParameters{}.centreDelaySamples) *
+        OversamplingFactor;
+    scaled.maximumExcursionSamples =
+        (std::isfinite(parameters.maximumExcursionSamples)
+             ? parameters.maximumExcursionSamples
+             : 0.f) *
+        OversamplingFactor;
     core_.SetParameters(scaled);
   }
 
@@ -90,18 +99,17 @@ private:
 
 public:
   float Process(float input) noexcept {
-    if (!std::isfinite(input))
-      input = 0.f;
+    input = tfdsp::FiniteNormalOrZero(input);
     const auto upsampled = interpolator_->Upsample(input);
     Eigen::Array<double, OversamplingFactor, 1> processed;
     for (int phase = 0; phase < OversamplingFactor; ++phase)
       processed(phase) = core_.Process(static_cast<float>(upsampled(phase)));
     const float output = static_cast<float>(decimator_->Downsample(processed));
-    return std::isfinite(output) ? output : 0.f;
+    return tfdsp::FiniteNormalOrZero(output);
   }
 
   float CentreDelaySamples() const noexcept {
-    return parameters_.centreDelaySamples;
+    return core_.CentreDelaySamples() / OversamplingFactor;
   }
 
 private:

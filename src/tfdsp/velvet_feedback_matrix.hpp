@@ -272,6 +272,8 @@ public:
                 const float highT60, const float lowT60,
                 const float roomScale = 1.f,
                 const float modulationAmount = 0.f) noexcept {
+    for (float &value : frame)
+      value = FiniteNormalOrZero(value);
     UpdateDelayTargets(diffusion, roomScale);
     const float safeModulationAmount =
         std::clamp(std::isfinite(modulationAmount) ? modulationAmount : 0.f,

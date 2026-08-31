@@ -15,6 +15,8 @@ namespace {
 using percussion_test::Check;
 using percussion_test::CheckNear;
 
+tfdsp::percussion::DispersionLoopParameters LinearLoopParameters();
+
 template <typename Stage>
 double ToneGain(Stage &stage, const float frequency, const float sampleRate) {
   constexpr std::size_t Warmup = 4096;
@@ -55,6 +57,36 @@ void TestZeroDriveSelfPhaseReference() {
       reference.Reset();
     }
   }
+}
+
+void TestSelfPhaseReportsItsEffectiveDelay() {
+  tfdsp::percussion::SelfPhaseDelay stage;
+  stage.Prepare(48000.f, 64.f);
+  tfdsp::percussion::SelfPhaseDelayParameters parameters;
+  parameters.centreDelaySamples = 200.f;
+  stage.SetParameters(parameters);
+  CheckNear(stage.CentreDelaySamples(), 64.0, 1.e-6,
+            "self-phase reports its clamped maximum delay");
+  parameters.centreDelaySamples =
+      std::numeric_limits<float>::quiet_NaN();
+  stage.SetParameters(parameters);
+  CheckNear(stage.CentreDelaySamples(), 12.0, 1.e-6,
+            "self-phase reports its host-rate fallback delay");
+  stage.Reset();
+  bool exactSilence = true;
+  for (std::size_t sample = 0; sample < 256; ++sample)
+    exactSilence = exactSilence &&
+        stage.Process(sample == 0 ? std::numeric_limits<float>::denorm_min()
+                                  : 0.f) == 0.f;
+  Check(exactSilence,
+        "self-phase filter, envelope and delay flush subnormals");
+
+  auto loopParameters = LinearLoopParameters();
+  loopParameters.selfPhase.centreDelaySamples = 200.f;
+  tfdsp::percussion::DispersionLoop loop;
+  loop.Prepare(48000.f, 64.f, loopParameters);
+  CheckNear(loop.MinimumPropagationSamples(), 90.0, 1.e-6,
+            "dispersion loss uses the effective self-phase path length");
 }
 
 tfdsp::percussion::DispersionLoopParameters LinearLoopParameters() {
@@ -228,6 +260,7 @@ void TestNonlinearStress() {
 
 int main() {
   TestZeroDriveSelfPhaseReference();
+  TestSelfPhaseReportsItsEffectiveDelay();
   TestExplicitFeedbackCausality();
   TestTwoTimesNonlinearityAgainstFourTimesReference();
   TestNonlinearStress();

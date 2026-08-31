@@ -97,7 +97,7 @@ private:
         for (std::size_t sample = 0;
              sample < std::min(HeadSize, impulse.size()); ++sample) {
           bank.head[kernelIndex][sample] =
-              static_cast<Sample>(impulse[sample]);
+              FiniteNormalOrZero(static_cast<Sample>(impulse[sample]));
           if (std::abs(impulse[sample]) > 1.0e-20)
             bank.headTapCount[kernelIndex] = sample + 1;
         }
@@ -109,7 +109,8 @@ private:
             const std::size_t impulseIndex =
                 HeadSize + partition * PartitionSize + sample;
             if (impulseIndex < impulse.size())
-              spectrum[sample] = static_cast<Sample>(impulse[impulseIndex]);
+              spectrum[sample] = FiniteNormalOrZero(
+                  static_cast<Sample>(impulse[impulseIndex]));
           }
           fft_.Transform(spectrum, false);
         }
@@ -156,7 +157,8 @@ private:
       }
       fft_.Transform(accumulated, true);
       for (std::size_t sample = 0; sample < PartitionSize; ++sample)
-        output[channel][sample] = accumulated[PartitionSize + sample].real();
+        output[channel][sample] = FiniteNormalOrZero(
+            accumulated[PartitionSize + sample].real());
     }
   }
 

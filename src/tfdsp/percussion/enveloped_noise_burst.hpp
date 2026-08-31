@@ -2,6 +2,7 @@
 
 #include "deterministic_random.hpp"
 #include "spectral_tilt_filter.hpp"
+#include "tfdsp/finite_audio.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -46,7 +47,9 @@ public:
     decaySamples_ = TimeToSamples(parameters.decaySeconds);
     if (attackSamples_ + holdSamples_ + decaySamples_ == 0)
       decaySamples_ = 1;
-    amplitude_ = std::clamp(FiniteOr(parameters.amplitude, 0.f), 0.f, 16.f);
+    amplitude_ = std::clamp(
+        tfdsp::FiniteNormalOrZero(FiniteOr(parameters.amplitude, 0.f)),
+        0.f, 16.f);
     if (amplitude_ == 0.f) {
       attackSamples_ = holdSamples_ = decaySamples_ = 0;
       return;

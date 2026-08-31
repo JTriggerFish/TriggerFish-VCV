@@ -4,6 +4,7 @@
 #include "finite_force_pulse.hpp"
 #include "micro_contact_burst.hpp"
 #include "tonal_contact_chirp.hpp"
+#include "tfdsp/finite_audio.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -89,7 +90,7 @@ public:
 
 private:
   static float BoundedGain(const float gain) noexcept {
-    return std::clamp(std::isfinite(gain) ? gain : 0.f, -16.f, 16.f);
+    return std::clamp(tfdsp::FiniteNormalOrZero(gain), -16.f, 16.f);
   }
 
   void SanitizeRouting() noexcept {

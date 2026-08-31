@@ -145,7 +145,7 @@ public:
     for (std::size_t source = 0; source < MaximumSources; ++source) {
       const Sample sample =
           source < activeSources && std::isfinite(input[source])
-              ? input[source]
+              ? FiniteNormalOrZero(input[source])
               : Sample{};
       inputBlock_[source][blockPosition_] = sample;
       headHistory_[source][headWriteIndex_] = sample;
@@ -179,6 +179,7 @@ public:
             amount * (output[channel] -
                       previous);
       }
+      output[channel] = FiniteNormalOrZero(output[channel]);
     }
 
     if (transitionRemaining_ > 0)

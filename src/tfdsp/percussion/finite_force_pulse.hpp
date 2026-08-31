@@ -1,5 +1,7 @@
 #pragma once
 
+#include "tfdsp/finite_audio.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -34,7 +36,7 @@ public:
     sampleCount_ = std::max<std::size_t>(
         1, static_cast<std::size_t>(std::lround(
                std::clamp(durationSeconds, 0.f, 1.f) * sampleRate_)));
-    amplitude_ = std::clamp(amplitude, 0.f, 16.f);
+    amplitude_ = std::clamp(tfdsp::FiniteNormalOrZero(amplitude), 0.f, 16.f);
     if (amplitude_ == 0.f) {
       sampleCount_ = 0;
       return;

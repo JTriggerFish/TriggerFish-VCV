@@ -1,6 +1,7 @@
 #pragma once
 
 #include "modulated_fractional_delay.hpp"
+#include "tfdsp/finite_audio.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -57,14 +58,17 @@ public:
   }
 
   float Process(float input) noexcept {
-    if (!std::isfinite(input))
-      input = 0.f;
+    input = tfdsp::FiniteNormalOrZero(input);
     toneState_ += toneCoefficient_ * (input - toneState_);
     envelope_ = std::max(std::abs(input), envelopeRelease_ * envelope_);
+    toneState_ = tfdsp::FiniteNormalOrZero(toneState_);
+    envelope_ = tfdsp::FiniteNormalOrZero(envelope_);
     const float scale = std::pow(1.e-5f + envelope_, normalization_);
     const float offset = excursionSamples_ * std::tanh(drive_ * toneState_ / scale);
     return delay_.Process(input, centreDelaySamples_ + offset);
   }
+
+  float CentreDelaySamples() const noexcept { return centreDelaySamples_; }
 
 private:
   static float FiniteOr(const float value, const float fallback) noexcept {

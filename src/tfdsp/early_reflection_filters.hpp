@@ -1,6 +1,7 @@
 #pragma once
 
 #include "early_reflection_scene.hpp"
+#include "finite_audio.hpp"
 
 namespace tfdsp {
 namespace early_reflection_detail {
@@ -18,8 +19,11 @@ public:
   }
 
   double Process(const double input) noexcept {
-    state1_ += coefficient_ * (input - state1_);
+    const double safeInput = FiniteNormalOrZero(input);
+    state1_ += coefficient_ * (safeInput - state1_);
     state2_ += coefficient_ * (state1_ - state2_);
+    state1_ = FiniteNormalOrZero(state1_);
+    state2_ = FiniteNormalOrZero(state2_);
     return state2_;
   }
 };

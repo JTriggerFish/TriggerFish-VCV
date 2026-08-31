@@ -1,6 +1,7 @@
 #pragma once
 
 #include "fractional_delay_line.hpp"
+#include "tfdsp/finite_audio.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -51,9 +52,13 @@ public:
       return input;
     const float output = allpassCoefficient_ * input + previousInput_ -
                          allpassCoefficient_ * previousOutput_;
-    previousInput_ = input;
-    previousOutput_ = output;
-    return std::isfinite(output) ? output : 0.f;
+    if (!std::isfinite(output)) {
+      previousInput_ = previousOutput_ = 0.f;
+      return 0.f;
+    }
+    previousInput_ = tfdsp::FiniteNormalOrZero(input);
+    previousOutput_ = tfdsp::FiniteNormalOrZero(output);
+    return previousOutput_;
   }
 
   void Push(const float input) noexcept { line_.Push(input); }

@@ -198,6 +198,8 @@ private:
       shimmerHighpassState_[bus] +=
           shimmerHighpassAlpha_ *
           (shimmerBus[bus] - shimmerHighpassState_[bus]);
+      shimmerHighpassState_[bus] =
+          FiniteNormalOrZero(shimmerHighpassState_[bus]);
       const float highpassed = shimmerBus[bus] - shimmerHighpassState_[bus];
       float shifted = 0.f;
       if (renderShimmer)
@@ -206,9 +208,10 @@ private:
         shimmerShifters_[bus].Advance(highpassed);
       for (auto &stage : shimmerLowpassState_) {
         stage[bus] += shimmerLowpassAlpha_ * (shifted - stage[bus]);
+        stage[bus] = FiniteNormalOrZero(stage[bus]);
         shifted = stage[bus];
       }
-      shiftedBus[bus] = std::isfinite(shifted) ? shifted : 0.f;
+      shiftedBus[bus] = FiniteNormalOrZero(shifted);
     }
 
     const float shimmerGain =

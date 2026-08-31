@@ -2,6 +2,7 @@
 
 #include "fir_hilbert_transform.hpp"
 #include "quadrature_oscillator.hpp"
+#include "tfdsp/finite_audio.hpp"
 #include "translation_band_limiter.hpp"
 
 #include <algorithm>
@@ -20,6 +21,7 @@ public:
     oscillator_.Prepare(sampleRate);
     limiter_.Prepare(sampleRate);
     limiterShiftHz_ = 0.f;
+    limiterTarget_ = 0.f;
     mixStep_ = 1.f / std::max(1.f, .002f * sampleRate);
     Reset();
   }
@@ -44,8 +46,7 @@ public:
   }
 
   float Process(float input) noexcept {
-    if (!std::isfinite(input))
-      input = 0.f;
+    input = tfdsp::FiniteNormalOrZero(input);
     if (limiterMix_ < limiterTarget_)
       limiterMix_ = std::min(limiterTarget_, limiterMix_ + mixStep_);
     else
@@ -58,7 +59,7 @@ public:
                           analytic.quadrature * rotation.sine;
     const float limited = limiter_.ProcessOutput(shifted);
     const float output = shifted + limiterMix_ * (limited - shifted);
-    return std::isfinite(output) ? output : 0.f;
+    return tfdsp::FiniteNormalOrZero(output);
   }
 
 private:

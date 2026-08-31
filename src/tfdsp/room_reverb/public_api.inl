@@ -144,7 +144,10 @@ public:
     }
     --requestCountdown_;
 
-    const StereoFrame direct = RenderDirect(input, activeSources);
+    InputFrame safeInput{};
+    for (std::size_t source = 0; source < activeSources; ++source)
+      safeInput[source] = FiniteNormalOrZero(input[source]);
+    const StereoFrame direct = RenderDirect(safeInput, activeSources);
 
     const float preDelaySamples = MaximumPreDelaySeconds *
                                   ClampControl(controls.preDelay) *
@@ -153,8 +156,7 @@ public:
     InputFrame delayed{};
     for (std::size_t source = 0; source < MaximumSources; ++source) {
       const float sample =
-          source < activeSources && std::isfinite(input[source]) ? input[source]
-                                                                 : 0.f;
+          source < activeSources ? safeInput[source] : 0.f;
       if (preDelayTransitionPhase_ >= 1.f) {
         delayed[source] =
             ReadPreDelay(source, sample, currentPreDelaySamples_);

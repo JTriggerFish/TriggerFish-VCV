@@ -98,10 +98,13 @@
     for (std::size_t channel = 0; channel < wet.size(); ++channel) {
       highCutState_[channel] +=
           highCutAlpha_ * (wet[channel] - highCutState_[channel]);
+      highCutState_[channel] = FiniteNormalOrZero(highCutState_[channel]);
       wet[channel] = highCutState_[channel];
       lowCutState_[channel] +=
           lowCutAlpha_ * (wet[channel] - lowCutState_[channel]);
+      lowCutState_[channel] = FiniteNormalOrZero(lowCutState_[channel]);
       wet[channel] -= lowCutState_[channel];
+      wet[channel] = FiniteNormalOrZero(wet[channel]);
     }
     return wet;
   }

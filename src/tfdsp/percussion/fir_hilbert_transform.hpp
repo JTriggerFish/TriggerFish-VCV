@@ -1,5 +1,7 @@
 #pragma once
 
+#include "tfdsp/finite_audio.hpp"
+
 #include <array>
 #include <cmath>
 #include <cstddef>
@@ -26,8 +28,7 @@ public:
   }
 
   AnalyticSample Process(float input) noexcept {
-    if (!std::isfinite(input))
-      input = 0.f;
+    input = tfdsp::FiniteNormalOrZero(input);
     samples_[writeIndex_] = input;
     if (++writeIndex_ == TapCount)
       writeIndex_ = 0;

@@ -34,6 +34,12 @@ void BenchmarkFrequencyShifter() {
   Measure("frequency shifter", [&](const std::size_t sample) {
     return shifter.Process(std::sin(.071f * static_cast<float>(sample)));
   });
+
+  Measure("automated frequency shifter", [&](const std::size_t sample) {
+    const float phase = static_cast<float>(sample % 96000) / 95999.f;
+    shifter.SetShiftHz(-4000.f + 8000.f * phase);
+    return shifter.Process(std::sin(.071f * static_cast<float>(sample)));
+  });
 }
 
 void BenchmarkContactExciter() {
