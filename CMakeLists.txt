@@ -89,6 +89,53 @@ if(BUILD_TESTING)
 	target_link_libraries(triggerfish_dsp_tests PRIVATE triggerfish_dsp)
 	add_test(NAME triggerfish_dsp_tests COMMAND triggerfish_dsp_tests)
 
+	add_executable(triggerfish_percussion_delay_tests
+		tests/percussion_delay_tests.cpp)
+	target_link_libraries(triggerfish_percussion_delay_tests PRIVATE
+		triggerfish_dsp)
+	add_test(NAME triggerfish_percussion_delay_tests
+		COMMAND triggerfish_percussion_delay_tests)
+
+	add_executable(triggerfish_percussion_frequency_shift_tests
+		tests/percussion_frequency_shift_tests.cpp)
+	target_link_libraries(triggerfish_percussion_frequency_shift_tests PRIVATE
+		triggerfish_dsp)
+	add_test(NAME triggerfish_percussion_frequency_shift_tests
+		COMMAND triggerfish_percussion_frequency_shift_tests)
+
+	add_executable(triggerfish_percussion_contact_tests
+		tests/percussion_contact_tests.cpp)
+	target_link_libraries(triggerfish_percussion_contact_tests PRIVATE
+		triggerfish_dsp)
+	add_test(NAME triggerfish_percussion_contact_tests
+		COMMAND triggerfish_percussion_contact_tests)
+
+	add_executable(triggerfish_percussion_resonator_tests
+		tests/percussion_resonator_tests.cpp)
+	target_link_libraries(triggerfish_percussion_resonator_tests PRIVATE
+		triggerfish_dsp)
+	add_test(NAME triggerfish_percussion_resonator_tests
+		COMMAND triggerfish_percussion_resonator_tests)
+
+	add_executable(triggerfish_percussion_dispersion_tests
+		tests/percussion_dispersion_tests.cpp)
+	target_link_libraries(triggerfish_percussion_dispersion_tests PRIVATE
+		triggerfish_dsp)
+	add_test(NAME triggerfish_percussion_dispersion_tests
+		COMMAND triggerfish_percussion_dispersion_tests)
+
+	add_executable(triggerfish_percussion_radiation_tests
+		tests/percussion_radiation_tests.cpp)
+	target_link_libraries(triggerfish_percussion_radiation_tests PRIVATE
+		triggerfish_dsp)
+	add_test(NAME triggerfish_percussion_radiation_tests
+		COMMAND triggerfish_percussion_radiation_tests)
+
+	add_executable(triggerfish_percussion_benchmark EXCLUDE_FROM_ALL
+		tests/percussion_benchmark.cpp)
+	target_link_libraries(triggerfish_percussion_benchmark PRIVATE
+		triggerfish_dsp)
+
 	add_executable(triggerfish_early_reflections_tests
 		tests/early_reflections_tests.cpp)
 	target_link_libraries(triggerfish_early_reflections_tests PRIVATE

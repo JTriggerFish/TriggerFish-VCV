@@ -18,6 +18,9 @@ The Rack modules remain silent interface shells while the new components are
 implemented and validated. No deleted model is an A/B or calibration baseline;
 comparisons are always against real reference recordings.
 
+Current clean-slate component coverage and its remaining acceptance gates are
+tracked in [the DSP implementation status](TfPercussion-dsp-implementation-status.md).
+
 Development starts with the ride. It already has a frozen four-cell reference
 object and is the simpler place to validate contact, dispersion, resonators,
 coupling, radiation, and fitting before introducing hi-hat plate contact.

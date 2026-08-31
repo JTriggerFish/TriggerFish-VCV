@@ -22,6 +22,7 @@ param(
         "smoke-scene-pack4",
         "test",
         "benchmark-er",
+        "benchmark-percussion",
         "python-test",
         "shell",
         "rack-dep",
@@ -294,6 +295,9 @@ switch ($Command) {
     }
     "benchmark-er" {
         Invoke-Mingw "cd '$repoMsys' && cmake -S . -B build/dsp-tests -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DTRIGGERFISH_BUILD_PYTHON=OFF && cmake --build build/dsp-tests --target triggerfish_early_reflections_benchmark -j$Jobs && ./build/dsp-tests/triggerfish_early_reflections_benchmark.exe"
+    }
+    "benchmark-percussion" {
+        Invoke-Mingw "cd '$repoMsys' && cmake -S . -B build/dsp-tests -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DTRIGGERFISH_BUILD_PYTHON=OFF && cmake --build build/dsp-tests --target triggerfish_percussion_benchmark -j$Jobs && ./build/dsp-tests/triggerfish_percussion_benchmark.exe"
     }
     "python-test" {
         $previousPath = $env:Path
