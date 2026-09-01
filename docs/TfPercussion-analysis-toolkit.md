@@ -2,11 +2,11 @@
 
 ## Scope
 
-`python/triggerfish_percussion/` is the presentation-neutral numerical layer
-used by fitting, regression tests, and the future interactive report. Plotly,
-HTTP serving, and WebAssembly synthesis are deliberately not implemented yet.
-They will consume these same arrays and named losses rather than recomputing a
-second interpretation of the audio.
+`python/triggerfish_percussion/` is the numerical layer used by fitting,
+regression tests, and reporting. A first static Plotly A/B report and a small
+local HTTP server are implemented. WebAssembly synthesis is not yet
+implemented. All views consume the same aligned, level-preserving arrays rather
+than recomputing a second interpretation of the audio.
 
 This entire layer is advanced development tooling. Normal VCV Rack builds use
 the Rack SDK Makefile and require none of Python, SciPy, Plotly, HTTP tooling,
@@ -196,13 +196,14 @@ decorrelation. Any future implementation must expose transfer and intermediate
 audio, return toward the stable body at low energy, and be evaluated as a
 hypothesis rather than accepted from a single aggregate score.
 
-## Future interactive report
+## Report status and future interaction
 
-The future served Plotly report will include reference and synthesized audio,
-gain-preserved and explicitly gain-matched A/B modes, common-scale STFT and ERB
-heatmaps, signed differences, band decays, modal matches, descriptors, and
-component ablations. Plotly is the primary plotting library so time and
-frequency regions can be inspected interactively.
+The served Plotly report currently includes reference and synthesized audio
+with one shared non-clipping audition gain, aligned waveforms, and common-scale
+STFT heatmaps. It deliberately contains no old-model comparisons. ERB heatmaps,
+signed differences, band decays, modal matches, descriptor/loss tables, and
+component ablations are the next report views. Plotly remains the primary
+library so time and frequency regions can be inspected interactively.
 
 When the first instrument renderer exists, its actual C++ implementation will
 also be compiled to WebAssembly. Sliders and a clickable strike surface will

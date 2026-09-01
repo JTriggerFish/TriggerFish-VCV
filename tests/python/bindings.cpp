@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <cmath>
 #include <limits>
 #include <memory>
@@ -23,6 +24,7 @@
 #include "tfdsp/control.hpp"
 #include "tfdsp/late_reverb.hpp"
 #include "tfdsp/noise.hpp"
+#include "tfdsp/percussion/crash_cymbal.hpp"
 #include "tfdsp/room_reverb.hpp"
 #include "tfdsp/sampleRate.hpp"
 #include "tfdsp/unison.hpp"
@@ -1018,6 +1020,102 @@ namespace
 
 PYBIND11_MODULE(_triggerfish_dsp, module)
 {
+	using CrashFit = tfdsp::percussion::CrashCymbalFitParameters;
+	py::class_<CrashFit>(module, "CrashCymbalFitParameters")
+		.def(py::init<>())
+		.def_readwrite("resonance_tune", &CrashFit::resonanceTune)
+		.def_readwrite("low_decay_scale", &CrashFit::lowDecayScale)
+		.def_readwrite("middle_decay_scale", &CrashFit::middleDecayScale)
+		.def_readwrite("high_decay_scale", &CrashFit::highDecayScale)
+		.def_readwrite("resonator_coupling", &CrashFit::resonatorCoupling)
+		.def_readwrite("resonator_shift_scale", &CrashFit::resonatorShiftScale)
+		.def_readwrite("dispersion_feedback", &CrashFit::dispersionFeedback)
+		.def_readwrite("dispersion_drive", &CrashFit::dispersionDrive)
+		.def_readwrite("dispersion_excursion_samples",
+			&CrashFit::dispersionExcursionSamples)
+		.def_readwrite("dispersion_low_decay_seconds",
+			&CrashFit::dispersionLowDecaySeconds)
+		.def_readwrite("dispersion_middle_decay_seconds",
+			&CrashFit::dispersionMiddleDecaySeconds)
+		.def_readwrite("dispersion_high_decay_seconds",
+			&CrashFit::dispersionHighDecaySeconds)
+		.def_readwrite("direct_gain", &CrashFit::directGain)
+		.def_readwrite("body_gain", &CrashFit::bodyGain)
+		.def_readwrite("body_bypass_gain", &CrashFit::bodyBypassGain)
+		.def_readwrite("output_gain", &CrashFit::outputGain)
+		.def_readwrite("colour_frequency_hz", &CrashFit::colourFrequencyHz)
+		.def_readwrite("colour_gain_db", &CrashFit::colourGainDb)
+		.def_readwrite("high_cut_hz", &CrashFit::highCutHz)
+		.def_readwrite("strength_gamma", &CrashFit::strengthGamma);
+	module.def("render_crash", [](const py::ssize_t sampleCount,
+		double sampleRate, float strength, float location, float hardness,
+		std::uint32_t seed, const CrashFit &fit)
+	{
+		if (sampleCount <= 0 || !(sampleRate > 0.0))
+			throw std::invalid_argument("crash render dimensions must be positive");
+		tfdsp::percussion::CrashCymbal cymbal;
+		const float rate = static_cast<float>(sampleRate);
+		cymbal.Prepare(rate,
+			tfdsp::percussion::DefaultCrashCymbalParameters(rate, fit));
+		cymbal.Trigger({strength, location, hardness, seed});
+		py::array_t<float> result(sampleCount);
+		auto output = result.mutable_unchecked<1>();
+		for (py::ssize_t sample = 0; sample < sampleCount; ++sample)
+			output(sample) = cymbal.Process();
+		return result;
+	}, py::arg("sample_count"), py::arg("sample_rate") = 48000.0,
+		py::arg("strength") = .8f, py::arg("location") = 1.f,
+		py::arg("hardness") = .65f, py::arg("seed") = 1u,
+		py::arg("fit") = CrashFit{});
+	module.def("render_crash_sequence", [](const py::ssize_t sampleCount,
+		double sampleRate, py::array_t<float, py::array::c_style |
+		py::array::forcecast> strengths,
+		py::array_t<float, py::array::c_style |
+		py::array::forcecast> locations,
+		py::array_t<float, py::array::c_style |
+		py::array::forcecast> hardnesses,
+		py::array_t<py::ssize_t, py::array::c_style |
+		py::array::forcecast> onsets,
+		py::array_t<std::uint32_t, py::array::c_style |
+		py::array::forcecast> seeds, const CrashFit &fit)
+	{
+		if (sampleCount <= 0 || !(sampleRate > 0.0))
+			throw std::invalid_argument("crash render dimensions must be positive");
+		const auto count = strengths.size();
+		if (strengths.ndim() != 1 || locations.ndim() != 1 ||
+			hardnesses.ndim() != 1 || onsets.ndim() != 1 || seeds.ndim() != 1 ||
+			locations.size() != count || hardnesses.size() != count ||
+			onsets.size() != count || seeds.size() != count)
+			throw std::invalid_argument("crash event arrays must be equal-length vectors");
+		auto strength = strengths.unchecked<1>();
+		auto location = locations.unchecked<1>();
+		auto hardness = hardnesses.unchecked<1>();
+		auto onset = onsets.unchecked<1>();
+		auto seed = seeds.unchecked<1>();
+		for (py::ssize_t event = 0; event < count; ++event)
+			if (onset(event) < 0 || onset(event) >= sampleCount ||
+				(event > 0 && onset(event) < onset(event - 1)))
+				throw std::invalid_argument(
+					"crash event onsets must be ordered and inside the render");
+		tfdsp::percussion::CrashCymbal cymbal;
+		const float rate = static_cast<float>(sampleRate);
+		cymbal.Prepare(rate,
+			tfdsp::percussion::DefaultCrashCymbalParameters(rate, fit));
+		py::array_t<float> result(sampleCount);
+		auto output = result.mutable_unchecked<1>();
+		py::ssize_t event = 0;
+		for (py::ssize_t sample = 0; sample < sampleCount; ++sample) {
+			while (event < count && onset(event) == sample) {
+				cymbal.Trigger({strength(event), location(event), hardness(event),
+					seed(event)});
+				++event;
+			}
+			output(sample) = cymbal.Process();
+		}
+		return result;
+	}, py::arg("sample_count"), py::arg("sample_rate"),
+		py::arg("strengths"), py::arg("locations"), py::arg("hardnesses"),
+		py::arg("onsets"), py::arg("seeds"), py::arg("fit") = CrashFit{});
 	module.doc() = "TriggerFish DSP development bindings";
 	module.def("late_reverb_wall_impulse", &RenderLateReverbWallImpulse,
 		py::arg("sample_count"), py::arg("sample_rate") = 48'000.0,

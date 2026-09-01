@@ -16,13 +16,14 @@ dev = [
     "nbstripout>=0.9.1",
     "pre-commit>=4.0",
     "pytest>=8.0",
+    "plotly>=6.0",
     "scipy>=1.14",
 ]
 reverb = ["scipy>=1.14", "torch>=2.7"]
 
 [project.optional-dependencies]
 # Offline fitting and reporting only; never a dependency of the Rack plugin.
-analysis = ["scipy>=1.14"]
+analysis = ["scipy>=1.14", "plotly>=6.0"]
 
 [tool.scikit-build]
 cmake.args = ["-DTRIGGERFISH_BUILD_PYTHON=ON", "-DBUILD_TESTING=OFF"]

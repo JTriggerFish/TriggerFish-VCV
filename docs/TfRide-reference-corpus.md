@@ -1,4 +1,4 @@
-# Ride cymbal reference corpus
+# Cymbal reference corpus
 
 This note records a deliberately multi-source corpus.  No one library is the
 fitting truth: model trends must survive different cymbals, recording chains,
@@ -17,7 +17,23 @@ articulations, and sample-library mappings.
 The local, ignored working copies live below
 `build/cymbal-calibration/references`. Do not commit third-party audio.
 
-## Frozen v1 primary object
+## First crash object
+
+`data/crash-calibration/sd3-18-k-constantinople-v1.json` selects one installed
+18-inch Zildjian K Constantinople crash. Its container index exposes edge,
+bow-tip, bow-shank, bell-tip, and bell-shank recordings with 9--16 velocity
+layers and 28--41 samples per articulation. This is a consistent single-object
+grid; Bitwig's four-layer A Custom and K Custom 18-inch crashes are immediate
+external checks.
+
+`tools/build_toontrack_cymbal_sweep.py` creates a deterministic 160-hit MIDI
+capture (five articulations, 16 MIDI velocities, two repeats) and onset
+manifest. `tools/slice_cymbal_capture.py` converts one unprocessed lossless
+render into ignored, level-preserving cells. Local licensed samples and
+renders are in scope for measurement and model fitting, but are not copied into
+the repository or redistributed.
+
+## Frozen ride object
 
 `data/ride-calibration/iowa-21ride-mf-ff-v1.json` selects exactly four source
 AIFFs from one Iowa 21-inch ride: normal/bow MF and FF, and bell MF and FF. The
@@ -101,11 +117,11 @@ edge (59). EZdrummer 3 adds 21/22/24-inch Paiste Dark Energy, Formula 602 and
 22-inch Istanbul Agop 30th Anniversary variant. Its common mapping is bow 51,
 bell 53, and edge 59.
 
-`tools/build_toontrack_ride_sweep.py` generates deterministic MIDI and an onset
-JSON manifest for private listening tests. Toontrack's current EULA restricts
-using its product sounds to develop distributed software and restricts uses
-outside musical works without written permission. Do not use these renders as a
-reproducible fitting dataset unless Toontrack grants written permission.
+`tools/build_toontrack_cymbal_sweep.py` also generates deterministic ride MIDI
+and onset metadata. Licensed local renders may be used as one measurement and
+fitting source for this open-source synthesizer. Source audio and recoverable
+derivatives remain local, and independent open/installed corpora must still
+hold out so the model cannot memorize one library or recording chain.
 
 Bitwig's installed Acoustic Drums and Percussion package contains:
 
@@ -126,15 +142,10 @@ repository or distribute them. The fit must also hold across independent
 CC0/CC-BY/CC-BY-SA references so that it does not reproduce this library's
 recording chain.
 
-## Capture recommendation
+## Later capture recommendation
 
-Before buying another conventional drum library, ask the vendor this exact
-question: may isolated samples be used privately to measure and tune the
-parameters of a commercial physical/perceptual cymbal model, provided no source
-audio or recoverable derivative samples are distributed? A normal music-use
-licence is not enough.
-
-If no vendor grants this explicitly, commission a compact recording session. A
+For unambiguous permanent provenance, a later compact commissioned session is
+still valuable. A
 high-value matrix is four contrasting rides (roughly 18/20/22/24 inches), six
 locations/implements (bell tip and shank, inner/middle/outer bow tip, edge
 shank), eight controlled velocities, and four repeats. Record a close channel

@@ -23,7 +23,7 @@ LDFLAGS += -pthread
 endif
 
 # Add .cpp and .c files to the build
-SOURCES += $(wildcard src/*.cpp src/tfdsp/*.cpp src/models/*.cpp)
+SOURCES += $(wildcard src/*.cpp src/tfdsp/*.cpp src/tfdsp/percussion/*.cpp src/models/*.cpp)
 
 # Add files to the ZIP package when running `make dist`
 # The compiled plugin is automatically added.

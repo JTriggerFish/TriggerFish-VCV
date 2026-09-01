@@ -2,7 +2,7 @@
 
 This note records what the clean-slate component library implements and what
 its tests currently prove. It is an engineering status report, not a claim
-that the ride model is calibrated or ready for listening.
+that the first crash model is calibrated.
 
 ## Implemented foundations
 
@@ -74,25 +74,35 @@ not, by itself, a physical distance-dependent air-absorption model: atmospheric
 loss belongs in an optional propagation/observation stage and must vary with
 distance, humidity, and frequency when that distinction matters.
 
-## Not yet accepted for instrument calibration
+## First assembled graph
+
+`CrashCymbal` composes the tested contact, dispersion, passive-loss, coupled
+resonator, frequency-shift, submix, and observation primitives. The exact C++
+graph is exposed to Python for fitting and deterministic rendering. Graph tests
+cover repeatability, strength, location, hardness, passive mute, finiteness,
+and five sample rates. A Plotly page now provides real-reference versus current
+model players, aligned waveforms, and common-scale spectrograms.
+
+## Not yet accepted for calibration
 
 These tests are the first analytic quality level only. The following gates are
 still open:
 
-- add smoothed, state-preserving live retuning for size and tune; use dynamic
-  excitation projections for location and integrate the implemented passive
-  constraint controller for mute without clearing stored state;
+- add smoothed, state-preserving live retuning for size and tune;
 - extend the existing five-rate, non-finite, denormal, retrigger and automation
   tests to rapid simultaneous control changes across the assembled graph;
-- produce isolated ablation WAVs and then assemble the first neutral ride graph;
-- fit and validate that graph against the frozen real ride dataset.
+- capture and isolate the selected SD3 crash grid, then fit its shared body and
+  location/hardness projections against fit repeats;
+- add report views for ERB evolution, band decay, modal evidence, named losses,
+  and component ablations; and
+- validate against held-out repeats, Bitwig crashes, and open corpora.
 
 Calibration must not begin by optimizing around any of these open numerical or
 control-path questions.
 
 The Python numerical-analysis implementation and its remaining real-data gates
-are recorded in `TfPercussion-analysis-toolkit.md`. No Plotly report or browser
-renderer is part of the present component pass.
+are recorded in `TfPercussion-analysis-toolkit.md`. Live browser synthesis and
+WebAssembly remain later work; the static Plotly report is implemented.
 
 ## Deferred structured-model extensions
 

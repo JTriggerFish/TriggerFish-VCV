@@ -21,9 +21,10 @@ comparisons are always against real reference recordings.
 Current clean-slate component coverage and its remaining acceptance gates are
 tracked in [the DSP implementation status](TfPercussion-dsp-implementation-status.md).
 
-Development starts with the ride. It already has a frozen four-cell reference
-object and is the simpler place to validate contact, dispersion, resonators,
-coupling, radiation, and fitting before introducing hi-hat plate contact.
+Development starts with a crash. Its high-energy swell is the harder single-
+cymbal case and the resulting body can be reused for strong ride articulations.
+The first same-object corpus has five strike articulations, 9--16 velocity
+layers, and multiple round robins.
 
 ## Code organization contract
 
@@ -127,12 +128,12 @@ The remaining design is split by responsibility:
 - [Percussion DSP quality and calibration](TfPercussion-quality-and-calibration.md):
   component acceptance, numerical references, integration tests, rendering,
   and calibration.
-- [Ride fitting methodology](TfRide-fitting-methodology.md): the staged first
+- [Crash fitting methodology](TfCrash-fitting-methodology.md): the staged first
   instrument fit and its reproducibility requirements.
 - [Percussion analysis toolkit](TfPercussion-analysis-toolkit.md): canonical
   analysis and fitting method, implemented numerical contracts, dataset policy,
   validation gates, and the future Plotly/WebAssembly reporting boundary.
-- [Ride reference corpus](TfRide-reference-corpus.md): source-data inventory and
+- [Cymbal reference corpus](TfRide-reference-corpus.md): source-data inventory and
   provenance.
 
 ## Open architectural questions

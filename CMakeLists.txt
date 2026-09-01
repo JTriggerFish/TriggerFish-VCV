@@ -18,6 +18,8 @@ add_library(triggerfish_dsp STATIC
 	src/tfseq_voicing.cpp
 	src/tfseq_voicing.hpp
 	src/tfdsp/sampleRate.cpp
+	src/tfdsp/percussion/crash_cymbal.cpp
+	src/tfdsp/percussion/crash_cymbal_parameters.cpp
 	src/tfdsp/early_reflections.hpp
 	src/tfdsp/event_merge.hpp
 	src/tfdsp/early_reflections_worker.cpp
@@ -193,6 +195,13 @@ if(BUILD_TESTING)
 		triggerfish_dsp)
 	add_test(NAME triggerfish_percussion_observation_tests
 		COMMAND triggerfish_percussion_observation_tests)
+
+	add_executable(triggerfish_percussion_crash_tests
+		tests/percussion_crash_tests.cpp)
+	target_link_libraries(triggerfish_percussion_crash_tests PRIVATE
+		triggerfish_dsp)
+	add_test(NAME triggerfish_percussion_crash_tests
+		COMMAND triggerfish_percussion_crash_tests)
 
 	add_executable(triggerfish_percussion_benchmark EXCLUDE_FROM_ALL
 		tests/percussion_benchmark.cpp)

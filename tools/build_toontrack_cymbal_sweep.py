@@ -1,10 +1,4 @@
-"""Build deterministic MIDI and onset metadata for Toontrack ride captures.
-
-The generated MIDI file can be imported into Superior Drummer 3 or EZdrummer 3.
-Render it once for each reference cymbal, with humanization and processing disabled.
-The adjacent JSON file records the exact onset, velocity, articulation, and MIDI note
-of every hit so that reference-analysis tools do not have to rediscover onsets.
-"""
+"""Build deterministic MIDI and onset metadata for cymbal captures."""
 
 from __future__ import annotations
 
@@ -15,22 +9,25 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 TICKS_PER_BEAT = 480
-TEMPO_US_PER_BEAT = 500_000  # 120 BPM; 960 ticks per second.
+TEMPO_US_PER_BEAT = 500_000
 TICKS_PER_SECOND = TICKS_PER_BEAT * 1_000_000 / TEMPO_US_PER_BEAT
 
-ARTICULATIONS = {
-    "sd3": (
+ARTICULATION_MAPS = {
+    "sd3-crash2": (
+        ("edge", 49),
+        ("bow-tip", 27),
+        ("bow-shank", 92),
+        ("bell-tip", 93),
+        ("bell-shank", 28),
+    ),
+    "sd3-ride": (
         ("bow-tip", 51),
         ("bow-shank", 29),
         ("bell-tip", 30),
         ("bell-shank", 53),
         ("edge", 59),
     ),
-    "ezd3": (
-        ("bow", 51),
-        ("bell", 53),
-        ("edge", 59),
-    ),
+    "ezd3-ride": (("bow", 51), ("bell", 53), ("edge", 59)),
 }
 
 
@@ -59,16 +56,14 @@ def meta_event(kind: int, payload: bytes) -> bytes:
     return bytes((0xFF, kind)) + variable_length(len(payload)) + payload
 
 
-def parse_velocities(value: str) -> tuple[int, ...]:
+def integer_list(value: str) -> tuple[int, ...]:
     try:
-        velocities = tuple(int(part.strip()) for part in value.split(","))
+        result = tuple(int(part.strip()) for part in value.split(","))
     except ValueError as error:
-        raise argparse.ArgumentTypeError(
-            "velocities must be comma-separated integers"
-        ) from error
-    if not velocities or any(velocity < 1 or velocity > 127 for velocity in velocities):
-        raise argparse.ArgumentTypeError("velocities must be in the range 1..127")
-    return velocities
+        raise argparse.ArgumentTypeError("expected comma-separated integers") from error
+    if not result or any(number < 1 or number > 127 for number in result):
+        raise argparse.ArgumentTypeError("MIDI values must lie in 1..127")
+    return result
 
 
 def build_sequence(
@@ -81,42 +76,35 @@ def build_sequence(
 ) -> list[Hit]:
     hits: list[Hit] = []
     onset = lead_seconds
-    for articulation_index, (articulation, note) in enumerate(ARTICULATIONS[target]):
+    for articulation_index, (articulation, note) in enumerate(
+        ARTICULATION_MAPS[target]
+    ):
         if articulation_index:
             onset += group_gap_seconds
         for velocity in velocities:
             for repeat in range(1, repeats + 1):
-                hits.append(
-                    Hit(
-                        index=len(hits),
-                        onset_seconds=onset,
-                        articulation=articulation,
-                        midi_note=note,
-                        velocity=velocity,
-                        repeat=repeat,
-                    )
-                )
+                hits.append(Hit(len(hits), onset, articulation, note, velocity, repeat))
                 onset += gap_seconds
     return hits
 
 
 def build_midi(hits: list[Hit], note_seconds: float) -> bytes:
-    # Each tuple is (absolute tick, ordering at equal tick, event bytes).
     events: list[tuple[int, int, bytes]] = [
-        (0, 0, meta_event(0x03, b"Toontrack ride calibration sweep")),
+        (0, 0, meta_event(0x03, b"TriggerFish cymbal calibration sweep")),
         (0, 1, meta_event(0x51, TEMPO_US_PER_BEAT.to_bytes(3, "big"))),
         (0, 2, meta_event(0x58, bytes((4, 2, 24, 8)))),
     ]
     note_ticks = max(1, round(note_seconds * TICKS_PER_SECOND))
     for hit in hits:
         tick = round(hit.onset_seconds * TICKS_PER_SECOND)
-        label = (f"{hit.articulation}/v{hit.velocity:03d}/r{hit.repeat:02d}").encode(
-            "ascii"
+        label = f"{hit.articulation}/v{hit.velocity:03d}/r{hit.repeat:02d}".encode()
+        events.extend(
+            (
+                (tick, 3, meta_event(0x06, label)),
+                (tick, 4, bytes((0x99, hit.midi_note, hit.velocity))),
+                (tick + note_ticks, 5, bytes((0x89, hit.midi_note, 0))),
+            )
         )
-        events.append((tick, 3, meta_event(0x06, label)))
-        events.append((tick, 4, bytes((0x99, hit.midi_note, hit.velocity))))
-        events.append((tick + note_ticks, 5, bytes((0x89, hit.midi_note, 0))))
-
     events.sort(key=lambda event: (event[0], event[1]))
     track = bytearray()
     previous_tick = 0
@@ -126,7 +114,6 @@ def build_midi(hits: list[Hit], note_seconds: float) -> bytes:
         previous_tick = tick
     track.extend(variable_length(round(2.0 * TICKS_PER_SECOND)))
     track.extend(meta_event(0x2F, b""))
-
     header = b"MThd" + struct.pack(">IHHH", 6, 0, 1, TICKS_PER_BEAT)
     return header + b"MTrk" + struct.pack(">I", len(track)) + track
 
@@ -134,31 +121,28 @@ def build_midi(hits: list[Hit], note_seconds: float) -> bytes:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--target", choices=tuple(ARTICULATIONS), default="sd3")
+    parser.add_argument("--target", choices=tuple(ARTICULATION_MAPS), required=True)
     parser.add_argument(
         "--velocities",
-        type=parse_velocities,
-        default=parse_velocities("16,32,48,64,80,96,112,127"),
+        type=integer_list,
+        default=integer_list("8,16,24,32,40,48,56,64,72,80,88,96,104,112,120,127"),
     )
-    parser.add_argument("--repeats", type=int, default=3)
-    parser.add_argument("--gap-seconds", type=float, default=4.0)
+    parser.add_argument("--repeats", type=int, default=2)
+    parser.add_argument("--gap-seconds", type=float, default=12.0)
     parser.add_argument("--group-gap-seconds", type=float, default=4.0)
     parser.add_argument("--lead-seconds", type=float, default=1.0)
     parser.add_argument("--note-seconds", type=float, default=0.08)
     arguments = parser.parse_args()
     if arguments.repeats < 1:
-        parser.error("--repeats must be at least one")
-    if (
-        min(
-            arguments.gap_seconds,
-            arguments.group_gap_seconds,
-            arguments.lead_seconds,
-            arguments.note_seconds,
-        )
-        <= 0
-    ):
+        parser.error("--repeats must be positive")
+    timings = (
+        arguments.gap_seconds,
+        arguments.group_gap_seconds,
+        arguments.lead_seconds,
+        arguments.note_seconds,
+    )
+    if min(timings) <= 0:
         parser.error("timing arguments must be positive")
-
     hits = build_sequence(
         arguments.target,
         arguments.velocities,
@@ -171,17 +155,16 @@ def main() -> None:
     arguments.output.write_bytes(build_midi(hits, arguments.note_seconds))
     manifest_path = arguments.output.with_suffix(".json")
     manifest = {
-        "schema": 1,
+        "schema": 2,
         "target": arguments.target,
         "midi_file": arguments.output.name,
         "midi_channel": 10,
-        "ticks_per_beat": TICKS_PER_BEAT,
         "tempo_bpm": 120,
         "capture_guidance": {
-            "usage": "private listening/validation unless vendor grants model-development permission",
             "disable_humanization": True,
             "disable_internal_processing": True,
-            "recommended_outputs": ["direct", "overhead", "room"],
+            "capture_outputs_separately": ["overhead", "close", "room"],
+            "preserve_source_level": True,
         },
         "hits": [asdict(hit) for hit in hits],
     }

@@ -65,6 +65,11 @@ public:
     return Process(bodyDrive, {});
   }
 
+  void SetSelfPhaseParameters(
+      const SelfPhaseDelayParameters &parameters) noexcept {
+    selfPhase_.SetParameters(parameters);
+  }
+
   float Process(float bodyDrive,
                 const PassiveConstraintGains constraint) noexcept {
     bodyDrive = tfdsp::FiniteNormalOrZero(bodyDrive);
