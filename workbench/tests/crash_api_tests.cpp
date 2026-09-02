@@ -1,4 +1,5 @@
 #include "crash_api.hpp"
+#include "crash_macros.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -22,7 +23,7 @@ std::vector<float> Render(const std::uint32_t handle, const std::uint32_t seed,
   constexpr std::size_t FrameCount = 8192;
   std::vector<float> result(FrameCount);
   Check(tf_crash_reset(handle) == 1, "reset accepts a live handle");
-  Check(tf_crash_trigger(handle, .8f, location, .65f, seed) == 1,
+  Check(tf_crash_trigger(handle, .8f, location, .65f, .75f, .2f, seed) == 1,
         "trigger accepts a live handle");
   for (std::size_t first = 0; first < result.size(); first += blockSize) {
     const auto count = std::min(blockSize, result.size() - first);
@@ -46,13 +47,33 @@ double Difference(const std::vector<float> &first,
 } // namespace
 
 int main() {
-  Check(tf_crash_api_version() == 1, "API version is explicit");
-  Check(tf_crash_macro_count() == 10, "the compact macro surface is versioned");
-  Check(tf_crash_macro_name(0) != nullptr &&
+  Check(tf_crash_api_version() == 4, "API version is explicit");
+  Check(tf_crash_macro_count() == 82, "the fitting surface is versioned");
+  Check(tf_crash_macro_key(0) != nullptr &&
+            tf_crash_macro_name(0) != nullptr &&
             tf_crash_macro_unit(0) != nullptr,
         "macro labels and units are available through the C ABI");
+  Check(tf_crash_macro_scale(0) == 0 && tf_crash_macro_scale(2) == 1,
+        "macro scales are available through the C ABI");
   Check(tf_crash_macro_name(tf_crash_macro_count()) == nullptr,
         "out-of-range macro metadata is rejected");
+  auto painted = tfworkbench::DefaultCrashMacros();
+  std::size_t firstFrequency{};
+  std::size_t firstLevel{};
+  std::size_t secondLevel{};
+  for (std::size_t index = 0; index < painted.size(); ++index) {
+    const auto &key = tfworkbench::CrashMacroDescription(index).key;
+    if (key == "wash_frequency_0") firstFrequency = index;
+    else if (key == "wash_level_0") firstLevel = index;
+    else if (key == "wash_level_1") secondLevel = index;
+  }
+  painted[firstFrequency] = 177.f;
+  painted[firstLevel] = 12.f;
+  painted[secondLevel] = -12.f;
+  const auto paintedFit = tfworkbench::ApplyCrashMacros({}, painted);
+  Check(std::abs(paintedFit.sparseFrequencyHz[0] - 177.f) < 1.e-5f &&
+            paintedFit.sparseAmplitude[0] > paintedFit.sparseAmplitude[1],
+        "modal paint directly places and levels resolved modes");
   Check(tf_crash_create(0.f) == 0, "invalid sample rates are rejected");
   const auto handle = tf_crash_create(48000.f);
   Check(handle != 0, "a renderer session can be created");
@@ -74,13 +95,13 @@ int main() {
   std::vector<float> liveFirst(4096), liveSecond(4096), controlSecond(4096);
   Check(tf_crash_reset(handle) && tf_crash_reset(controlHandle),
         "live restrike test resets both renderers");
-  Check(tf_crash_trigger(handle, .8f, .8f, .65f, 31) &&
-            tf_crash_trigger(controlHandle, .8f, .8f, .65f, 31),
+  Check(tf_crash_trigger(handle, .8f, .8f, .65f, .75f, .2f, 31) &&
+            tf_crash_trigger(controlHandle, .8f, .8f, .65f, .75f, .2f, 31),
         "live restrike test starts equal states");
   Check(tf_crash_process(handle, liveFirst.data(), liveFirst.size()) &&
             tf_crash_process(controlHandle, liveFirst.data(), liveFirst.size()),
         "live restrike prefix renders");
-  Check(tf_crash_trigger(handle, .7f, .8f, .65f, 32),
+  Check(tf_crash_trigger(handle, .7f, .8f, .65f, .75f, .2f, 32),
         "a running cymbal accepts another strike");
   Check(tf_crash_process(handle, liveSecond.data(), liveSecond.size()) &&
             tf_crash_process(controlHandle, controlSecond.data(),

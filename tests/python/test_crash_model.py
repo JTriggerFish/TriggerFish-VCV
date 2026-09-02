@@ -96,10 +96,26 @@ def test_dense_mode_seed_is_repeatable_and_object_specific():
     assert not np.array_equal(first, different)
 
 
+def test_crash_binding_exposes_implement_and_brush_contact_spread():
+    fit = CrashFit()
+    brush_tap = render_crash(fit, 0.3, implement=0.0, contact_spread=0.0, seed=19)
+    brush_sweep = render_crash(fit, 0.3, implement=0.0, contact_spread=1.0, seed=19)
+    stick = render_crash(fit, 0.3, implement=1.0, contact_spread=1.0, seed=19)
+    assert not np.array_equal(brush_tap, brush_sweep)
+    assert not np.array_equal(brush_sweep, stick)
+    late = slice(round(0.1 * 48_000), round(0.25 * 48_000))
+    assert np.linalg.norm(brush_sweep[late]) > np.linalg.norm(brush_tap[late])
+
+
 def test_indexed_fit_parameter_updates_one_dense_envelope_node():
-    fit = replace_fit_parameters(CrashFit(), {"dense_gain_envelope_db[3]": 6.0})
+    initial = CrashFit()
+    fit = replace_fit_parameters(initial, {"dense_gain_envelope_db[3]": 6.0})
     assert fit.dense_gain_envelope_db[3] == 6.0
-    assert np.count_nonzero(fit.dense_gain_envelope_db) == 1
+    changed = np.flatnonzero(
+        np.asarray(fit.dense_gain_envelope_db)
+        != np.asarray(initial.dense_gain_envelope_db)
+    )
+    assert changed.tolist() == [3]
     assert fit_parameter_value(fit, "dense_gain_envelope_db[3]") == 6.0
 
 
@@ -129,7 +145,7 @@ def test_screened_initial_decay_keeps_earlier_gates_and_one_final_gate():
     names = [parameter.name for parameter in stages[-1].parameters]
     assert len(names) == len(set(names))
     for index in range(1, 5):
-        assert f"dense_decay_envelope_octaves[{index}]" in names
+        assert f"body_decay_seconds[{index}]" in names
 
 
 def test_resume_skips_diagnostic_only_intermediate_quality_gate():
@@ -257,7 +273,7 @@ def test_first_100ms_policy_counts_nested_attack_features_once():
 def test_attack_audit_domain_exposes_contact_and_body_controls():
     names = {parameter.name for parameter in ATTACK_PARAMETERS}
     assert {"contact_noise_gain", "contact_chirp_gain", "dispersion_drive"} <= names
-    assert {"dense_gain", "sparse_gain", "dense_low_decay_seconds"} <= names
+    assert {"dense_gain", "sparse_gain", "body_decay_seconds[0]"} <= names
 
 
 def test_screened_attack_uses_soft_blocks_then_one_hard_joint_gate():
@@ -388,8 +404,8 @@ def test_causal_fit_stops_when_active_prefix_is_not_matched():
 
 def test_native_crash_sequence_retriggers_one_stateful_body():
     events = (
-        CrashEvent(0.0, 0.4, seed=1),
-        CrashEvent(0.05, 0.8, location=0.0, seed=2),
+        CrashEvent(0.0, 0.4, seed=1, implement=0.0, contact_spread=0.8),
+        CrashEvent(0.05, 0.8, location=0.0, seed=2, implement=1.0),
     )
     sequence = render_crash_sequence(CrashFit(), 0.1, events)
     assert sequence.shape == (4800,)
@@ -457,7 +473,8 @@ def test_reference_residual_subtracts_an_explicit_persistent_mode():
     samples = np.exp(-time / tau_seconds) * np.cos(2 * np.pi * 1000.0 * time)
     fit = CrashFit(
         sparse_frequency_hz=(1000.0,) + (2000.0,) * 11,
-        sparse_decay_seconds=(np.log(1000.0) * tau_seconds,) + (1.0,) * 11,
+        body_decay_seconds=(np.log(1000.0) * tau_seconds,) * 5,
+        sparse_decay_ratio=(1.0,) * 12,
         sparse_amplitude=(1.0,) + (0.0,) * 11,
     )
     cell = CrashFitCell("synthetic", AudioBuffer(samples, sample_rate), 1.0)

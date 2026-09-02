@@ -20,16 +20,22 @@ Performance controls create an event or change live state:
 
 - strength;
 - radial strike location;
-- hardness/implement coordinate;
+- implement family (Brush, Mallet, or Stick);
+- hardness within that implement family;
 - mute; and
 - event seed or variation index.
 
 They are always visible beside the strike pad and are stored with an audition
 gesture, but they do not silently alter the fitted object. The default pad maps
-horizontal position to location and vertical position to strength. Either axis
-can instead select hardness/implement from a dropdown. Clicking triggers;
-dragging may generate a rate-limited sequence only in an explicitly labelled
-repeat mode.
+horizontal position to location and vertical position to strength. Three radio
+buttons select Brush, Mallet, or Stick. One adjacent Character slider is
+contextual: bristle stiffness, mallet firmness, or tip hardness. The brush
+family suppresses the stick chirp/impulse and routes a correlated, smoothly
+windowed bristle-contact stream to both direct sound and body drive. Brush
+gesture duration remains an internal event property until trigger/gate duration
+controls it directly; it is not exposed as an unrelated fitting slider. Clicking
+triggers; dragging may
+generate a rate-limited sequence only in an explicitly labelled repeat mode.
 
 Fit controls change the instrument definition. The default surface exposes
 perceptual macros and compact curve editors. Every raw C++ parameter remains
@@ -49,25 +55,24 @@ identify them. The always-visible fitting controls are:
 | Control | UI | Perceptual role | Initial mapping |
 | --- | --- | --- | --- |
 | Model level | bipolar dB slider | match the stored source level | one pre-monitor output trim; never the limiter |
-| Impact character | 2D pad | tonal/ping to diffuse/noisy; compact to broad contact | coordinated pulse, chirp, noise and micro-contact gains/durations; hardness remains an event input |
-| Bloom | 2D pad | weak to strong nonlinear spread; immediate to slower development | dispersion drive/excursion and constrained feedback/decay mapping |
-| Body character | 2D pad | resolved/tonal to dense/wash; dark to bright | equal-power sparse/dense balance plus broad dense tilt and radiation colour |
-| Modal structure | spectral point editor | persistent ridge frequency and salience | sparse-mode frequency and output residue; selected-point detail exposes T60 |
-| Wash spectrum | low-order ERB curve | broad unresolved spectral distribution | 8 perceptual nodes resampled into the internal dense gain envelope |
-| Decay spectrum | low-order ERB curve | frequency-dependent T60 | one shared curve sampled at sparse modes and into the dense decay envelope |
+| Contact | independent sliders | ping/noise balance and contact width | coordinated pulse, chirp, noise and micro-contact gains/durations; hardness and implement remain event inputs |
+| Bloom | independent sliders | nonlinear spread amount and development time | dispersion drive/excursion and constrained feedback mapping |
+| Body balance | independent sliders | resolved/tonal to dense/wash; global wash tilt | sparse/dense balance and broad dense tilt |
+| Modal paint | 12-bar ERB editor | resolved ridge placement and surrounding wash salience | each bar directly places one resolved mode; one smooth relative curve derived from the bars colours the dense population |
+| Dense wash | independent sliders | range, density, bias and statistical irregularity | stable modal population; density activates a deterministic subset without relocating modes or changing RMS level |
+| Body T60 | five-knot log curve | absolute frequency-dependent decay | one curve sampled by sparse modes, dense modes and turbulence |
+| Turbulence | three-knot log curve plus amount/persistence | stochastic residual colour and duration | mean-free colour curve, orthogonal overall level and relative persistence |
+| Radiation | per-path EQ controls | observation colour, not stored-body loss | direct, resolved and dense-path static filters |
+| Size meta | unlabelled scalar slider | useful broad starting point | expands visibly into the detailed controls; centre is the exact neutral default and saved fits contain only expanded values |
 
-Three 2D controls are preferable to a dozen coupled sliders only if their axes
-remain perceptually separable. Each pad therefore has independent X/Y reset,
-numeric readout, shift-drag fine adjustment, and a one-axis sweep audition. If
-testing shows curved or interacting useful regions, the background displays a
-light response field and the mapping uses a bounded two-dimensional surface,
-not a misleading pair of linear labels.
-
-The curve editors use log-frequency/ERB horizontal spacing. Nodes are few and
-smooth by default; alt-click adds a node only up to a fixed small limit. A
-vertical ribbon shows the editable decay uncertainty/range where applicable.
-The underlying 33-point dense profile is an implementation detail and is never
-shown as 33 unrelated sliders.
+The curve editors use log-frequency or ERB horizontal spacing and raised-cosine
+interpolation, so moving one knot has a local, smooth effect without spline
+overshoot. Frequencies remain ordered. Modal-paint level is relative because
+both modal banks are energy-normalized; their global balance and level are
+controlled elsewhere.
+Turbulence subtracts the mean of its three colour levels before applying its
+separate Amount control. The underlying 33-point dense profile is an
+implementation detail and is never shown as unrelated sliders.
 
 ## Multi-hit and generalization controls
 
@@ -161,8 +166,10 @@ than relying on timer polling. A strike addresses the persistent renderer state
 after the already-published 512-frame lead, so repeated hits accumulate in the
 same cymbal with deterministic low latency. The worklet owns the read index and
 the DSP worker owns the write index; neither side rewrites the other side's
-cursor. Structural macro commits happen in the DSP worker and become audible
-after the published lead block.
+cursor. Structural macro commits happen synchronously in the DSP worker and
+become audible after the published lead block. The header shows an elapsed
+“Preparing live DSP” timer while a rebuild is pending, then retains the
+measured completion time. A later shadow-state swap can remove this short gap.
 
 The current corpus browser exposes one qualified private 320-cell grid as an
 instrument: five articulations, sixteen velocities and four variations. Only
@@ -175,7 +182,10 @@ engine. Slider changes are coalesced while it is busy, so only the newest queued
 state is rendered and the DOM remains responsive. Spectrogram calculation is
 also asynchronous and generation-tagged: stale jobs are discarded rather than
 painted after a newer control state. Rendering a new sound invalidates the
-synthesis analysis only, never the reference analysis.
+synthesis analysis only, never the reference analysis. The reference STFT peak
+fixes one absolute colour ceiling for both mirror halves. Synthesis edits
+cannot re-normalize that domain, so a low-band change cannot recolour unrelated
+high-frequency content.
 
 ## Audition safety
 
@@ -215,6 +225,7 @@ origins and the full viewport.
 Completed foundations include the separate Emscripten target, deterministic
 native/Wasm comparison, persistent real-time triggering, A/B reference
 transport, safety limiter, corpus browser, asynchronous STFT, comparison views,
-and JSON snapshots. Remaining work is modal/wash curve editing, undo/redo and
-snapshot A/B, rolling live-output capture, true-peak limiter qualification, and
-macro qualification before the first retained listening fit.
+the modal-paint/shared-T60/turbulence editors, and JSON snapshots. Remaining
+work is undo/redo and snapshot A/B, rolling live-output capture, true-peak
+limiter qualification, and macro qualification before the first retained
+listening fit.

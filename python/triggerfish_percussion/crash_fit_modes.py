@@ -34,12 +34,15 @@ def fit_sparse_modes(
     selected = tuple(sorted(ranked, key=lambda mode: mode.frequency_hz))
     count = len(initial.sparse_frequency_hz)
     frequencies = list(initial.sparse_frequency_hz)
-    decays = list(initial.sparse_decay_seconds)
+    decay_ratios = list(initial.sparse_decay_ratio)
     amplitudes = [0.0] * count
     phases = [0.0] * count
     for index, mode in enumerate(selected):
         frequencies[index] = mode.frequency_hz
-        decays[index] = np.log(1000.0) * mode.decay_seconds
+        modal_t60 = np.log(1000.0) * mode.decay_seconds
+        decay_ratios[index] = float(
+            np.clip(modal_t60 / _body_t60(initial, mode.frequency_hz), 0.5, 2.0)
+        )
         amplitudes[index] = mode.amplitude
         phases[index] = mode.phase_radians
     peak = max(amplitudes, default=0.0)
@@ -48,11 +51,10 @@ def fit_sparse_modes(
     fitted = replace(
         initial,
         sparse_frequency_hz=tuple(float(value) for value in frequencies),
-        sparse_decay_seconds=tuple(float(value) for value in decays),
+        sparse_decay_ratio=tuple(float(value) for value in decay_ratios),
         sparse_amplitude=tuple(float(value) for value in amplitudes),
         sparse_phase_radians=tuple(float(value) for value in phases),
         sparse_tune=1.0,
-        sparse_decay_scale=1.0,
     )
     return fitted, {
         "required_hit_count": required_hits,
@@ -138,10 +140,13 @@ def reference_modal_residual(
     end = min(reference.samples.size, start + round(4.0 * reference.sample_rate))
     modes = tuple(
         DampedMode(frequency, decay / np.log(1000.0), 1.0, 0.0)
-        for frequency, decay, amplitude in zip(
+        for frequency, decay_ratio, amplitude in zip(
             fit.sparse_frequency_hz,
-            fit.sparse_decay_seconds,
+            fit.sparse_decay_ratio,
             fit.sparse_amplitude,
+        )
+        for decay in (
+            _body_t60(fit, frequency) * float(np.clip(decay_ratio, 0.5, 2.0)),
         )
         if amplitude > 0.0
     )
@@ -162,6 +167,22 @@ def reference_modal_residual(
     return (
         AudioBuffer(modal_samples, reference.sample_rate),
         AudioBuffer(reference.samples - modal_samples, reference.sample_rate),
+    )
+
+
+def _body_t60(fit: CrashFit, frequency_hz: float) -> float:
+    """Evaluate the shared log-frequency/log-T60 curve at one mode."""
+    frequencies = np.asarray(fit.body_decay_frequency_hz, dtype=float)
+    seconds = np.asarray(fit.body_decay_seconds, dtype=float)
+    order = np.argsort(frequencies)
+    return float(
+        np.exp(
+            np.interp(
+                np.log(max(frequency_hz, 1.0)),
+                np.log(np.maximum(frequencies[order], 1.0)),
+                np.log(np.maximum(seconds[order], 1.0e-3)),
+            )
+        )
     )
 
 

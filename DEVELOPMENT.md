@@ -50,6 +50,11 @@ Run the usual tasks from PowerShell:
 .\dev.ps1 dist         # Build the release .vcvplugin package
 .\dev.ps1 test         # Build and run standalone C++ DSP tests
 .\dev.ps1 test-percussion # Build all tests, then run the percussion subset
+.\dev.ps1 test-workbench-api # Build and test the native MinGW workbench API
+.\dev.ps1 test-workbench-wasm # Test native/Wasm parity and browser-side units
+.\dev.ps1 build-workbench # Assemble the optional Wasm audition site
+.\dev.ps1 test-workbench-browser # Probe the running workbench in debug Brave
+.\dev.ps1 serve-workbench # Serve the built workbench on port 8765
 .\dev.ps1 benchmark-er # Benchmark generated-FIR ER at 1, 4, and 8 sources
 .\dev.ps1 benchmark-percussion # Benchmark the percussion DSP components
 .\dev.ps1 benchmark-reverb # Benchmark the complete Room Reverb

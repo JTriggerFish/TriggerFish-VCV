@@ -199,6 +199,31 @@ void TestDenseCloudDecayEnvelopeShapesMiddleBand() {
             "modal-cloud decay envelope preserves the high endpoint");
 }
 
+void TestDenseCloudDensityPreservesPlacementAndLevel() {
+  using namespace tfdsp::percussion;
+  constexpr std::size_t Count = 256;
+  StatisticalModalCloudParameters dense;
+  dense.modeDensity = 1.f;
+  auto sparse = dense;
+  sparse.modeDensity = .25f;
+  const auto denseModes = MakeStatisticalModalCloud<Count>(48000.f, dense);
+  const auto sparseModes = MakeStatisticalModalCloud<Count>(48000.f, sparse);
+  std::size_t active = 0;
+  double denseEnergy = 0.0;
+  double sparseEnergy = 0.0;
+  for (std::size_t mode = 0; mode < Count; ++mode) {
+    Check(denseModes[mode].frequencyHz == sparseModes[mode].frequencyHz,
+          "modal density does not relocate the cloud");
+    active += sparseModes[mode].outputGain != 0.f;
+    denseEnergy += denseModes[mode].outputGain * denseModes[mode].outputGain;
+    sparseEnergy += sparseModes[mode].outputGain * sparseModes[mode].outputGain;
+  }
+  Check(active > 40 && active < 90,
+        "modal density activates the expected stable subset");
+  CheckNear(sparseEnergy, denseEnergy, 1.e-4,
+            "modal density preserves normalized cloud level");
+}
+
 void TestTurbulentResidualStoresAndPassivelyLosesEnergy() {
   using namespace tfdsp::percussion;
   TurbulentResidualParameters parameters;
@@ -243,6 +268,7 @@ int main() {
   TestDenseCloudRemainsFinite();
   TestDenseCloudGainEnvelopeShapesBroadBands();
   TestDenseCloudDecayEnvelopeShapesMiddleBand();
+  TestDenseCloudDensityPreservesPlacementAndLevel();
   TestTurbulentResidualStoresAndPassivelyLosesEnergy();
   TestTurbulentResidualIsRepeatable();
   if (percussion_test::failures == 0)

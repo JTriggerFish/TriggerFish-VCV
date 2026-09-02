@@ -9,7 +9,7 @@
 int main() {
   constexpr std::uint32_t FrameCount = 8192;
   const auto handle = tf_crash_create(48000.f);
-  if (!handle || !tf_crash_trigger(handle, .8f, .8f, .65f, 17))
+  if (!handle || !tf_crash_trigger(handle, .8f, .8f, .65f, .75f, .2f, 17))
     return 1;
   std::vector<float> audio(FrameCount);
   if (!tf_crash_process(handle, audio.data(), FrameCount))
@@ -29,7 +29,8 @@ int main() {
       earlyEnergy += sample * sample;
   }
   std::cout.precision(17);
-  std::cout << "{\"api\":1,\"frames\":" << FrameCount
+  std::cout << "{\"api\":" << tf_crash_api_version()
+            << ",\"frames\":" << FrameCount
             << ",\"peak\":" << peak << ",\"energy\":" << energy
             << ",\"absoluteSum\":" << absoluteSum
             << ",\"earlyEnergy\":" << earlyEnergy << "}\n";

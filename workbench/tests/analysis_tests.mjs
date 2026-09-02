@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { fft, stft, windowSamples } from "../web/analysis.mjs";
 import { matchedModelLevelDb } from "../web/level_match.mjs";
-import { wheelPanSeconds } from "../web/spectrogram.mjs";
+import {
+  normalizationCeilingDb, wheelPanSeconds,
+} from "../web/spectrogram.mjs";
 
 const impulseReal = new Float64Array(8);
 impulseReal[0] = 1;
@@ -41,4 +43,6 @@ assert.ok(Math.abs(matched - (-36 + 20 * Math.log10(2))) < 1e-6);
 const forward = wheelPanSeconds(0, 120, 0, 1000, 500, 8);
 const backward = wheelPanSeconds(0, -120, 0, 1000, 500, 8);
 assert.equal(forward + backward, 0);
+assert.equal(normalizationCeilingDb({ peakDb: -18 }, { peakDb: 6 }), -18);
+assert.equal(normalizationCeilingDb(null, { peakDb: -9 }), -9);
 console.log("workbench analysis tests passed");

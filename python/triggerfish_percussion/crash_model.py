@@ -12,6 +12,7 @@ DENSE_GAIN_ENVELOPE_POINT_COUNT = 33
 @dataclass(frozen=True)
 class CrashFit:
     sparse_frequency_hz: tuple[float, ...] = (
+        421.0,
         522.0,
         689.0,
         1094.0,
@@ -21,60 +22,94 @@ class CrashFit:
         2573.0,
         2753.0,
         3589.0,
-        3923.0,
         4428.0,
         5707.0,
     )
-    sparse_decay_seconds: tuple[float, ...] = (
-        5.5,
-        6.5,
-        4.8,
-        3.8,
-        3.2,
-        3.0,
-        2.5,
-        2.2,
-        1.6,
-        1.35,
-        1.05,
-        0.75,
+    sparse_decay_ratio: tuple[float, ...] = (
+        0.7,
+        0.7,
+        0.7,
+        1.25,
+        1.0,
+        1.0,
+        0.95,
+        0.85,
+        0.8,
+        0.7,
+        0.7,
+        0.7,
     )
     sparse_amplitude: tuple[float, ...] = (
-        0.25,
-        0.32,
+        0.35,
+        0.15,
+        0.15,
         0.55,
         0.25,
-        0.8,
+        0.7,
         0.65,
-        0.75,
-        0.62,
+        0.7,
         0.55,
-        0.48,
+        0.5,
         0.4,
         0.25,
     )
     sparse_phase_radians: tuple[float, ...] = (0.0,) * 12
     sparse_tune: float = 1.0
-    sparse_decay_scale: float = 1.0
-    dense_minimum_frequency_hz: float = 700.0
+    body_decay_frequency_hz: tuple[float, ...] = (
+        200.0,
+        500.0,
+        1500.0,
+        5000.0,
+        15000.0,
+    )
+    body_decay_seconds: tuple[float, ...] = (4.0, 4.0, 3.8, 2.3, 1.2)
+    dense_minimum_frequency_hz: float = 180.0
     dense_maximum_frequency_hz: float = 18000.0
     dense_frequency_warp: float = 1.0
     dense_spacing_jitter: float = 0.82
-    dense_low_decay_seconds: float = 3.2
-    dense_high_decay_seconds: float = 0.22
-    dense_decay_curve: float = 0.75
-    dense_decay_envelope_octaves: tuple[float, ...] = (0.0,) * 6
-    dense_decay_spread_octaves: float = 0.4
+    dense_mode_density: float = 1.0
+    dense_decay_spread_octaves: float = 0.15
     dense_tilt_db_per_octave: float = -1.0
-    dense_gain_envelope_db: tuple[float, ...] = (0.0,) * DENSE_GAIN_ENVELOPE_POINT_COUNT
-    dense_gain_spread_db: float = 4.5
+    dense_gain_envelope_db: tuple[float, ...] = (
+        4.0,
+        1.375,
+        -1.25,
+        -3.875,
+        -6.5,
+        -7.25,
+        -5.5,
+        -3.75,
+        -2.0,
+        -0.25,
+        1.125,
+        2.4375,
+        3.75,
+        5.0625,
+        6.125,
+        6.5625,
+        7.0,
+        7.4375,
+        7.875,
+        7.6875,
+        7.25,
+        6.8125,
+        6.375,
+        5.9375,
+        5.5,
+        5.0625,
+        4.625,
+        4.1875,
+        3.75,
+        3.3125,
+        2.875,
+        2.4375,
+        2.0,
+    )
+    dense_gain_spread_db: float = 2.0
     dense_mode_seed: int = 0x43524153
-    turbulence_low_gain: float = 0.0
-    turbulence_middle_gain: float = 0.0
-    turbulence_high_gain: float = 0.0
-    turbulence_low_decay_seconds: float = 0.8
-    turbulence_middle_decay_seconds: float = 0.55
-    turbulence_high_decay_seconds: float = 0.3
+    turbulence_frequency_hz: tuple[float, ...] = (350.0, 2200.0, 10000.0)
+    turbulence_gain: tuple[float, ...] = (0.14, 0.1, 0.06)
+    turbulence_persistence: float = 1.0
     dispersion_feedback: float = 0.9965
     dispersion_drive: float = 2.8
     dispersion_excursion_samples: float = 2.4
@@ -97,9 +132,30 @@ class CrashFit:
     sparse_bloom_gain: float = 0.0
     body_bypass_gain: float = 0.06
     output_gain: float = 1.0
+    direct_radiation_enabled: bool = True
+    direct_low_cut_hz: float = 40.0
+    direct_low_cut_q: float = 0.707
+    direct_colour_frequency_hz: float = 7200.0
+    direct_colour_gain_db: float = 1.0
+    direct_colour_q: float = 0.8
+    direct_high_cut_hz: float = 20000.0
+    direct_high_cut_q: float = 0.707
+    sparse_radiation_enabled: bool = True
+    sparse_low_cut_hz: float = 40.0
+    sparse_low_cut_q: float = 0.707
     colour_frequency_hz: float = 5200.0
     colour_gain_db: float = 1.5
+    sparse_colour_q: float = 0.8
     high_cut_hz: float = 19000.0
+    sparse_high_cut_q: float = 0.707
+    dense_radiation_enabled: bool = True
+    dense_low_cut_hz: float = 40.0
+    dense_low_cut_q: float = 0.707
+    dense_colour_frequency_hz: float = 7200.0
+    dense_colour_gain_db: float = 0.5
+    dense_colour_q: float = 0.8
+    dense_high_cut_hz: float = 19000.0
+    dense_high_cut_q: float = 0.707
     strength_gamma: float = 1.15
     body_strength_gamma: float = 0.8
     dense_strength_gamma: float = 0.8
@@ -112,11 +168,6 @@ class CrashFit:
             _resample_envelope(
                 self.dense_gain_envelope_db, DENSE_GAIN_ENVELOPE_POINT_COUNT
             ),
-        )
-        object.__setattr__(
-            self,
-            "dense_decay_envelope_octaves",
-            _resample_envelope(self.dense_decay_envelope_octaves, 6),
         )
 
     def native(self):
@@ -135,6 +186,8 @@ class CrashEvent:
     location: float = 1.0
     hardness: float = 0.65
     seed: int = 1
+    implement: float = 0.75
+    contact_spread: float = 0.2
 
 
 def _resample_envelope(values, point_count: int) -> tuple[float, ...]:
@@ -157,6 +210,8 @@ def render_crash(
     location: float = 1.0,
     hardness: float = 0.65,
     seed: int = 1,
+    implement: float = 0.75,
+    contact_spread: float = 0.2,
 ) -> np.ndarray:
     if seconds <= 0 or sample_rate < 1:
         raise ValueError("crash render duration and sample rate must be positive")
@@ -171,6 +226,8 @@ def render_crash(
             hardness,
             seed,
             fit.native(),
+            implement,
+            contact_spread,
         ),
         dtype=np.float64,
     )
@@ -184,6 +241,8 @@ def render_crash_components(
     location: float = 1.0,
     hardness: float = 0.65,
     seed: int = 1,
+    implement: float = 0.75,
+    contact_spread: float = 0.2,
 ) -> np.ndarray:
     """Return direct, dispersion, sparse, dense-residual, and output taps."""
     if seconds <= 0 or sample_rate < 1:
@@ -199,6 +258,8 @@ def render_crash_components(
             hardness,
             seed,
             fit.native(),
+            implement,
+            contact_spread,
         ),
         dtype=np.float64,
     )
@@ -228,6 +289,8 @@ def render_crash_sequence(
             np.asarray([event.strength for event in ordered], dtype=np.float32),
             np.asarray([event.location for event in ordered], dtype=np.float32),
             np.asarray([event.hardness for event in ordered], dtype=np.float32),
+            np.asarray([event.implement for event in ordered], dtype=np.float32),
+            np.asarray([event.contact_spread for event in ordered], dtype=np.float32),
             onsets,
             np.asarray([event.seed for event in ordered], dtype=np.uint32),
             fit.native(),

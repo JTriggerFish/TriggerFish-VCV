@@ -12,7 +12,10 @@ const sampleRate = 48000;
 const seconds = 10;
 const engine = await CrashEngine.create(sampleRate);
 const macros = engine.macros.map(descriptor => descriptor.defaultValue);
-const event = { strength: .8, location: .8, hardness: .65, seed: 17 };
+const event = {
+  strength: .8, location: .8, hardness: .65, implement: .75,
+  contactSpread: .2, seed: 17,
+};
 
 engine.render({ seconds: 1, macros, ...event });
 const renderTimes = [];

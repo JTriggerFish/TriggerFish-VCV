@@ -8,6 +8,7 @@ const screenshot = arguments_.find(argument =>
 const testAudio = arguments_.includes("--trigger");
 const profileUi = arguments_.includes("--profile");
 const testControls = arguments_.includes("--controls");
+const reloadPage = arguments_.includes("--reload");
 
 async function pageTarget() {
   const targets = await (await fetch(`${endpoint}/json`)).json();
@@ -45,6 +46,11 @@ if (!target) throw new Error("no browser page target");
 const socket = await connect(target.webSocketDebuggerUrl);
 const call = protocol(socket);
 await call("Runtime.enable");
+if (reloadPage) {
+  await call("Page.enable");
+  await call("Page.reload", { ignoreCache: true });
+  await new Promise(resolve => setTimeout(resolve, 500));
+}
 const expression = `new Promise(resolve => {
   const deadline = performance.now() + 15000;
   const poll = () => {
@@ -189,12 +195,29 @@ if (testControls) {
     expression: `new Promise(resolve => {
       const master = document.getElementById("master");
       const hardness = document.getElementById("hardness");
+      const implementChoices = [...document.querySelectorAll(
+        'input[name="implement"]',
+      )];
+      const sizeMeta = document.getElementById("size-meta");
       const colour = document.getElementById("colour-range");
       const mode = document.getElementById("view-mode");
       const model = document.querySelector("#model-level input");
-      const decay = document.querySelector("#decay-controls input");
+      const shape = document.querySelector("#body-controls input");
+      const bodyLowT60 = document.querySelector(
+        '[data-fit-key="body_decay_seconds_0"] input');
+      const sidebar = document.querySelector("aside");
+      const analysis = document.querySelector(".analysis");
+      const analysisTop = analysis.getBoundingClientRect().top;
+      const spectrogram = document.getElementById("spectrogram");
+      const referencePixels = () => spectrogram.getContext("2d").getImageData(
+        0, 0, Math.floor(spectrogram.width / 2), spectrogram.height,
+      ).data;
+      const referenceBefore = referencePixels();
+      sidebar.scrollTop = Math.min(240, sidebar.scrollHeight - sidebar.clientHeight);
       const initial = {
-        hardness: hardness.value, model: Number(model.value), decay: decay.value,
+        hardness: hardness.value,
+        implement: implementChoices.find(input => input.checked)?.value,
+        model: Number(model.value), shape: shape.value,
       };
       const reset = (element, changed, eventName = "input") => {
         element.value = changed;
@@ -203,10 +226,16 @@ if (testControls) {
       };
       reset(master, -30);
       reset(hardness, 0.1);
+      implementChoices.find(input => input.value === "0").click();
+      const brushCharacter = document.getElementById("character-label").textContent;
+      implementChoices.find(input => input.value === "0.5").click();
+      const malletCharacter = document.getElementById("character-label").textContent;
+      implementChoices.find(input => input.value === initial.implement).click();
+      reset(sizeMeta, 0.1);
       reset(colour, 50);
       reset(mode, "difference", "change");
-      reset(decay, 0.9);
-      reset(model, Math.min(12, initial.model + 2));
+      reset(shape, 0.9);
+      reset(model, Math.min(1, initial.model + 0.1));
       const deadline = performance.now() + 5000;
       const poll = () => {
         if (document.getElementById("status").textContent === "Ready" ||
@@ -214,10 +243,54 @@ if (testControls) {
           const checks = {
             master: master.value === "-12",
             hardness: hardness.value === initial.hardness,
+            implement: implementChoices.find(input => input.checked)?.value ===
+              initial.implement,
+            implementChoices: implementChoices.length === 3,
+            contextualCharacter: document.getElementById("character-label")
+              .textContent === ({
+                "0": "Bristle stiffness", "0.5": "Mallet firmness",
+                "1": "Tip hardness",
+              })[initial.implement],
+            familyCharacterLabels: brushCharacter === "Bristle stiffness" &&
+              malletCharacter === "Mallet firmness",
+            sizeMeta: sizeMeta.value === "0.5",
             colour: colour.value === "90",
             mode: mode.value === "mirror",
-            decay: decay.value === initial.decay,
+            shape: shape.value === initial.shape,
             model: Math.abs(Number(model.value) - initial.model) <= 0.11,
+            bodyLowT60: bodyLowT60 instanceof HTMLInputElement,
+            fiveBodyT60Knots: document.querySelectorAll(
+              "#decay-editor .editor-point").length === 5,
+            sharedT60Editor: Boolean(document.querySelector("#decay-editor svg")),
+            modalPaintBars: document.querySelectorAll("#wash-editor .editor-bar")
+              .length === 12,
+            turbulenceDefaultOn: document.querySelector(
+              "#turbulence-toggle input")?.checked === true,
+            noStrikeEllipse: getComputedStyle(
+              document.getElementById("strike-pad"), "::after").content === "none",
+            twoControlColumns: getComputedStyle(
+              document.querySelector(".control-columns"),
+            ).gridTemplateColumns.split(" ").length === 2,
+            independentScroll: sidebar.scrollHeight > sidebar.clientHeight &&
+              analysis.getBoundingClientRect().top === analysisTop,
+            strikeInAnalysis: Boolean(
+              document.getElementById("strike-pad").closest(".analysis")),
+            strikeVisible: document.getElementById("strike-pad")
+              .getBoundingClientRect().bottom <=
+              analysis.getBoundingClientRect().bottom,
+            turbulenceInLeftColumn: Boolean(document.querySelector(
+              ".control-column:first-child #turbulence-toggle",
+            )),
+            referenceColourScale: document.getElementById("colour-ceiling")
+              .textContent.startsWith("Reference ceiling"),
+            livePreparationVisible: document.getElementById("live-commit")
+              .textContent.startsWith("Live DSP"),
+            fixedReferenceColours: (() => {
+              const after = referencePixels();
+              return after.length === referenceBefore.length && after.every(
+                (value, index) => value === referenceBefore[index],
+              );
+            })(),
           };
           resolve({ checks, passed: Object.values(checks).every(Boolean) });
         } else setTimeout(poll, 25);

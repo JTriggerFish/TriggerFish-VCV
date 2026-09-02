@@ -57,7 +57,12 @@ self.onmessage = async ({ data }) => {
       producerLoop();
       self.postMessage({ kind: "ready" });
     } else if (data.kind === "macros") {
+      const started = performance.now();
       engine.setMacros(data.values);
+      self.postMessage({
+        kind: "macros-applied", generation: data.generation,
+        elapsedMs: performance.now() - started,
+      });
     } else if (data.kind === "trigger") {
       engine.trigger(data.event);
       self.postMessage({ kind: "triggered" });

@@ -1,4 +1,4 @@
-const FitSchema = "triggerfish-percussion-fit-v1";
+const FitSchema = "triggerfish-percussion-fit-v4";
 
 export function snapshotState(state, name = "Snapshot") {
   return Object.freeze({
@@ -7,7 +7,7 @@ export function snapshotState(state, name = "Snapshot") {
     parentId: state.activeSnapshotId ?? null,
     createdAt: new Date().toISOString(),
     name,
-    renderer: { graph: "crash-experimental-v1", api: 1, macros: "crash-macros-v1" },
+    renderer: { graph: "crash-experimental-v4", api: 4, macros: "crash-macros-v4" },
     reference: state.reference ? {
       id: state.reference.id,
       sha256: state.reference.sha256,
@@ -27,10 +27,42 @@ export function snapshotState(state, name = "Snapshot") {
   });
 }
 
-export function validateFit(value) {
-  if (value?.schema !== FitSchema || value?.renderer?.api !== 1 ||
-      !Array.isArray(value?.controls?.macros)) {
+export function validateFit(value, descriptors = []) {
+  const macros = value?.controls?.macros;
+  const event = value?.controls?.event;
+  const analysis = value?.controls?.analysis;
+  if (value?.schema !== FitSchema || value?.renderer?.api !== 4 ||
+      value?.renderer?.graph !== "crash-experimental-v4" ||
+      value?.renderer?.macros !== "crash-macros-v4" ||
+      !Array.isArray(macros) || macros.length !== descriptors.length ||
+      !event || !analysis || typeof value?.reference?.id !== "string" ||
+      typeof value?.reference?.sha256 !== "string") {
     throw new Error("unsupported or incomplete percussion fit");
+  }
+  descriptors.forEach((descriptor, index) => {
+    const macro = macros[index];
+    if (!Number.isFinite(macro) || macro < descriptor.minimum ||
+        macro > descriptor.maximum) {
+      throw new Error(`invalid saved control: ${descriptor.key}`);
+    }
+  });
+  for (const key of [
+    "strength", "location", "hardness", "implement", "contactSpread",
+  ]) {
+    if (!Number.isFinite(event[key]) || event[key] < 0 || event[key] > 1) {
+      throw new Error(`invalid event ${key}`);
+    }
+  }
+  if (!Number.isInteger(event.seed) || event.seed < 0 || event.seed > 0xffffffff) {
+    throw new Error("invalid event seed");
+  }
+  if (!Number.isInteger(analysis.size) || analysis.size < 2 ||
+      (analysis.size & (analysis.size - 1)) !== 0 ||
+      !Number.isInteger(analysis.hop) || analysis.hop < 1 ||
+      analysis.hop > analysis.size || !Number.isFinite(analysis.floorDb) ||
+      !Number.isFinite(analysis.dynamicRangeDb) ||
+      !["hann", "blackman-harris", "rectangular"].includes(analysis.window)) {
+    throw new Error("invalid analysis settings");
   }
   return value;
 }
@@ -46,6 +78,6 @@ export function downloadFit(snapshot) {
   setTimeout(() => URL.revokeObjectURL(link.href), 0);
 }
 
-export async function readFit(file) {
-  return validateFit(JSON.parse(await file.text()));
+export async function readFit(file, descriptors) {
+  return validateFit(JSON.parse(await file.text()), descriptors);
 }

@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <utility>
 
 namespace tfdsp::percussion {
 namespace {
@@ -16,12 +17,51 @@ float Positive(const float value, const float fallback) noexcept {
   return std::isfinite(value) && value > 0.f ? value : fallback;
 }
 
+template <std::size_t Count>
+float LogEnvelope(const std::array<float, Count> &frequencies,
+                  const std::array<float, Count> &values,
+                  const float frequency) noexcept {
+  std::array<std::pair<float, float>, Count> points{};
+  for (std::size_t point = 0; point < Count; ++point) {
+    points[point] = {Positive(frequencies[point], 1.f),
+                     Positive(values[point], 1.f)};
+  }
+  std::sort(points.begin(), points.end(), [](const auto &left,
+                                              const auto &right) {
+    return left.first < right.first;
+  });
+  const float target = Positive(frequency, points.front().first);
+  if (target <= points.front().first)
+    return points.front().second;
+  for (std::size_t right = 1; right < Count; ++right) {
+    if (target > points[right].first)
+      continue;
+    const float leftFrequency = points[right - 1].first;
+    const float rightFrequency = std::max(
+        points[right].first, leftFrequency + 1.f);
+    const float amount = std::clamp(
+        std::log(target / leftFrequency) /
+            std::log(rightFrequency / leftFrequency),
+        0.f, 1.f);
+    const float left = points[right - 1].second;
+    const float rightValue = points[right].second;
+    return std::exp(std::log(left) + amount * (std::log(rightValue) -
+                                                std::log(left)));
+  }
+  return points.back().second;
+}
+
+float BodyDecay(const CrashCymbalFitParameters &fit,
+                const float frequency) noexcept {
+  return std::clamp(LogEnvelope(fit.bodyDecayFrequencyHz,
+                                fit.bodyDecaySeconds, frequency),
+                    .01f, 30.f);
+}
+
 CrashSparseModes::Parameters SparseModes(
     const float sampleRate, const CrashCymbalFitParameters &fit) noexcept {
   CrashSparseModes::Parameters result{};
   const float tune = std::clamp(Positive(fit.sparseTune, 1.f), .5f, 2.f);
-  const float decayScale =
-      std::clamp(Positive(fit.sparseDecayScale, 1.f), .1f, 4.f);
   float squaredGain = 0.f;
   for (const float amplitude : fit.sparseAmplitude) {
     const float gain = std::clamp(Positive(amplitude, 0.f), 0.f, 8.f);
@@ -34,7 +74,9 @@ CrashSparseModes::Parameters SparseModes(
         20.f, .48f * sampleRate);
     result[mode] = {
         frequency,
-        std::clamp(Positive(fit.sparseDecaySeconds[mode], 1.f) * decayScale,
+        std::clamp(BodyDecay(fit, frequency) *
+                       std::clamp(Positive(fit.sparseDecayRatio[mode], 1.f),
+                                  .5f, 2.f),
                    .01f, 30.f),
         ModalDriveGain,
         normalization * std::clamp(Positive(fit.sparseAmplitude[mode], 0.f),
@@ -52,10 +94,23 @@ CrashDenseModes::Parameters DenseModes(
   cloud.maximumFrequencyHz = fit.denseMaximumFrequencyHz;
   cloud.frequencyWarp = fit.denseFrequencyWarp;
   cloud.spacingJitter = fit.denseSpacingJitter;
-  cloud.lowDecaySeconds = fit.denseLowDecaySeconds;
-  cloud.highDecaySeconds = fit.denseHighDecaySeconds;
-  cloud.decayCurve = fit.denseDecayCurve;
-  cloud.decayEnvelopeOctaves = fit.denseDecayEnvelopeOctaves;
+  cloud.modeDensity = fit.denseModeDensity;
+  cloud.lowDecaySeconds = 1.f;
+  cloud.highDecaySeconds = 1.f;
+  cloud.decayCurve = 1.f;
+  const float minimum = std::clamp(fit.denseMinimumFrequencyHz, 20.f,
+                                   .45f * sampleRate);
+  const float maximum = std::clamp(fit.denseMaximumFrequencyHz,
+                                   minimum + 1.f, .48f * sampleRate);
+  const float minimumErb = ErbRate(minimum);
+  const float maximumErb = ErbRate(maximum);
+  for (std::size_t point = 0; point < cloud.decayEnvelopeOctaves.size(); ++point) {
+    const float position = static_cast<float>(point) /
+        static_cast<float>(cloud.decayEnvelopeOctaves.size() - 1);
+    const float frequency = InverseErbRate(
+        minimumErb + position * (maximumErb - minimumErb));
+    cloud.decayEnvelopeOctaves[point] = std::log2(BodyDecay(fit, frequency));
+  }
   cloud.decaySpreadOctaves = fit.denseDecaySpreadOctaves;
   cloud.tiltDbPerOctave = fit.denseTiltDbPerOctave;
   cloud.gainEnvelopeDb = fit.denseGainEnvelopeDb;
@@ -123,14 +178,22 @@ DispersionLoopParameters Dispersion(
 TurbulentResidualParameters Turbulence(
     const CrashCymbalFitParameters &fit) noexcept {
   TurbulentResidualParameters result;
-  result.gain = {
-      std::clamp(fit.turbulenceLowGain, 0.f, 4.f),
-      std::clamp(fit.turbulenceMiddleGain, 0.f, 4.f),
-      std::clamp(fit.turbulenceHighGain, 0.f, 4.f)};
+  for (std::size_t band = 0; band < result.gain.size(); ++band)
+    result.gain[band] = std::clamp(fit.turbulenceGain[band], 0.f, 4.f);
+  std::array<float, 3> frequencies{};
+  frequencies[0] = std::clamp(fit.turbulenceFrequencyHz[0], 40.f, 8000.f);
+  frequencies[1] = std::clamp(fit.turbulenceFrequencyHz[1],
+                              frequencies[0] * 1.05f, 14000.f);
+  frequencies[2] = std::clamp(fit.turbulenceFrequencyHz[2],
+                              frequencies[1] * 1.05f, 20000.f);
+  const float persistence = std::clamp(
+      Positive(fit.turbulencePersistence, 1.f), .25f, 4.f);
   result.decay = {
-      std::clamp(fit.turbulenceLowDecaySeconds, .005f, 30.f),
-      std::clamp(fit.turbulenceMiddleDecaySeconds, .005f, 30.f),
-      std::clamp(fit.turbulenceHighDecaySeconds, .005f, 30.f)};
+      persistence * BodyDecay(fit, frequencies[0]),
+      persistence * BodyDecay(fit, frequencies[1]),
+      persistence * BodyDecay(fit, frequencies[2])};
+  result.lowCrossoverHz = std::sqrt(frequencies[0] * frequencies[1]);
+  result.highCrossoverHz = std::sqrt(frequencies[1] * frequencies[2]);
   result.seed = 0x43524153u;
   return result;
 }
@@ -139,24 +202,44 @@ ObservationModel<3>::Parameters Observation(
     const CrashCymbalFitParameters &fit) noexcept {
   ObservationModel<3>::Parameters result{};
   result[0].gain = std::clamp(fit.directGain, 0.f, 4.f);
-  result[0].radiation.lowCutHz = 180.f;
-  result[0].radiation.colourFrequencyHz = 7200.f;
-  result[0].radiation.colourGainDb = 1.f;
-  result[0].radiation.highCutHz = 20000.f;
+  result[0].radiationEnabled = fit.directRadiationEnabled;
+  result[0].radiation.lowCutHz =
+      std::clamp(fit.directLowCutHz, 10.f, 1000.f);
+  result[0].radiation.lowCutQ = std::clamp(fit.directLowCutQ, .25f, 4.f);
+  result[0].radiation.colourFrequencyHz =
+      std::clamp(fit.directColourFrequencyHz, 100.f, 18000.f);
+  result[0].radiation.colourGainDb =
+      std::clamp(fit.directColourGainDb, -18.f, 18.f);
+  result[0].radiation.colourQ = std::clamp(fit.directColourQ, .25f, 12.f);
+  result[0].radiation.highCutHz =
+      std::clamp(fit.directHighCutHz, 1000.f, 22000.f);
+  result[0].radiation.highCutQ = std::clamp(fit.directHighCutQ, .25f, 4.f);
   result[1].gain = std::clamp(fit.sparseGain, 0.f, 4.f);
-  result[1].radiation.lowCutHz = 90.f;
+  result[1].radiationEnabled = fit.sparseRadiationEnabled;
+  result[1].radiation.lowCutHz =
+      std::clamp(fit.sparseLowCutHz, 10.f, 1000.f);
+  result[1].radiation.lowCutQ = std::clamp(fit.sparseLowCutQ, .25f, 4.f);
   result[1].radiation.colourFrequencyHz =
       std::clamp(fit.colourFrequencyHz, 100.f, 18000.f);
   result[1].radiation.colourGainDb =
       std::clamp(fit.colourGainDb, -18.f, 18.f);
+  result[1].radiation.colourQ = std::clamp(fit.sparseColourQ, .25f, 12.f);
   result[1].radiation.highCutHz =
       std::clamp(fit.highCutHz, 1000.f, 22000.f);
+  result[1].radiation.highCutQ = std::clamp(fit.sparseHighCutQ, .25f, 4.f);
   result[2].gain = std::clamp(fit.denseGain, 0.f, 4.f);
-  result[2].radiation.lowCutHz = 140.f;
-  result[2].radiation.colourFrequencyHz = 7200.f;
-  result[2].radiation.colourGainDb = .5f;
+  result[2].radiationEnabled = fit.denseRadiationEnabled;
+  result[2].radiation.lowCutHz =
+      std::clamp(fit.denseLowCutHz, 10.f, 1000.f);
+  result[2].radiation.lowCutQ = std::clamp(fit.denseLowCutQ, .25f, 4.f);
+  result[2].radiation.colourFrequencyHz =
+      std::clamp(fit.denseColourFrequencyHz, 100.f, 18000.f);
+  result[2].radiation.colourGainDb =
+      std::clamp(fit.denseColourGainDb, -18.f, 18.f);
+  result[2].radiation.colourQ = std::clamp(fit.denseColourQ, .25f, 12.f);
   result[2].radiation.highCutHz =
-      std::clamp(fit.highCutHz, 1000.f, 22000.f);
+      std::clamp(fit.denseHighCutHz, 1000.f, 22000.f);
+  result[2].radiation.highCutQ = std::clamp(fit.denseHighCutQ, .25f, 4.f);
   return result;
 }
 

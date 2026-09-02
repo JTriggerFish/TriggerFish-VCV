@@ -12,6 +12,10 @@ export class SafeAudition {
     this.triggerCount = 0;
     this.workerReady = false;
     this.pendingMacros = [];
+    this.macroGeneration = 0;
+    this.appliedMacroGeneration = 0;
+    this.macroCommitStarted = 0;
+    this.macroCommitMs = 0;
   }
 
   async #prepare() {
@@ -75,8 +79,17 @@ export class SafeAudition {
       this.worker.onmessage = ({ data }) => {
         if (data.kind === "ready") {
           this.workerReady = true;
-          this.worker.postMessage({ kind: "macros", values: this.pendingMacros });
+          const generation = ++this.macroGeneration;
+          this.macroCommitStarted = performance.now();
+          this.worker.postMessage({
+            kind: "macros", values: this.pendingMacros, generation,
+          });
           resolve();
+        } else if (data.kind === "macros-applied") {
+          if (data.generation >= this.appliedMacroGeneration) {
+            this.appliedMacroGeneration = data.generation;
+            this.macroCommitMs = data.elapsedMs;
+          }
         } else if (data.kind === "triggered") {
           ++this.triggerCount;
         } else if (data.kind === "error") {
@@ -106,7 +119,11 @@ export class SafeAudition {
 
   setMacros(values) {
     this.pendingMacros = [...values];
-    if (this.workerReady) this.worker.postMessage({ kind: "macros", values });
+    if (this.workerReady) {
+      const generation = ++this.macroGeneration;
+      this.macroCommitStarted = performance.now();
+      this.worker.postMessage({ kind: "macros", values, generation });
+    }
   }
 
   async trigger(event) {
@@ -164,4 +181,11 @@ export class SafeAudition {
       liveLeadFrames / this.context.sampleRate + 0.005);
   }
   get sampleRate() { return this.context?.sampleRate ?? 0; }
+  get macroCommitPending() {
+    return this.appliedMacroGeneration < this.macroGeneration;
+  }
+  get macroCommitElapsedMs() {
+    return this.macroCommitPending
+      ? performance.now() - this.macroCommitStarted : this.macroCommitMs;
+  }
 }

@@ -1,5 +1,6 @@
 import { SafeAudition } from "./audio.mjs";
 import { CrashEngine } from "./engine.mjs";
+import { FitControls } from "./fit_controls.mjs";
 import { matchedModelLevelDb } from "./level_match.mjs";
 import { readReferences } from "./references.mjs";
 import { ReferenceBrowser } from "./reference_browser.mjs";
@@ -10,8 +11,14 @@ const byId = id => document.getElementById(id);
 const state = {
   reference: null, references: [], synthesis: null, snapshots: [],
   macros: [], activeSnapshotId: null,
-  event: { strength: 0.8, location: 0.8, hardness: 0.65, seed: 17 },
-  eventDefaults: { strength: 0.8, location: 0.8, hardness: 0.65 },
+  event: {
+    strength: 0.8, location: 0.8, hardness: 0.65, implement: 1,
+    contactSpread: 0.2, seed: 17,
+  },
+  eventDefaults: {
+    strength: 0.8, location: 0.8, hardness: 0.65, implement: 1,
+    contactSpread: 0.2,
+  },
   modelLevelTouched: false,
   analysis: {
     size: 2048, hop: 512, window: "hann", floorDb: -160,
@@ -36,19 +43,55 @@ let renderGeneration = 0;
 let renderInFlight = false;
 let queuedRender = null;
 let pendingLevelMatch = null;
+let fitControls;
+let referenceBrowser;
+let restoringReference = false;
 
-function setStatus(message) { byId("status").textContent = message; }
-function valueText(descriptor, value) {
-  return `${Number(value).toFixed(descriptor.unit === "dB" ? 1 : 3)}${descriptor.unit ? ` ${descriptor.unit}` : ""}`;
+const implementFamilies = [
+  {
+    value: 0, label: "Bristle stiffness",
+    endpoints: ["soft / fine", "stiff / coarse"],
+  },
+  {
+    value: .5, label: "Mallet firmness",
+    endpoints: ["soft", "hard"],
+  },
+  {
+    value: 1, label: "Tip hardness",
+    endpoints: ["soft / round", "hard / sharp"],
+  },
+];
+
+function selectedImplement(value) {
+  return implementFamilies.reduce((best, item) =>
+    Math.abs(item.value - value) < Math.abs(best.value - value) ? item : best,
+  );
 }
 
+function paintPerformanceControls() {
+  const family = selectedImplement(state.event.implement);
+  state.event.implement = family.value;
+  document.querySelectorAll('input[name="implement"]').forEach(input => {
+    input.checked = Number(input.value) === family.value;
+  });
+  byId("character-label").textContent = family.label;
+  const endpoints = byId("character-endpoints").querySelectorAll("i");
+  endpoints[0].textContent = family.endpoints[0];
+  endpoints[1].textContent = family.endpoints[1];
+  byId("hardness").value = state.event.hardness;
+  byId("hardness").nextElementSibling.textContent =
+    state.event.hardness.toFixed(2);
+}
+
+function setStatus(message) { byId("status").textContent = message; }
+function updateColourCeiling() {
+  const peak = state.referenceSpectrum?.peakDb;
+  byId("colour-ceiling").textContent = Number.isFinite(peak)
+    ? `Reference ceiling ${peak.toFixed(1)} dBFS`
+    : "Reference ceiling …";
+}
 function refreshModelLevelControl() {
-  const descriptor = engine.macros[0];
-  const parent = byId("model-level");
-  const input = parent.querySelector("input");
-  const output = parent.querySelector("output");
-  if (input) input.value = state.macros[0];
-  if (output) output.textContent = valueText(descriptor, state.macros[0]);
+  fitControls?.refresh("model_level_db");
 }
 
 function requestLevelMatch(resetToFactory = false) {
@@ -62,85 +105,20 @@ function requestLevelMatch(resetToFactory = false) {
   renderSynthesis();
 }
 
-function slider(descriptor, parent, onInput) {
-  const row = document.createElement("label");
-  row.className = "slider-row";
-  row.append(descriptor.name);
-  const input = document.createElement("input");
-  input.type = "range"; input.min = descriptor.minimum; input.max = descriptor.maximum;
-  input.step = descriptor.unit === "dB"
-    ? 0.1 : (descriptor.maximum - descriptor.minimum) / 400;
-  input.value = state.macros[descriptor.index];
-  const output = document.createElement("output");
-  output.textContent = valueText(descriptor, input.value);
-  input.oninput = () => {
-    state.macros[descriptor.index] = Number(input.value);
-    if (descriptor.index === 0) {
-      state.modelLevelTouched = true;
-      pendingLevelMatch = null;
-    }
-    output.textContent = valueText(descriptor, input.value);
-    onInput?.();
-  };
-  input.ondblclick = event => {
-    event.preventDefault();
-    if (descriptor.index === 0) {
-      requestLevelMatch();
-      return;
-    }
-    state.macros[descriptor.index] = descriptor.defaultValue;
-    input.value = descriptor.defaultValue;
-    output.textContent = valueText(descriptor, descriptor.defaultValue);
-    onInput?.();
-  };
-  row.append(input, output); parent.append(row);
-}
-
-function pad(first, second, parent) {
-  const row = document.createElement("div"); row.className = "xy";
-  const pad = document.createElement("div"); pad.className = "xy-pad";
-  const labels = document.createElement("div"); labels.className = "xy-labels";
-  labels.innerHTML = `<b>${first.name}</b><span>${second.name}</span>`;
-  const update = event => {
-    const bounds = pad.getBoundingClientRect();
-    const x = Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width));
-    const y = Math.max(0, Math.min(1, (event.clientY - bounds.top) / bounds.height));
-    state.macros[first.index] = first.minimum + x * (first.maximum - first.minimum);
-    state.macros[second.index] = second.minimum + (1 - y) *
-      (second.maximum - second.minimum);
-    paint(); scheduleRender();
-  };
-  const paint = () => {
-    const x = (state.macros[first.index] - first.minimum) /
-      (first.maximum - first.minimum);
-    const y = 1 - (state.macros[second.index] - second.minimum) /
-      (second.maximum - second.minimum);
-    pad.style.setProperty("--x", `${100 * x}%`);
-    pad.style.setProperty("--y", `${100 * y}%`);
-  };
-  pad.onpointerdown = event => {
-    pad.setPointerCapture(event.pointerId); update(event);
-    pad.onpointermove = update;
-  };
-  pad.onpointerup = () => { pad.onpointermove = null; };
-  pad.ondblclick = event => {
-    event.preventDefault();
-    state.macros[first.index] = first.defaultValue;
-    state.macros[second.index] = second.defaultValue;
-    paint(); scheduleRender();
-  };
-  paint(); row.append(pad, labels); parent.append(row);
-}
-
 function buildControls() {
   state.macros = engine.macros.map(item => item.defaultValue);
-  slider(engine.macros[0], byId("model-level"), scheduleRender);
-  pad(engine.macros[1], engine.macros[2], byId("macro-pads"));
-  pad(engine.macros[3], engine.macros[4], byId("macro-pads"));
-  pad(engine.macros[5], engine.macros[6], byId("macro-pads"));
-  for (const index of [7, 8, 9]) {
-    slider(engine.macros[index], byId("decay-controls"), scheduleRender);
-  }
+  fitControls = new FitControls({
+    descriptors: engine.macros, state,
+    onChange: key => {
+      if (key === "model_level_db") {
+        state.modelLevelTouched = true;
+        pendingLevelMatch = null;
+      }
+      scheduleRender();
+    },
+    onLevelReset: () => requestLevelMatch(),
+  });
+  fitControls.build();
 }
 
 function analyze(kind, samples, sampleRate, cacheKey) {
@@ -182,6 +160,7 @@ function analyzeReference() {
   cacheReferenceSpectrum(key, cached);
   state.referenceSpectrum = cached;
   view.setData("reference", cached);
+  updateColourCeiling();
   if (!pendingAnalysis.size) setStatus("Ready");
 }
 
@@ -193,6 +172,7 @@ worker.onmessage = ({ data }) => {
   state[`${data.kind}Spectrum`] = data.result;
   if (data.kind === "reference" && data.cacheKey) {
     cacheReferenceSpectrum(data.cacheKey, data.result);
+    updateColourCeiling();
   }
   if (!pendingAnalysis.size) setStatus("Ready");
 };
@@ -312,13 +292,14 @@ function setReference(reference) {
       strength: reference.cell.strength,
       location: reference.cell.location,
       hardness: reference.cell.hardness,
+      implement: reference.cell.implement ?? .75,
+      contactSpread: reference.cell.contactSpread ?? .2,
     });
     Object.assign(state.event, {
       ...state.eventDefaults,
       seed: reference.cell.seed,
     });
-    byId("hardness").value = state.event.hardness;
-    byId("hardness").nextElementSibling.textContent = state.event.hardness.toFixed(2);
+    paintPerformanceControls();
   }
   if (firstReference) {
     byId("view-mode").value = "mirror";
@@ -326,8 +307,10 @@ function setReference(reference) {
   }
   analyzeReference();
   drawWaveform(); view.reset();
-  if (state.modelLevelTouched) scheduleRender();
-  else requestLevelMatch(true);
+  if (!restoringReference) {
+    if (state.modelLevelTouched) scheduleRender();
+    else requestLevelMatch(true);
+  }
 }
 
 function renderSnapshotList() {
@@ -336,13 +319,28 @@ function renderSnapshotList() {
     const button = document.createElement("button");
     button.className = `snapshot-chip${item.fit.id === state.activeSnapshotId ? " active" : ""}`;
     button.textContent = item.fit.name;
-    button.onclick = () => restore(item);
+    button.onclick = () => restore(item).catch(error => setStatus(String(error)));
     parent.append(button);
   }
 }
 
-function restore(item) {
+async function restore(item) {
   const fit = item.fit;
+  const sameReference = !fit.reference ||
+    (fit.reference.sha256 && fit.reference.sha256 === state.reference?.sha256) ||
+    fit.reference.id === state.reference?.id;
+  if (!sameReference) {
+    restoringReference = true;
+    try {
+      if (!await referenceBrowser?.selectSavedReference(fit.reference)) {
+        throw new Error(
+          "This fit's reference is not in the local corpus; load that WAV first",
+        );
+      }
+    } finally {
+      restoringReference = false;
+    }
+  }
   state.macros.splice(0, state.macros.length, ...fit.controls.macros);
   state.modelLevelTouched = true;
   pendingLevelMatch = null;
@@ -364,25 +362,12 @@ function restore(item) {
 }
 
 function buildPageValues() {
-  document.querySelectorAll("#model-level,#macro-pads,#decay-controls")
-    .forEach(element => element.replaceChildren());
-  buildControlsFromState();
-  byId("hardness").value = state.event.hardness;
-  byId("hardness").nextElementSibling.textContent = state.event.hardness.toFixed(2);
+  fitControls.build();
+  paintPerformanceControls();
   byId("colour-range").value = state.analysis.dynamicRangeDb;
   byId("colour-range").nextElementSibling.textContent =
     `${state.analysis.dynamicRangeDb} dB`;
   view.setSettings({ dynamicRangeDb: state.analysis.dynamicRangeDb });
-}
-
-function buildControlsFromState() {
-  slider(engine.macros[0], byId("model-level"), scheduleRender);
-  pad(engine.macros[1], engine.macros[2], byId("macro-pads"));
-  pad(engine.macros[3], engine.macros[4], byId("macro-pads"));
-  pad(engine.macros[5], engine.macros[6], byId("macro-pads"));
-  for (const index of [7, 8, 9]) slider(
-    engine.macros[index], byId("decay-controls"), scheduleRender,
-  );
 }
 
 async function initialize() {
@@ -390,7 +375,7 @@ async function initialize() {
   buildControls();
   audition.setMacros(state.macros);
   audition.initialize().catch(error => setStatus(String(error)));
-  const referenceBrowser = new ReferenceBrowser({
+  referenceBrowser = new ReferenceBrowser({
     corpus: byId("reference-corpus"),
     articulation: byId("reference-articulation"),
     velocity: byId("reference-velocity"),
@@ -419,6 +404,16 @@ async function initialize() {
     event.currentTarget.value = -12;
     event.currentTarget.dispatchEvent(new Event("input"));
   };
+  byId("size-meta").oninput = event => {
+    const value = Number(event.target.value);
+    event.target.nextElementSibling.textContent = value.toFixed(2);
+    fitControls.applySizeMeta(value);
+  };
+  byId("size-meta").ondblclick = event => {
+    event.preventDefault();
+    event.currentTarget.value = .5;
+    event.currentTarget.dispatchEvent(new Event("input"));
+  };
   byId("hardness").oninput = event => {
     state.event.hardness = Number(event.target.value);
     event.target.nextElementSibling.textContent = state.event.hardness.toFixed(2);
@@ -429,6 +424,13 @@ async function initialize() {
     event.currentTarget.value = state.eventDefaults.hardness;
     event.currentTarget.dispatchEvent(new Event("input"));
   };
+  document.querySelectorAll('input[name="implement"]').forEach(input => {
+    input.onchange = event => {
+      state.event.implement = Number(event.currentTarget.value);
+      paintPerformanceControls();
+      scheduleRender();
+    };
+  });
   byId("strike-pad").onpointerdown = event => {
     const bounds = event.currentTarget.getBoundingClientRect();
     state.event.location = Math.max(0, Math.min(1,
@@ -450,6 +452,11 @@ async function initialize() {
       ` · ${audition.state} · hits ${audition.triggerCount}`;
     byId("limiter").textContent =
       `Limiter ${audition.reduction.toFixed(1)} dB${latency}${output}${live}${underflows}`;
+    byId("live-commit").textContent = audition.macroCommitPending
+      ? `Preparing live DSP… ${audition.macroCommitElapsedMs.toFixed(0)} ms`
+      : audition.macroCommitMs > 0
+        ? `Live DSP ready · ${audition.macroCommitMs.toFixed(0)} ms`
+        : "Live DSP idle";
   }, 100);
 }
 
@@ -504,8 +511,8 @@ function bindSnapshotControls() {
   };
   byId("load-fit").onchange = async event => {
     try {
-      const fit = await readFit(event.target.files[0]);
-      const item = { fit }; state.snapshots.push(item); restore(item);
+      const fit = await readFit(event.target.files[0], engine.macros);
+      const item = { fit }; state.snapshots.push(item); await restore(item);
     } catch (error) { setStatus(String(error)); }
   };
 }

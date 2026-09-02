@@ -18,6 +18,7 @@ struct StatisticalModalCloudParameters {
   float maximumFrequencyHz{18000.f};
   float frequencyWarp{1.f};
   float spacingJitter{.8f};
+  float modeDensity{1.f};
   float lowDecaySeconds{3.f};
   float highDecaySeconds{.18f};
   float decayCurve{.8f};
@@ -77,7 +78,6 @@ typename ModalBank<ModeCount>::Parameters MakeStatisticalModalCloud(
   const float warp = std::clamp(parameters.frequencyWarp, .25f, 4.f);
   const float jitter = std::clamp(parameters.spacingJitter, 0.f, .95f);
   std::array<float, ModeCount> rawGain{};
-  float squaredGain = 0.f;
 
   for (std::size_t mode = 0; mode < ModeCount; ++mode) {
     const float cell = (static_cast<float>(mode) + .5f +
@@ -109,8 +109,21 @@ typename ModalBank<ModeCount>::Parameters MakeStatisticalModalCloud(
         10.f, std::clamp(parameters.gainSpreadDb, 0.f, 18.f) *
                   random.Bipolar() / 20.f);
     rawGain[mode] = tiltGain * envelopeGain * variation;
-    squaredGain += rawGain[mode] * rawGain[mode];
     result[mode] = {frequency, decay, 1.f, 0.f, 0.f};
+  }
+
+  // Density only activates a stable subset: it never relocates modes.
+  DeterministicRandom densityRandom;
+  densityRandom.Seed(parameters.seed ^ 0x44454e53u);
+  const float density = std::clamp(parameters.modeDensity, .01f, 1.f);
+  float squaredGain = 0.f;
+  for (std::size_t mode = 0; mode < ModeCount; ++mode) {
+    const float threshold = densityRandom.Uniform();
+    const float activation = std::clamp(
+        (density - threshold) * static_cast<float>(ModeCount) + 1.f,
+        0.f, 1.f);
+    rawGain[mode] *= activation;
+    squaredGain += rawGain[mode] * rawGain[mode];
   }
 
   const float normalization = parameters.outputGain /

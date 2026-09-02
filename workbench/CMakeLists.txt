@@ -52,8 +52,9 @@ if(EMSCRIPTEN)
     "-sENVIRONMENT=web,worker,node"
     "-sFILESYSTEM=0"
     "-sALLOW_MEMORY_GROWTH=1"
+    "-sSTACK_SIZE=2097152"
     "-sASSERTIONS=1"
-    "-sEXPORTED_FUNCTIONS=['_tf_crash_api_version','_tf_crash_create','_tf_crash_destroy','_tf_crash_reset','_tf_crash_trigger','_tf_crash_set_mute','_tf_crash_process','_tf_crash_macro_count','_tf_crash_macro_name','_tf_crash_macro_unit','_tf_crash_macro_minimum','_tf_crash_macro_maximum','_tf_crash_macro_default','_tf_crash_macro_get','_tf_crash_macro_set','_tf_crash_macro_commit','_malloc','_free']"
+    "-sEXPORTED_FUNCTIONS=['_tf_crash_api_version','_tf_crash_create','_tf_crash_destroy','_tf_crash_reset','_tf_crash_trigger','_tf_crash_set_mute','_tf_crash_process','_tf_crash_macro_count','_tf_crash_macro_key','_tf_crash_macro_name','_tf_crash_macro_unit','_tf_crash_macro_scale','_tf_crash_macro_minimum','_tf_crash_macro_maximum','_tf_crash_macro_default','_tf_crash_macro_get','_tf_crash_macro_set','_tf_crash_macro_commit','_malloc','_free']"
     "-sEXPORTED_RUNTIME_METHODS=['HEAPF32','UTF8ToString']"
   )
 
@@ -76,6 +77,14 @@ if(EMSCRIPTEN)
     add_test(NAME triggerfish_workbench_ring_player_tests
       COMMAND ${NODE_EXECUTABLE}
         ${CMAKE_CURRENT_LIST_DIR}/tests/ring_player_tests.mjs
+    )
+    add_test(NAME triggerfish_workbench_size_meta_tests
+      COMMAND ${NODE_EXECUTABLE}
+        ${CMAKE_CURRENT_LIST_DIR}/tests/size_meta_tests.mjs
+    )
+    add_test(NAME triggerfish_workbench_state_tests
+      COMMAND ${NODE_EXECUTABLE}
+        ${CMAKE_CURRENT_LIST_DIR}/tests/state_tests.mjs
     )
     add_custom_target(triggerfish_workbench_site
       COMMAND ${NODE_EXECUTABLE}

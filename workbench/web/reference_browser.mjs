@@ -64,6 +64,28 @@ export class ReferenceBrowser {
     await this.load();
   }
 
+  async selectSavedReference(saved) {
+    const corpusId = saved?.corpus?.id;
+    const cell = saved?.cell;
+    const corpus = this.corpora.find(item => item.id === corpusId);
+    if (!corpus || !cell) return false;
+    this.elements.corpus.value = corpus.id;
+    this.current = corpus;
+    const articulations = unique(corpus.cells.map(item => item.articulation));
+    if (!articulations.includes(cell.articulation)) return false;
+    this.elements.articulation.replaceChildren(...articulations.map(
+      value => new Option(value.replaceAll("-", " "), value),
+    ));
+    this.elements.articulation.value = cell.articulation;
+    this.configureLayers(cell.velocity, cell.repeat);
+    const reference = await this.load();
+    if (!reference) return false;
+    if (saved.sha256 && reference.sha256 !== saved.sha256) {
+      throw new Error("The saved reference cell no longer has the same hash");
+    }
+    return true;
+  }
+
   configureLayers(preferredVelocity, preferredRepeat) {
     const cells = this.current.cells.filter(
       cell => cell.articulation === this.elements.articulation.value,
@@ -99,14 +121,18 @@ export class ReferenceBrowser {
     const cell = this.current.cells.find(item =>
       item.articulation === this.elements.articulation.value &&
       item.velocity === this.velocity && item.repeat === this.repeat);
-    if (!cell) return;
+    if (!cell) return null;
     this.onStatus(`Loading ${cell.label}…`);
     try {
       const reference = await readRemoteReference(this.current, cell);
-      if (generation === this.generation) this.onReference(reference);
+      if (generation === this.generation) {
+        this.onReference(reference);
+        return reference;
+      }
     } catch (error) {
       if (generation === this.generation) this.onStatus(String(error));
     }
+    return null;
   }
 
   get velocity() { return this.velocities[Number(this.elements.velocity.value)]; }

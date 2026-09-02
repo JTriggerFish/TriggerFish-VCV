@@ -15,6 +15,10 @@ struct CrashCymbalHit {
   float location{1.f};
   float hardness{.65f};
   std::uint32_t seed{1};
+  float implement{.75f};
+  // Contact gesture length. A stick/mallet remains an impact; with a brush,
+  // this extends one trigger into a correlated stream of bristle contacts.
+  float contactSpread{.2f};
 };
 
 struct CrashCymbalFrame {

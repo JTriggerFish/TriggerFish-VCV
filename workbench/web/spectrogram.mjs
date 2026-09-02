@@ -48,12 +48,19 @@ export function wheelPanSeconds(
   return primary * scale / Math.max(1, width) * timeSpan * 0.25;
 }
 
+export function normalizationCeilingDb(reference, synthesis) {
+  if (Number.isFinite(reference?.peakDb)) return reference.peakDb;
+  if (Number.isFinite(synthesis?.peakDb)) return synthesis.peakDb;
+  return 0;
+}
+
 export class SpectrogramView {
   constructor(canvas) {
     this.canvas = canvas;
     this.context = canvas.getContext("2d", { alpha: false });
     this.reference = null;
     this.synthesis = null;
+    this.referenceCeilingDb = null;
     this.settings = {
       mode: "mirror", floorDb: -160, dynamicRangeDb: 90,
       differenceDb: 24, split: 0.5,
@@ -67,6 +74,11 @@ export class SpectrogramView {
 
   setData(kind, data) {
     this[kind] = data;
+    // The comparison colour domain belongs to the reference. Never let a
+    // changed synthesis parameter re-normalize either half of the display.
+    if (kind === "reference" && Number.isFinite(data?.peakDb)) {
+      this.referenceCeilingDb = data.peakDb;
+    }
     const duration = data.frames * data.hop / data.sampleRate;
     this.viewport.end = Math.max(this.viewport.end, duration);
     this.viewport.highHz = Math.min(this.viewport.highHz, data.sampleRate / 2);
@@ -244,6 +256,41 @@ export class SpectrogramView {
     context.textAlign = "start";
   }
 
+  #drawFrequencyAxis(width, plotHeight, ratio) {
+    const context = this.context;
+    const low = Math.max(1, this.viewport.lowHz);
+    const high = Math.max(low + 1, this.viewport.highHz);
+    const logarithmicSpan = Math.log(high / low);
+    const frequencies = [40, 50, 100, 200, 500, 1000, 2000, 5000,
+                         10000, 20000];
+    context.font = `${10 * ratio}px sans-serif`;
+    context.textAlign = "left";
+    context.textBaseline = "middle";
+    context.lineWidth = ratio;
+    for (const frequency of frequencies) {
+      if (frequency < low || frequency > high) continue;
+      const y = Math.log(high / frequency) / logarithmicSpan * plotHeight;
+      if (y < 20 * ratio || y > plotHeight - 8 * ratio) continue;
+      context.strokeStyle = frequency === 1000
+        ? "rgba(235, 240, 246, 0.28)" : "rgba(235, 240, 246, 0.16)";
+      context.beginPath();
+      context.moveTo(0, Math.round(y));
+      context.lineTo(width, Math.round(y));
+      context.stroke();
+      const label = frequency >= 1000
+        ? `${frequency / 1000}k` : `${frequency}`;
+      const labelWidth = context.measureText(label).width;
+      context.fillStyle = "rgba(8, 11, 15, 0.78)";
+      context.fillRect(3 * ratio, y - 7 * ratio,
+                       labelWidth + 7 * ratio, 14 * ratio);
+      context.fillStyle = "rgba(235, 240, 246, 0.88)";
+      context.fillText(label, 6 * ratio, y);
+    }
+    context.textBaseline = "top";
+    context.fillStyle = "rgba(235, 240, 246, 0.76)";
+    context.fillText("Hz · log", 6 * ratio, 5 * ratio);
+  }
+
   draw() {
     const ratio = devicePixelRatio || 1;
     const width = Math.max(1, Math.round(this.canvas.clientWidth * ratio));
@@ -253,45 +300,53 @@ export class SpectrogramView {
     }
     const image = this.context.createImageData(width, height);
     const mode = this.settings.mode;
-    const availablePeaks = [this.reference?.peakDb, this.synthesis?.peakDb]
-      .filter(Number.isFinite);
-    const ceiling = availablePeaks.length ? Math.max(...availablePeaks) : 0;
+    const ceiling = Number.isFinite(this.referenceCeilingDb)
+      ? this.referenceCeilingDb
+      : normalizationCeilingDb(this.reference, this.synthesis);
     const floor = ceiling - this.settings.dynamicRangeDb;
+    const axisHeight = Math.min(height - 1, Math.round(25 * ratio));
+    const plotHeight = Math.max(1, height - axisHeight);
     const referenceFrames = this.#frameMap(
       this.reference, width, this.timeOffsets.reference,
     );
     const synthesisFrames = this.#frameMap(
       this.synthesis, width, this.timeOffsets.synthesis,
     );
-    const referenceBins = this.#binMap(this.reference, height);
-    const synthesisBins = this.#binMap(this.synthesis, height);
+    const referenceBins = this.#binMap(this.reference, plotHeight);
+    const synthesisBins = this.#binMap(this.synthesis, plotHeight);
     for (let y = 0; y < height; ++y) {
       for (let x = 0; x < width; ++x) {
+        const offset = 4 * (y * width + x);
+        if (y >= plotHeight) {
+          image.data[offset + 3] = 255;
+          continue;
+        }
         let palette = magmaPalette;
         let colourIndex;
         if (mode === "difference") {
           const reference = this.#value(
-            this.reference, referenceFrames, referenceBins, x, y, width, height,
+            this.reference, referenceFrames, referenceBins,
+            x, y, width, plotHeight,
           );
           const synthesis = this.#value(
-            this.synthesis, synthesisFrames, synthesisBins, x, y, width, height,
+            this.synthesis, synthesisFrames, synthesisBins,
+            x, y, width, plotHeight,
           );
           palette = differencePalette;
           colourIndex = Math.round(255 * (0.5 + 0.5 * Math.max(-1, Math.min(
             1, (synthesis - reference) / this.settings.differenceDb,
           ))));
         } else {
-          const source = this.#source(mode, x, y, width, height);
+          const source = this.#source(mode, x, y, width, plotHeight);
           const isReference = source[0] === this.reference;
           const value = this.#value(source[0],
             isReference ? referenceFrames : synthesisFrames,
             isReference ? referenceBins : synthesisBins,
-            source[1], source[2], width, height);
+            source[1], source[2], width, plotHeight);
           colourIndex = Math.round(255 * Math.max(0, Math.min(
             1, (value - floor) / (ceiling - floor),
           )));
         }
-        const offset = 4 * (y * width + x);
         const paletteOffset = 3 * colourIndex;
         image.data[offset] = palette[paletteOffset];
         image.data[offset + 1] = palette[paletteOffset + 1];
@@ -300,11 +355,12 @@ export class SpectrogramView {
       }
     }
     this.context.putImageData(image, 0, 0);
-    const divider = this.#divider(width, height);
+    this.#drawFrequencyAxis(width, plotHeight, ratio);
+    const divider = this.#divider(width, plotHeight);
     if (divider) {
       this.context.fillStyle = "rgba(255, 255, 255, 0.72)";
       if (divider.axis === "x") {
-        this.context.fillRect(Math.round(divider.position) - 1, 0, 2, height);
+        this.context.fillRect(Math.round(divider.position) - 1, 0, 2, plotHeight);
       } else {
         this.context.fillRect(0, Math.round(divider.position) - 1, width, 2);
       }
@@ -339,8 +395,9 @@ export class SpectrogramView {
       this.onViewport?.(this.viewport);
     }, { passive: false });
     this.canvas.addEventListener("pointerdown", event => {
+      const plotHeight = Math.max(1, this.canvas.clientHeight - 25);
       const divider = this.#divider(
-        this.canvas.clientWidth, this.canvas.clientHeight,
+        this.canvas.clientWidth, plotHeight,
       );
       const coordinate = divider?.axis === "x" ? event.offsetX : event.offsetY;
       if (divider && Math.abs(coordinate - divider.position) <= 8) {
@@ -363,8 +420,9 @@ export class SpectrogramView {
     });
     this.canvas.addEventListener("pointermove", event => {
       if (!drag) {
+        const plotHeight = Math.max(1, this.canvas.clientHeight - 25);
         const divider = this.#divider(
-          this.canvas.clientWidth, this.canvas.clientHeight,
+          this.canvas.clientWidth, plotHeight,
         );
         const coordinate = divider?.axis === "x" ? event.offsetX : event.offsetY;
         const near = divider && Math.abs(coordinate - divider.position) <= 8;

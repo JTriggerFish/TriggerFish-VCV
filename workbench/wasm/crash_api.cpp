@@ -34,7 +34,7 @@ Session *Find(const std::uint32_t handle) noexcept {
 extern "C" {
 
 std::uint32_t tf_crash_api_version() noexcept {
-  return 1;
+  return 4;
 }
 
 std::uint32_t tf_crash_create(const float sampleRate) noexcept {
@@ -74,11 +74,13 @@ int tf_crash_reset(const std::uint32_t handle) noexcept {
 
 int tf_crash_trigger(const std::uint32_t handle, const float strength,
                      const float location, const float hardness,
+                     const float implement, const float contactSpread,
                      const std::uint32_t seed) noexcept {
   auto *session = Find(handle);
   if (!session)
     return 0;
-  session->cymbal.Trigger({strength, location, hardness, seed});
+  session->cymbal.Trigger(
+      {strength, location, hardness, seed, implement, contactSpread});
   return 1;
 }
 
@@ -104,14 +106,24 @@ std::uint32_t tf_crash_macro_count() noexcept {
   return static_cast<std::uint32_t>(tfworkbench::CrashMacroCount);
 }
 
+const char *tf_crash_macro_key(const std::uint32_t index) noexcept {
+  return index < tfworkbench::CrashMacroCount
+      ? tfworkbench::CrashMacroDescription(index).key.c_str() : nullptr;
+}
+
 const char *tf_crash_macro_name(const std::uint32_t index) noexcept {
   return index < tfworkbench::CrashMacroCount
-      ? tfworkbench::CrashMacroDescription(index).name : nullptr;
+      ? tfworkbench::CrashMacroDescription(index).name.c_str() : nullptr;
 }
 
 const char *tf_crash_macro_unit(const std::uint32_t index) noexcept {
   return index < tfworkbench::CrashMacroCount
-      ? tfworkbench::CrashMacroDescription(index).unit : nullptr;
+      ? tfworkbench::CrashMacroDescription(index).unit.c_str() : nullptr;
+}
+
+int tf_crash_macro_scale(const std::uint32_t index) noexcept {
+  return index < tfworkbench::CrashMacroCount
+      ? static_cast<int>(tfworkbench::CrashMacroDescription(index).scale) : -1;
 }
 
 float tf_crash_macro_minimum(const std::uint32_t index) noexcept {

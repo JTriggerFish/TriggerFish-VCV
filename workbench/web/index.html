@@ -10,7 +10,7 @@
 <body>
   <header>
     <div><span class="eyebrow">TriggerFish</span><h1>Percussion workbench</h1></div>
-    <div class="status"><span id="status">Loading DSP…</span><span id="render-time"></span></div>
+    <div class="status"><span id="status">Loading DSP…</span><span id="render-time"></span><span id="live-commit">Live DSP idle</span></div>
   </header>
 
   <nav class="toolbar">
@@ -28,19 +28,52 @@
 
   <main>
     <aside>
-      <section><h2>Fit controls</h2><div id="model-level"></div><div id="macro-pads"></div></section>
-      <section><h2>Decay profile</h2><div id="decay-controls" class="decay"></div></section>
-      <section><h2>Strike</h2>
-        <div id="strike-pad" class="strike-pad"><span>location →</span><b>strength ↑</b></div>
-        <label>Hardness <input id="hardness" type="range" min="0" max="1" value="0.65" step="0.01"><output>0.65</output></label>
-      </section>
+      <div class="control-columns">
+        <div class="control-column">
+          <section><h2>Output</h2><div id="model-level" data-fit-controls></div></section>
+          <section><h2>Starting point</h2>
+            <label>Size meta <input id="size-meta" type="range" min="0" max="1" value="0.5" step="0.01"><output>0.50</output></label>
+          </section>
+          <details open><summary>Contact</summary><div id="impact-controls" data-fit-controls></div></details>
+          <details open><summary>Nonlinear bloom</summary><div id="bloom-controls" data-fit-controls></div></details>
+          <details open><summary>Body balance</summary><div id="body-controls" data-fit-controls></div></details>
+          <details open><summary>Modal paint</summary>
+            <p class="control-help">Each bar moves a resolved modal ridge and shapes the dense wash around it. Double-click a bar to reset it.</p>
+            <div id="wash-editor" data-fit-controls></div>
+            <div id="wash-selection" class="selection-controls" data-fit-controls></div>
+          </details>
+          <details><summary>Turbulent residual</summary>
+            <div id="turbulence-toggle" data-fit-controls></div>
+            <fieldset id="turbulence-fields">
+              <div id="turbulence-editor" data-fit-controls></div>
+              <div id="turbulence-selection" class="selection-controls" data-fit-controls></div>
+              <div id="turbulence-controls" data-fit-controls></div>
+            </fieldset>
+          </details>
+        </div>
+        <div class="control-column">
+          <details open><summary>Dense wash</summary>
+            <p class="control-help">Population and statistical variation for the painted resonator field.</p>
+            <div id="dense-controls" data-fit-controls></div>
+          </details>
+          <details open><summary>Body T60</summary>
+            <p class="control-help">Absolute decay curve shared by resolved modes, dense wash and turbulence.</p>
+            <div id="decay-editor" data-fit-controls></div>
+            <div id="decay-selection" class="selection-controls" data-fit-controls></div>
+          </details>
+          <details><summary>Observation / radiation</summary>
+            <p class="control-help">Independent static radiation EQ for each source path.</p>
+            <fieldset><legend>Direct contact</legend><div id="direct-radiation" data-fit-controls></div></fieldset>
+            <fieldset><legend>Resolved modes</legend><div id="sparse-radiation" data-fit-controls></div></fieldset>
+            <fieldset><legend>Dense wash</legend><div id="dense-radiation" data-fit-controls></div></fieldset>
+          </details>
+        </div>
+      </div>
     </aside>
 
     <section class="analysis">
       <div id="waveform"></div>
-      <div class="spectrogram-wrap"><canvas id="spectrogram"></canvas>
-        <div class="axis-label frequency">frequency (log)</div>
-      </div>
+      <div class="spectrogram-wrap"><canvas id="spectrogram"></canvas></div>
       <div class="analysis-controls">
         <label>View <select id="view-mode"><option value="mirror" selected>Mirror</option><option value="vertical">Vertical split</option><option value="horizontal">Horizontal split</option><option value="difference">Difference</option><option value="reference">Reference</option><option value="synthesis">Synthesis</option></select></label>
         <label>Window <select id="window"><option value="hann">Hann</option><option value="blackman-harris">Blackman–Harris</option><option value="rectangular">Rectangular</option></select></label>
@@ -48,8 +81,27 @@
         <label>Overlap <select id="overlap"><option value="0.5">50%</option><option value="0.75" selected>75%</option><option value="0.875">87.5%</option></select></label>
         <label>Render <select id="render-seconds"><option value="reference" selected>Match reference</option><option value="1">1 s</option><option value="3">3 s</option><option value="6">6 s</option><option value="12">12 s</option></select></label>
         <label>Colour range <input id="colour-range" type="range" min="40" max="140" value="90" step="1"><output>90 dB</output></label>
+        <span id="colour-ceiling" class="analysis-note">Reference ceiling …</span>
         <button id="reset-view">Reset zoom</button>
       </div>
+      <section class="performance-panel"><h2>Strike</h2>
+        <div class="performance-controls">
+          <div id="strike-pad" class="strike-pad">
+            <span class="strike-x"><i>bell</i><i>bow</i><i>edge</i></span>
+            <span class="strike-y"><i>strong</i><i>light</i></span>
+          </div>
+          <div class="implement-controls">
+            <fieldset class="implement-family"><legend>Implement</legend>
+              <label><input type="radio" name="implement" value="0">Brush</label>
+              <label><input type="radio" name="implement" value="0.5">Mallet</label>
+              <label><input type="radio" name="implement" value="1" checked>Stick</label>
+            </fieldset>
+            <label class="character-control"><span id="character-label">Tip hardness</span><input id="hardness" type="range" min="0" max="1" value="0.65" step="0.01"><output>0.65</output>
+              <span id="character-endpoints" class="slider-endpoints"><i>soft / round</i><i>hard / sharp</i></span>
+            </label>
+          </div>
+        </div>
+      </section>
     </section>
   </main>
 

@@ -152,6 +152,16 @@ ContactExciterParameters CrashCymbal::ContactParameters(
   const float strength = Unit(hit.strength);
   const float location = Unit(hit.location);
   const float hardness = Unit(hit.hardness);
+  const float implement = Unit(hit.implement);
+  const float spread = Unit(hit.contactSpread);
+  const float brush = Unit(1.f - 2.f * implement);
+  const float stick = Unit(2.f * implement - 1.f);
+  const float mallet = 1.f - brush - stick;
+  const auto implementMix = [&](const float brushValue,
+                                const float malletValue,
+                                const float stickValue) noexcept {
+    return brush * brushValue + mallet * malletValue + stick * stickValue;
+  };
   const float amplitude = std::pow(
       strength, std::clamp(parameters_.fit.strengthGamma, .25f, 4.f));
   const float bell = Unit(1.f - 2.f * location);
@@ -163,14 +173,16 @@ ContactExciterParameters CrashCymbal::ContactParameters(
       tfdsp::FiniteNormalOrZero(fit.contactNoiseDurationScale), .25f, 4.f);
   const float microDurationScale = std::clamp(
       tfdsp::FiniteNormalOrZero(fit.contactMicroDurationScale), .25f, 4.f);
+  const float implementWidth = implementMix(1.2f, 2.2f, .75f);
 
   ContactExciterParameters result;
   result.pulseDurationSeconds =
-      durationScale * Mix(.0035f, .00055f, hardness);
+      implementWidth * durationScale * Mix(.0035f, .00055f, hardness);
   result.pulseAmplitude = amplitude * Mix(.7f, 1.15f, hardness) *
+      implementMix(.025f, .85f, 1.08f) *
       std::clamp(tfdsp::FiniteNormalOrZero(fit.contactPulseGain), 0.f, 4.f);
   result.chirp.durationSeconds =
-      durationScale * Mix(.006f, .0015f, hardness);
+      implementWidth * durationScale * Mix(.006f, .0015f, hardness);
   const float chirpFrequencyScale = std::clamp(
       tfdsp::FiniteNormalOrZero(fit.contactChirpFrequencyScale), .25f, 4.f);
   result.chirp.startFrequencyHz = Mix(2800.f, 9200.f, hardness) *
@@ -179,30 +191,47 @@ ContactExciterParameters CrashCymbal::ContactParameters(
       (1.f + .25f * bell) * chirpFrequencyScale;
   result.chirp.amplitude = amplitude * hardness *
       Mix(.75f, .35f, edge) * (1.f + .5f * bell) *
+      implementMix(0.f, .08f, 1.f) *
       std::clamp(tfdsp::FiniteNormalOrZero(fit.contactChirpGain), 0.f, 4.f);
   result.chirp.decayNepers = 2.4f;
   result.noise.attackSeconds = .00015f;
   result.noise.holdSeconds =
-      noiseDurationScale * Mix(.0004f, .0015f, edge);
+      noiseDurationScale * implementMix(Mix(3.f, 20.f, spread), 1.5f, .85f) *
+      Mix(.0004f, .0015f, edge);
   result.noise.decaySeconds =
-      noiseDurationScale * Mix(.006f, .018f, edge);
+      noiseDurationScale * implementMix(Mix(4.f, 22.f, spread), 1.5f, .85f) *
+      Mix(.006f, .018f, edge);
   result.noise.amplitude = amplitude * Mix(.25f, .7f, edge) *
+      implementMix(1.65f, .7f, .88f) *
       std::clamp(tfdsp::FiniteNormalOrZero(fit.contactNoiseGain), 0.f, 4.f);
   result.noise.tiltDb = Mix(-4.f, 1.f, hardness) +
+      implementMix(-1.f, -6.f, 1.f) +
       std::clamp(tfdsp::FiniteNormalOrZero(fit.contactNoiseTiltDb), -18.f, 18.f);
   result.noise.tiltPivotHz = 4200.f;
   result.noise.seed = hit.seed ^ 0x4e4f4953u;
   result.microContacts.durationSeconds =
-      microDurationScale * Mix(.004f, .014f, edge);
+      microDurationScale * implementMix(Mix(3.f, 30.f, spread), 1.2f, .8f) *
+      Mix(.004f, .014f, edge);
   result.microContacts.densityHz = Mix(5500.f, 15000.f, hardness) *
+      implementMix(Mix(.9f, 1.8f, spread), .25f, 1.1f) *
       std::clamp(tfdsp::FiniteNormalOrZero(fit.contactMicroDensityScale),
                  .25f, 4.f);
   result.microContacts.microDecaySeconds = Mix(.0009f, .00025f, hardness);
-  result.microContacts.brightness = Mix(.45f, .95f, hardness);
+  result.microContacts.brightness = implementMix(.65f, .25f, 1.f) *
+      Mix(.7f, 1.f, hardness);
   result.microContacts.amplitude = amplitude * Mix(.18f, .5f, edge) *
+      implementMix(1.8f, .3f, 1.f) *
       std::clamp(tfdsp::FiniteNormalOrZero(fit.contactMicroGain), 0.f, 4.f);
   result.microContacts.seed = hit.seed ^ 0x4d494352u;
-  result.routing = {.02f, .95f, .8f, .28f, .32f, .72f, .25f, .85f};
+  result.routing = {
+      implementMix(.005f, .02f, .02f),
+      implementMix(.18f, .95f, .95f),
+      implementMix(0.f, .2f, .8f),
+      implementMix(0.f, .12f, .28f),
+      implementMix(.72f, .24f, .32f),
+      implementMix(.42f, .5f, .72f),
+      implementMix(.9f, .22f, .25f),
+      implementMix(.62f, .42f, .85f)};
   return result;
 }
 

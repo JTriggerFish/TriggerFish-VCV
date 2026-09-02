@@ -24,6 +24,7 @@ param(
         "test-percussion",
         "test-workbench-api",
         "test-workbench-wasm",
+        "test-workbench-browser",
         "build-workbench",
         "serve-workbench",
         "benchmark-er",
@@ -337,6 +338,22 @@ switch ($Command) {
                 --module build/workbench-wasm/triggerfish-percussion.mjs
             if ($LASTEXITCODE -ne 0) {
                 throw "Native/WebAssembly comparison failed with exit code $LASTEXITCODE."
+            }
+        }
+        finally {
+            Pop-Location
+        }
+    }
+    "test-workbench-browser" {
+        $emsdkEnvironment = Join-Path $emsdkRoot "emsdk_env.ps1"
+        Assert-Path $emsdkEnvironment "Emscripten SDK environment script"
+        . $emsdkEnvironment
+        Push-Location $repoRoot
+        try {
+            & $env:EMSDK_NODE workbench/tests/browser_probe.mjs `
+                http://127.0.0.1:9223 --reload --controls --trigger
+            if ($LASTEXITCODE -ne 0) {
+                throw "Workbench browser probe failed with exit code $LASTEXITCODE."
             }
         }
         finally {

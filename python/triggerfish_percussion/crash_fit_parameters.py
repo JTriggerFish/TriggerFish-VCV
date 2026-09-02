@@ -70,6 +70,15 @@ def _parameter_address(name: str) -> tuple[str, int | None]:
     return field, int(suffix[:-1])
 
 
+BODY_DECAY_PARAMETERS = tuple(
+    parameter(f"body_decay_seconds[{index}]", 0.02, 20.0) for index in range(5)
+)
+TURBULENCE_PARAMETERS = (
+    *(parameter(f"turbulence_gain[{index}]", 0.0, 1.0) for index in range(3)),
+    parameter("turbulence_persistence", 0.25, 4.0),
+)
+
+
 CAUSAL_STAGES = (
     CausalStage(
         "impact-contact",
@@ -153,21 +162,9 @@ CAUSAL_STAGES = (
             parameter("dispersion_low_decay_seconds", 0.1, 2.0),
             parameter("dispersion_middle_decay_seconds", 0.08, 1.5),
             parameter("dispersion_high_decay_seconds", 0.05, 1.0),
-            parameter("turbulence_low_gain", 0.0, 1.0),
-            parameter("turbulence_middle_gain", 0.0, 1.0),
-            parameter("turbulence_high_gain", 0.0, 1.0),
-            parameter("turbulence_low_decay_seconds", 0.03, 2.0),
-            parameter("turbulence_middle_decay_seconds", 0.03, 2.0),
-            parameter("turbulence_high_decay_seconds", 0.03, 2.0),
-            parameter("sparse_decay_scale", 0.4, 2.5),
+            *TURBULENCE_PARAMETERS,
             parameter("sparse_bloom_gain", 0.0, 1.0),
-            parameter("dense_low_decay_seconds", 0.15, 8.0),
-            parameter("dense_high_decay_seconds", 0.03, 2.0),
-            parameter("dense_decay_curve", 0.2, 2.5),
-            *(
-                parameter(f"dense_decay_envelope_octaves[{index}]", -3.0, 3.0)
-                for index in range(1, 5)
-            ),
+            *BODY_DECAY_PARAMETERS,
             parameter("colour_frequency_hz", 1000.0, 14000.0),
             parameter("colour_gain_db", -12.0, 12.0),
             parameter("high_cut_hz", 6000.0, 22000.0),
@@ -190,16 +187,7 @@ CAUSAL_STAGES = (
     CausalStage(
         "tail-refinement",
         4.000,
-        (
-            parameter("sparse_decay_scale", 0.4, 2.5),
-            parameter("dense_low_decay_seconds", 0.15, 8.0),
-            parameter("dense_high_decay_seconds", 0.03, 2.0),
-            parameter("dense_decay_curve", 0.2, 2.5),
-            *(
-                parameter(f"dense_decay_envelope_octaves[{index}]", -3.0, 3.0)
-                for index in range(1, 5)
-            ),
-        ),
+        (*BODY_DECAY_PARAMETERS,),
     ),
 )
 
@@ -254,19 +242,13 @@ _SCREENED_RESIDUAL = _selected_parameters(
     "dispersion_excursion_samples",
     "dense_frequency_warp",
     "contact_micro_density_scale",
-    "turbulence_low_gain",
-    "turbulence_middle_gain",
-    "turbulence_high_gain",
-    "turbulence_low_decay_seconds",
-    "turbulence_middle_decay_seconds",
-    "turbulence_high_decay_seconds",
+    "turbulence_gain[0]",
+    "turbulence_gain[1]",
+    "turbulence_gain[2]",
+    "turbulence_persistence",
 )
 _SCREENED_DECAY = _selected_parameters(
-    "sparse_decay_scale",
-    "dense_low_decay_seconds",
-    "dense_high_decay_seconds",
-    "dense_decay_curve",
-    *(f"dense_decay_envelope_octaves[{index}]" for index in range(1, 5)),
+    *(f"body_decay_seconds[{index}]" for index in range(5)),
 )
 _SCREENED_JOINT = tuple(
     {
@@ -345,19 +327,13 @@ _INITIAL_DECAY_DISPERSION = _selected_parameters(
     "dispersion_high_decay_seconds",
 )
 _INITIAL_DECAY_TURBULENCE = _selected_parameters(
-    "turbulence_low_gain",
-    "turbulence_middle_gain",
-    "turbulence_high_gain",
-    "turbulence_low_decay_seconds",
-    "turbulence_middle_decay_seconds",
-    "turbulence_high_decay_seconds",
+    "turbulence_gain[0]",
+    "turbulence_gain[1]",
+    "turbulence_gain[2]",
+    "turbulence_persistence",
 )
 _INITIAL_DECAY_LOSS = _selected_parameters(
-    "sparse_decay_scale",
-    "dense_low_decay_seconds",
-    "dense_high_decay_seconds",
-    "dense_decay_curve",
-    *(f"dense_decay_envelope_octaves[{index}]" for index in range(1, 5)),
+    *(f"body_decay_seconds[{index}]" for index in range(5)),
 )
 _INITIAL_DECAY_JOINT = tuple(
     {

@@ -85,13 +85,53 @@ void TestSparseModesArePlacedDirectly() {
   CrashCymbalFitParameters fit;
   fit.sparseFrequencyHz[0] = 731.f;
   fit.sparseFrequencyHz[1] = 1193.f;
-  fit.sparseDecaySeconds[0] = 4.25f;
+  fit.bodyDecaySeconds.fill(4.25f);
+  fit.sparseDecayRatio[0] = 1.f;
   const auto parameters = DefaultCrashCymbalParameters(48000.f, fit);
   Check(std::abs(parameters.sparseModes[0].frequencyHz - 731.f) < 1.e-5f &&
             std::abs(parameters.sparseModes[1].frequencyHz - 1193.f) < 1.e-5f,
         "crash sparse frequencies are independently and directly placed");
   Check(std::abs(parameters.sparseModes[0].decaySeconds - 4.25f) < 1.e-5f,
-        "crash sparse decay is independently and directly placed");
+        "crash sparse decay follows the shared body T60 curve");
+}
+
+void TestImplementFamiliesAreDistinct() {
+  using namespace tfdsp::percussion;
+  constexpr float sampleRate = 48000.f;
+  const auto render = [](const float implement, const float spread = .2f) {
+    CrashCymbal cymbal;
+    cymbal.Prepare(sampleRate, DefaultCrashCymbalParameters(sampleRate));
+    cymbal.Trigger({.8f, .75f, .65f, 91, implement, spread});
+    std::vector<float> result(12000);
+    for (float &sample : result) sample = cymbal.Process();
+    return result;
+  };
+  const auto brush = render(0.f);
+  const auto mallet = render(.5f);
+  const auto stick = render(1.f);
+  const auto brushSweep = render(0.f, 1.f);
+  Check(Difference(brush, mallet) > 1.e-5 * Energy(mallet),
+        "brush and mallet contacts are distinct");
+  Check(Difference(mallet, stick) > 1.e-5 * Energy(stick),
+        "mallet and stick contacts are distinct");
+  Check(Difference(brush, brushSweep) > .01 * Energy(brushSweep),
+        "brush contact spread changes a tap into a sustained gesture");
+}
+
+void TestDefaultBodyCoversTheMeasuredLowRegion() {
+  using namespace tfdsp::percussion;
+  const auto parameters = DefaultCrashCymbalParameters(48000.f);
+  const auto lowSparseModes = std::count_if(
+      parameters.sparseModes.begin(), parameters.sparseModes.end(),
+      [](const auto &mode) { return mode.frequencyHz < 500.f; });
+  Check(lowSparseModes >= 1,
+        "default crash retains a resolved plate ridge below 500 Hz");
+  Check(parameters.denseModes.front().frequencyHz < 200.f,
+        "default crash dense wash extends below the old 700 Hz gap");
+  Check(parameters.observation[0].radiation.lowCutHz <= 50.f &&
+            parameters.observation[1].radiation.lowCutHz <= 50.f &&
+            parameters.observation[2].radiation.lowCutHz <= 50.f,
+        "default crash observation does not remove its low plate body");
 }
 
 void TestContactCalibrationMacrosAreAudible() {
@@ -296,6 +336,8 @@ int main() {
   TestDeterministicAndResponsive();
   TestVelocityEnergy();
   TestSparseModesArePlacedDirectly();
+  TestImplementFamiliesAreDistinct();
+  TestDefaultBodyCoversTheMeasuredLowRegion();
   TestContactCalibrationMacrosAreAudible();
   TestMuteIsPassive();
   TestFiniteAtSupportedRates();

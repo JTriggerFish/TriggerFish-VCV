@@ -33,20 +33,12 @@ class BoundedParameter:
 
 
 TEMPORAL_PARAMETERS = (
-    BoundedParameter("sparse_decay_scale", 0.4, 2.5),
-    BoundedParameter("dense_low_decay_seconds", 0.15, 8.0),
-    BoundedParameter("dense_high_decay_seconds", 0.03, 3.0),
-    BoundedParameter("dense_decay_curve", 0.2, 2.5),
     *(
-        BoundedParameter(f"dense_decay_envelope_octaves[{index}]", -4.0, 4.0)
-        for index in range(1, 5)
+        BoundedParameter(f"body_decay_seconds[{index}]", 0.02, 20.0)
+        for index in range(5)
     ),
-    BoundedParameter("turbulence_low_gain", 0.0, 1.0),
-    BoundedParameter("turbulence_middle_gain", 0.0, 1.0),
-    BoundedParameter("turbulence_high_gain", 0.0, 1.0),
-    BoundedParameter("turbulence_low_decay_seconds", 0.03, 3.0),
-    BoundedParameter("turbulence_middle_decay_seconds", 0.03, 3.0),
-    BoundedParameter("turbulence_high_decay_seconds", 0.03, 3.0),
+    *(BoundedParameter(f"turbulence_gain[{index}]", 0.0, 1.0) for index in range(3)),
+    BoundedParameter("turbulence_persistence", 0.25, 4.0),
     BoundedParameter("colour_frequency_hz", 1000.0, 14000.0),
     BoundedParameter("colour_gain_db", -12.0, 12.0),
     BoundedParameter("high_cut_hz", 6000.0, 22000.0),

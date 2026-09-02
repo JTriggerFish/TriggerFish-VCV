@@ -24,8 +24,12 @@ export class CrashEngine {
     for (let index = 0; index < this.module._tf_crash_macro_count(); ++index) {
       result.push({
         index,
+        key: this.module.UTF8ToString(this.module._tf_crash_macro_key(index)),
         name: this.module.UTF8ToString(this.module._tf_crash_macro_name(index)),
         unit: this.module.UTF8ToString(this.module._tf_crash_macro_unit(index)),
+        scale: ["linear", "logarithmic", "boolean"][
+          this.module._tf_crash_macro_scale(index)
+        ],
         minimum: this.module._tf_crash_macro_minimum(index),
         maximum: this.module._tf_crash_macro_maximum(index),
         defaultValue: this.module._tf_crash_macro_default(index),
@@ -54,9 +58,12 @@ export class CrashEngine {
     }
   }
 
-  trigger({ strength, location, hardness, seed }) {
+  trigger({
+    strength = .8, location = 1, hardness = .65, implement = .75,
+    contactSpread = .2, seed = 1,
+  }) {
     if (!this.module._tf_crash_trigger(
-      this.handle, strength, location, hardness, seed,
+      this.handle, strength, location, hardness, implement, contactSpread, seed,
     )) throw new Error("could not trigger crash DSP");
   }
 
@@ -77,9 +84,13 @@ export class CrashEngine {
     }
   }
 
-  render({ seconds, strength, location, hardness, seed, macros }) {
+  render({
+    seconds, strength, location, hardness, implement, contactSpread, seed, macros,
+  }) {
     this.setMacros(macros);
-    this.trigger({ strength, location, hardness, seed });
+    this.trigger({
+      strength, location, hardness, implement, contactSpread, seed,
+    });
 
     const frames = Math.max(1, Math.round(seconds * this.sampleRate));
     const result = new Float32Array(frames);
