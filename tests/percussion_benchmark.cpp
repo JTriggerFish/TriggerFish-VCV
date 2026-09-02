@@ -1,10 +1,13 @@
 #include "tfdsp/percussion/contact_exciter.hpp"
 #include "tfdsp/percussion/correlated_fm_burst.hpp"
 #include "tfdsp/percussion/coupled_resonator_network.hpp"
+#include "tfdsp/percussion/crash_cymbal.hpp"
 #include "tfdsp/percussion/dispersion_loop.hpp"
 #include "tfdsp/percussion/frequency_shifter.hpp"
 #include "tfdsp/percussion/micro_contact_process.hpp"
+#include "tfdsp/percussion/modal_bank.hpp"
 #include "tfdsp/percussion/observation_model.hpp"
+#include "tfdsp/percussion/statistical_modal_cloud.hpp"
 
 #include <chrono>
 #include <cmath>
@@ -112,6 +115,42 @@ void BenchmarkResonators() {
   });
 }
 
+void BenchmarkModalBanks() {
+  using SparseBank = tfdsp::percussion::ModalBank<24>;
+  using DenseBank = tfdsp::percussion::ModalBank<256>;
+  using DenserBank = tfdsp::percussion::ModalBank<512>;
+  using DensestBank = tfdsp::percussion::ModalBank<1024>;
+  tfdsp::percussion::StatisticalModalCloudParameters cloud;
+  const auto denseParameters =
+      tfdsp::percussion::MakeStatisticalModalCloud<256>(48000.f, cloud);
+  const auto denserParameters =
+      tfdsp::percussion::MakeStatisticalModalCloud<512>(48000.f, cloud);
+  const auto densestParameters =
+      tfdsp::percussion::MakeStatisticalModalCloud<1024>(48000.f, cloud);
+  const auto sparseParameters =
+      tfdsp::percussion::MakeStatisticalModalCloud<24>(48000.f, cloud);
+  SparseBank sparse;
+  DenseBank dense;
+  DenserBank denser;
+  DensestBank densest;
+  sparse.Prepare(48000.f, sparseParameters, 700.f, 6500.f);
+  dense.Prepare(48000.f, denseParameters, 700.f, 6500.f);
+  denser.Prepare(48000.f, denserParameters, 700.f, 6500.f);
+  densest.Prepare(48000.f, densestParameters, 700.f, 6500.f);
+  Measure("24-mode sparse bank", [&](const std::size_t sample) {
+    return sparse.Process(sample % 24000 == 0 ? 1.f : 0.f);
+  });
+  Measure("256-mode dense cloud", [&](const std::size_t sample) {
+    return dense.Process(sample % 24000 == 0 ? 1.f : 0.f);
+  });
+  Measure("512-mode dense cloud", [&](const std::size_t sample) {
+    return denser.Process(sample % 24000 == 0 ? 1.f : 0.f);
+  });
+  Measure("1024-mode dense cloud", [&](const std::size_t sample) {
+    return densest.Process(sample % 24000 == 0 ? 1.f : 0.f);
+  });
+}
+
 void BenchmarkDispersion() {
   tfdsp::percussion::DispersionLoop loop;
   tfdsp::percussion::DispersionLoopParameters parameters;
@@ -119,6 +158,40 @@ void BenchmarkDispersion() {
   Measure("dispersion loop", [&](const std::size_t sample) {
     return loop.Process(sample % 24000 == 0 ? 1.f : 0.f);
   });
+}
+
+void BenchmarkCrashVariant(const std::string_view name,
+                           tfdsp::percussion::CrashCymbalFitParameters fit) {
+  tfdsp::percussion::CrashCymbal cymbal;
+  cymbal.Prepare(
+      48000.f, tfdsp::percussion::DefaultCrashCymbalParameters(48000.f, fit));
+  const tfdsp::percussion::CrashCymbalHit hit{};
+  Measure(name, [&](const std::size_t sample) {
+    if (sample % 24000 == 0)
+      cymbal.Trigger(hit);
+    return cymbal.Process();
+  });
+}
+
+void BenchmarkCrashCymbal() {
+  tfdsp::percussion::CrashCymbalFitParameters fit;
+  BenchmarkCrashVariant("crash without modal banks", [&] {
+    auto result = fit;
+    result.sparseGain = 0.f;
+    result.denseGain = 0.f;
+    return result;
+  }());
+  BenchmarkCrashVariant("crash with sparse bank", [&] {
+    auto result = fit;
+    result.denseGain = 0.f;
+    return result;
+  }());
+  BenchmarkCrashVariant("crash with dense bank", [&] {
+    auto result = fit;
+    result.sparseGain = 0.f;
+    return result;
+  }());
+  BenchmarkCrashVariant("complete crash", fit);
 }
 
 } // namespace
@@ -129,6 +202,8 @@ int main() {
   BenchmarkMicroContacts();
   BenchmarkFrequencyShifter();
   BenchmarkResonators();
+  BenchmarkModalBanks();
   BenchmarkDispersion();
   BenchmarkObservation();
+  BenchmarkCrashCymbal();
 }

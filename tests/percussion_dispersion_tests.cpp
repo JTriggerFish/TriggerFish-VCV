@@ -85,7 +85,7 @@ void TestSelfPhaseReportsItsEffectiveDelay() {
   loopParameters.selfPhase.centreDelaySamples = 200.f;
   tfdsp::percussion::DispersionLoop loop;
   loop.Prepare(48000.f, 64.f, loopParameters);
-  CheckNear(loop.MinimumPropagationSamples(), 90.0, 1.e-6,
+  CheckNear(loop.MinimumPropagationSamples(), 102.0, 1.e-6,
             "dispersion loss uses the effective self-phase path length");
 }
 
@@ -98,6 +98,10 @@ tfdsp::percussion::DispersionLoopParameters LinearLoopParameters() {
   parameters.firstAllpassGain = 0.f;
   parameters.secondAllpassDelaySamples = 6.f;
   parameters.secondAllpassGain = 0.f;
+  parameters.thirdAllpassDelaySamples = 6.f;
+  parameters.thirdAllpassGain = 0.f;
+  parameters.fourthAllpassDelaySamples = 6.f;
+  parameters.fourthAllpassGain = 0.f;
   parameters.selfPhase.centreDelaySamples = 6.f;
   parameters.selfPhase.maximumExcursionSamples = 0.f;
   parameters.selfPhase.drive = 0.f;
@@ -171,6 +175,29 @@ void TestPassiveConstraintDampsWithoutExciting() {
         "passive constraint removes energy inside dispersion feedback");
   Check(silentStateRemainsSilent,
         "changing dispersion loss cannot excite a silent loop");
+}
+
+void TestLinearLoopDecayCalibration() {
+  auto parameters = LinearLoopParameters();
+  parameters.feedbackGain = .9999f;
+  parameters.decay = {1.f, 1.f, 1.f};
+  tfdsp::percussion::DispersionLoop loop;
+  loop.Prepare(48000.f, 64.f, parameters);
+  double earlyEnergy = 0.0;
+  double lateEnergy = 0.0;
+  for (std::size_t sample = 0; sample < 52800; ++sample) {
+    const float output = loop.Process(sample == 0 ? 1.f : 0.f);
+    if (sample >= 2400 && sample < 4800)
+      earlyEnergy += static_cast<double>(output) * output;
+    if (sample >= 50400 && sample < 52800)
+      lateEnergy += static_cast<double>(output) * output;
+  }
+  const double decayDb = 10.0 * std::log10(
+      std::max(1.e-30, lateEnergy) / std::max(1.e-30, earlyEnergy));
+  if (!(decayDb > -70.0 && decayDb < -50.0))
+    std::cerr << "linear dispersion one-second decay: " << decayDb << " dB\n";
+  Check(decayDb > -70.0 && decayDb < -50.0,
+        "linear dispersion realizes its requested T60 without hidden loss");
 }
 
 template <typename Stage>
@@ -292,6 +319,7 @@ int main() {
   TestSelfPhaseReportsItsEffectiveDelay();
   TestExplicitFeedbackCausality();
   TestPassiveConstraintDampsWithoutExciting();
+  TestLinearLoopDecayCalibration();
   TestTwoTimesNonlinearityAgainstFourTimesReference();
   TestNonlinearStress();
   if (percussion_test::failures == 0)

@@ -3,16 +3,17 @@
 ## Scope
 
 `python/triggerfish_percussion/` is the numerical layer used by fitting,
-regression tests, and reporting. A first static Plotly A/B report and a small
-local HTTP server are implemented. WebAssembly synthesis is not yet
-implemented. All views consume the same aligned, level-preserving arrays rather
-than recomputing a second interpretation of the audio.
+regression tests, and reporting. A static Plotly A/B report remains available
+for regression work. The primary listening tool is now a local browser
+workbench backed by the same C++ graph through WebAssembly. All views consume
+the same aligned, level-preserving arrays rather than silently peak-normalizing
+or recomputing a second interpretation of the audio.
 
 This entire layer is advanced development tooling. Normal VCV Rack builds use
 the Rack SDK Makefile and require none of Python, SciPy, Plotly, HTTP tooling,
 or WebAssembly. The standalone CMake build also leaves Python bindings disabled
 by default. Developers install the Python analysis dependencies explicitly;
-future browser/WebAssembly targets must remain opt-in as well.
+the browser/WebAssembly target is also explicit and opt-in.
 
 The current implementation provides:
 
@@ -150,6 +151,10 @@ phases against the full signal before resynthesis and residual analysis.
   measure ERB-band energy and robust decay, spectral centroid/bandwidth,
   flatness and crest, temporal modulation, autocorrelation, late diffuseness,
   and velocity-dependent energy transfer.
+- Preserve the same decomposition in synthesis: direct body drive excites the
+  sparse modal branch, while dispersed drive excites the parallel dense
+  residual. Do not force the residual through the modal bank or expose the raw
+  dispersion tap to hide an error in either decomposition.
 
 ### Comparison and acceptance gates
 
@@ -167,10 +172,49 @@ absolute velocity-to-level curves for dynamics experiments; use one small
 gain-only alignment for explicitly timbral comparisons, never independent
 time-frequency normalization.
 
+The fitting loss uses four complementary views rather than treating one
+spectrogram distance as perception:
+
+1. Multiresolution log-magnitude STFT/ERB trajectories retain attack timing
+   and spectral evolution. This follows the multiresolution STFT loss used by
+   [Parallel WaveGAN](https://arxiv.org/abs/1910.11480) and its
+   [perceptually weighted extension](https://arxiv.org/abs/2101.07412), while
+   using ERB pooling to avoid fitting random fine-bin fluctuations.
+2. A normalized 96-band ERB spectrum constrains fine spectral shape, while
+   short-time centroid and roll-off constrain brightness independently of
+   total band energy.
+3. Within-band flatness, crest, and a median-filter ridge/residual ratio reject
+   tonal substitutes for noise-like wash. The ridge split is based on the
+   time/frequency median filtering used in Fitzgerald's
+   [HPSS method](http://dafx10.iem.at/papers/DerryFitzGerald_DAFx10_P15.pdf).
+4. Explicit persistent-mode matching constrains stable resolved ridges. This
+   is the deterministic half of the established sinusoidal-plus-residual
+   decomposition represented by UPF's
+   [SMS Tools](https://www.upf.edu/web/mtg/sms-tools).
+
+For 30 ms and longer residual texture, cochlear-envelope modulation and
+cross-band correlation are the next validation layer. McDermott and
+Simoncelli's
+[auditory texture model](https://mcdermottlab.mit.edu/bib2php/papers/McDermott_Simoncelli_2011_sound_texture_synthesis.pdf)
+shows why band power and sparsity alone are insufficient. Joint time-frequency
+scattering is a particularly relevant held-out metric: the
+[perceptual-neural-physical sound-matching study](https://arxiv.org/abs/2301.02886)
+evaluates it directly on nonstationary inharmonic percussion. Neither a
+speech-trained learned metric nor exact waveform/phase error is a primary
+gate for this stochastic synthesizer.
+
+Schema 5 adds the brightness and texture terms to both optimizer penalties and
+hard acceptance. The initial numerical limits are conservative rejection
+thresholds, not claims of perceptual equivalence. Final tolerances must be
+estimated from independent repeated recordings of the same articulation and
+velocity, then validated by blinded A/B listening. A report cannot say that a
+fit passes merely because one aggregate number fell.
+
 ### Dataset and challenge validation
 
-The fitting corpus includes Bitwig, Iowa, Salamander, VCSL, and controlled
-Toontrack renders that are in scope. Fit trends on multiple sources and hold
+The fitting corpus includes independent licensed libraries, Iowa, Salamander,
+VCSL, and controlled private-corpus-A renders that are in scope. Fit trends on
+multiple sources and hold
 out entire cymbals, rotating the held-out instruments, so microphone or library
 processing cannot masquerade as a physical trend. Separate cymbal-level
 structure, strike-location amplitudes/contact spectrum, velocity-dependent
@@ -196,16 +240,23 @@ decorrelation. Any future implementation must expose transfer and intermediate
 audio, return toward the stable body at low energy, and be evaluated as a
 hypothesis rather than accepted from a single aggregate score.
 
-## Report status and future interaction
+## Report status and interactive direction
 
-The served Plotly report currently includes reference and synthesized audio
-with one shared non-clipping audition gain, aligned waveforms, and common-scale
-STFT heatmaps. It deliberately contains no old-model comparisons. ERB heatmaps,
-signed differences, band decays, modal matches, descriptor/loss tables, and
-component ablations are the next report views. Plotly remains the primary
-library so time and frequency regions can be inspected interactively.
+The served Plotly report includes like-for-like reference and synthesized audio
+with one shared non-clipping audition gain. That gain targets the mean dB peak
+of the distinct source velocity layers, weighting each velocity once rather
+than each round robin, and is capped against the loudest exported clip. It is
+used only for report WAVs; analysis and stored calibration audio retain their
+source levels. The report also provides aligned waveforms, separate
+128-sample attack heatmaps, shared-scale full STFT heatmaps, signed spectral
+differences, band decays, named acceptance gates, and the cumulative causal-fit
+table. It deliberately contains no old-model comparisons or derived-component
+pairs presented as references. ERB heatmaps, modal-match overlays, and component
+ablations remain later report views. Plotly remains the primary library so time
+and frequency regions can be inspected interactively.
 
-When the first instrument renderer exists, its actual C++ implementation will
-also be compiled to WebAssembly. Sliders and a clickable strike surface will
-therefore run the same DSP as the Rack module. Static deterministic renders
-remain the fallback and regression format.
+The current static report is a regression fallback, not the main fitting UI.
+The next tool compiles the actual C++ renderer to WebAssembly and adds live
+perceptual controls, a clickable strike surface, synchronized spectrogram
+comparison, and versioned snapshots. It is a separate, default-off developer
+target and is never a dependency of Rack, package, or official release builds.

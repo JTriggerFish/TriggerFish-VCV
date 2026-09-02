@@ -35,7 +35,8 @@ The first target is the University of Iowa 21-inch ride selected by
 
 Intermediate velocities, edge/shoulder, mallet, brush, tune/size, and other
 cymbals are held out. They are introduced only after the four-cell graph passes.
-Bitwig, Salamander, VCSL, manufacturer clips, and private Toontrack renders
+Independent licensed libraries, Salamander, VCSL, manufacturer clips, and
+private-corpus-A renders
 remain independent validation or later generalization sources.
 
 ## Analysis representation

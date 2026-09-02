@@ -1,14 +1,11 @@
 #pragma once
 
 #include "crash_cymbal_parameters.hpp"
-#include "frequency_shifter.hpp"
+#include "modal_constraint.hpp"
 #include "passive_constraint.hpp"
-#include "resonator_submix.hpp"
 #include "tfdsp/finite_audio.hpp"
 
-#include <algorithm>
 #include <array>
-#include <cmath>
 #include <cstdint>
 
 namespace tfdsp::percussion {
@@ -20,36 +17,53 @@ struct CrashCymbalHit {
   std::uint32_t seed{1};
 };
 
-// Mono crash body. Contact is the only dry source; its body port drives one
-// dispersion loop, which drives one wet-only coupled resonator network.
+struct CrashCymbalFrame {
+  float directContact{};
+  float dispersion{};
+  float sparseModes{};
+  float denseResidual{};
+  float output{};
+};
+
+// Mono crash body. Stereo is an observation/presentation concern and never
+// duplicates the contact, dispersion, or modal state owned here.
 class CrashCymbal {
 public:
   void Prepare(float sampleRate, const CrashCymbalParameters &parameters);
   void Reset() noexcept;
   void Trigger(const CrashCymbalHit &hit) noexcept;
+  CrashCymbalFrame ProcessFrame() noexcept;
   float Process() noexcept;
   void SetMute(float amount) noexcept;
 
   float MinimumBodyDelaySamples() const noexcept;
 
 private:
-  using Projection = std::array<float, CrashResonatorCount>;
-
   ContactExciterParameters ContactParameters(
       const CrashCymbalHit &hit) const noexcept;
-  Projection LocationProjection(float location) const noexcept;
+  void SetLocation(float location) noexcept;
   void SetBloomDrive(float strength) noexcept;
 
   ContactExciter contact_{};
   DispersionLoop dispersion_{};
-  CrashResonators resonators_{};
-  ResonatorSubmix<CrashResonatorCount, CrashResonatorBusCount> submix_{};
-  std::array<FrequencyShifter, CrashResonatorBusCount> shifters_{};
-  ObservationModel<2> observation_{};
-  DynamicLossController constraint_{};
+  TurbulentResidual turbulence_{};
+  CrashSparseModes sparseModes_{};
+  CrashDenseModes denseModes_{};
+  ObservationModel<3> observation_{};
+  DynamicLossController delayConstraint_{};
+  ModalConstraintController modalConstraint_{};
   CrashCymbalParameters parameters_{};
-  Projection projection_{};
+  CrashSparseModes::Projection sparseProjection_{};
+  CrashDenseModes::Projection denseProjection_{};
+  float bodyDriveScale_{1.f};
+  float denseDriveScale_{1.f};
+  float denseVelocityLoss_{1.f};
   float sampleRate_{48000.f};
+  float sparseBloomGain_{};
+  float denseBypassGain_{};
+  bool sparseEnabled_{true};
+  bool denseEnabled_{true};
+  bool turbulenceEnabled_{};
 };
 
 } // namespace tfdsp::percussion

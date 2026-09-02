@@ -1,106 +1,131 @@
-# Crash cymbal fitting methodology
+# Crash cymbal calibration baseline
 
-## Frozen first object
+## Status
 
-The first complete metallic instrument is an 18-inch Zildjian K
-Constantinople crash from the installed Superior Drummer 3 Core library. Its
-container index proves that edge, bow-tip, bow-shank, bell-tip, and bell-shank
-are separate recordings with 9--16 velocity layers and multiple round robins.
-The machine-readable selection is
-`data/crash-calibration/sd3-18-k-constantinople-v1.json`.
+The current `CrashCymbal` graph is an experimental, deterministic instrument
+built from tested percussion primitives. It is a useful starting point for
+interactive listening and ablation, but it is **not a calibrated crash model**.
+Earlier numerical checkpoints did not survive direct listening and are not
+accepted baselines. In particular, a passing aggregate or prefix metric must
+never be described as a perceptual fit.
 
-The source library is to be rendered locally through SD3. Humanization, internal
-processing, velocity randomization, and normalization are disabled. Source
-audio and derived isolated samples remain ignored and are never distributed.
-Bitwig, Iowa, Salamander, and VCSL are held-out checks, not cells mixed into a
-synthetic same-object grid.
+Calibration is now fitting-by-ear first. Numerical analysis remains a set of
+diagnostic views and regression checks; it does not approve sound quality.
+Automated search code is retained as experimental developer tooling so useful
+feature extraction and parameter-influence work is not lost, but it is not the
+active fitting workflow.
 
-## Fixed synthesis graph
+## Reference object
 
-The first fitted graph is intentionally compact:
+The first object is the consistent 18-inch crash grid described by
+`data/crash-calibration/private-corpus-a-crash-v1.json`. The public repository
+uses the neutral name **private corpus A**. Exact vendor, product, instrument,
+and filesystem details belong in an ignored local companion manifest. Source
+audio and recoverable derivatives remain local and are never redistributed.
+
+The grid contains edge, bow-tip, bow-shank, bell-tip, and bell-shank strikes,
+multiple velocity layers, and repeated hits. `tools/build_private_cymbal_sweep.py`
+generates deterministic MIDI and onset metadata. Capture qualification checks
+that requested articulations are genuinely distinct, repeats have not
+collapsed, onsets are valid, and velocity ordering is credible before samples
+are offered to the workbench.
+
+Other licensed and open cymbal collections are validation sources, not cells
+silently pooled into this one-object fit. They are introduced after one object
+works across its own strike regions and velocities.
+
+## Current synthesis graph
 
 ```text
-contact direct --------------------------------------> observation
+contact direct --------------------------------------> contact observation
        |
-       `-> nonlinear dispersion loop
-                       `-> one 32-line coupled wet resonator bank
-                              `-> four disjoint observation submixes
-                                     `-> small signed frequency shifts -> observation
+       `-> body drive -----> sparse arbitrary modal bank -> modal observation
+                 |
+                 `-> nonlinear dispersion -> dense modal cloud ---------+
+                                          `-> turbulent energy residual -+-> residual observation
 ```
 
-There is no audible dry feed from the dispersion stage. The four submixes are
-disjoint views of one body, not four bodies or four independently tuned modal
-banks. Small signed shifts reduce persistent harmonic alignment without moving
-the shared low-frequency delay structure wholesale. Bow, bell, and edge are
-excitation projections into that body. The
-contact and body observation paths have separate gains and radiation filters.
-Mute changes losses inside both feedback systems and cannot excite them.
+The sparse modal bank owns resolved persistent structure. The deterministic
+modal cloud and optional turbulent residual own dense metallic wash. The raw
+dispersion signal is an excitation/analysis tap, not an automatically audible
+layer. The renderer is mono; any stereo presentation belongs after the physical
+instrument state. Passive mute can only remove stored or future energy.
 
-The initial fit keeps size, implement family, and neutral hardness fixed. This
-does not freeze them out of the architecture: delay frequencies, decay bands,
-contact macro parameters, and location projections remain explicit parameters.
-It prevents the optimizer from explaining one cymbal by silently changing
-several physical/perceptual axes at once.
+This graph is deliberately decomposable: each branch can be soloed, bypassed,
+and compared. Its architecture may change when listening shows that a component
+cannot span the reference behaviour. Keeping it is not a claim that all current
+parameterizations are perceptually useful.
 
-## Cells and split
+## Manual fitting workflow
 
-The capture plan renders all five articulations and the full 16-value MIDI
-velocity probe twice. `build_toontrack_cymbal_sweep.py` creates the MIDI and
-nominal-onset manifest; `slice_cymbal_capture.py` detects actual onsets and
-creates level-preserving cells with 50 ms of pre-onset noise retained. One
-repeat per cell is used for fitting. The second repeat measures
-irreducible take variation and supplies the validation tolerance. Exact MIDI
-velocities are inputs; discovered SD3 layer identity is descriptive metadata,
-not an assumed linear strength scale.
+The browser workbench will compile the same C++ renderer to WebAssembly and
+will be a separate, default-off developer build target. A session proceeds as:
 
-The first acceptance matrix is:
+1. Select one qualified reference hit and preserve its source level and
+   provenance.
+2. Audition the reference and synthesis at one shared, safe monitor gain.
+3. Adjust a small set of perceptual macro controls while watching synchronized
+   waveform, spectrogram, difference, and branch-ablation views.
+4. Exercise repeated strikes and a two-dimensional strike pad so the fit is
+   not valid only for one isolated render.
+5. Snapshot promising states with all controls, renderer/schema versions,
+   reference identity and hash, source transform, sample rate, and notes.
+6. Promote a snapshot to a named fit only after direct listening at normal and
+   level-matched gain. Keep its parent so a later regression can be reversed.
+7. Warm-start the neighbouring velocity or articulation, then inspect which
+   values are object constants and which form meaningful control curves.
 
-- edge at all sampled velocities for nonlinear onset and bloom;
-- bow-tip and bell-tip at low, medium, and high velocity for radial location;
-- bow-shank and bell-shank at medium and high velocity for hardness/contact;
-- the remaining cells and all second repeats as held-out validation.
+The first pass fits one sample at a time. It does not average unlike hits or
+infer size/location curves prematurely. Once several independently saved fits
+exist, common object parameters can be frozen and input-dependent mappings can
+be designed from the observed trends.
 
-## Staged fit
+## Minimal control policy
 
-Every stage reports contact (0--15 ms), bloom (15--250 ms), early body
-(250 ms--1.5 s), and tail (after 1.5 s) separately.
+The workbench exposes perceptual macros by default, not every implementation
+parameter. A macro is accepted only when its range is useful, its action is
+reasonably monotonic, and its label predicts what is heard. Raw parameters,
+branch solos, and curve editors remain in an advanced panel for diagnosis.
 
-1. Fit onset alignment, unnormalized early level, crest, and contact spectrum
-   with the resonator observation muted.
-2. Fit velocity-to-incident-energy and nonlinear dispersion controls from edge
-   bloom time, ERB trajectories, spectral flux, flatness, and early level.
-3. Fit resonator tuning, coupling, and three-band decay scales from persistent
-   modal evidence, peak-density statistics, ERB decay, and late spectral crest.
-4. Fit bow/bell/edge excitation projections jointly. A location fit must
-   improve held-out velocity cells without changing the shared resonator poles.
-5. Fit the two observation/radiation paths and absolute output gain last.
-6. Validate mute and then expand hardness, implement, and size on independent
-   libraries. These controls are never optimized to rescue a failed neutral fit.
+The initial macro groups are:
 
-No single scalar loss approves a fit. The first implemented Plotly report shows
-aligned waveforms, common-scale spectrograms, and reference/synthesis audio
-side by side. It also renders one-second stateful velocity, location, and
-hardness sweeps with the other controls held neutral. ERB trajectories, band decays, stable modal evidence, named-loss
-tables, and ablations remain report gates before calibration can be accepted.
+- impact: strength, hardness/contact width, tonal-to-noise contact balance;
+- object: sparse pitch scale, sparse/dense balance, spectral colour;
+- evolution: bloom amount/time and low/mid/high decay shape;
+- strike projection: radial location and implement blend; and
+- constraint/presentation: mute, master level, and safe level matching.
 
-## Reproducibility and acceptance
+This list is provisional. Finite-difference and sweep renders can reveal dead,
+redundant, discontinuous, or dangerously sensitive controls, but listening
+decides whether the parameterization is intelligible.
 
-The C++ engine is the sole renderer for fitting, tests, Rack, and future
-WebAssembly. Fit files record parameter bounds, optimizer seed, source hashes,
-code commit, sample rate, segmentation, transform versions, and every named
-loss. A candidate is rejected when it improves the aggregate objective while
-worsening an audible region outside measured repeat-to-repeat variation.
+## Visual and numerical diagnostics
 
-The currently generated Bitwig edge fit is a pipeline and graph check, not the
-primary calibration. The instrument is not called calibrated until the SD3
-audio grid has been captured, fitted, and compared with its second repeats,
-and until it passes the held-out Bitwig
-18-inch crashes and the differently sized Iowa crashes without per-sample
-retuning. That check is what prevents a flexible feedback network from merely
-memorizing one recording chain.
+The workbench must show the unaltered reference and current synthesis with
+explicit analysis settings. Required views include synchronized waveform and
+high-resolution STFT, reference/synthesis split or mirror layouts, signed dB
+difference, ERB-band energy trajectories, and branch solos. Zooming changes the
+displayed region without silently changing the underlying audio or analysis
+definition. Window, hop, FFT size, scale, floor, and colour range remain visible
+and reproducible.
 
-The reproducible provisional result, including input hashes, optimizer seed,
-parameters, and objective, is stored in
-`data/crash-calibration/bitwig-a-custom-18-edge-preliminary-fit.json`. It is
-kept out of the production defaults so an edge-only result cannot silently
-define bell, bow, or hardness behavior.
+Diagnostics may flag clipping, onset error, level mismatch, missing bandwidth,
+wrong decay, excessive tonality, or unstable repeated-hit accumulation. They
+must not collapse those independent failures into a green “fit passed” label.
+
+## Acceptance boundary
+
+A first-object fit is credible only when:
+
+- reference and synthesis remain distinguishable but plausibly describe the
+  same cymbal across the fitted velocities and strike regions;
+- attack, bloom, body, and tail each survive isolated listening;
+- repeated hits accumulate and decay without instability or limiter pumping;
+- the result works with the safety limiter bypassed in an offline diagnostic;
+- saved parameters reproduce exactly with the recorded renderer version; and
+- held-out references expose understandable model limitations rather than a
+  memorized recording or microphone curve.
+
+The always-on listening limiter is protection, never part of the fitted
+instrument. Analysis uses the pre-limiter signal unless a view is explicitly
+labelled otherwise.

@@ -23,7 +23,7 @@ reverb = ["scipy>=1.14", "torch>=2.7"]
 
 [project.optional-dependencies]
 # Offline fitting and reporting only; never a dependency of the Rack plugin.
-analysis = ["scipy>=1.14", "plotly>=6.0"]
+analysis = ["scipy>=1.14", "plotly>=6.0", "SALib>=1.5"]
 
 [tool.scikit-build]
 cmake.args = ["-DTRIGGERFISH_BUILD_PYTHON=ON", "-DBUILD_TESTING=OFF"]

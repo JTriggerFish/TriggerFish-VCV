@@ -1,55 +1,47 @@
 {
   "schema": 1,
-  "dataset_id": "sd3-18-k-constantinople-v1",
-  "description": "One 18-inch Zildjian K Constantinople crash from the installed Superior Drummer 3 Core library.",
+  "dataset_id": "private-corpus-a-crash-v1",
+  "description": "One 18-inch crash from a licensed private local sample corpus.",
   "role": "primary_fit_object",
   "source_metadata": {
-    "library": "Superior Drummer 3 Core",
-    "instrument": "18-inch Zildjian K Constantinople Crash",
-    "position": "Cymbal2",
-    "instrument_id": "cymbal2_3",
+    "library_alias": "private-corpus-a",
+    "instrument_alias": "crash-a",
+    "nominal_size_inches": 18,
     "tool": "Drumsticks",
-    "container": "Sounds/soundb3.obw",
-    "container_size_bytes": 1924540552,
-    "container_index_size_bytes": 52496,
-    "container_header_and_index_sha256": "3de07bec2cb7c74c781b7f88918c36f7a5b76dae01864b6eb177e2c9682324ee",
     "sample_rate_hz": 44100,
-    "capture_policy": "Render through the licensed local SD3 engine with humanization and processing disabled; do not redistribute source audio."
+    "capture_policy": "Render through the licensed local engine with all five requested articulations loaded and hit variation enabled. Disable adjacent layers, alternate hits, velocity-to-volume, cymbal smoothing, timing/velocity randomization, and internal processing. Do not redistribute source audio.",
+    "private_metadata_policy": "Exact vendor, product, instrument, and local path metadata belongs in an ignored local companion manifest, not this public manifest."
   },
   "capture": {
-    "generator": "tools/build_toontrack_cymbal_sweep.py",
-    "generator_target": "sd3-crash2",
-    "output_root": "build/cymbal-calibration/references/sd3-18-k-constantinople-v1",
+    "generator": "tools/build_private_cymbal_sweep.py",
+    "generator_target": "private-crash-a",
+    "repeats_per_probe": 4,
+    "output_root": "build/cymbal-calibration/references/private-corpus-a-crash-v1",
     "channel_policy": "Fit the unprocessed overhead mid channel first; retain close and room exports as held-out observation views.",
     "gain": "unchanged; no peak, RMS, or loudness normalization"
   },
   "articulations": {
     "edge": {
-      "source_record": "CR02_04_DS_CR_R",
       "midi_note": 49,
       "velocity_layers": 16,
       "sample_count": 41
     },
     "bow-tip": {
-      "source_record": "CR02_04_DS_RT_R",
       "midi_note": 27,
       "velocity_layers": 12,
       "sample_count": 34
     },
     "bow-shank": {
-      "source_record": "CR02_04_DS_RD_R",
       "midi_note": 92,
       "velocity_layers": 11,
       "sample_count": 28
     },
     "bell-tip": {
-      "source_record": "CR02_04_DS_BT_R",
       "midi_note": 93,
       "velocity_layers": 9,
       "sample_count": 29
     },
     "bell-shank": {
-      "source_record": "CR02_04_DS_BL_R",
       "midi_note": 28,
       "velocity_layers": 13,
       "sample_count": 41
@@ -61,8 +53,7 @@
     "FX: not part of the neutral articulation grid"
   ],
   "held_out_validation": [
-    "Bitwig A Custom 18 Medium four-layer edge sweep",
-    "Bitwig K Custom 18 four-layer edge sweep",
+    "Two independent licensed 18-inch crash velocity sweeps",
     "Iowa 17-, 18-, and 20-inch crash FF hits",
     "Salamander ride2 crash MP/FF repeated takes",
     "VCSL suspended-cymbal stick and mallet dynamics"

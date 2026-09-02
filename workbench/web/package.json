@@ -1,0 +1,8 @@
+{
+  "name": "triggerfish-percussion-workbench",
+  "private": true,
+  "version": "0.1.0",
+  "devDependencies": {
+    "plotly.js-dist-min": "3.7.0"
+  }
+}

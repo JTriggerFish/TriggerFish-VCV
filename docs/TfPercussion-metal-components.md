@@ -13,12 +13,12 @@ outer feedback loop:
 ```text
                           +-----------------------------------------------+
                           |                                               |
-body drive -> sum -> base delay -> slow modulated delay -> AP1 -> AP2     |
-              ^                                            |              |
-              |                                            v              |
-              +-- loop loss/filter <- self-phase delay <-----------------+
+body drive -> sum -> base delay -> slow delay -> AP1 -> AP2 -> AP3 -> AP4 |
+              ^                                           |                |
+              |                                           v                |
+              +-- loop loss/filter <- self-phase delay <------------------+
                                                         |
-                                                        +-> resonators
+                                                        +-> dense residual
 ```
 
 The base delay sets the principal circulation time. The serial allpasses spread
@@ -119,25 +119,80 @@ solving is reserved for any later instantaneous nonlinear/filter substage whose
 equations actually demand it. Component tests must measure the complete loop's
 pole/recurrence shift so an accidental sample of latency cannot pass unnoticed.
 
-## Resonators and coupling
+## Sparse modes and dense residual
 
-The initial cymbal resonator is a bank of wet-only fractional feedback combs.
-The branches are parallel when their feedback matrix is the identity; replacing
-that identity with an energy-preserving scattering matrix turns the same bank
-into a coupled feedback delay network:
+A cymbal output is divided into resolvable persistent structure and unresolved
+high-density response. These are parallel audible representations of the same
+dispersed excitation, not a serial effects chain:
+
+```text
+body drive ----------------> arbitrary modal bank -> modal radiation --------+
+         `-> dispersion -> statistical cloud -------------------------------+
+                         `-> three-band turbulent energy residual -> residual radiation -> output
+```
+
+The raw dispersion tap is not mixed into the output by default. The dense
+residual is: it represents real audible energy that was intentionally excluded
+from the sparse bank. Direct body excitation keeps the fitted modal poles free
+of forced nonlinear sidebands; an optional weak dispersion-to-modal feed is an
+ablation rather than a default. Keeping separate radiation paths allows their
+spectral balance and spatial presentation to be fitted without misusing modal
+gains as post-EQ.
+
+The sparse bank uses independently parameterized two-pole modes. Each mode has
+an explicit frequency, T60/decay, excitation gain, and observation gain. This
+gives direct inharmonic mode placement and a substantially better-conditioned
+fit than using coupled comb delays as the primary pole model. Location and
+implement select smooth excitation/observation projections over a shared mode
+set; they do not create unrelated objects. Size, profile, and tune are
+regularized macros over modal frequency, decay, and gain curves and need not
+move every mode by the same ratio.
+
+The dense residual is fitted only after accepted modal resynthesis is removed
+from the reference. Its target is ERB-band evolution, occupancy, crest and
+flatness, autocorrelation, temporal modulation, and band decay rather than
+individual ridge frequency. The first renderer is a deterministic statistical
+modal cloud. Its individual frequencies, phases, gains, and decay variations
+come from a fixed object seed; the fitted controls are smooth frequency-density,
+gain-envelope, and decay distributions. This preserves strike correlation and
+stateful repeated-hit accumulation without presenting independent noise grains.
+The current cloud uses a 33-knot ERB-domain object gain profile and a six-knot
+ERB-domain decay envelope. Older gain grids are interpolated into the current
+profile; the decay endpoints remain the named low/high decay controls and only
+four internal decay offsets are free. Both curves are interpolated at
+instrument preparation, so no per-sample table lookup or independently exposed
+modal gain is added.
+
+For strong, noise-like metallic responses, a second dense representation may
+approximate unresolved nonlinear energy transfer. The turbulent residual splits
+the dispersion signal into complementary low/mid/high bands, integrates squared
+band energy into independently damped passive reservoirs, and reads those
+reservoirs with bands from one deterministic correlated noise stream. Its T60s
+describe macro energy loss, not contact-grain duration. Repeated strikes add
+energy to the existing reservoirs, while mute applies the same per-sample modal
+damping gains to their state. Zero band gains make it exactly inaudible. This
+path is retained only because a private-corpus-A ablation improved envelope and flatness;
+the current anchor still fails fine-spectrum acceptance, so it is not yet a
+calibrated default.
+
+A coupled wet-only fractional-comb network remains an ablation if the modal
+cloud lacks measured temporal correlation. Its branches are parallel when
+their feedback matrix is the identity; replacing that identity with an
+energy-preserving scattering matrix turns the same bank into a coupled feedback
+delay network:
 
 ```text
 A = I                   independent parallel combs
 A = orthogonal A(theta) coupled resonator FDN
 ```
 
-The implementation should therefore be an FDN superset with continuously
-controllable coupling. At zero coupling, individual line frequencies and
-decays are directly identifiable. Products of Givens rotations can introduce
-coupling while retaining an energy-preserving matrix. Coupling should begin
-within low, middle, and high resonator clusters, with weaker exchange between
-clusters. A separate smaller bell network may exchange limited energy with the
-plate network after the neutral bow model works.
+The implementation remains a useful FDN superset with continuously
+controllable coupling. Products of Givens rotations introduce passive energy
+exchange. However, its delay lengths, coupling, feedback, and output projection
+jointly determine its poles; they are not called an orthogonal modal
+parameterization. Coupling is retained only when ablation shows improved dense
+evolution over an uncoupled residual with no exposed comb lattice or unstable
+late-energy regrowth.
 
 This is not the room-reverb FDN transplanted into a cymbal. The room network's
 sixteen lines and delayed velvet scattering were optimized for a diffuse,
@@ -146,7 +201,7 @@ structure, frequency-dependent decay, and correlated metallic evolution. Some
 reverb delay and scattering primitives are reusable, but its coefficient set
 and complete topology are not a starting assumption.
 
-Each resonator line needs:
+Each residual line needs:
 
 - a fractional delay or explicitly parameterized resonant frequency;
 - feedback expressed through decay time rather than an arbitrary gain;
@@ -154,12 +209,14 @@ Each resonator line needs:
 - wet-only output and a deterministic input/output projection;
 - optional branch delay or allpass;
 - optional frequency shifting of selected groups to break exact harmonic comb
-  relationships.
+  relationships, if an ablation justifies it.
 
 Frequency shifting adds a fixed hertz offset and is distinct from pitch
-shifting, which preserves harmonic ratios. It should remain outside the
-feedback loop initially so the resonator frequency and decay remain
-identifiable.
+shifting, which preserves harmonic ratios. Direct placement supplies all
+inharmonicity required by the sparse modal bank. A shifter therefore remains
+outside the feedback loop and is only an optional coloration of residual
+submixes; it must beat the unshifted residual in matched listening and residual
+metrics.
 
 ### Pitch shift, frequency shift, and delay modulation
 
@@ -220,8 +277,8 @@ transpose contact noise and radiation artifacts along with the object.
 The general component library may ultimately contain both shifter types, but
 their initial roles are deliberately unequal:
 
-- `SingleSidebandFrequencyShifter`: core candidate coloration for breaking
-  exact comb relationships;
+- `SingleSidebandFrequencyShifter`: optional dense-residual coloration for
+  breaking exact comb relationships;
 - variable-ratio pitch shifter: optional source transformation or creative
   effect, not required by the neutral cymbal model;
 - `WindowedPitchShifter`: retain specifically as the existing octave shimmer
@@ -266,10 +323,19 @@ claim artifact-free short-delay operation.
 
 ## Radiation and live losses
 
-The audible instrument output contains direct contact radiation and resonator
-radiation, followed by an object-specific radiation filter and conservative
-output conditioning. An internal dispersion or stochastic body-drive tap must
-not leak into the output merely to improve spectral flatness.
+The audible instrument output contains direct contact radiation, sparse-modal
+radiation, and dense-residual radiation, followed by object-specific
+observation filtering and conservative output conditioning. The residual path
+is a first-class model output, not leakage. The raw dispersion or stochastic
+body-drive tap must not leak into the output merely to improve spectral
+flatness.
+
+Body synthesis remains mono. A mono observation is always available. Optional
+stereo presentation applies two observation projections to the same direct,
+modal, and residual taps; it may use small propagation delays and different
+radiation views, but it does not duplicate or decorrelate the underlying body
+state. Stereo width is therefore an output-presentation control, not an
+instrument-size or modal-coupling parameter.
 
 Location affects both excitation and radiation. For a ride, a bell strike has
 stronger tonal contact and cup coupling, bow balances contact and plate bloom,

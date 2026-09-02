@@ -128,26 +128,49 @@ The remaining design is split by responsibility:
 - [Percussion DSP quality and calibration](TfPercussion-quality-and-calibration.md):
   component acceptance, numerical references, integration tests, rendering,
   and calibration.
-- [Crash fitting methodology](TfCrash-fitting-methodology.md): the staged first
-  instrument fit and its reproducibility requirements.
+- [Crash fitting methodology](TfCrash-fitting-methodology.md): the first-object
+  manual fitting baseline and its reproducibility requirements.
+- [Percussion ear-fitting workbench](TfPercussion-ear-fitting-workbench.md):
+  manual fitting controls, browser architecture, snapshots, and safety.
 - [Percussion analysis toolkit](TfPercussion-analysis-toolkit.md): canonical
-  analysis and fitting method, implemented numerical contracts, dataset policy,
-  validation gates, and the future Plotly/WebAssembly reporting boundary.
+  analysis contracts, dataset policy, validation diagnostics, and the
+  Plotly/WebAssembly reporting boundary.
 - [Cymbal reference corpus](TfRide-reference-corpus.md): source-data inventory and
   provenance.
 
 ## Open architectural questions
 
-- How much inter-resonator coupling improves cymbal density before it becomes
-  generic reverberation.
+- How much inter-resonator coupling improves the dense cymbal residual before
+  it exposes a comb lattice, becomes generic reverberation, or causes late
+  energy regrowth.
 - Whether slow delay modulation remains necessary once self-phase distortion
   and coupled resonators are present.
 - Whether the slow and self-modulated reads should ultimately be combined.
 - Whether bell/plate and later shell/membrane subsystems need separate
   dispersion loops or only separate resonator projections.
-- Whether membrane bodies are best reduced to arbitrary modal banks, coupled
-  short-delay networks, or different implementations selected per instrument.
+- Whether membrane bodies should use the same sparse-modal/dense-residual
+  decomposition selected for cymbals or a compact FM body at each complexity
+  level.
 - How much of a kick's fitted far-field residual belongs to the instrument
   radiation model and how much belongs to the external room renderer.
 - Whether shell and port resonances warrant dedicated components after the
   first coupled two-head fits.
+
+## Cymbal representation decision
+
+Persistent cymbal structure uses an arbitrary modal bank whose frequencies,
+decays, excitation gains, and observation gains are independently fitted.
+Unresolved metallic wash uses a deterministic statistical modal cloud whose
+individual modes are generated from smooth fitted distributions. Both are
+audible parallel branches: direct body drive excites the sparse bank, while the
+dispersion output excites the cloud. Raw dispersion is analysis/excitation
+only. A weak dispersion-to-sparse feed, coupled delay network, and fixed
+frequency shifts remain ablations, not substitutes for direct mode placement.
+This division preserves an interpretable modal parameterization while retaining
+an efficient path for perceptual density and bloom.
+
+All percussion bodies are mono unless a physical topology explicitly contains
+multiple bodies. Mono output remains a complete supported presentation.
+Optional stereo is derived at the observation stage from shared mono source
+taps, so width and microphone perspective cannot alter synthesis state or
+calibration of the object itself.

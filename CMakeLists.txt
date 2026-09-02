@@ -175,6 +175,13 @@ if(BUILD_TESTING)
 	add_test(NAME triggerfish_percussion_resonator_tests
 		COMMAND triggerfish_percussion_resonator_tests)
 
+	add_executable(triggerfish_percussion_modal_tests
+		tests/percussion_modal_tests.cpp)
+	target_link_libraries(triggerfish_percussion_modal_tests PRIVATE
+		triggerfish_dsp)
+	add_test(NAME triggerfish_percussion_modal_tests
+		COMMAND triggerfish_percussion_modal_tests)
+
 	add_executable(triggerfish_percussion_dispersion_tests
 		tests/percussion_dispersion_tests.cpp)
 	target_link_libraries(triggerfish_percussion_dispersion_tests PRIVATE

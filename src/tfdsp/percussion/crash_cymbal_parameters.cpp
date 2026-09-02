@@ -1,60 +1,93 @@
 #include "crash_cymbal_parameters.hpp"
 
+#include "statistical_modal_cloud.hpp"
+
 #include <algorithm>
-#include <array>
 #include <cmath>
 
 namespace tfdsp::percussion {
 namespace {
 
-constexpr std::array<float, CrashResonatorCount> FundamentalsHz{
-    183.f, 197.f, 211.f, 229.f, 247.f, 269.f, 283.f, 307.f,
-    331.f, 359.f, 379.f, 409.f, 431.f, 463.f, 499.f, 541.f,
-    577.f, 619.f, 659.f, 709.f, 761.f, 821.f, 887.f, 953.f,
-    1031.f, 1117.f, 1213.f, 1321.f, 1451.f, 1583.f, 1741.f, 1931.f};
+// Contact body drive and generalized modal force use different arbitrary units.
+// ModalBank itself applies no hidden decay-dependent gain normalization.
+constexpr float ModalDriveGain = .05f;
 
 float Positive(const float value, const float fallback) noexcept {
   return std::isfinite(value) && value > 0.f ? value : fallback;
 }
 
-CrashResonators::Parameters Resonators(
-    const float sampleRate, const CrashCymbalFitParameters &fit) {
-  CrashResonators::Parameters result{};
-  const float tune = std::clamp(Positive(fit.resonanceTune, 1.f), .5f, 2.f);
-  for (std::size_t line = 0; line < result.size(); ++line) {
-    const float frequency = FundamentalsHz[line];
-    const float frequencyRatio = frequency / FundamentalsHz.front();
-    result[line].delaySamples = sampleRate / (frequency * tune);
-    result[line].decay = {
-        13.f * std::pow(frequencyRatio, -.55f) *
-            Positive(fit.lowDecayScale, 1.f),
-        8.f * std::pow(frequencyRatio, -.55f) *
-            Positive(fit.middleDecayScale, 1.f),
-        3.2f * std::pow(frequencyRatio, -.6f) *
-            Positive(fit.highDecayScale, 1.f)};
-    result[line].inputGain = 1.f;
-    result[line].outputGain = 1.f / static_cast<float>(CrashResonatorCount);
+CrashSparseModes::Parameters SparseModes(
+    const float sampleRate, const CrashCymbalFitParameters &fit) noexcept {
+  CrashSparseModes::Parameters result{};
+  const float tune = std::clamp(Positive(fit.sparseTune, 1.f), .5f, 2.f);
+  const float decayScale =
+      std::clamp(Positive(fit.sparseDecayScale, 1.f), .1f, 4.f);
+  float squaredGain = 0.f;
+  for (const float amplitude : fit.sparseAmplitude) {
+    const float gain = std::clamp(Positive(amplitude, 0.f), 0.f, 8.f);
+    squaredGain += gain * gain;
+  }
+  const float normalization = 1.f / std::sqrt(std::max(squaredGain, 1.e-12f));
+  for (std::size_t mode = 0; mode < result.size(); ++mode) {
+    const float frequency = std::clamp(
+        Positive(fit.sparseFrequencyHz[mode], 1000.f) * tune,
+        20.f, .48f * sampleRate);
+    result[mode] = {
+        frequency,
+        std::clamp(Positive(fit.sparseDecaySeconds[mode], 1.f) * decayScale,
+                   .01f, 30.f),
+        ModalDriveGain,
+        normalization * std::clamp(Positive(fit.sparseAmplitude[mode], 0.f),
+                                   0.f, 8.f),
+        std::clamp(fit.sparsePhaseRadians[mode],
+                   -3.14159265358979323846f, 3.14159265358979323846f)};
   }
   return result;
 }
 
-void SetProjections(CrashCymbalParameters &parameters) noexcept {
-  constexpr float Pi = 3.14159265358979323846f;
-  for (std::size_t line = 0; line < CrashResonatorCount; ++line) {
-    const float position = static_cast<float>(line) /
-        static_cast<float>(CrashResonatorCount - 1);
-    const float firstSign = line % 2 == 0 ? 1.f : -1.f;
-    const float secondSign = (line * 5 + 1) % 7 < 3 ? -1.f : 1.f;
-    parameters.bellProjection[line] = firstSign * (.12f + .88f * position);
-    parameters.bowProjection[line] = secondSign *
-        (.55f + .42f * std::abs(std::sin(Pi * (2.7f * position + .13f))));
-    parameters.edgeProjection[line] = firstSign * secondSign *
-        (.68f + .3f * std::abs(std::sin(Pi * (4.1f * position + .31f))));
+CrashDenseModes::Parameters DenseModes(
+    const float sampleRate, const CrashCymbalFitParameters &fit) {
+  StatisticalModalCloudParameters cloud;
+  cloud.minimumFrequencyHz = fit.denseMinimumFrequencyHz;
+  cloud.maximumFrequencyHz = fit.denseMaximumFrequencyHz;
+  cloud.frequencyWarp = fit.denseFrequencyWarp;
+  cloud.spacingJitter = fit.denseSpacingJitter;
+  cloud.lowDecaySeconds = fit.denseLowDecaySeconds;
+  cloud.highDecaySeconds = fit.denseHighDecaySeconds;
+  cloud.decayCurve = fit.denseDecayCurve;
+  cloud.decayEnvelopeOctaves = fit.denseDecayEnvelopeOctaves;
+  cloud.decaySpreadOctaves = fit.denseDecaySpreadOctaves;
+  cloud.tiltDbPerOctave = fit.denseTiltDbPerOctave;
+  cloud.gainEnvelopeDb = fit.denseGainEnvelopeDb;
+  cloud.gainSpreadDb = fit.denseGainSpreadDb;
+  cloud.outputGain = 1.f;
+  cloud.seed = fit.denseModeSeed;
+  auto result = MakeStatisticalModalCloud<CrashDenseModeCount>(sampleRate, cloud);
+  for (auto &mode : result)
+    mode.inputGain = ModalDriveGain;
+  return result;
+}
+
+template <std::size_t Count, typename Parameters>
+void SetLocationProjections(const Parameters &modes,
+                            std::array<float, Count> &bell,
+                            std::array<float, Count> &bow,
+                            std::array<float, Count> &edge) noexcept {
+  for (std::size_t mode = 0; mode < Count; ++mode) {
+    const float frequency = modes[mode].frequencyHz;
+    const float position = static_cast<float>(mode) /
+        static_cast<float>(Count - 1);
+    const float logDistance = std::log2(std::max(frequency, 1.f) / 4200.f);
+    const float bellFocus = std::exp(-.5f * logDistance * logDistance);
+    bell[mode] = .25f + 1.15f * bellFocus;
+    bow[mode] = .72f + .22f *
+        std::abs(std::sin(3.14159265358979323846f * (2.7f * position + .13f)));
+    edge[mode] = .65f + .55f * std::sqrt(position);
   }
 }
 
 DispersionLoopParameters Dispersion(
-    const float sampleRate, const CrashCymbalFitParameters &fit) {
+    const float sampleRate, const CrashCymbalFitParameters &fit) noexcept {
   const float scale = sampleRate / 48000.f;
   DispersionLoopParameters result;
   result.baseDelaySamples = 11.f * scale;
@@ -65,9 +98,13 @@ DispersionLoopParameters Dispersion(
   result.firstAllpassGain = .61f;
   result.secondAllpassDelaySamples = 13.f * scale;
   result.secondAllpassGain = -.53f;
+  result.thirdAllpassDelaySamples = 5.f * scale;
+  result.thirdAllpassGain = .3f;
+  result.fourthAllpassDelaySamples = 17.f * scale;
+  result.fourthAllpassGain = -.25f;
   result.selfPhase.centreDelaySamples = 9.f * scale;
   result.selfPhase.maximumExcursionSamples =
-      std::clamp(fit.dispersionExcursionSamples, 0.f, 6.f) * scale;
+      std::clamp(fit.dispersionExcursionSamples, 0.f, 16.f) * scale;
   result.selfPhase.drive = std::clamp(fit.dispersionDrive, 0.f, 8.f);
   result.selfPhase.toneHz = 7600.f;
   result.selfPhase.envelopeReleaseSeconds = .018f;
@@ -76,28 +113,49 @@ DispersionLoopParameters Dispersion(
       std::clamp(fit.dispersionLowDecaySeconds, .05f, 5.f),
       std::clamp(fit.dispersionMiddleDecaySeconds, .05f, 5.f),
       std::clamp(fit.dispersionHighDecaySeconds, .05f, 5.f)};
-  result.feedbackGain = std::clamp(fit.dispersionFeedback, 0.f, .995f);
+  result.feedbackGain = std::clamp(fit.dispersionFeedback, 0.f, .9999f);
   result.lowCrossoverHz = 700.f;
   result.highCrossoverHz = 6500.f;
   result.modulationSeed = 0x43524153u;
   return result;
 }
 
-ObservationModel<2>::Parameters Observation(
-    const CrashCymbalFitParameters &fit) {
-  ObservationModel<2>::Parameters result{};
+TurbulentResidualParameters Turbulence(
+    const CrashCymbalFitParameters &fit) noexcept {
+  TurbulentResidualParameters result;
+  result.gain = {
+      std::clamp(fit.turbulenceLowGain, 0.f, 4.f),
+      std::clamp(fit.turbulenceMiddleGain, 0.f, 4.f),
+      std::clamp(fit.turbulenceHighGain, 0.f, 4.f)};
+  result.decay = {
+      std::clamp(fit.turbulenceLowDecaySeconds, .005f, 30.f),
+      std::clamp(fit.turbulenceMiddleDecaySeconds, .005f, 30.f),
+      std::clamp(fit.turbulenceHighDecaySeconds, .005f, 30.f)};
+  result.seed = 0x43524153u;
+  return result;
+}
+
+ObservationModel<3>::Parameters Observation(
+    const CrashCymbalFitParameters &fit) noexcept {
+  ObservationModel<3>::Parameters result{};
   result[0].gain = std::clamp(fit.directGain, 0.f, 4.f);
   result[0].radiation.lowCutHz = 180.f;
   result[0].radiation.colourFrequencyHz = 7200.f;
   result[0].radiation.colourGainDb = 1.f;
   result[0].radiation.highCutHz = 20000.f;
-  result[1].gain = std::clamp(fit.bodyGain, 0.f, 4.f);
+  result[1].gain = std::clamp(fit.sparseGain, 0.f, 4.f);
   result[1].radiation.lowCutHz = 90.f;
   result[1].radiation.colourFrequencyHz =
       std::clamp(fit.colourFrequencyHz, 100.f, 18000.f);
   result[1].radiation.colourGainDb =
       std::clamp(fit.colourGainDb, -18.f, 18.f);
   result[1].radiation.highCutHz =
+      std::clamp(fit.highCutHz, 1000.f, 22000.f);
+  result[2].gain = std::clamp(fit.denseGain, 0.f, 4.f);
+  result[2].radiation.lowCutHz = 140.f;
+  result[2].radiation.colourFrequencyHz = 7200.f;
+  result[2].radiation.colourGainDb = .5f;
+  result[2].radiation.highCutHz =
       std::clamp(fit.highCutHz, 1000.f, 22000.f);
   return result;
 }
@@ -108,14 +166,16 @@ CrashCymbalParameters DefaultCrashCymbalParameters(
     const float sampleRate, const CrashCymbalFitParameters &fit) {
   CrashCymbalParameters result;
   result.fit = fit;
-  result.resonators = Resonators(sampleRate, fit);
-  SetProjections(result);
-  constexpr std::array<float, CrashResonatorBusCount> BaseShiftsHz{
-      0.f, 17.f, -23.f, 31.f};
-  const float shiftScale = std::clamp(fit.resonatorShiftScale, 0.f, 4.f);
-  for (std::size_t bus = 0; bus < CrashResonatorBusCount; ++bus)
-    result.resonatorShiftHz[bus] = shiftScale * BaseShiftsHz[bus];
+  result.sparseModes = SparseModes(sampleRate, fit);
+  result.denseModes = DenseModes(sampleRate, fit);
+  SetLocationProjections<CrashSparseModeCount>(
+      result.sparseModes, result.sparseBellProjection,
+      result.sparseBowProjection, result.sparseEdgeProjection);
+  SetLocationProjections<CrashDenseModeCount>(
+      result.denseModes, result.denseBellProjection,
+      result.denseBowProjection, result.denseEdgeProjection);
   result.dispersion = Dispersion(sampleRate, fit);
+  result.turbulence = Turbulence(fit);
   result.observation = Observation(fit);
   return result;
 }

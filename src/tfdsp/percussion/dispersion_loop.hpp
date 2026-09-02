@@ -22,6 +22,10 @@ struct DispersionLoopParameters {
   float firstAllpassGain{.55f};
   float secondAllpassDelaySamples{13.f};
   float secondAllpassGain{-.45f};
+  float thirdAllpassDelaySamples{5.f};
+  float thirdAllpassGain{.3f};
+  float fourthAllpassDelaySamples{17.f};
+  float fourthAllpassGain{-.25f};
   SelfPhaseDelayParameters selfPhase{};
   ThreeBandDecayTimes decay{.8f, .55f, .25f};
   float feedbackGain{.95f};
@@ -45,6 +49,12 @@ public:
     secondAllpass_.Prepare(maximumDelaySamples,
                            parameters.secondAllpassDelaySamples,
                            parameters.secondAllpassGain);
+    thirdAllpass_.Prepare(maximumDelaySamples,
+                          parameters.thirdAllpassDelaySamples,
+                          parameters.thirdAllpassGain);
+    fourthAllpass_.Prepare(maximumDelaySamples,
+                           parameters.fourthAllpassDelaySamples,
+                           parameters.fourthAllpassGain);
     selfPhase_.Prepare(sampleRate, maximumDelaySamples);
     loss_.Prepare(sampleRate, parameters.lowCrossoverHz,
                   parameters.highCrossoverHz);
@@ -57,6 +67,8 @@ public:
     slow_.Reset();
     firstAllpass_.Reset();
     secondAllpass_.Reset();
+    thirdAllpass_.Reset();
+    fourthAllpass_.Reset();
     selfPhase_.Reset();
     loss_.Reset();
   }
@@ -77,6 +89,8 @@ public:
     circulating = slow_.Process(circulating);
     circulating = firstAllpass_.Process(circulating);
     circulating = secondAllpass_.Process(circulating);
+    circulating = thirdAllpass_.Process(circulating);
+    circulating = fourthAllpass_.Process(circulating);
     circulating = selfPhase_.Process(circulating);
     const float feedback = feedbackGain_ * loss_.Process(circulating, constraint);
     base_.Push(bodyDrive + feedback);
@@ -100,13 +114,16 @@ private:
                               parameters.modulationSeed);
     firstAllpass_.SetFeedbackGain(parameters.firstAllpassGain);
     secondAllpass_.SetFeedbackGain(parameters.secondAllpassGain);
+    thirdAllpass_.SetFeedbackGain(parameters.thirdAllpassGain);
+    fourthAllpass_.SetFeedbackGain(parameters.fourthAllpassGain);
     selfPhase_.SetParameters(parameters.selfPhase);
     feedbackGain_ = std::clamp(
         std::isfinite(parameters.feedbackGain) ? parameters.feedbackGain : 0.f,
-        0.f, .999f);
+        0.f, .9999f);
     minimumPropagationSamples_ =
         base_.DelaySamples() + slow_.CentreDelaySamples() +
         firstAllpass_.DelaySamples() + secondAllpass_.DelaySamples() +
+        thirdAllpass_.DelaySamples() + fourthAllpass_.DelaySamples() +
         selfPhase_.CentreDelaySamples();
     nominalPropagationSamples_ = minimumPropagationSamples_ +
         static_cast<float>(selfPhase_.NominalLatencySamples());
@@ -118,6 +135,8 @@ private:
   SlowModulatedDelay slow_{};
   SchroederAllpass firstAllpass_{};
   SchroederAllpass secondAllpass_{};
+  SchroederAllpass thirdAllpass_{};
+  SchroederAllpass fourthAllpass_{};
   SelfPhaseDelay selfPhase_{};
   ThreeBandDecayFilter loss_{};
   float sampleRate_{48000.f};

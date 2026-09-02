@@ -22,6 +22,10 @@ param(
         "smoke-scene-pack4",
         "test",
         "test-percussion",
+        "test-workbench-api",
+        "test-workbench-wasm",
+        "build-workbench",
+        "serve-workbench",
         "benchmark-er",
         "benchmark-percussion",
         "python-test",
@@ -54,6 +58,7 @@ $msysRoot = Get-ConfiguredPath "MSYS2_ROOT" "C:\msys64"
 $rackSdk = Get-ConfiguredPath "RACK_SDK_DIR" (Join-Path $devRoot "Rack-SDK")
 $rackRuntime = Get-ConfiguredPath "RACK_RUNTIME_DIR" (Join-Path $devRoot "Rack2")
 $rackSource = Get-ConfiguredPath "RACK_SOURCE_DIR" (Join-Path $devRoot "Rack-src")
+$emsdkRoot = Get-ConfiguredPath "EMSDK_ROOT" (Join-Path $devRoot "emsdk")
 $msysShell = Join-Path $msysRoot "msys2_shell.cmd"
 $msysBash = Join-Path $msysRoot "usr\bin\bash.exe"
 function Resolve-RackExecutable {
@@ -296,6 +301,76 @@ switch ($Command) {
     }
     "test-percussion" {
         Invoke-Mingw "cd '$repoMsys' && cmake -S . -B build/dsp-tests -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DTRIGGERFISH_BUILD_PYTHON=OFF && cmake --build build/dsp-tests -j$Jobs && ctest --test-dir build/dsp-tests --output-on-failure -R 'percussion|cubic_lagrange'"
+    }
+    "test-workbench-api" {
+        Invoke-Mingw "cd '$repoMsys' && cmake -S workbench -B build/workbench-api -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build build/workbench-api -j$Jobs && ctest --test-dir build/workbench-api --output-on-failure"
+    }
+    "test-workbench-wasm" {
+        $emsdkEnvironment = Join-Path $emsdkRoot "emsdk_env.ps1"
+        $ninja = Join-Path $msysRoot "mingw64\bin\ninja.exe"
+        Assert-Path $emsdkEnvironment "Emscripten SDK environment script"
+        Assert-Path $ninja "MinGW Ninja"
+        . $emsdkEnvironment
+        Invoke-Mingw "cd '$repoMsys' && cmake -S workbench -B build/workbench-api -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build build/workbench-api -j$Jobs && ctest --test-dir build/workbench-api --output-on-failure"
+        Push-Location $repoRoot
+        try {
+            & emcmake cmake -S workbench -B build/workbench-wasm -G Ninja `
+                -DCMAKE_BUILD_TYPE=Release `
+                "-DCMAKE_MAKE_PROGRAM=$ninja"
+            if ($LASTEXITCODE -ne 0) {
+                throw "WebAssembly workbench configuration failed with exit code $LASTEXITCODE."
+            }
+            & cmake --build build/workbench-wasm --parallel $Jobs
+            if ($LASTEXITCODE -ne 0) {
+                throw "WebAssembly workbench build failed with exit code $LASTEXITCODE."
+            }
+            & ctest --test-dir build/workbench-wasm --output-on-failure
+            if ($LASTEXITCODE -ne 0) {
+                throw "WebAssembly workbench tests failed with exit code $LASTEXITCODE."
+            }
+            & $env:EMSDK_PYTHON workbench/tests/compare_signatures.py `
+                --native build/workbench-api/triggerfish_workbench_signature.exe `
+                --node $env:EMSDK_NODE `
+                --wasm-test workbench/tests/wasm_smoke.mjs `
+                --module build/workbench-wasm/triggerfish-percussion.mjs
+            if ($LASTEXITCODE -ne 0) {
+                throw "Native/WebAssembly comparison failed with exit code $LASTEXITCODE."
+            }
+        }
+        finally {
+            Pop-Location
+        }
+    }
+    "build-workbench" {
+        $emsdkEnvironment = Join-Path $emsdkRoot "emsdk_env.ps1"
+        $ninja = Join-Path $msysRoot "mingw64\bin\ninja.exe"
+        Assert-Path $emsdkEnvironment "Emscripten SDK environment script"
+        Assert-Path $ninja "MinGW Ninja"
+        . $emsdkEnvironment
+        Push-Location $repoRoot
+        try {
+            & emcmake cmake -S workbench -B build/workbench-wasm -G Ninja `
+                -DCMAKE_BUILD_TYPE=Release `
+                "-DCMAKE_MAKE_PROGRAM=$ninja"
+            if ($LASTEXITCODE -ne 0) {
+                throw "WebAssembly workbench configuration failed with exit code $LASTEXITCODE."
+            }
+            & cmake --build build/workbench-wasm `
+                --target triggerfish_workbench_site --parallel $Jobs
+            if ($LASTEXITCODE -ne 0) {
+                throw "WebAssembly workbench build failed with exit code $LASTEXITCODE."
+            }
+        }
+        finally {
+            Pop-Location
+        }
+    }
+    "serve-workbench" {
+        $python = Join-Path $repoRoot ".venv\Scripts\python.exe"
+        $site = Join-Path $repoRoot "build\workbench-wasm\site"
+        Assert-Path $python "Repository Python environment"
+        Assert-Path $site "Built percussion workbench"
+        & $python tools/serve_percussion_workbench.py $site --port 8765
     }
     "benchmark-er" {
         Invoke-Mingw "cd '$repoMsys' && cmake -S . -B build/dsp-tests -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DTRIGGERFISH_BUILD_PYTHON=OFF && cmake --build build/dsp-tests --target triggerfish_early_reflections_benchmark -j$Jobs && ./build/dsp-tests/triggerfish_early_reflections_benchmark.exe"

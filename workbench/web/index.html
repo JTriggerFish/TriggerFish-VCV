@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TriggerFish Percussion Workbench</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="vendor/plotly.min.js"></script>
+</head>
+<body>
+  <header>
+    <div><span class="eyebrow">TriggerFish</span><h1>Percussion workbench</h1></div>
+    <div class="status"><span id="status">Loading DSP…</span><span id="render-time"></span></div>
+  </header>
+
+  <nav class="toolbar">
+    <select id="reference-corpus" aria-label="Reference instrument"><option>Loading corpus…</option></select>
+    <select id="reference-articulation" aria-label="Reference articulation"></select>
+    <label>Velocity <input id="reference-velocity" type="range"><output></output></label>
+    <label>Variation <input id="reference-repeat" type="range"><output></output></label>
+    <label class="file subtle">Other WAVs<input id="reference-files" type="file" accept=".wav,audio/wav" multiple></label>
+    <button id="play-reference">Reference</button><button id="play-synthesis">Trigger synth</button>
+    <button id="stop">Stop</button>
+    <span id="calibration-trim">Corpus trim 0.0 dB</span>
+    <label>Master <input id="master" type="range" min="-48" max="0" value="-12" step="0.5"><output>-12 dB</output></label>
+    <span id="limiter">Limiter 0.0 dB</span>
+  </nav>
+
+  <main>
+    <aside>
+      <section><h2>Fit controls</h2><div id="model-level"></div><div id="macro-pads"></div></section>
+      <section><h2>Decay profile</h2><div id="decay-controls" class="decay"></div></section>
+      <section><h2>Strike</h2>
+        <div id="strike-pad" class="strike-pad"><span>location →</span><b>strength ↑</b></div>
+        <label>Hardness <input id="hardness" type="range" min="0" max="1" value="0.65" step="0.01"><output>0.65</output></label>
+      </section>
+    </aside>
+
+    <section class="analysis">
+      <div id="waveform"></div>
+      <div class="spectrogram-wrap"><canvas id="spectrogram"></canvas>
+        <div class="axis-label frequency">frequency (log)</div>
+      </div>
+      <div class="analysis-controls">
+        <label>View <select id="view-mode"><option value="mirror" selected>Mirror</option><option value="vertical">Vertical split</option><option value="horizontal">Horizontal split</option><option value="difference">Difference</option><option value="reference">Reference</option><option value="synthesis">Synthesis</option></select></label>
+        <label>Window <select id="window"><option value="hann">Hann</option><option value="blackman-harris">Blackman–Harris</option><option value="rectangular">Rectangular</option></select></label>
+        <label>FFT <select id="fft-size"><option>512</option><option>1024</option><option selected>2048</option><option>4096</option><option>8192</option></select></label>
+        <label>Overlap <select id="overlap"><option value="0.5">50%</option><option value="0.75" selected>75%</option><option value="0.875">87.5%</option></select></label>
+        <label>Render <select id="render-seconds"><option value="reference" selected>Match reference</option><option value="1">1 s</option><option value="3">3 s</option><option value="6">6 s</option><option value="12">12 s</option></select></label>
+        <label>Colour range <input id="colour-range" type="range" min="40" max="140" value="90" step="1"><output>90 dB</output></label>
+        <button id="reset-view">Reset zoom</button>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="snapshot-actions"><input id="snapshot-name" value="Candidate"><button id="snapshot">Snapshot</button><button id="save-fit">Save fit</button><label class="file">Load fit<input id="load-fit" type="file" accept="application/json,.json"></label></div>
+    <div id="snapshots" class="snapshots"></div>
+  </footer>
+  <script type="module" src="app.mjs"></script>
+</body>
+</html>

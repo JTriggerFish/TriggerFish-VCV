@@ -15,8 +15,8 @@ instrument or Rack module.
 | Contact and compact body | half-sine force pulse, tonal chirp, enveloped noise, finite micro-contact burst, gated/finite renewal micro-contact process, 2x correlated FM burst with 4x reference, explicit direct/body router | duration, endpoints, strength-to-energy mapping, deterministic seeds, requested stochastic event rate, coincident dense contacts, gate release, FM spectral convergence, bounds, routing |
 | Delay and diffusion | 12-tap/2048-phase moving sinc delay, static Thiran delay, shared cubic Lagrange delay, fractional Schroeder all-pass | tone gain, low-frequency delay, polynomial exactness, integer-boundary continuity, impulse energy, five sample rates |
 | Spectral motion | 255-tap antisymmetric FIR Hilbert transformer, phase-continuous signed SSB frequency shifter, and fourth-order translation-band guards | wanted level, image rejection, exact zero shift, through-zero automation, DC/Nyquist translated-content rejection, five sample rates |
-| Resonance and loss | complementary three-band T60 loss, passive constraint gains, orthogonal Givens mixer, projected wet-only fractional-comb network, explicit output submix | exact identity at zero coupling, scattering energy, T60 recurrence, passive attenuation, excitation isolation, group routing |
-| Cymbal bloom | slow stochastic delay, 2x oversampled bounded self-phase delay with a 4x reference implementation, serial two-all-pass dispersion loop with explicit outer feedback | 1x/2x comparison against 4x, causal onset and declared recurrence delay, zero-drive linear reduction, no hidden feedback sample, long contractive stress |
+| Resonance and loss | arbitrary damped modal bank, deterministic statistical modal cloud, modal passive-loss adapter, complementary three-band delay loss, orthogonal Givens mixer, projected wet-only fractional-comb network, explicit output submix | analytic modal frequency/T60 recurrence, independent projections, cloud determinism/range/normalization, passive attenuation, exact zero-coupling identity, scattering energy, delay T60 recurrence, excitation isolation, group routing |
+| Cymbal bloom | slow stochastic delay, 2x oversampled bounded self-phase delay with a 4x reference implementation, serial four-all-pass dispersion loop with explicit outer feedback | 1x/2x comparison against 4x, causal onset and declared recurrence delay, zero-drive linear reduction, no hidden feedback sample, long contractive stress |
 | Radiation | guarded TDF2 biquad designs and a static high-pass/colour/low-pass chain | centre gain, pass/reject bands, sample-rate sweep, non-finite recovery |
 | Observation | zero-capable static fractional delay and per-source gain, polarity, delay, and radiation paths | exact zero and integer delay, source isolation, polarity, non-finite recovery |
 
@@ -59,14 +59,65 @@ independent. The modulator continuously blends seeded band-limited irregular
 motion with a periodic oscillator, and optional perturbation is explicit.
 
 The dispersion return is stored in its base propagation delay. The signal is
-read, passed serially through slow delay, two all-passes, self-phase delay and
+read, passed serially through slow delay, four all-passes, self-phase delay and
 loss, then written back with the new body drive. This avoids an accidental
 extra sample at the outer feedback sum. The dispersion tap remains an analysis
-and resonator-drive output, not audible dry leakage.
+and body-renderer drive output, not audible dry leakage.
 
 The coupled resonator is one superset: coupling zero gives independent combs;
 nonzero coupling applies an orthogonal matrix before line loss. It is not the
 room-reverb velvet FDN or its coefficient set.
+
+## Performance profile
+
+Measurements on 2026-09-02 used an AMD Ryzen 9 PRO 8945HS, GCC 16.2 MinGW
+Release build, 48 kHz, and the current default crash graph. They are development
+measurements rather than cross-machine budgets.
+
+The reproducible probes are `dev.ps1 benchmark-percussion` for native
+components and `node workbench/tests/performance_probe.mjs` after
+`dev.ps1 build-workbench` for WebAssembly rendering and STFT analysis.
+
+| Path | Before | Current |
+| --- | ---: | ---: |
+| Crash without either modal bank | 327 ns/sample | 326 ns/sample |
+| Crash with 12 sparse modes only | 382 ns/sample | 344 ns/sample |
+| Crash with 512 dense modes only | 2,620 ns/sample | 891 ns/sample |
+| Complete crash | 2,697 ns/sample | 909 ns/sample |
+| Isolated dispersion loop | 150 ns/sample | 149 ns/sample |
+| Isolated 512-mode cloud | 1,438 ns/sample | 527 ns/sample |
+
+The optimized complete graph therefore uses about 4.4% of one core at 48 kHz
+and 8.7% at 96 kHz. A 10-second SIMD WebAssembly render takes a median 459 ms
+(955 ns/sample), down from 1.275 seconds (2,657 ns/sample). Native and
+WebAssembly DSP costs agree; JavaScript/Wasm boundary copying is not the
+dominant expense.
+
+The modal bank now sanitizes stable hit projections once, caches safe per-mode
+damping multipliers until a damping control changes, and separates independent
+state recurrence from ordered output reduction. This lets GCC vectorize the
+hot recurrence and lets Emscripten use `simd128` without `-ffast-math` or a
+change to finite-value recovery. A separate `-ffast-math` experiment reached
+836 ns/sample, so the safe implementation is now within about 9% of that unsafe
+upper bound.
+
+The remaining optimization order is:
+
+1. Benchmark aligned modal arrays and vector-width reductions before changing
+   the number of modes. Mode-count or residual-substitution changes require
+   controlled listening tests and are not the first optimization.
+2. Only then inspect the smaller dispersion and observation paths.
+
+For the browser workbench, a 10-second 2048-point, 75%-overlap STFT takes about
+70 ms and stores 3.67 MiB. A 1,089 x 506 heatmap redraw takes about 22 ms. A
+slider-to-completed-analysis cycle previously measured 1.69 seconds: 1.36
+seconds was DSP, 220 ms was the deliberate debounce, and the remainder covered
+analysis and UI painting without a main-thread task over 50 ms. The optimized
+DSP removes about 900 ms from that path. Canvas replacement remains lower
+priority. Reference spectra now use an eight-entry LRU cache (about 29 MiB at
+the default analysis settings). Snapshots retain audio and controls but
+recompute their spectrogram on restore, reducing a ten-second snapshot from
+about 5.5 MiB to about 1.8 MiB.
 
 `RadiationFilter` is an object/observation voicing stage. Its final biquad is a
 two-pole low-pass, so the asymptotic electrical slope is 12 dB/octave. It is
@@ -74,16 +125,28 @@ not, by itself, a physical distance-dependent air-absorption model: atmospheric
 loss belongs in an optional propagation/observation stage and must vary with
 distance, humidity, and frequency when that distinction matters.
 
-## First assembled graph
+## Current experimental graph and replacement target
 
-`CrashCymbal` composes the tested contact, dispersion, passive-loss, coupled
-resonator, frequency-shift, submix, and observation primitives. The exact C++
-graph is exposed to Python for fitting and deterministic rendering. Graph tests
-cover repeatability, strength, location, hardness, passive mute, finiteness,
-and five sample rates. A Plotly page now provides real-reference versus current
-model players, aligned waveforms, and common-scale spectrograms.
+`CrashCymbal` composes the tested contact, serial feedback-dispersion,
+passive-loss, sparse-modal, statistical-modal-cloud, turbulent-residual, and
+observation primitives. The exact C++ graph is exposed to Python and to the
+optional browser workbench through WebAssembly. Graph tests cover repeatability,
+strength, location, hardness, passive mute, finiteness, and five sample rates.
 
-## Not yet accepted for calibration
+An earlier coupled-comb/frequency-shift graph was rejected during calibration:
+its controls could not place persistent ridges independently. The implemented
+replacement sends direct body drive to a small arbitrary modal
+bank and dispersed drive to a deterministic 512-mode statistical cloud. The
+modal residue is explicit and independent of T60; a fixed caller-side unit
+conversion maps contact body drive into modal-force units. The dense branch
+also supports passive velocity-dependent loss, allowing harder hits to damp
+the residual wash faster when reference data supports that behavior. The
+raw dispersion tap remains inaudible. Both rendered body branches have audible,
+separately fitted radiation paths. The sparse bank owns persistent ridges; the
+cloud owns unresolved wash. A weak dispersion-to-sparse feed and the coupled
+comb remain ablations rather than part of the production crash graph.
+
+## Calibration boundary
 
 These tests are the first analytic quality level only. The following gates are
 still open:
@@ -91,18 +154,23 @@ still open:
 - add smoothed, state-preserving live retuning for size and tune;
 - extend the existing five-rate, non-finite, denormal, retrigger and automation
   tests to rapid simultaneous control changes across the assembled graph;
-- capture and isolate the selected SD3 crash grid, then fit its shared body and
+- capture and isolate private corpus A, then audition its shared body and
   location/hardness projections against fit repeats;
-- add report views for ERB evolution, band decay, modal evidence, named losses,
-  and component ablations; and
-- validate against held-out repeats, Bitwig crashes, and open corpora.
+- add remaining component-ablation views to the implemented residual-isolation,
+  modal-resynthesis, branch-solo, and control-sweep report; and
+- validate against held-out repeats, independent licensed crashes, and open
+  corpora.
 
-Calibration must not begin by optimizing around any of these open numerical or
-control-path questions.
+The previous aggregate-loss checkpoints were rejected by direct listening.
+Automated optimization is now experimental diagnostic tooling; the active path
+is a versioned, browser-based ear-fitting workbench using the native C++ graph.
+Numerical views explain differences and protect regressions, but do not approve
+a fit.
 
 The Python numerical-analysis implementation and its remaining real-data gates
-are recorded in `TfPercussion-analysis-toolkit.md`. Live browser synthesis and
-WebAssembly remain later work; the static Plotly report is implemented.
+are recorded in `TfPercussion-analysis-toolkit.md`. The static Plotly report is
+a regression fallback. Live WebAssembly audition is implemented as a separate
+development-only target and remains absent from normal Rack and release builds.
 
 ## Deferred structured-model extensions
 

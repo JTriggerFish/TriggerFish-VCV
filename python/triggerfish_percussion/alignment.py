@@ -18,30 +18,46 @@ def detect_impact_onset(
     sample_rate: float,
     highpass_hz: float = 1200.0,
     smoothing_seconds: float = 0.00075,
+    minimum_peak_energy_ratio: float = 1.0e-5,
 ) -> int:
+    """Locate the first perceptually material impact energy."""
     signal = _mono_signal(samples)
+    if not 0.0 < minimum_peak_energy_ratio < 1.0:
+        raise ValueError("impact peak-energy ratio must lie between zero and one")
+    width = max(1, int(round(smoothing_seconds * sample_rate)))
+    window = np.ones(width) / width
+    full_energy = np.convolve(np.square(signal), window, mode="same")
+    full_peak = float(np.max(full_energy))
+    if full_peak <= np.finfo(float).tiny:
+        return 0
+    # A novelty-only detector locked onto inaudible edit noise in several sample
+    # layers, putting the fitted strike 6--9 ms before the actual contact. The
+    # -50 dB power criterion is low enough to retain a quiet cymbal contact while
+    # rejecting such isolated pre-roll artifacts.
+    active = full_energy >= minimum_peak_energy_ratio * full_peak
+    candidates = np.flatnonzero(active)
+    coarse = int(candidates[0]) if candidates.size else int(np.argmax(full_energy))
+
+    # Refine against high-frequency contact energy, but normalize only inside a
+    # short interval after the coarse onset. A much brighter later bloom then
+    # cannot move the detector, while low-frequency pre-contact motion does not
+    # become the cymbal strike anchor.
     cutoff = min(highpass_hz, 0.4 * sample_rate)
     filtered = sosfilt(
         butter(2, cutoff, btype="highpass", fs=sample_rate, output="sos"), signal
     )
-    width = max(1, int(round(smoothing_seconds * sample_rate)))
-    energy = np.convolve(np.square(filtered), np.ones(width) / width, mode="same")
-    novelty = np.maximum(
-        np.diff(np.sqrt(energy + np.finfo(float).tiny), prepend=0.0), 0.0
+    high_energy = np.convolve(np.square(filtered), window, mode="same")
+    local_first = coarse
+    local_last = min(signal.size, coarse + round(0.010 * sample_rate))
+    local_peak = float(np.max(high_energy[local_first:local_last]))
+    local = np.flatnonzero(
+        high_energy[local_first:local_last] >= minimum_peak_energy_ratio * local_peak
     )
-    peak = float(np.max(novelty))
-    if peak <= np.finfo(float).tiny:
-        return 0
-    baseline_count = max(width, min(signal.size // 10, int(0.05 * sample_rate)))
-    baseline = novelty[:baseline_count]
-    median = float(np.median(baseline))
-    deviation = float(np.median(np.abs(baseline - median)))
-    # Cymbals can bloom much louder than their first contact. A high fraction
-    # of the global peak therefore skips the physical onset; the pre-onset
-    # robust floor is primary and the peak term only rejects numerical dust.
-    threshold = max(median + 8.0 * deviation, 1.0e-6 * peak)
-    candidates = np.flatnonzero(novelty >= threshold)
-    return int(candidates[0]) if candidates.size else int(np.argmax(novelty))
+    onset = local_first + int(local[0]) if local.size else coarse
+    # ``mode='same'`` centers the smoothing window, so a nonzero detection is
+    # early by roughly half a window. Do not compensate an event that genuinely
+    # starts at the first available sample: there is no discarded pre-roll.
+    return min(signal.size - 1, onset + width // 2) if onset > 0 else 0
 
 
 def measure_alignment(

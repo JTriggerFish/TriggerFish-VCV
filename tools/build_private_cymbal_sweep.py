@@ -13,21 +13,21 @@ TEMPO_US_PER_BEAT = 500_000
 TICKS_PER_SECOND = TICKS_PER_BEAT * 1_000_000 / TEMPO_US_PER_BEAT
 
 ARTICULATION_MAPS = {
-    "sd3-crash2": (
+    "private-crash-a": (
         ("edge", 49),
         ("bow-tip", 27),
         ("bow-shank", 92),
         ("bell-tip", 93),
         ("bell-shank", 28),
     ),
-    "sd3-ride": (
+    "private-ride-a": (
         ("bow-tip", 51),
         ("bow-shank", 29),
         ("bell-tip", 30),
         ("bell-shank", 53),
         ("edge", 59),
     ),
-    "ezd3-ride": (("bow", 51), ("bell", 53), ("edge", 59)),
+    "private-ride-b": (("bow", 51), ("bell", 53), ("edge", 59)),
 }
 
 
@@ -127,7 +127,7 @@ def main() -> None:
         type=integer_list,
         default=integer_list("8,16,24,32,40,48,56,64,72,80,88,96,104,112,120,127"),
     )
-    parser.add_argument("--repeats", type=int, default=2)
+    parser.add_argument("--repeats", type=int, default=4)
     parser.add_argument("--gap-seconds", type=float, default=12.0)
     parser.add_argument("--group-gap-seconds", type=float, default=4.0)
     parser.add_argument("--lead-seconds", type=float, default=1.0)
@@ -161,8 +161,19 @@ def main() -> None:
         "midi_channel": 10,
         "tempo_bpm": 120,
         "capture_guidance": {
-            "disable_humanization": True,
+            "load_articulations": [
+                articulation for articulation, _ in ARTICULATION_MAPS[arguments.target]
+            ],
+            "hit_variation": {
+                "randomize_hits": True,
+                "use_adjacent_layers": False,
+                "use_alternate_hits": False,
+                "velocity_to_volume": False,
+            },
+            "disable_timing_and_velocity_randomization": True,
+            "disable_cymbal_smoothing": True,
             "disable_internal_processing": True,
+            "voice_and_layer_limits": "unlimited",
             "capture_outputs_separately": ["overhead", "close", "room"],
             "preserve_source_level": True,
         },

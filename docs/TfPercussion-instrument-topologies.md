@@ -221,7 +221,7 @@ ablation.
 ### Calibration consequences for membrane drums
 
 Multi-microphone sample libraries are especially valuable. Matched exports of
-one MIDI performance from Superior Drummer or EZdrummer can provide kick-in,
+one MIDI performance from a multi-output drum library can provide kick-in,
 kick-out, snare-top, snare-bottom, overhead, and room channels for the same
 physical event. This permits a staged identification:
 
@@ -383,12 +383,12 @@ only when ablation shows that each branch explains a distinct measurement.
 | Drive controls velocity-sensitive bloom | incident energy plus self-PM drive | Calibration target |
 | Feedback loop contains every dispersion processor | one explicit outer-loop graph | Core routing |
 | Dispersion is not heard directly | analysis-only dispersion tap | Core routing |
-| Dispersion drives wet-only combs | `ResonatorNetwork` input projection and wet output | Core routing |
+| Dispersion drives body renderers | parallel arbitrary modal bank and dense-residual inputs | Core routing |
 | Plugin dry signal is polarity-cancelled | native wet-only implementation; no dry-null hack required | Equivalent implementation |
-| Approximately twelve parallel combs | configurable parallel/coupled resonator lines | Initial topology range |
+| Approximately twelve parallel combs | optional parallel/coupled dense-residual lines | Residual candidate |
 | A few dark lower-order groups plus messy high groups | clustered resonator parameters and group filters | Calibration structure |
 | Per-resonator filters | per-line/group radiation and loss filters | Core resonator feature |
-| Frequency shifter breaks harmonic comb relationships | optional fixed-hertz group shift | Candidate coloration |
+| Frequency shifter breaks residual comb relationships | optional fixed-hertz residual-group shift; sparse modes are placed directly | Candidate coloration |
 | Additional comb over the summed output | optional `SpectralColorationComb` node | Candidate coloration |
 | Different delays/allpasses stop branch flanging | optional per-branch delay/allpass | Candidate correction |
 | Resonator buses are freely mixed | explicit group output gains | Core observation routing |

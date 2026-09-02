@@ -10,6 +10,7 @@
 
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
 
 #include "models/VCAcore.hpp"
 #include "models/Arp4019Vca.hpp"
@@ -1023,12 +1024,39 @@ PYBIND11_MODULE(_triggerfish_dsp, module)
 	using CrashFit = tfdsp::percussion::CrashCymbalFitParameters;
 	py::class_<CrashFit>(module, "CrashCymbalFitParameters")
 		.def(py::init<>())
-		.def_readwrite("resonance_tune", &CrashFit::resonanceTune)
-		.def_readwrite("low_decay_scale", &CrashFit::lowDecayScale)
-		.def_readwrite("middle_decay_scale", &CrashFit::middleDecayScale)
-		.def_readwrite("high_decay_scale", &CrashFit::highDecayScale)
-		.def_readwrite("resonator_coupling", &CrashFit::resonatorCoupling)
-		.def_readwrite("resonator_shift_scale", &CrashFit::resonatorShiftScale)
+		.def_readwrite("sparse_frequency_hz", &CrashFit::sparseFrequencyHz)
+		.def_readwrite("sparse_decay_seconds", &CrashFit::sparseDecaySeconds)
+		.def_readwrite("sparse_amplitude", &CrashFit::sparseAmplitude)
+		.def_readwrite("sparse_phase_radians", &CrashFit::sparsePhaseRadians)
+		.def_readwrite("sparse_tune", &CrashFit::sparseTune)
+		.def_readwrite("sparse_decay_scale", &CrashFit::sparseDecayScale)
+		.def_readwrite("dense_minimum_frequency_hz",
+			&CrashFit::denseMinimumFrequencyHz)
+		.def_readwrite("dense_maximum_frequency_hz",
+			&CrashFit::denseMaximumFrequencyHz)
+		.def_readwrite("dense_frequency_warp", &CrashFit::denseFrequencyWarp)
+		.def_readwrite("dense_spacing_jitter", &CrashFit::denseSpacingJitter)
+		.def_readwrite("dense_low_decay_seconds", &CrashFit::denseLowDecaySeconds)
+		.def_readwrite("dense_high_decay_seconds", &CrashFit::denseHighDecaySeconds)
+		.def_readwrite("dense_decay_curve", &CrashFit::denseDecayCurve)
+		.def_readwrite("dense_decay_envelope_octaves",
+			&CrashFit::denseDecayEnvelopeOctaves)
+		.def_readwrite("dense_decay_spread_octaves",
+			&CrashFit::denseDecaySpreadOctaves)
+		.def_readwrite("dense_tilt_db_per_octave",
+			&CrashFit::denseTiltDbPerOctave)
+		.def_readwrite("dense_gain_envelope_db", &CrashFit::denseGainEnvelopeDb)
+		.def_readwrite("dense_gain_spread_db", &CrashFit::denseGainSpreadDb)
+		.def_readwrite("dense_mode_seed", &CrashFit::denseModeSeed)
+		.def_readwrite("turbulence_low_gain", &CrashFit::turbulenceLowGain)
+		.def_readwrite("turbulence_middle_gain", &CrashFit::turbulenceMiddleGain)
+		.def_readwrite("turbulence_high_gain", &CrashFit::turbulenceHighGain)
+		.def_readwrite("turbulence_low_decay_seconds",
+			&CrashFit::turbulenceLowDecaySeconds)
+		.def_readwrite("turbulence_middle_decay_seconds",
+			&CrashFit::turbulenceMiddleDecaySeconds)
+		.def_readwrite("turbulence_high_decay_seconds",
+			&CrashFit::turbulenceHighDecaySeconds)
 		.def_readwrite("dispersion_feedback", &CrashFit::dispersionFeedback)
 		.def_readwrite("dispersion_drive", &CrashFit::dispersionDrive)
 		.def_readwrite("dispersion_excursion_samples",
@@ -1039,15 +1067,58 @@ PYBIND11_MODULE(_triggerfish_dsp, module)
 			&CrashFit::dispersionMiddleDecaySeconds)
 		.def_readwrite("dispersion_high_decay_seconds",
 			&CrashFit::dispersionHighDecaySeconds)
+		.def_readwrite("contact_duration_scale", &CrashFit::contactDurationScale)
+		.def_readwrite("contact_pulse_gain", &CrashFit::contactPulseGain)
+		.def_readwrite("contact_chirp_gain", &CrashFit::contactChirpGain)
+		.def_readwrite("contact_chirp_frequency_scale",
+			&CrashFit::contactChirpFrequencyScale)
+		.def_readwrite("contact_noise_gain", &CrashFit::contactNoiseGain)
+		.def_readwrite("contact_noise_duration_scale",
+			&CrashFit::contactNoiseDurationScale)
+		.def_readwrite("contact_noise_tilt_db", &CrashFit::contactNoiseTiltDb)
+		.def_readwrite("contact_micro_gain", &CrashFit::contactMicroGain)
+		.def_readwrite("contact_micro_duration_scale",
+			&CrashFit::contactMicroDurationScale)
+		.def_readwrite("contact_micro_density_scale",
+			&CrashFit::contactMicroDensityScale)
 		.def_readwrite("direct_gain", &CrashFit::directGain)
-		.def_readwrite("body_gain", &CrashFit::bodyGain)
+		.def_readwrite("sparse_gain", &CrashFit::sparseGain)
+		.def_readwrite("dense_gain", &CrashFit::denseGain)
+		.def_readwrite("sparse_bloom_gain", &CrashFit::sparseBloomGain)
 		.def_readwrite("body_bypass_gain", &CrashFit::bodyBypassGain)
 		.def_readwrite("output_gain", &CrashFit::outputGain)
 		.def_readwrite("colour_frequency_hz", &CrashFit::colourFrequencyHz)
 		.def_readwrite("colour_gain_db", &CrashFit::colourGainDb)
 		.def_readwrite("high_cut_hz", &CrashFit::highCutHz)
-		.def_readwrite("strength_gamma", &CrashFit::strengthGamma);
+		.def_readwrite("strength_gamma", &CrashFit::strengthGamma)
+		.def_readwrite("body_strength_gamma", &CrashFit::bodyStrengthGamma)
+		.def_readwrite("dense_strength_gamma", &CrashFit::denseStrengthGamma)
+		.def_readwrite("dense_velocity_loss_nepers_per_second",
+			&CrashFit::denseVelocityLossNepersPerSecond);
 	module.def("render_crash", [](const py::ssize_t sampleCount,
+		double sampleRate, float strength, float location, float hardness,
+		std::uint32_t seed, const CrashFit &fit)
+	{
+		if (sampleCount <= 0 || !(sampleRate > 0.0))
+			throw std::invalid_argument("crash render dimensions must be positive");
+		tfdsp::percussion::CrashCymbal cymbal;
+		const float rate = static_cast<float>(sampleRate);
+		py::array_t<float> result(sampleCount);
+		auto *output = result.mutable_data();
+		{
+			py::gil_scoped_release release;
+			cymbal.Prepare(rate,
+				tfdsp::percussion::DefaultCrashCymbalParameters(rate, fit));
+			cymbal.Trigger({strength, location, hardness, seed});
+			for (py::ssize_t sample = 0; sample < sampleCount; ++sample)
+				output[sample] = cymbal.Process();
+		}
+		return result;
+	}, py::arg("sample_count"), py::arg("sample_rate") = 48000.0,
+		py::arg("strength") = .8f, py::arg("location") = 1.f,
+		py::arg("hardness") = .65f, py::arg("seed") = 1u,
+		py::arg("fit") = CrashFit{});
+	module.def("render_crash_components", [](const py::ssize_t sampleCount,
 		double sampleRate, float strength, float location, float hardness,
 		std::uint32_t seed, const CrashFit &fit)
 	{
@@ -1058,10 +1129,16 @@ PYBIND11_MODULE(_triggerfish_dsp, module)
 		cymbal.Prepare(rate,
 			tfdsp::percussion::DefaultCrashCymbalParameters(rate, fit));
 		cymbal.Trigger({strength, location, hardness, seed});
-		py::array_t<float> result(sampleCount);
-		auto output = result.mutable_unchecked<1>();
-		for (py::ssize_t sample = 0; sample < sampleCount; ++sample)
-			output(sample) = cymbal.Process();
+		py::array_t<float> result({sampleCount, py::ssize_t{5}});
+		auto output = result.mutable_unchecked<2>();
+		for (py::ssize_t sample = 0; sample < sampleCount; ++sample) {
+			const auto frame = cymbal.ProcessFrame();
+			output(sample, 0) = frame.directContact;
+			output(sample, 1) = frame.dispersion;
+			output(sample, 2) = frame.sparseModes;
+			output(sample, 3) = frame.denseResidual;
+			output(sample, 4) = frame.output;
+		}
 		return result;
 	}, py::arg("sample_count"), py::arg("sample_rate") = 48000.0,
 		py::arg("strength") = .8f, py::arg("location") = 1.f,
