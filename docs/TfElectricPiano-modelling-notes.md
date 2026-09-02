@@ -561,6 +561,14 @@ The 64x physical contact solve contributes only at note onset; held-note cost
 is still dominated by pickup and amplifier processing. These figures
 are comparative only and will vary with compiler and processor.
 
+The benchmark also contains explicit repeated-strike rows so contact work is
+not hidden by a held-note measurement. Reusing the modal contact-point state
+between adjacent 64x substeps and caching invariant velocity and inverse-mass
+projections leaves render checksums unchanged. On the recorded MinGW/GCC 16.2
+run, one voice at 100 strikes/s changed from 86.09 to a median 81.68 ms per
+rendered second (-5.1%); sixteen voices at 20 strikes/s each changed from
+263.62 to 256.98 ms (-2.5%). Held-voice checksums and cost were unchanged.
+
 The benchmark also isolates the shared amplifier with Vibrato inactive and
 active (about 118 and 165 ms respectively on that build). Static Bass, Treble
 and Vibrato Speed control laws are cached, values shared by both 2x circuit

@@ -1043,6 +1043,26 @@ The implementation and native tests enforce the following properties:
 
 ## 17. Implementation map
 
+### 17.1 Reproducible SIMD performance
+
+`dev.ps1 benchmark-reverb` configures and rebuilds the Release benchmark before
+running it, preventing an executable from an older source revision from being
+mistaken for the current baseline. On the recorded MinGW/GCC 16.2 machine, the
+median of five complete Room Reverb runs changed as follows:
+
+| Path | Hardened scalar | Batched + bit-safe hardening | Change |
+|---|---:|---:|---:|
+| Shimmer off | 1,835 ns/sample | 1,648 ns/sample | -10.2% |
+| Shimmer at 45% | 2,038 ns/sample | 1,840 ns/sample | -9.7% |
+
+The main sixteen-line fractional delay uses one interleaved history and batches
+interpolation arithmetic while retaining scalar tap gathers. The three
+sixteen-line decay-filter banks use structure-of-arrays state. Unit tests compare
+both implementations sample-for-sample with their original scalar primitives.
+NaN, infinity, and subnormal hardening remains active: IEEE-754 bit
+classification replaces repeated library classification in recursive states,
+making the safety operation cheap and vectorizable without `-ffast-math`.
+
 The principal implementation files are:
 
 | File | Responsibility |
@@ -1051,8 +1071,10 @@ The principal implementation files are:
 | `src/tfdsp/early_reflections.hpp` | Image paths, material response, handoff analysis, FIR construction, and convolution |
 | `src/tfdsp/early_reflections_worker.*` | Rate-limited background scene preparation and delivery |
 | `src/tfdsp/late_reverb.hpp` | Main FDN, input/output projections, decay, modulation, and shimmer routing |
+| `src/tfdsp/cubic_fractional_delay_bank.hpp` | Interleaved sixteen-line main FDN delay and batched cubic interpolation |
 | `src/tfdsp/velvet_feedback_matrix.hpp` | Paraunitary transforms, velvet delays, and their fractional modulation |
 | `src/tfdsp/multiband_decay_filter.hpp` | Complementary per-segment RT60 filtering |
+| `src/tfdsp/multiband_decay_filter_bank.hpp` | Structure-of-arrays RT60 filtering for complete FDN frames |
 | `src/tfdsp/windowed_pitch_shifter.hpp` | Grain-based octave shifter used inside the feedback loop |
 | `src/tfdsp/late_reverb_coefficients.hpp` | Base main-delay ratios, shared velvet coefficients, transforms, Walsh vectors, and calibration constants |
 | `src/tfdsp/late_reverb_optimized_coefficients.hpp` | Optimized main-delay ratios used by the factory selection |

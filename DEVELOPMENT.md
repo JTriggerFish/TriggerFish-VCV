@@ -52,6 +52,8 @@ Run the usual tasks from PowerShell:
 .\dev.ps1 test-percussion # Build all tests, then run the percussion subset
 .\dev.ps1 benchmark-er # Benchmark generated-FIR ER at 1, 4, and 8 sources
 .\dev.ps1 benchmark-percussion # Benchmark the percussion DSP components
+.\dev.ps1 benchmark-reverb # Benchmark the complete Room Reverb
+.\dev.ps1 benchmark-electric-piano # Benchmark held and repeated-strike paths
 .\dev.ps1 python-test  # Build Python bindings and run pytest
 .\dev.ps1 clean
 .\dev.ps1 shell        # Open a configured MinGW64 shell

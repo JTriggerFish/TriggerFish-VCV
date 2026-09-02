@@ -4,7 +4,7 @@
 #include "finite_audio.hpp"
 #include "transition_fractional_delay.hpp"
 #include "late_reverb_coefficient_sets.hpp"
-#include "multiband_decay_filter.hpp"
+#include "multiband_decay_filter_bank.hpp"
 #include "smooth_random_modulator.hpp"
 
 #include <algorithm>
@@ -37,7 +37,7 @@ private:
   std::array<std::array<SmoothRandomModulator, LineCount>,
              late_reverb_coefficients::VelvetStageCount>
       modulators_{};
-  std::array<std::array<MultibandDecayFilter, LineCount>,
+  std::array<MultibandDecayFilterBank<LineCount>,
              late_reverb_coefficients::VelvetStageCount>
       decayFilters_{};
   float sampleRate_{48'000.f};
@@ -198,7 +198,6 @@ public:
                                       sampleRate_)) +
                               4;
         delays_[stage][line].Prepare(capacity, transitionIncrement);
-        decayFilters_[stage][line].Prepare(sampleRate);
         const std::size_t rateIndex =
             (5 * line + 7 * stage) % late_reverb_coefficients::LineCount;
         const float rateMultiplier = stage == 0 ? 1.37f : 1.11f;
@@ -209,15 +208,16 @@ public:
             0xa511e9b3u + static_cast<std::uint32_t>(stage) * 0x63d83595u +
                 static_cast<std::uint32_t>(line) * 0x9e3779b9u);
       }
+    for (auto &filterBank : decayFilters_)
+      filterBank.Prepare(sampleRate);
     Reset();
   }
   void Reset() noexcept {
     for (auto &stage : delays_)
       for (auto &delay : stage)
         delay.Reset();
-    for (auto &stage : decayFilters_)
-      for (auto &filter : stage)
-        filter.Reset();
+    for (auto &filterBank : decayFilters_)
+      filterBank.Reset();
     for (auto &stage : modulators_)
       for (auto &modulator : stage)
         modulator.Reset();
@@ -300,17 +300,18 @@ public:
     }
     frame = Transform(frame, 0);
     for (std::size_t stage = 0; stage < delays_.size(); ++stage) {
+      Frame pathSeconds{};
       for (std::size_t line = 0; line < LineCount; ++line) {
         frame[line] = delays_[stage][line].Process(
             frame[line], modulation[stage][line],
             ModulationDepthRatio[stage],
             MaximumModulationSeconds[stage] * sampleRate_);
-        const float seconds =
+        pathSeconds[line] =
             static_cast<float>(delays_[stage][line].EffectiveSamples()) /
             sampleRate_;
-        frame[line] = decayFilters_[stage][line].Process(
-            frame[line], seconds, lowT60, midT60, highT60);
       }
+      frame = decayFilters_[stage].Process(
+          frame, pathSeconds, lowT60, midT60, highT60);
       frame = Transform(frame, stage + 1);
     }
     if (flavourTransitionPhase_ < 1.f) {

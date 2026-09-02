@@ -80,21 +80,24 @@
 				if (!contactModeActive_[index])
 					continue;
 				position -= contactModeShape_[index] * modes_[index].real;
-				velocity += contactModeShape_[index] *
-					modeAngularFrequency_[index] * modes_[index].imaginary;
+				velocity += contactVelocityWeight_[index] *
+					modes_[index].imaginary;
 			}
 			return std::array<double, 2>{position, velocity};
 		};
 		if (modulationPathActive_)
 			for (auto& frame : pickupModeFrames_)
 				frame.fill({});
+		std::array<double, 2> contactPoint{};
+		if (contactActive_)
+			contactPoint = contactPointState();
 		for (int substep = 0; substep < ContactOversamplingFactor; ++substep)
 		{
 			if (contactActive_)
 			{
-				const auto tine = contactPointState();
-				const double compression = hammerPosition_ - tine[0];
-				const double relativeVelocity = hammerVelocity_ - tine[1];
+				const double compression = hammerPosition_ - contactPoint[0];
+				const double relativeVelocity =
+					hammerVelocity_ - contactPoint[1];
 				if (!std::isfinite(compression) ||
 					!std::isfinite(relativeVelocity))
 				{
@@ -122,7 +125,7 @@
 							// algebraic force would become tensile. A real neoprene tip
 							// cannot pull the receding hammer, so this is separation,
 							// not a zero-force state held at positive penetration.
-							hammerPosition_ = tine[0];
+							hammerPosition_ = contactPoint[0];
 							contactActive_ = false;
 							contactEngaged_ = false;
 						}
@@ -148,8 +151,8 @@
 							if (!contactModeActive_[index] ||
 								!(modeAngularFrequency_[index] > 0.0))
 								continue;
-							modes_[index].imaginary += contactModeShape_[index] *
-								modeInverseMass_[index] * impulse /
+							modes_[index].imaginary +=
+								contactInverseMassWeight_[index] * impulse /
 								modeAngularFrequency_[index];
 						}
 						hammerPosition_ += timeStep * hammerVelocity_;
@@ -182,9 +185,10 @@
 			if (contactActive_)
 			{
 				contactAge_ += timeStep;
-				const auto tine = contactPointState();
-				const double compression = hammerPosition_ - tine[0];
-				const double relativeVelocity = hammerVelocity_ - tine[1];
+				contactPoint = contactPointState();
+				const double compression = hammerPosition_ - contactPoint[0];
+				const double relativeVelocity =
+					hammerVelocity_ - contactPoint[1];
 				if (!std::isfinite(hammerPosition_) ||
 					!std::isfinite(hammerVelocity_) ||
 					!std::isfinite(compression) ||

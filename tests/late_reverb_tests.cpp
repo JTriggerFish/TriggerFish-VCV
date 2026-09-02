@@ -1,5 +1,8 @@
+#include "tfdsp/cubic_fractional_delay.hpp"
+#include "tfdsp/cubic_fractional_delay_bank.hpp"
 #include "tfdsp/late_reverb.hpp"
 #include "tfdsp/multiband_decay_filter.hpp"
+#include "tfdsp/multiband_decay_filter_bank.hpp"
 #include "tfdsp/windowed_pitch_shifter.hpp"
 
 #include <algorithm>
@@ -41,6 +44,60 @@ void TestDecayFilterRejectsInvalidT60() {
   Check(filter.Process(std::numeric_limits<float>::denorm_min(), .01f,
                        1.f, 1.f, 1.f) == 0.f,
         "reverb decay filter flushes subnormal state to exact silence");
+}
+
+void TestDecayFilterBankMatchesScalarFilters() {
+  constexpr std::size_t LineCount = 16;
+  using Bank = tfdsp::MultibandDecayFilterBank<LineCount>;
+  std::array<tfdsp::MultibandDecayFilter, LineCount> scalar{};
+  Bank bank;
+  for (auto &filter : scalar)
+    filter.Prepare(ReverbTestSampleRate);
+  bank.Prepare(ReverbTestSampleRate);
+  for (std::size_t sample = 0; sample < 4096; ++sample) {
+    Bank::Frame input{};
+    Bank::Frame pathSeconds{};
+    for (std::size_t line = 0; line < LineCount; ++line) {
+      input[line] = .2f * std::sin(.013f * static_cast<float>(
+                                      sample * (line + 1)));
+      pathSeconds[line] = .002f + .0003f * static_cast<float>(line) +
+                          (sample > 2048 ? .0001f : 0.f);
+    }
+    const auto output = bank.Process(input, pathSeconds, 1.7f, 1.1f, .43f);
+    for (std::size_t line = 0; line < LineCount; ++line)
+      Check(output[line] == scalar[line].Process(
+                                  input[line], pathSeconds[line], 1.7f, 1.1f,
+                                  .43f),
+            "decay-filter bank matches scalar filter exactly");
+  }
+}
+
+void TestFractionalDelayBankMatchesScalarDelays() {
+  constexpr std::size_t LineCount = 16;
+  constexpr std::size_t Capacity = 257;
+  using Bank = tfdsp::CubicFractionalDelayBank<LineCount>;
+  std::array<tfdsp::CubicFractionalDelay, LineCount> scalar{};
+  Bank bank;
+  for (auto &delay : scalar)
+    delay.Prepare(Capacity);
+  bank.Prepare(Capacity);
+  for (std::size_t sample = 0; sample < 2048; ++sample) {
+    Bank::Frame input{};
+    Bank::Frame delaySamples{};
+    for (std::size_t line = 0; line < LineCount; ++line) {
+      input[line] = .2f * std::sin(.017f * static_cast<float>(
+                                      sample * (line + 1)));
+      delaySamples[line] = 2.25f + 11.7f * static_cast<float>(line) +
+                           .2f * std::sin(.003f * static_cast<float>(sample));
+    }
+    const auto output = bank.Read(delaySamples);
+    for (std::size_t line = 0; line < LineCount; ++line)
+      Check(output[line] == scalar[line].Read(delaySamples[line]),
+            "fractional-delay bank matches scalar delay exactly");
+    bank.Push(input);
+    for (std::size_t line = 0; line < LineCount; ++line)
+      scalar[line].Push(input[line]);
+  }
 }
 
 void TestCompleteLatePathsFlushSubnormals() {
@@ -1434,6 +1491,8 @@ void DiagnoseSmoke303ImpulseResponse() {
 
 int main() {
   TestDecayFilterRejectsInvalidT60();
+  TestDecayFilterBankMatchesScalarFilters();
+  TestFractionalDelayBankMatchesScalarDelays();
   TestCompleteLatePathsFlushSubnormals();
   TestLateReverbAtEverySupportedRate();
   TestVelvetFeedbackMatrixIsParaunitaryAndDense();

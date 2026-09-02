@@ -153,6 +153,8 @@
 				modeSubstepRealCoefficient_[index] = 0.0;
 				modeSubstepImaginaryCoefficient_[index] = 0.0;
 				modeAngularFrequency_[index] = 0.0;
+				contactVelocityWeight_[index] = 0.0;
+				contactInverseMassWeight_[index] = 0.0;
 				continue;
 			}
 			const double angle = TwoPi * frequency / sampleRate_;
@@ -183,6 +185,10 @@
 			modeSubstepImaginaryCoefficient_[index] = modeSubstepRadius_[index] *
 				std::sin(substepAngle);
 			modeAngularFrequency_[index] = TwoPi * frequency;
+			contactVelocityWeight_[index] = contactModeShape_[index] *
+				modeAngularFrequency_[index];
+			contactInverseMassWeight_[index] = contactModeShape_[index] *
+				modeInverseMass_[index];
 		}
 
 		if (transformCoupledState && modeActive_[0] && modeActive_[1])

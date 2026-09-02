@@ -14,10 +14,8 @@ public:
     const auto mainCapacity = static_cast<std::size_t>(std::ceil(
         (0.078 * maximumRatio + MaximumFdnModulationSeconds) * sampleRate_ +
         8.0));
-    for (std::size_t line = 0; line < FdnLineCount; ++line) {
-      mainDelays_[line].Prepare(mainCapacity);
-      mainDecayFilters_[line].Prepare(sampleRate_);
-    }
+    mainDelays_.Prepare(mainCapacity);
+    mainDecayFilters_.Prepare(sampleRate_);
     feedbackMatrix_.Prepare(sampleRate_);
     for (std::size_t line = 0; line < FdnLineCount; ++line)
       modulators_[line].Prepare(
@@ -46,13 +44,11 @@ public:
   }
 
   void Reset() noexcept {
-    for (auto &delay : mainDelays_)
-      delay.Reset();
+    mainDelays_.Reset();
     feedbackMatrix_.Reset();
     for (auto &modulator : modulators_)
       modulator.Reset();
-    for (auto &filter : mainDecayFilters_)
-      filter.Reset();
+    mainDecayFilters_.Reset();
     for (auto &shifter : shimmerShifters_)
       shifter.Reset();
     shimmerHighpassState_.fill(0.f);

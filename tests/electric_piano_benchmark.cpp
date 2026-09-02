@@ -132,6 +132,36 @@ namespace
 		return {milliseconds, milliseconds / 1000.0, checksum};
 	}
 
+	template <std::size_t VoiceCount>
+	Measurement MeasureRepeatedStrikes(int strikeInterval)
+	{
+		std::array<tfdsp::ElectricPianoVoice, VoiceCount> voices;
+		tfdsp::ElectricPianoControls controls;
+		for (std::size_t voice = 0; voice < VoiceCount; ++voice)
+		{
+			voices[voice].SetSampleRate(SampleRate);
+			voices[voice].SetNoiseSeed(0x94d049bbu +
+				static_cast<std::uint32_t>(voice) * 0x9e3779b9u);
+		}
+		for (int sample = 0; sample < 2048; ++sample)
+			for (std::size_t voice = 0; voice < VoiceCount; ++voice)
+				voices[voice].Step(-1.0 + 2.0 * static_cast<double>(voice) /
+					static_cast<double>(VoiceCount), 10.0, 0.85, false, controls);
+
+		double checksum = 0.0;
+		const auto begin = std::chrono::steady_clock::now();
+		for (int sample = 0; sample < RenderSamples; ++sample)
+			for (std::size_t voice = 0; voice < VoiceCount; ++voice)
+				checksum += voices[voice].Step(
+					-1.0 + 2.0 * static_cast<double>(voice) /
+						static_cast<double>(VoiceCount),
+					10.0, 0.85, false, controls, {}, sample % strikeInterval == 0);
+		const auto end = std::chrono::steady_clock::now();
+		const double milliseconds = std::chrono::duration<double, std::milli>(
+			end - begin).count();
+		return {milliseconds, milliseconds / 1000.0, checksum};
+	}
+
 	template <typename Render>
 	Measurement BestOf(Render&& render)
 	{
@@ -192,5 +222,13 @@ int main()
 	Print("16 voices, phase modulated", BestOf([]
 	{
 		return MeasureVoices<16>(ModulationMode::Phase);
+	}));
+	Print("one voice, 100 strikes/s", BestOf([]
+	{
+		return MeasureRepeatedStrikes<1>(480);
+	}));
+	Print("16 voices, 20 strikes/s", BestOf([]
+	{
+		return MeasureRepeatedStrikes<16>(2400);
 	}));
 }

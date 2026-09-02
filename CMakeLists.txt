@@ -91,6 +91,11 @@ if(BUILD_TESTING)
 	target_link_libraries(triggerfish_dsp_tests PRIVATE triggerfish_dsp)
 	add_test(NAME triggerfish_dsp_tests COMMAND triggerfish_dsp_tests)
 
+	add_executable(triggerfish_finite_audio_tests tests/finite_audio_tests.cpp)
+	target_link_libraries(triggerfish_finite_audio_tests PRIVATE triggerfish_dsp)
+	add_test(NAME triggerfish_finite_audio_tests
+		COMMAND triggerfish_finite_audio_tests)
+
 	add_executable(triggerfish_electric_piano_voice_tests
 		tests/electric_piano_voice_tests.cpp)
 	target_link_libraries(triggerfish_electric_piano_voice_tests PRIVATE

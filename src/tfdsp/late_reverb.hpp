@@ -1,10 +1,10 @@
 #pragma once
 
-#include "cubic_fractional_delay.hpp"
+#include "cubic_fractional_delay_bank.hpp"
 #include "finite_audio.hpp"
 
 #include "late_reverb_coefficient_sets.hpp"
-#include "multiband_decay_filter.hpp"
+#include "multiband_decay_filter_bank.hpp"
 #include "reverb_defaults.hpp"
 #include "smooth_random_modulator.hpp"
 #include "velvet_feedback_matrix.hpp"

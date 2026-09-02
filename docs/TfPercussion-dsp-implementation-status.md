@@ -80,16 +80,16 @@ components and `node workbench/tests/performance_probe.mjs` after
 
 | Path | Before | Current |
 | --- | ---: | ---: |
-| Crash without either modal bank | 327 ns/sample | 326 ns/sample |
-| Crash with 12 sparse modes only | 382 ns/sample | 344 ns/sample |
-| Crash with 512 dense modes only | 2,620 ns/sample | 891 ns/sample |
-| Complete crash | 2,697 ns/sample | 909 ns/sample |
-| Isolated dispersion loop | 150 ns/sample | 149 ns/sample |
-| Isolated 512-mode cloud | 1,438 ns/sample | 527 ns/sample |
+| Crash without either modal bank | 327 ns/sample | 311 ns/sample |
+| Crash with 12 sparse modes only | 382 ns/sample | 325 ns/sample |
+| Crash with 512 dense modes only | 2,620 ns/sample | 861 ns/sample |
+| Complete crash | 2,697 ns/sample | 879 ns/sample |
+| Isolated dispersion loop | 150 ns/sample | 141 ns/sample |
+| Isolated 512-mode cloud | 1,438 ns/sample | 509 ns/sample |
 
-The optimized complete graph therefore uses about 4.4% of one core at 48 kHz
-and 8.7% at 96 kHz. A 10-second SIMD WebAssembly render takes a median 459 ms
-(955 ns/sample), down from 1.275 seconds (2,657 ns/sample). Native and
+The optimized complete graph therefore uses about 4.2% of one core at 48 kHz
+and 8.4% at 96 kHz. A 10-second SIMD WebAssembly render takes a median 445 ms
+(927 ns/sample), down from 1.275 seconds (2,657 ns/sample). Native and
 WebAssembly DSP costs agree; JavaScript/Wasm boundary copying is not the
 dominant expense.
 

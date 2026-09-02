@@ -68,6 +68,8 @@
 	std::array<bool, ElectricPianoModeCount> contactModeActive_{};
 	std::array<double, ElectricPianoModeCount> contactModeShape_{};
 	std::array<double, ElectricPianoModeCount> modeInverseMass_{};
+	std::array<double, ElectricPianoModeCount> contactVelocityWeight_{};
+	std::array<double, ElectricPianoModeCount> contactInverseMassWeight_{};
 	std::array<double, 2> coupledToneBarRatio_{};
 	std::array<double, 2> coupledSupportLossFactor_{};
 	double sampleRate_ = 48000.0;

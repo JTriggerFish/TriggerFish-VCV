@@ -18,10 +18,10 @@ private:
   static constexpr std::size_t ControlUpdateInterval = 64;
 
   double sampleRate_{48'000.0};
-  std::array<CubicFractionalDelay, FdnLineCount> mainDelays_{};
+  CubicFractionalDelayBank<FdnLineCount> mainDelays_{};
   VelvetFeedbackMatrix feedbackMatrix_{};
   std::array<SmoothRandomModulator, FdnLineCount> modulators_{};
-  std::array<MultibandDecayFilter, FdnLineCount> mainDecayFilters_{};
+  MultibandDecayFilterBank<FdnLineCount> mainDecayFilters_{};
   std::array<WindowedPitchShifter, late_reverb_coefficients::ShimmerBusCount>
       shimmerShifters_{};
   std::array<float, late_reverb_coefficients::ShimmerBusCount>
@@ -108,31 +108,43 @@ private:
     mainDelayPhase_ = 0.f;
   }
 
-  float ReadMainDelayForRatio(const std::size_t line, const float delayRatio,
-                              const float modulation) const noexcept {
+  LineFrame ReadMainDelaysForRatios(
+      const LateMainDelayRatios &ratios,
+      const LineFrame &modulation) const noexcept {
+    LineFrame delaySamples{};
+    for (std::size_t line = 0; line < FdnLineCount; ++line)
+      delaySamples[line] =
+          ratios[line] * currentMeanDelaySamples_ + modulation[line];
     if (mainDelayPhase_ >= 1.f)
-      return mainDelays_[line].Read(delayRatio * currentMeanDelaySamples_ +
-                                    modulation);
+      return mainDelays_.Read(delaySamples);
+    LineFrame fromSamples{};
+    LineFrame toSamples{};
+    for (std::size_t line = 0; line < FdnLineCount; ++line) {
+      fromSamples[line] =
+          ratios[line] * fromMeanDelaySamples_ + modulation[line];
+      toSamples[line] = ratios[line] * toMeanDelaySamples_ + modulation[line];
+    }
     const float fade =
         mainDelayPhase_ * mainDelayPhase_ * (3.f - 2.f * mainDelayPhase_);
-    const float from =
-        mainDelays_[line].Read(delayRatio * fromMeanDelaySamples_ + modulation);
-    const float to =
-        mainDelays_[line].Read(delayRatio * toMeanDelaySamples_ + modulation);
-    return from + fade * (to - from);
+    const auto from = mainDelays_.Read(fromSamples);
+    const auto to = mainDelays_.Read(toSamples);
+    LineFrame output{};
+    for (std::size_t line = 0; line < FdnLineCount; ++line)
+      output[line] = from[line] + fade * (to[line] - from[line]);
+    return output;
   }
 
-  float ReadMainDelay(const std::size_t line,
-                      const float modulation) const noexcept {
+  LineFrame ReadMainDelays(const LineFrame &modulation) const noexcept {
     if (mainRatioTransitionPhase_ >= 1.f)
-      return ReadMainDelayForRatio(line, mainRatioTarget_[line], modulation);
+      return ReadMainDelaysForRatios(mainRatioTarget_, modulation);
     const float phase = mainRatioTransitionPhase_;
     const float fade = phase * phase * (3.f - 2.f * phase);
-    const float from =
-        ReadMainDelayForRatio(line, mainRatioFrom_[line], modulation);
-    const float to =
-        ReadMainDelayForRatio(line, mainRatioTarget_[line], modulation);
-    return from + fade * (to - from);
+    const auto from = ReadMainDelaysForRatios(mainRatioFrom_, modulation);
+    const auto to = ReadMainDelaysForRatios(mainRatioTarget_, modulation);
+    LineFrame output{};
+    for (std::size_t line = 0; line < FdnLineCount; ++line)
+      output[line] = from[line] + fade * (to[line] - from[line]);
+    return output;
   }
 
   static float
@@ -158,27 +170,27 @@ private:
   }
 
   LineFrame ProcessFdnLoop(const LineFrame &injection) noexcept {
-    LineFrame delayed{};
+    LineFrame modulation{};
     for (std::size_t line = 0; line < FdnLineCount; ++line)
-      delayed[line] = ReadMainDelay(
-          line, controlModulationDepth_ * modulators_[line].Next());
+      modulation[line] = controlModulationDepth_ * modulators_[line].Next();
+    const LineFrame delayed = ReadMainDelays(modulation);
 
     const float attenuationMeanSamples =
         mainDelayPhase_ < 1.f
             ? std::max(fromMeanDelaySamples_, toMeanDelaySamples_)
             : currentMeanDelaySamples_;
-    std::array<float, FdnLineCount> attenuated{};
+    std::array<float, FdnLineCount> pathSeconds{};
     for (std::size_t line = 0; line < FdnLineCount; ++line) {
       const float attenuationRatio =
           mainRatioTransitionPhase_ < 1.f
               ? std::max(mainRatioFrom_[line], mainRatioTarget_[line])
               : mainRatioTarget_[line];
-      const float pathSeconds = attenuationRatio * attenuationMeanSamples /
-                                static_cast<float>(sampleRate_);
-      attenuated[line] = mainDecayFilters_[line].Process(
-          delayed[line], pathSeconds, controlLowT60_, controlDecaySeconds_,
-          controlHighT60_);
+      pathSeconds[line] = attenuationRatio * attenuationMeanSamples /
+                          static_cast<float>(sampleRate_);
     }
+    auto attenuated = mainDecayFilters_.Process(
+        delayed, pathSeconds, controlLowT60_, controlDecaySeconds_,
+        controlHighT60_);
 
     // The octave branch belongs inside the production velvet loop. Projecting
     // a bounded return onto four orthonormal coordinates and then running the
@@ -229,7 +241,8 @@ private:
         controlLowT60_, controlRoomScale_, controlModulationAmount_);
 
     for (std::size_t line = 0; line < FdnLineCount; ++line)
-      mainDelays_[line].Push(feedback[line] + 0.42f * injection[line]);
+      feedback[line] += .42f * injection[line];
+    mainDelays_.Push(feedback);
 
     if (mainDelayPhase_ < 1.f) {
       mainDelayPhase_ = std::min(1.f, mainDelayPhase_ + mainDelayIncrement_);
@@ -269,4 +282,3 @@ private:
             delayed[line];
     return outputWalls;
   }
-

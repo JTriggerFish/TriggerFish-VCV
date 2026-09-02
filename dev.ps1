@@ -27,6 +27,8 @@ param(
         "build-workbench",
         "serve-workbench",
         "benchmark-er",
+        "benchmark-reverb",
+        "benchmark-electric-piano",
         "benchmark-percussion",
         "python-test",
         "shell",
@@ -374,6 +376,12 @@ switch ($Command) {
     }
     "benchmark-er" {
         Invoke-Mingw "cd '$repoMsys' && cmake -S . -B build/dsp-tests -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DTRIGGERFISH_BUILD_PYTHON=OFF && cmake --build build/dsp-tests --target triggerfish_early_reflections_benchmark -j$Jobs && ./build/dsp-tests/triggerfish_early_reflections_benchmark.exe"
+    }
+    "benchmark-reverb" {
+        Invoke-Mingw "cd '$repoMsys' && cmake -S . -B build/dsp-tests -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DTRIGGERFISH_BUILD_PYTHON=OFF && cmake --build build/dsp-tests --target triggerfish_room_reverb_benchmark -j$Jobs && ./build/dsp-tests/triggerfish_room_reverb_benchmark.exe"
+    }
+    "benchmark-electric-piano" {
+        Invoke-Mingw "cd '$repoMsys' && cmake -S . -B build/dsp-tests -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DTRIGGERFISH_BUILD_PYTHON=OFF && cmake --build build/dsp-tests --target triggerfish_electric_piano_benchmark -j$Jobs && ./build/dsp-tests/triggerfish_electric_piano_benchmark.exe"
     }
     "benchmark-percussion" {
         Invoke-Mingw "cd '$repoMsys' && cmake -S . -B build/dsp-tests -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DTRIGGERFISH_BUILD_PYTHON=OFF && cmake --build build/dsp-tests --target triggerfish_percussion_benchmark -j$Jobs && ./build/dsp-tests/triggerfish_percussion_benchmark.exe"
