@@ -7,9 +7,9 @@ const descriptors = [
   { key: "density", minimum: 0, maximum: 1 },
 ];
 const fit = {
-  schema: "triggerfish-percussion-fit-v4",
+  schema: "triggerfish-percussion-fit-v7",
   renderer: {
-    graph: "crash-experimental-v4", api: 4, macros: "crash-macros-v4",
+    graph: "crash-experimental-v7", api: 7, macros: "crash-macros-v7",
   },
   reference: { id: "sha256:test", sha256: "test" },
   controls: {
@@ -24,7 +24,7 @@ const fit = {
   },
 };
 
-assert.equal(validateFit(structuredClone(fit), descriptors).renderer.api, 4);
+assert.equal(validateFit(structuredClone(fit), descriptors).renderer.api, 7);
 assert.throws(
   () => validateFit({ ...structuredClone(fit), schema: "old" }, descriptors),
   /unsupported/,

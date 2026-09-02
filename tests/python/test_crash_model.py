@@ -76,8 +76,6 @@ def test_native_crash_parameters_round_trip_and_render():
         contact_noise_gain=1.7,
         contact_chirp_frequency_scale=1.2,
         strength_gamma=2.0,
-        dense_strength_gamma=0.6,
-        dense_velocity_loss_nepers_per_second=1.2,
         output_gain=2.0,
     )
     first = render_crash(fit, 0.1, strength=0.7, seed=12)

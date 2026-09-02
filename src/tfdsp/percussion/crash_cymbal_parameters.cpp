@@ -88,13 +88,20 @@ CrashSparseModes::Parameters SparseModes(
 }
 
 CrashDenseModes::Parameters DenseModes(
-    const float sampleRate, const CrashCymbalFitParameters &fit) {
+    const float sampleRate, const CrashCymbalFitParameters &fit,
+    const bool extension) {
   StatisticalModalCloudParameters cloud;
   cloud.minimumFrequencyHz = fit.denseMinimumFrequencyHz;
   cloud.maximumFrequencyHz = fit.denseMaximumFrequencyHz;
   cloud.frequencyWarp = fit.denseFrequencyWarp;
   cloud.spacingJitter = fit.denseSpacingJitter;
-  cloud.modeDensity = fit.denseModeDensity;
+  const float requestedBanks = std::clamp(fit.denseModeDensity, 0.f, 2.f);
+  const float bankDensity = extension
+      ? std::max(requestedBanks - 1.f, 0.f)
+      : std::min(requestedBanks, 1.f);
+  const float totalModes = requestedBanks * CrashDenseModeCount;
+  const float bankModes = bankDensity * CrashDenseModeCount;
+  cloud.modeDensity = bankDensity;
   cloud.lowDecaySeconds = 1.f;
   cloud.highDecaySeconds = 1.f;
   cloud.decayCurve = 1.f;
@@ -115,11 +122,19 @@ CrashDenseModes::Parameters DenseModes(
   cloud.tiltDbPerOctave = fit.denseTiltDbPerOctave;
   cloud.gainEnvelopeDb = fit.denseGainEnvelopeDb;
   cloud.gainSpreadDb = fit.denseGainSpreadDb;
-  cloud.outputGain = 1.f;
-  cloud.seed = fit.denseModeSeed;
+  cloud.outputGain = totalModes > 0.f
+      ? std::sqrt(bankModes / totalModes) : 0.f;
+  cloud.seed = extension
+      ? fit.denseModeSeed ^ 0x4558544eu : fit.denseModeSeed;
   auto result = MakeStatisticalModalCloud<CrashDenseModeCount>(sampleRate, cloud);
-  for (auto &mode : result)
-    mode.inputGain = ModalDriveGain;
+  // The painted cloud envelope is a normalized excitation-energy
+  // distribution. Radiation and branch level remain observation concerns.
+  // For independent linear modes this factorization preserves the transfer
+  // product while giving the stored state the intended physical semantics.
+  for (auto &mode : result) {
+    mode.inputGain = ModalDriveGain * mode.outputGain;
+    mode.outputGain = mode.inputGain != 0.f ? 1.f : 0.f;
+  }
   return result;
 }
 
@@ -198,9 +213,9 @@ TurbulentResidualParameters Turbulence(
   return result;
 }
 
-ObservationModel<3>::Parameters Observation(
+ObservationModel<4>::Parameters Observation(
     const CrashCymbalFitParameters &fit) noexcept {
-  ObservationModel<3>::Parameters result{};
+  ObservationModel<4>::Parameters result{};
   result[0].gain = std::clamp(fit.directGain, 0.f, 4.f);
   result[0].radiationEnabled = fit.directRadiationEnabled;
   result[0].radiation.lowCutHz =
@@ -240,6 +255,11 @@ ObservationModel<3>::Parameters Observation(
   result[2].radiation.highCutHz =
       std::clamp(fit.denseHighCutHz, 1000.f, 22000.f);
   result[2].radiation.highCutQ = std::clamp(fit.denseHighCutQ, .25f, 4.f);
+  // Turbulence is generated and observed independently from the dense modal
+  // cloud. It starts with the same radiation curve, but owns separate filter
+  // state and is never scaled by the resolved-to-wash balance.
+  result[3] = result[2];
+  result[3].gain = 1.f;
   return result;
 }
 
@@ -250,13 +270,18 @@ CrashCymbalParameters DefaultCrashCymbalParameters(
   CrashCymbalParameters result;
   result.fit = fit;
   result.sparseModes = SparseModes(sampleRate, fit);
-  result.denseModes = DenseModes(sampleRate, fit);
+  result.denseModes = DenseModes(sampleRate, fit, false);
+  result.denseExtensionModes = DenseModes(sampleRate, fit, true);
   SetLocationProjections<CrashSparseModeCount>(
       result.sparseModes, result.sparseBellProjection,
       result.sparseBowProjection, result.sparseEdgeProjection);
   SetLocationProjections<CrashDenseModeCount>(
       result.denseModes, result.denseBellProjection,
       result.denseBowProjection, result.denseEdgeProjection);
+  SetLocationProjections<CrashDenseModeCount>(
+      result.denseExtensionModes, result.denseExtensionBellProjection,
+      result.denseExtensionBowProjection,
+      result.denseExtensionEdgeProjection);
   result.dispersion = Dispersion(sampleRate, fit);
   result.turbulence = Turbulence(fit);
   result.observation = Observation(fit);

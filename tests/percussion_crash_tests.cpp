@@ -47,6 +47,19 @@ double Difference(const std::vector<float> &first,
   return energy;
 }
 
+double NormalizedDifferenceEnergy(const std::vector<float> &audio) {
+  double signal = 0.0;
+  double difference = 0.0;
+  float previous = 0.f;
+  for (const float sample : audio) {
+    signal += static_cast<double>(sample) * sample;
+    const double delta = sample - previous;
+    difference += delta * delta;
+    previous = sample;
+  }
+  return difference / std::max(signal, 1.e-30);
+}
+
 void TestDeterministicAndResponsive() {
   const auto first = Render(.8f, 1.f, .65f, 1234);
   const auto repeated = Render(.8f, 1.f, .65f, 1234);
@@ -80,6 +93,50 @@ void TestVelocityEnergy() {
   }
 }
 
+void TestVelocityChangesCymbalRegime() {
+  using namespace tfdsp::percussion;
+  constexpr float sampleRate = 48000.f;
+  const auto quiet = Render(.25f, 1.f, .65f, 81, .75f);
+  const auto loud = Render(1.f, 1.f, .65f, 81, .75f);
+  const double quietBrightness = NormalizedDifferenceEnergy(quiet);
+  const double loudBrightness = NormalizedDifferenceEnergy(loud);
+  if (!(loudBrightness > 1.05 * quietBrightness)) {
+    std::cerr << "crash velocity brightness quiet/loud: "
+              << quietBrightness << '/' << loudBrightness << '\n';
+  }
+  Check(loudBrightness > 1.05 * quietBrightness,
+        "strong crash strikes excite a brighter spectrum");
+
+  struct BranchEnergy { double direct{}; double bloom{}; double dense{}; };
+  const auto measure = [](const float strength) {
+    CrashCymbal cymbal;
+    cymbal.Prepare(sampleRate, DefaultCrashCymbalParameters(sampleRate));
+    cymbal.Trigger({strength, 1.f, .65f, 81});
+    BranchEnergy result;
+    for (int sample = 0; sample < 24000; ++sample) {
+      const auto frame = cymbal.ProcessFrame();
+      result.direct += static_cast<double>(frame.directContact) *
+          frame.directContact;
+      result.bloom += static_cast<double>(frame.dispersion) * frame.dispersion;
+      result.dense += static_cast<double>(frame.denseResidual) *
+          frame.denseResidual;
+    }
+    return result;
+  };
+  const auto quietBranches = measure(.25f);
+  const auto loudBranches = measure(1.f);
+  const double directGrowth = loudBranches.direct / quietBranches.direct;
+  const double bloomGrowth = loudBranches.bloom / quietBranches.bloom;
+  const double denseGrowth = loudBranches.dense / quietBranches.dense;
+  if (!(denseGrowth > 2.0 * bloomGrowth && bloomGrowth > 1.0)) {
+    std::cerr << "crash velocity direct/bloom/dense growth: "
+              << directGrowth << '/' << bloomGrowth << '/' << denseGrowth
+              << '\n';
+  }
+  Check(denseGrowth > 2.0 * bloomGrowth && bloomGrowth > 1.0,
+        "strong strikes increase bloom and brighten the modal wash");
+}
+
 void TestSparseModesArePlacedDirectly() {
   using namespace tfdsp::percussion;
   CrashCymbalFitParameters fit;
@@ -110,12 +167,39 @@ void TestImplementFamiliesAreDistinct() {
   const auto mallet = render(.5f);
   const auto stick = render(1.f);
   const auto brushSweep = render(0.f, 1.f);
+  const double brushToStickEnergy = Energy(brush) /
+      std::max(Energy(stick), 1.e-30);
   Check(Difference(brush, mallet) > 1.e-5 * Energy(mallet),
         "brush and mallet contacts are distinct");
   Check(Difference(mallet, stick) > 1.e-5 * Energy(stick),
         "mallet and stick contacts are distinct");
   Check(Difference(brush, brushSweep) > .01 * Energy(brushSweep),
         "brush contact spread changes a tap into a sustained gesture");
+  if (!(brushToStickEnergy > .1 && brushToStickEnergy < 4.0))
+    std::cerr << "crash brush/stick energy ratio: "
+              << brushToStickEnergy << '\n';
+  Check(brushToStickEnergy > .1 && brushToStickEnergy < 4.0,
+        "brush output remains useful without matching stick peak force");
+
+  const auto contactShape = [](const float implement) {
+    CrashCymbal cymbal;
+    cymbal.Prepare(sampleRate, DefaultCrashCymbalParameters(sampleRate));
+    cymbal.Trigger({.8f, .75f, .65f, 91, implement, .2f});
+    std::array<double, 2> energy{};
+    for (int sample = 0; sample < 12000; ++sample) {
+      const double contact = cymbal.ProcessFrame().directContact;
+      energy[sample < 96 ? 0 : 1] += contact * contact;
+    }
+    return energy;
+  };
+  const auto brushContact = contactShape(0.f);
+  const auto stickContact = contactShape(1.f);
+  const double brushTailRatio = brushContact[1] /
+      std::max(brushContact[0], 1.e-30);
+  const double stickTailRatio = stickContact[1] /
+      std::max(stickContact[0], 1.e-30);
+  Check(brushTailRatio > 4.0 * stickTailRatio,
+        "brush contact is distributed instead of becoming a stick transient");
 }
 
 void TestDefaultBodyCoversTheMeasuredLowRegion() {
@@ -132,6 +216,52 @@ void TestDefaultBodyCoversTheMeasuredLowRegion() {
             parameters.observation[1].radiation.lowCutHz <= 50.f &&
             parameters.observation[2].radiation.lowCutHz <= 50.f,
         "default crash observation does not remove its low plate body");
+}
+
+void TestDenseModeCountUsesNestedExtensionBank() {
+  using namespace tfdsp::percussion;
+  const auto active = [](const auto &modes) {
+    return std::count_if(modes.begin(), modes.end(), [](const auto &mode) {
+      return mode.inputGain != 0.f && mode.outputGain != 0.f;
+    });
+  };
+  CrashCymbalFitParameters fit;
+  fit.denseModeDensity = .5f;
+  auto parameters = DefaultCrashCymbalParameters(48000.f, fit);
+  Check(active(parameters.denseModes) == 1024 &&
+            active(parameters.denseExtensionModes) == 0,
+        "half-density crash uses exactly 1024 primary wash modes");
+  fit.denseModeDensity = 1.f;
+  parameters = DefaultCrashCymbalParameters(48000.f, fit);
+  Check(active(parameters.denseModes) == 2048 &&
+            active(parameters.denseExtensionModes) == 0,
+        "factory crash retains its 2048-mode primary wash");
+  fit.denseModeDensity = 1.5f;
+  parameters = DefaultCrashCymbalParameters(48000.f, fit);
+  Check(active(parameters.denseModes) == 2048 &&
+            active(parameters.denseExtensionModes) == 1024,
+        "higher crash density adds modes in the extension bank");
+  fit.denseModeDensity = 2.f;
+  parameters = DefaultCrashCymbalParameters(48000.f, fit);
+  Check(active(parameters.denseModes) == 2048 &&
+            active(parameters.denseExtensionModes) == 2048,
+        "maximum crash density exposes exactly 4096 wash modes");
+}
+
+void TestDenseColourShapesExcitationEnergy() {
+  using namespace tfdsp::percussion;
+  const auto parameters = DefaultCrashCymbalParameters(48000.f);
+  double squaredInputGain = 0.0;
+  bool unityObservation = true;
+  for (const auto &mode : parameters.denseModes) {
+    squaredInputGain += static_cast<double>(mode.inputGain) * mode.inputGain;
+    unityObservation = unityObservation &&
+        (mode.outputGain == 0.f || mode.outputGain == 1.f);
+  }
+  Check(std::abs(squaredInputGain - .0025) < 1.e-6,
+        "dense colour is a normalized modal excitation-energy curve");
+  Check(unityObservation,
+        "dense modal colour is not hidden in per-mode observation gains");
 }
 
 void TestContactCalibrationMacrosAreAudible() {
@@ -217,6 +347,8 @@ void TestAnalysisFrameMatchesOutput() {
     Check(std::isfinite(frame.directContact) &&
               std::isfinite(frame.dispersion) &&
               std::isfinite(frame.sparseModes) &&
+              std::isfinite(frame.denseModes) &&
+              std::isfinite(frame.turbulentResidual) &&
               std::isfinite(frame.denseResidual),
           "crash analysis taps remain finite");
   }
@@ -240,9 +372,43 @@ void TestBodyBranchesCanBeAblatedIndependently() {
   noDense.Prepare(48000.f, DefaultCrashCymbalParameters(48000.f, fit));
   noDense.Trigger({.8f, 1.f, .65f, 73});
   bool denseSilent = true;
+  bool turbulenceAudible = false;
   for (int sample = 0; sample < 4096; ++sample)
-    denseSilent = denseSilent && noDense.ProcessFrame().denseResidual == 0.f;
-  Check(denseSilent, "zero dense presentation gain ablates dense DSP state");
+  {
+    const auto frame = noDense.ProcessFrame();
+    denseSilent = denseSilent && frame.denseModes == 0.f;
+    turbulenceAudible = turbulenceAudible || frame.turbulentResidual != 0.f;
+  }
+  Check(denseSilent, "zero dense presentation gain ablates dense modal state");
+  Check(turbulenceAudible,
+        "turbulence remains independent of dense modal presentation gain");
+}
+
+void TestResolvedModesReceiveBloom() {
+  using namespace tfdsp::percussion;
+  constexpr float sampleRate = 48000.f;
+  CrashCymbalFitParameters directFit;
+  directFit.directGain = 0.f;
+  directFit.sparseGain = 1.f;
+  directFit.denseGain = 0.f;
+  directFit.sparseBloomGain = 0.f;
+  auto bloomFit = directFit;
+  bloomFit.sparseBloomGain = 1.f;
+  const auto render = [](const CrashCymbalFitParameters &fit) {
+    CrashCymbal cymbal;
+    cymbal.Prepare(sampleRate, DefaultCrashCymbalParameters(sampleRate, fit));
+    cymbal.Trigger({.85f, 1.f, .65f, 79});
+    std::vector<float> result(24000);
+    for (float &sample : result)
+      sample = cymbal.ProcessFrame().sparseModes;
+    return result;
+  };
+  const auto direct = render(directFit);
+  const auto bloomed = render(bloomFit);
+  Check(Difference(direct, bloomed) > .01 * Energy(bloomed),
+        "resolved-only cymbal receives nonlinear bloom excitation");
+  Check(CrashCymbalFitParameters{}.sparseBloomGain > 0.f,
+        "resolved bloom feed is enabled by default");
 }
 
 void TestMaximumNonlinearBloomRemainsBounded() {
@@ -261,32 +427,63 @@ void TestMaximumNonlinearBloomRemainsBounded() {
   }
 }
 
-void TestDenseVelocityLossIsPassive() {
+void TestZeroStrengthTriggerIsANoOp() {
   using namespace tfdsp::percussion;
-  CrashCymbalFitParameters naturalFit;
-  naturalFit.directGain = 0.f;
-  naturalFit.sparseGain = 0.f;
-  naturalFit.denseGain = 1.f;
-  auto dampedFit = naturalFit;
-  dampedFit.denseVelocityLossNepersPerSecond = 3.f;
-  CrashCymbal natural;
-  CrashCymbal damped;
-  natural.Prepare(48000.f, DefaultCrashCymbalParameters(48000.f, naturalFit));
-  damped.Prepare(48000.f, DefaultCrashCymbalParameters(48000.f, dampedFit));
-  natural.Trigger({1.f, 1.f, .65f, 93});
-  damped.Trigger({1.f, 1.f, .65f, 93});
-  double naturalTail = 0.0;
-  double dampedTail = 0.0;
-  for (int sample = 0; sample < 96000; ++sample) {
-    const float first = natural.ProcessFrame().denseResidual;
-    const float second = damped.ProcessFrame().denseResidual;
-    if (sample > 12000) {
-      naturalTail += static_cast<double>(first) * first;
-      dampedTail += static_cast<double>(second) * second;
-    }
+  const auto parameters = DefaultCrashCymbalParameters(48000.f);
+  CrashCymbal control;
+  CrashCymbal probed;
+  control.Prepare(48000.f, parameters);
+  probed.Prepare(48000.f, parameters);
+  control.Trigger({.9f, .8f, .65f, 93});
+  probed.Trigger({.9f, .8f, .65f, 93});
+  for (int sample = 0; sample < 4096; ++sample) {
+    Check(control.Process() == probed.Process(),
+          "equal crash states remain sample-identical");
   }
-  Check(dampedTail < naturalTail,
-        "velocity-dependent dense loss only removes residual energy");
+  probed.Trigger({0.f, 0.f, 0.f, 0xffffffffu, 0.f, 1.f});
+  for (int sample = 0; sample < 8192; ++sample)
+    Check(control.Process() == probed.Process(),
+          "zero-strength crash trigger cannot mutate a ringing body");
+}
+
+void TestRestrikeAddsWithoutRecolouringStoredEnergy() {
+  using namespace tfdsp::percussion;
+  constexpr int Onset = 4096;
+  constexpr int Tail = 8192;
+  CrashCymbalFitParameters fit;
+  fit.dispersionDrive = 0.f;
+  fit.dispersionExcursionSamples = 0.f;
+  fit.turbulenceGain.fill(0.f);
+  const auto parameters = DefaultCrashCymbalParameters(48000.f, fit);
+  CrashCymbal combined;
+  CrashCymbal original;
+  CrashCymbal added;
+  combined.Prepare(48000.f, parameters);
+  original.Prepare(48000.f, parameters);
+  added.Prepare(48000.f, parameters);
+  combined.Trigger({.95f, .1f, .8f, 101});
+  original.Trigger({.95f, .1f, .8f, 101});
+  for (int sample = 0; sample < Onset; ++sample) {
+    combined.Process();
+    original.Process();
+    added.Process();
+  }
+  combined.Trigger({.25f, .95f, .3f, 102});
+  added.Trigger({.25f, .95f, .3f, 102});
+  double error = 0.0;
+  double energy = 0.0;
+  for (int sample = 0; sample < Tail; ++sample) {
+    const double sum = original.Process() + added.Process();
+    const double actual = combined.Process();
+    const double delta = actual - sum;
+    error += delta * delta;
+    energy += actual * actual;
+  }
+  if (!(error < 1.e-7 * std::max(energy, 1.e-30)))
+    std::cerr << "crash linear restrike error/energy: " << error << '/'
+              << energy << '\n';
+  Check(error < 1.e-7 * std::max(energy, 1.e-30),
+        "a new strike adds to, rather than recolours, stored linear body energy");
 }
 
 void TestRepeatedHitsAccumulateBodyEnergy() {
@@ -335,16 +532,21 @@ void TestRepeatedHitsAccumulateBodyEnergy() {
 int main() {
   TestDeterministicAndResponsive();
   TestVelocityEnergy();
+  TestVelocityChangesCymbalRegime();
   TestSparseModesArePlacedDirectly();
   TestImplementFamiliesAreDistinct();
   TestDefaultBodyCoversTheMeasuredLowRegion();
+  TestDenseModeCountUsesNestedExtensionBank();
+  TestDenseColourShapesExcitationEnergy();
   TestContactCalibrationMacrosAreAudible();
   TestMuteIsPassive();
   TestFiniteAtSupportedRates();
   TestAnalysisFrameMatchesOutput();
   TestBodyBranchesCanBeAblatedIndependently();
+  TestResolvedModesReceiveBloom();
   TestMaximumNonlinearBloomRemainsBounded();
-  TestDenseVelocityLossIsPassive();
+  TestZeroStrengthTriggerIsANoOp();
+  TestRestrikeAddsWithoutRecolouringStoredEnergy();
   TestRepeatedHitsAccumulateBodyEnergy();
   if (percussion_test::failures == 0)
     std::cout << "All percussion crash tests passed\n";

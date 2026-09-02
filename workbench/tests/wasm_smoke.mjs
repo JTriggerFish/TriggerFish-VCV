@@ -5,8 +5,8 @@ if (!modulePath) throw new Error("expected the generated module path");
 
 const createModule = (await import(pathToFileURL(modulePath).href)).default;
 const wasm = await createModule();
-if (wasm._tf_crash_api_version() !== 4) throw new Error("unexpected API version");
-if (wasm._tf_crash_macro_count() !== 82) throw new Error("unexpected macro count");
+if (wasm._tf_crash_api_version() !== 7) throw new Error("unexpected API version");
+if (wasm._tf_crash_macro_count() !== 97) throw new Error("unexpected macro count");
 if (wasm.UTF8ToString(wasm._tf_crash_macro_name(0)) !== "Model level") {
   throw new Error("macro metadata is unavailable");
 }
@@ -76,5 +76,5 @@ if (!(quietEnergy / energy > 0.24 && quietEnergy / energy < 0.26)) {
 wasm._tf_crash_destroy(handle);
 wasm._free(outputPointer);
 console.log(JSON.stringify({
-  api: 4, frames: frameCount, peak, energy, absoluteSum, earlyEnergy,
+  api: 7, frames: frameCount, peak, energy, absoluteSum, earlyEnergy,
 }));

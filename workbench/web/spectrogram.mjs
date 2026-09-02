@@ -67,7 +67,7 @@ export class SpectrogramView {
     };
     this.viewport = { start: 0, end: 1, lowHz: 40, highHz: 24000 };
     this.timeOffsets = { reference: 0, synthesis: 0 };
-    canvas.title = "Mirror: wheel pans both sides; drag one side to align; Ctrl+wheel zooms; double-click resets";
+    canvas.title = "Mirror: wheel pans both sides; Shift-drag one side to align; Ctrl+wheel zooms; double-click resets";
     this.#bindInteraction();
     new ResizeObserver(() => this.draw()).observe(canvas);
   }
@@ -395,6 +395,7 @@ export class SpectrogramView {
       this.onViewport?.(this.viewport);
     }, { passive: false });
     this.canvas.addEventListener("pointerdown", event => {
+      if (event.button !== 0) return;
       const plotHeight = Math.max(1, this.canvas.clientHeight - 25);
       const divider = this.#divider(
         this.canvas.clientWidth, plotHeight,
@@ -406,6 +407,7 @@ export class SpectrogramView {
         return;
       }
       if (this.settings.mode === "mirror") {
+        if (!event.shiftKey) return;
         const source = event.offsetX < divider.position
           ? "reference" : "synthesis";
         drag = {
@@ -427,7 +429,9 @@ export class SpectrogramView {
         const coordinate = divider?.axis === "x" ? event.offsetX : event.offsetY;
         const near = divider && Math.abs(coordinate - divider.position) <= 8;
         this.canvas.style.cursor = near
-          ? (divider.axis === "x" ? "col-resize" : "row-resize") : "grab";
+          ? (divider.axis === "x" ? "col-resize" : "row-resize")
+          : this.settings.mode === "mirror" && !event.shiftKey
+            ? "default" : "grab";
         return;
       }
       if (drag.kind === "split") {

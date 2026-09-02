@@ -34,7 +34,7 @@ Session *Find(const std::uint32_t handle) noexcept {
 extern "C" {
 
 std::uint32_t tf_crash_api_version() noexcept {
-  return 4;
+  return 7;
 }
 
 std::uint32_t tf_crash_create(const float sampleRate) noexcept {

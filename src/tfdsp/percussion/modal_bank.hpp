@@ -40,26 +40,35 @@ public:
     highCrossoverHz_ = highCrossoverHz;
     unityProjection_.fill(1.f);
     excitationProjection_.fill(1.f);
+    secondaryExcitationProjection_.fill(1.f);
     SetStaticParameters(parameters);
   }
 
   // Static structural changes intentionally clear stored body energy.
   void SetStaticParameters(const Parameters &parameters) noexcept {
     constexpr float TwoPi = 6.28318530717958647692f;
-    for (std::size_t mode = 0; mode < ModeCount; ++mode) {
+    activeModeCount_ = 0;
+    for (std::size_t source = 0; source < ModeCount; ++source) {
+      const float inputGain = SafeInputGain(parameters[source].inputGain);
+      const float outputGain = SafeOutputGain(parameters[source].outputGain);
+      if (inputGain == 0.f || outputGain == 0.f)
+        continue;
+      const std::size_t mode = activeModeCount_++;
+      sourceIndex_[mode] = source;
       const float frequency = std::clamp(
-          tfdsp::FiniteNormalOrZero(parameters[mode].frequencyHz), 1.f,
+          tfdsp::FiniteNormalOrZero(parameters[source].frequencyHz), 1.f,
           .49f * sampleRate_);
       const float decay = std::clamp(
-          tfdsp::FiniteNormalOrZero(parameters[mode].decaySeconds), .001f, 60.f);
+          tfdsp::FiniteNormalOrZero(parameters[source].decaySeconds), .001f,
+          60.f);
       const float angle = TwoPi * frequency / sampleRate_;
       cosine_[mode] = std::cos(angle);
       sine_[mode] = std::sin(angle);
       radius_[mode] = std::exp(std::log(.001f) / (decay * sampleRate_));
-      inputGain_[mode] = SafeInputGain(parameters[mode].inputGain);
-      outputGain_[mode] = SafeOutputGain(parameters[mode].outputGain);
+      inputGain_[mode] = inputGain;
+      outputGain_[mode] = outputGain;
       const float phase = std::clamp(
-          tfdsp::FiniteNormalOrZero(parameters[mode].inputPhaseRadians),
+          tfdsp::FiniteNormalOrZero(parameters[source].inputPhaseRadians),
           -3.14159265358979323846f, 3.14159265358979323846f);
       inputPhaseCosine_[mode] = std::cos(phase);
       inputPhaseSine_[mode] = std::sin(phase);
@@ -79,18 +88,49 @@ public:
 
   float Process(const float input,
                 const ModalDampingGains damping = {}) noexcept {
-    return ProcessPrepared(input, unityProjection_, unityProjection_, damping);
+    return ProcessPreparedInputs<false>(
+        input, unityProjection_, 0.f, unityProjection_,
+        unityProjection_, damping);
   }
 
   void SetExcitationProjection(const Projection &projection) noexcept {
-    for (std::size_t mode = 0; mode < ModeCount; ++mode)
-      excitationProjection_[mode] = SafeProjection(projection[mode]);
+    for (std::size_t mode = 0; mode < activeModeCount_; ++mode)
+      excitationProjection_[mode] =
+          SafeProjection(projection[sourceIndex_[mode]]);
   }
+
+  void SetSecondaryExcitationProjection(
+      const Projection &projection) noexcept {
+    for (std::size_t mode = 0; mode < activeModeCount_; ++mode)
+      secondaryExcitationProjection_[mode] =
+          SafeProjection(projection[sourceIndex_[mode]]);
+  }
+
+  std::size_t ActiveModeCount() const noexcept { return activeModeCount_; }
 
   float ProcessExcited(const float input,
                        const ModalDampingGains damping = {}) noexcept {
-    return ProcessPrepared(
-        input, excitationProjection_, unityProjection_, damping);
+    return ProcessPreparedInputs<false>(
+        input, excitationProjection_, 0.f, unityProjection_,
+        unityProjection_, damping);
+  }
+
+  // Adds two independently projected forces to the same stored modal state.
+  // This lets a local contact and a body-wide bloom coexist without a new
+  // strike recolouring energy that is already circulating in the body.
+  float ProcessExcitedPair(
+      const float primaryInput, const float secondaryInput,
+      const ModalDampingGains damping = {}) noexcept {
+    return ProcessPreparedInputs<true>(
+        primaryInput, excitationProjection_, secondaryInput,
+        secondaryExcitationProjection_, unityProjection_, damping);
+  }
+
+  float ProcessSecondaryExcited(
+      const float input, const ModalDampingGains damping = {}) noexcept {
+    return ProcessPreparedInputs<false>(
+        input, secondaryExcitationProjection_, 0.f, unityProjection_,
+        unityProjection_, damping);
   }
 
   float ProcessExcited(const float input, const Projection &excitation,
@@ -103,11 +143,12 @@ public:
                          const ModalDampingGains damping = {}) noexcept {
     input = tfdsp::FiniteNormalOrZero(input);
     UpdateDamping(damping);
-    for (std::size_t mode = 0; mode < ModeCount; ++mode) {
+    for (std::size_t mode = 0; mode < activeModeCount_; ++mode) {
+      const std::size_t source = sourceIndex_[mode];
       const float priorReal = real_[mode];
       const float priorImaginary = imaginary_[mode];
       const float drive = inputGain_[mode] *
-          SafeProjection(excitation[mode]) * input;
+          SafeProjection(excitation[source]) * input;
       real_[mode] = tfdsp::FiniteNormalOrZero(
           effectiveRadius_[mode] * (cosine_[mode] * priorReal -
                                     sine_[mode] * priorImaginary) +
@@ -118,8 +159,9 @@ public:
           inputPhaseSine_[mode] * drive);
     }
     float output = 0.f;
-    for (std::size_t mode = 0; mode < ModeCount; ++mode)
-      output += outputGain_[mode] * SafeProjection(observation[mode]) *
+    for (std::size_t mode = 0; mode < activeModeCount_; ++mode)
+      output += outputGain_[mode] *
+          SafeProjection(observation[sourceIndex_[mode]]) *
           real_[mode];
     return tfdsp::FiniteNormalOrZero(output);
   }
@@ -150,21 +192,79 @@ private:
       return;
     const std::array<float, 3> bandGain{
         safe.low, safe.middle, safe.high};
-    for (std::size_t mode = 0; mode < ModeCount; ++mode)
+    for (std::size_t mode = 0; mode < activeModeCount_; ++mode)
       effectiveRadius_[mode] =
           radius_[mode] * safe.broadband * bandGain[band_[mode]];
     damping_ = safe;
   }
 
-  float ProcessPrepared(float input, const Projection &excitation,
-                        const Projection &observation,
-                        const ModalDampingGains damping) noexcept {
-    input = tfdsp::FiniteNormalOrZero(input);
+  template <bool HasSecondary>
+  float ProcessPreparedInputs(
+      float primaryInput, const Projection &primaryExcitation,
+      float secondaryInput, const Projection &secondaryExcitation,
+      const Projection &observation,
+      const ModalDampingGains damping) noexcept {
+    primaryInput = tfdsp::FiniteNormalOrZero(primaryInput);
+    secondaryInput = tfdsp::FiniteNormalOrZero(secondaryInput);
     UpdateDamping(damping);
-    for (std::size_t mode = 0; mode < ModeCount; ++mode) {
+    if (activeModeCount_ == ModeCount)
+      return ProcessPreparedFixed<ModeCount, HasSecondary>(
+          primaryInput, primaryExcitation, secondaryInput,
+          secondaryExcitation, observation);
+    if constexpr (ModeCount == 2048) {
+      switch (activeModeCount_) {
+      case 64:
+        return ProcessPreparedFixed<64, HasSecondary>(
+            primaryInput, primaryExcitation, secondaryInput,
+            secondaryExcitation, observation);
+      case 128:
+        return ProcessPreparedFixed<128, HasSecondary>(
+            primaryInput, primaryExcitation, secondaryInput,
+            secondaryExcitation, observation);
+      case 256:
+        return ProcessPreparedFixed<256, HasSecondary>(
+            primaryInput, primaryExcitation, secondaryInput,
+            secondaryExcitation, observation);
+      case 512:
+        return ProcessPreparedFixed<512, HasSecondary>(
+            primaryInput, primaryExcitation, secondaryInput,
+            secondaryExcitation, observation);
+      case 768:
+        return ProcessPreparedFixed<768, HasSecondary>(
+            primaryInput, primaryExcitation, secondaryInput,
+            secondaryExcitation, observation);
+      case 1024:
+        return ProcessPreparedFixed<1024, HasSecondary>(
+            primaryInput, primaryExcitation, secondaryInput,
+            secondaryExcitation, observation);
+      case 1536:
+        return ProcessPreparedFixed<1536, HasSecondary>(
+            primaryInput, primaryExcitation, secondaryInput,
+            secondaryExcitation, observation);
+      case 2048:
+        return ProcessPreparedFixed<2048, HasSecondary>(
+            primaryInput, primaryExcitation, secondaryInput,
+            secondaryExcitation, observation);
+      default: break;
+      }
+    }
+    return ProcessPreparedRuntime<HasSecondary>(
+        primaryInput, primaryExcitation, secondaryInput,
+        secondaryExcitation, observation, activeModeCount_);
+  }
+
+  template <std::size_t ActiveCount, bool HasSecondary>
+  [[gnu::noinline]] float ProcessPreparedFixed(
+      const float primaryInput, const Projection &primaryExcitation,
+      const float secondaryInput, const Projection &secondaryExcitation,
+      const Projection &observation) noexcept {
+    for (std::size_t mode = 0; mode < ActiveCount; ++mode) {
       const float priorReal = real_[mode];
       const float priorImaginary = imaginary_[mode];
-      const float drive = inputGain_[mode] * excitation[mode] * input;
+      float projectedInput = primaryExcitation[mode] * primaryInput;
+      if constexpr (HasSecondary)
+        projectedInput += secondaryExcitation[mode] * secondaryInput;
+      const float drive = inputGain_[mode] * projectedInput;
       real_[mode] = tfdsp::FiniteNormalOrZero(
           effectiveRadius_[mode] * (cosine_[mode] * priorReal -
                                     sine_[mode] * priorImaginary) +
@@ -175,7 +275,35 @@ private:
           inputPhaseSine_[mode] * drive);
     }
     float output = 0.f;
-    for (std::size_t mode = 0; mode < ModeCount; ++mode)
+    for (std::size_t mode = 0; mode < ActiveCount; ++mode)
+      output += outputGain_[mode] * observation[mode] * real_[mode];
+    return tfdsp::FiniteNormalOrZero(output);
+  }
+
+  template <bool HasSecondary>
+  float ProcessPreparedRuntime(
+      const float primaryInput, const Projection &primaryExcitation,
+      const float secondaryInput, const Projection &secondaryExcitation,
+      const Projection &observation,
+      const std::size_t activeCount) noexcept {
+    for (std::size_t mode = 0; mode < activeCount; ++mode) {
+      const float priorReal = real_[mode];
+      const float priorImaginary = imaginary_[mode];
+      float projectedInput = primaryExcitation[mode] * primaryInput;
+      if constexpr (HasSecondary)
+        projectedInput += secondaryExcitation[mode] * secondaryInput;
+      const float drive = inputGain_[mode] * projectedInput;
+      real_[mode] = tfdsp::FiniteNormalOrZero(
+          effectiveRadius_[mode] * (cosine_[mode] * priorReal -
+                                    sine_[mode] * priorImaginary) +
+          inputPhaseCosine_[mode] * drive);
+      imaginary_[mode] = tfdsp::FiniteNormalOrZero(
+          effectiveRadius_[mode] * (sine_[mode] * priorReal +
+                                    cosine_[mode] * priorImaginary) +
+          inputPhaseSine_[mode] * drive);
+    }
+    float output = 0.f;
+    for (std::size_t mode = 0; mode < activeCount; ++mode)
       output += outputGain_[mode] * observation[mode] * real_[mode];
     return tfdsp::FiniteNormalOrZero(output);
   }
@@ -191,12 +319,15 @@ private:
   std::array<float, ModeCount> inputPhaseCosine_{};
   std::array<float, ModeCount> inputPhaseSine_{};
   std::array<std::uint8_t, ModeCount> band_{};
+  std::array<std::size_t, ModeCount> sourceIndex_{};
   Projection unityProjection_{};
   Projection excitationProjection_{};
+  Projection secondaryExcitationProjection_{};
   ModalDampingGains damping_{};
   float sampleRate_{48000.f};
   float lowCrossoverHz_{700.f};
   float highCrossoverHz_{6500.f};
+  std::size_t activeModeCount_{ModeCount};
 };
 
 } // namespace tfdsp::percussion

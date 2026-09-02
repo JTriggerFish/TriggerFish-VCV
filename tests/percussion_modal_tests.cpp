@@ -82,6 +82,23 @@ void TestPreparedProjectionIsSanitizedOnce() {
   }
 }
 
+void TestTwoExcitationsShareOneStoredBody() {
+  using Bank = tfdsp::percussion::ModalBank<3>;
+  Bank::Parameters parameters{{
+      {500.f, 2.f, 1.f, 1.f, 0.f},
+      {1300.f, 2.f, 1.f, 1.f, 0.f},
+      {2700.f, 2.f, 1.f, 1.f, 0.f},
+  }};
+  Bank bank;
+  bank.Prepare(48000.f, parameters, 700.f, 2000.f);
+  bank.SetExcitationProjection({0.f, .25f, 0.f});
+  bank.SetSecondaryExcitationProjection({0.f, 0.f, .5f});
+  CheckNear(bank.ProcessExcitedPair(1.f, 1.f), .75, 1.e-7,
+            "two modal forces add through independent projections");
+  Check(std::abs(bank.ProcessExcitedPair(0.f, 0.f)) > 0.f,
+        "paired excitation writes one persistent modal state");
+}
+
 void TestModalConstraintReferenceGain() {
   using namespace tfdsp::percussion;
   ModalConstraintController controller;
@@ -208,6 +225,9 @@ void TestDenseCloudDensityPreservesPlacementAndLevel() {
   sparse.modeDensity = .25f;
   const auto denseModes = MakeStatisticalModalCloud<Count>(48000.f, dense);
   const auto sparseModes = MakeStatisticalModalCloud<Count>(48000.f, sparse);
+  auto medium = dense;
+  medium.modeDensity = .5f;
+  const auto mediumModes = MakeStatisticalModalCloud<Count>(48000.f, medium);
   std::size_t active = 0;
   double denseEnergy = 0.0;
   double sparseEnergy = 0.0;
@@ -215,11 +235,14 @@ void TestDenseCloudDensityPreservesPlacementAndLevel() {
     Check(denseModes[mode].frequencyHz == sparseModes[mode].frequencyHz,
           "modal density does not relocate the cloud");
     active += sparseModes[mode].outputGain != 0.f;
+    Check(sparseModes[mode].outputGain == 0.f ||
+              mediumModes[mode].outputGain != 0.f,
+          "raising modal density only adds to the active subset");
     denseEnergy += denseModes[mode].outputGain * denseModes[mode].outputGain;
     sparseEnergy += sparseModes[mode].outputGain * sparseModes[mode].outputGain;
   }
-  Check(active > 40 && active < 90,
-        "modal density activates the expected stable subset");
+  Check(active == Count / 4,
+        "modal density activates the exact requested subset");
   CheckNear(sparseEnergy, denseEnergy, 1.e-4,
             "modal density preserves normalized cloud level");
 }
@@ -263,6 +286,7 @@ int main() {
   TestOneModeMatchesAnalyticRecurrence();
   TestIndependentProjections();
   TestPreparedProjectionIsSanitizedOnce();
+  TestTwoExcitationsShareOneStoredBody();
   TestModalConstraintReferenceGain();
   TestStatisticalCloudIsDeterministicAndNormalized();
   TestDenseCloudRemainsFinite();

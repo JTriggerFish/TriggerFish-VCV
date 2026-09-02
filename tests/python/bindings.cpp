@@ -1109,9 +1109,8 @@ PYBIND11_MODULE(_triggerfish_dsp, module)
 		.def_readwrite("dense_high_cut_q", &CrashFit::denseHighCutQ)
 		.def_readwrite("strength_gamma", &CrashFit::strengthGamma)
 		.def_readwrite("body_strength_gamma", &CrashFit::bodyStrengthGamma)
-		.def_readwrite("dense_strength_gamma", &CrashFit::denseStrengthGamma)
-		.def_readwrite("dense_velocity_loss_nepers_per_second",
-			&CrashFit::denseVelocityLossNepersPerSecond);
+		.def_readwrite("velocity_brightness_db_per_octave",
+			&CrashFit::velocityBrightnessDbPerOctave);
 	module.def("render_crash", [](const py::ssize_t sampleCount,
 		double sampleRate, float strength, float location, float hardness,
 		std::uint32_t seed, const CrashFit &fit, float implement,

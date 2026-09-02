@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <utility>
 
 namespace tfdsp::percussion {
 
@@ -112,17 +113,32 @@ typename ModalBank<ModeCount>::Parameters MakeStatisticalModalCloud(
     result[mode] = {frequency, decay, 1.f, 0.f, 0.f};
   }
 
-  // Density only activates a stable subset: it never relocates modes.
+  // Density activates an exact, nested subset. Raising it only adds modes;
+  // existing modal frequencies and nuisance parameters never move.
   DeterministicRandom densityRandom;
   densityRandom.Seed(parameters.seed ^ 0x44454e53u);
-  const float density = std::clamp(parameters.modeDensity, .01f, 1.f);
+  const float density = std::clamp(parameters.modeDensity, 0.f, 1.f);
+  const float requestedCount = density * static_cast<float>(ModeCount);
+  const std::size_t fullCount = std::min<std::size_t>(
+      static_cast<std::size_t>(requestedCount), ModeCount);
+  const float fractional = fullCount < ModeCount
+      ? requestedCount - static_cast<float>(fullCount) : 0.f;
+  std::array<std::pair<float, std::size_t>, ModeCount> priority{};
+  for (std::size_t mode = 0; mode < ModeCount; ++mode)
+    priority[mode] = {densityRandom.Uniform(), mode};
+  std::sort(priority.begin(), priority.end(), [](const auto &left,
+                                                  const auto &right) {
+    return left.first < right.first ||
+        (left.first == right.first && left.second < right.second);
+  });
+  std::array<float, ModeCount> activation{};
+  for (std::size_t rank = 0; rank < fullCount; ++rank)
+    activation[priority[rank].second] = 1.f;
+  if (fractional > 0.f)
+    activation[priority[fullCount].second] = fractional;
   float squaredGain = 0.f;
   for (std::size_t mode = 0; mode < ModeCount; ++mode) {
-    const float threshold = densityRandom.Uniform();
-    const float activation = std::clamp(
-        (density - threshold) * static_cast<float>(ModeCount) + 1.f,
-        0.f, 1.f);
-    rawGain[mode] *= activation;
+    rawGain[mode] *= activation[mode];
     squaredGain += rawGain[mode] * rawGain[mode];
   }
 

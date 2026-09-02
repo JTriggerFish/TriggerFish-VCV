@@ -24,6 +24,8 @@ def load_corpus(root: Path) -> dict[str, object] | None:
                 "strength": cell["strength"],
                 "location": cell["location"],
                 "hardness": cell["hardness"],
+                "implement": 1.0,
+                "onset_seconds": cell["cell_onset_seconds"],
                 "seed": cell["seed"],
                 "split": cell["split"],
                 "url": f"/reference/{CORPUS_ID}/{cell['path']}",

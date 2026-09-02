@@ -25,6 +25,7 @@ param(
         "test-workbench-api",
         "test-workbench-wasm",
         "test-workbench-browser",
+        "analyze-workbench-start",
         "build-workbench",
         "serve-workbench",
         "benchmark-er",
@@ -354,6 +355,23 @@ switch ($Command) {
                 http://127.0.0.1:9223 --reload --controls --trigger
             if ($LASTEXITCODE -ne 0) {
                 throw "Workbench browser probe failed with exit code $LASTEXITCODE."
+            }
+        }
+        finally {
+            Pop-Location
+        }
+    }
+    "analyze-workbench-start" {
+        $emsdkEnvironment = Join-Path $emsdkRoot "emsdk_env.ps1"
+        Assert-Path $emsdkEnvironment "Emscripten SDK environment script"
+        . $emsdkEnvironment
+        Push-Location $repoRoot
+        try {
+            & $env:EMSDK_NODE workbench/tests/initial_fit_probe.mjs `
+                build/workbench-wasm/site `
+                build/cymbal-calibration/references/private-corpus-a-crash-v1/cells-oh-dyn-v2/044-edge-v096-r01.wav
+            if ($LASTEXITCODE -ne 0) {
+                throw "Workbench starting-point analysis failed with exit code $LASTEXITCODE."
             }
         }
         finally {

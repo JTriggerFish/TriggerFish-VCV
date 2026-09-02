@@ -6,7 +6,7 @@ const gongPreset = {
   bloom_amount: .65, bloom_development: .8,
   body_tone_wash: .48, body_brightness: -2.5,
   dense_minimum_frequency: 120, dense_maximum_frequency: 14000,
-  dense_frequency_warp: 1.2, dense_mode_density: 1,
+  dense_mode_density: 1,
   dense_spacing_jitter: .72, dense_gain_spread: 3,
   dense_decay_spread: .25,
   turbulence_amount: .15, turbulence_persistence: 1.3,
@@ -21,13 +21,14 @@ const gongPreset = {
 };
 
 const gongLevels = [5, 6, 8, 9, 8, 7, 5, 3, 1, -1, -3, -5];
+const gongWashLevels = [7, 8, 6, 3, 0, -2, -4, -6];
 
 const chinaPreset = {
   impact_tone_noise: .62, impact_width: .65,
   bloom_amount: .5, bloom_development: .3,
   body_tone_wash: .7, body_brightness: 1.5,
   dense_minimum_frequency: 350, dense_maximum_frequency: 22000,
-  dense_frequency_warp: .8, dense_mode_density: .65,
+  dense_mode_density: .65,
   dense_spacing_jitter: .92, dense_gain_spread: 5,
   dense_decay_spread: .1,
   turbulence_amount: .12, turbulence_persistence: .65,
@@ -42,13 +43,21 @@ const chinaPreset = {
 };
 
 const chinaLevels = [-7, -5, -3, 0, 4, 7, 6, 5, 3, 2, 0, -2];
+const chinaWashLevels = [-7, -4, 0, 5, 6, 3, 0, -2];
 
-function presetWithModalPaint(preset, defaults, scale, levels) {
+function presetWithSpectralControls(
+  preset, defaults, scale, resolvedLevels, washLevels,
+) {
   const result = { ...preset };
   for (let index = 0; index < 12; ++index) {
-    result[`wash_frequency_${index}`] =
-      defaults[`wash_frequency_${index}`] * scale;
-    result[`wash_level_${index}`] = levels[index];
+    result[`resolved_frequency_${index}`] =
+      defaults[`resolved_frequency_${index}`] * scale;
+    result[`resolved_level_${index}`] = resolvedLevels[index];
+  }
+  for (let index = 0; index < 8; ++index) {
+    result[`dense_wash_frequency_${index}`] =
+      defaults[`dense_wash_frequency_${index}`] * scale;
+    result[`dense_wash_level_${index}`] = washLevels[index];
   }
   return result;
 }
@@ -58,8 +67,12 @@ export function expandedSizeMeta(descriptors, position) {
   const defaults = Object.fromEntries(
     descriptors.map(item => [item.key, item.defaultValue]),
   );
-  const gong = presetWithModalPaint(gongPreset, defaults, .42, gongLevels);
-  const china = presetWithModalPaint(chinaPreset, defaults, 1.45, chinaLevels);
+  const gong = presetWithSpectralControls(
+    gongPreset, defaults, .42, gongLevels, gongWashLevels,
+  );
+  const china = presetWithSpectralControls(
+    chinaPreset, defaults, 1.45, chinaLevels, chinaWashLevels,
+  );
   const target = amount < .5 ? gong : china;
   const blend = amount < .5 ? amount * 2 : (amount - .5) * 2;
   return Object.entries(target).flatMap(([key, endpoint]) => {

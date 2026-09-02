@@ -192,6 +192,8 @@ void BenchmarkCrashCymbal() {
     return result;
   }());
   BenchmarkCrashVariant("complete crash", fit);
+  fit.denseModeDensity = 2.f;
+  BenchmarkCrashVariant("complete crash, 4096 wash modes", fit);
 }
 
 } // namespace

@@ -222,6 +222,7 @@ renderWorker.onmessage = ({ data }) => {
           synthesisSampleRate: data.sampleRate,
           minimumDb: descriptor.minimum,
           maximumDb: descriptor.maximum,
+          referenceStartSeconds: state.reference.cell?.onset_seconds ?? 0,
         });
         pendingLevelMatch = null;
         if (Math.abs(matched - state.macros[0]) > 0.01) {
@@ -275,10 +276,20 @@ function drawWaveform() {
   Plotly.react("waveform", traces, {
     margin: { l: 44, r: 12, t: 8, b: 28 }, paper_bgcolor: "#0d1015",
     plot_bgcolor: "#0d1015", font: { color: "#94a0af", size: 10 },
-    xaxis: { title: "seconds", gridcolor: "#252d38", zeroline: false },
-    yaxis: { title: "amplitude", gridcolor: "#252d38", zerolinecolor: "#46515e" },
+    xaxis: {
+      title: "seconds", gridcolor: "#252d38", zeroline: false,
+      fixedrange: true,
+    },
+    yaxis: {
+      title: "amplitude", gridcolor: "#252d38",
+      zerolinecolor: "#46515e", fixedrange: true,
+    },
+    dragmode: false,
     legend: { orientation: "h", x: 0.75, y: 1 }, uirevision: "waveform-v1",
-  }, { responsive: true, displaylogo: false, scrollZoom: true });
+  }, {
+    responsive: true, displaylogo: false, displayModeBar: false,
+    scrollZoom: false,
+  });
 }
 
 function setReference(reference) {
@@ -292,7 +303,7 @@ function setReference(reference) {
       strength: reference.cell.strength,
       location: reference.cell.location,
       hardness: reference.cell.hardness,
-      implement: reference.cell.implement ?? .75,
+      implement: reference.cell.implement ?? 1,
       contactSpread: reference.cell.contactSpread ?? .2,
     });
     Object.assign(state.event, {

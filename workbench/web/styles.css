@@ -27,15 +27,19 @@ summary { cursor:pointer; color:var(--muted); font-size:12px; text-transform:upp
 .slider-endpoints i { font-style:normal; }
 fieldset { min-width:0; margin:8px 0; border:1px solid var(--line); border-radius:5px; padding:5px 8px; }
 fieldset:disabled { opacity:.45; }
+fieldset:disabled .point-editor { pointer-events:none; }
 legend { color:var(--muted); font-size:11px; padding:0 4px; }
 .checkbox-row { margin:9px 0; color:var(--ink); }
-.point-editor { display:block; width:100%; height:180px; border:1px solid var(--line); border-radius:5px; background:#0d1117; touch-action:none; }
+.point-editor { display:block; width:100%; height:180px; border:1px solid var(--line); border-radius:5px; background:#0d1117; touch-action:pan-y; user-select:none; -webkit-user-drag:none; }
+.point-editor.painting { cursor:crosshair; touch-action:none; }
+.editor-mode { justify-content:space-between; margin:4px 0 6px; padding:5px 7px; border:1px solid var(--line); border-radius:5px; color:var(--ink); font-size:11px; user-select:none; }
+.editor-mode span { color:#778493; font-size:10px; }
 .editor-grid { stroke:#28313c; stroke-width:1; }
 .editor-tick { fill:#718092; font-size:9px; pointer-events:none; }
 .editor-curve { fill:none; stroke:var(--blue); stroke-width:2; opacity:.75; }
-.editor-bar { stroke:var(--blue); stroke-width:12; opacity:.55; cursor:crosshair; }
+.editor-bar { stroke:var(--blue); stroke-width:12; opacity:.55; cursor:grab; touch-action:none; }
 .editor-bar.selected { stroke:var(--accent); opacity:.9; }
-.editor-point { fill:#172332; stroke:var(--blue); stroke-width:2; cursor:crosshair; }
+.editor-point { fill:#172332; stroke:var(--blue); stroke-width:2; cursor:grab; touch-action:none; }
 .editor-point.selected { fill:var(--accent); stroke:#fff; }
 .selection-controls { margin-top:8px; padding-top:7px; border-top:1px solid var(--line); }
 .selection-controls>b { color:var(--accent); font-size:11px; }
@@ -47,7 +51,7 @@ legend { color:var(--muted); font-size:11px; padding:0 4px; }
 .strike-y { left:7px; top:7px; bottom:18px; flex-direction:column; justify-content:space-between; }
 .analysis { display:grid; grid-template-rows:100px minmax(250px,1fr) auto auto; min-width:0; min-height:0; gap:8px; padding:10px; margin:0; overflow:hidden; } #waveform { height:100px; }
 .spectrogram-wrap { position:relative; min-height:250px; border:1px solid var(--line); background:#000; }
-#spectrogram { width:100%; height:100%; display:block; image-rendering:auto; cursor:grab; touch-action:none; }
+#spectrogram { width:100%; height:100%; display:block; image-rendering:auto; cursor:default; touch-action:none; user-select:none; -webkit-user-drag:none; }
 .analysis-controls { display:flex; gap:8px 12px; flex-wrap:wrap; align-items:center; }
 .analysis-note { color:#778493; font-size:11px; font-variant-numeric:tabular-nums; }
 .performance-panel { margin:0; padding-top:7px; border-top:1px solid var(--line); }

@@ -107,7 +107,6 @@ CAUSAL_STAGES = (
             parameter("body_bypass_gain", 0.0, 0.5),
             parameter("strength_gamma", 0.35, 3.0),
             parameter("body_strength_gamma", 0.2, 2.5),
-            parameter("dense_strength_gamma", 0.2, 2.5),
             parameter("dense_frequency_warp", 0.5, 2.0),
             parameter("dense_tilt_db_per_octave", -8.0, 5.0),
             parameter("high_cut_hz", 6000.0, 22000.0),
@@ -180,11 +179,6 @@ CAUSAL_STAGES = (
         ),
     ),
     CausalStage(
-        "early-body",
-        1.500,
-        (parameter("dense_velocity_loss_nepers_per_second", 0.0, 4.0, 0.1),),
-    ),
-    CausalStage(
         "tail-refinement",
         4.000,
         (*BODY_DECAY_PARAMETERS,),
@@ -225,7 +219,6 @@ _SCREENED_BALANCE = _selected_parameters(
     "dense_gain",
     "strength_gamma",
     "body_strength_gamma",
-    "dense_strength_gamma",
 )
 _SCREENED_COLOUR = _selected_parameters(
     "dense_tilt_db_per_octave",
@@ -388,8 +381,6 @@ SINGLE_HIT_UNIDENTIFIABLE_PARAMETERS = frozenset(
     {
         "strength_gamma",
         "body_strength_gamma",
-        "dense_strength_gamma",
-        "dense_velocity_loss_nepers_per_second",
     }
 )
 

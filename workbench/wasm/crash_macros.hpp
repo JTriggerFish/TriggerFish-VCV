@@ -8,7 +8,8 @@
 
 namespace tfworkbench {
 
-inline constexpr std::size_t WashCurvePointCount = 12;
+inline constexpr std::size_t ResolvedModePointCount = 12;
+inline constexpr std::size_t DenseWashCurvePointCount = 8;
 inline constexpr std::size_t TurbulenceCurvePointCount = 3;
 inline constexpr std::size_t BodyDecayCurvePointCount =
     tfdsp::percussion::CrashBodyDecayPointCount;
@@ -57,18 +58,21 @@ enum class CrashMacro : std::size_t {
   DenseHighCutQ,
   DenseMinimumFrequency,
   DenseMaximumFrequency,
-  DenseFrequencyWarp,
   DenseModeDensity,
   DenseSpacingJitter,
   DenseDecaySpread,
   DenseGainSpread,
-  BodyDecayFrequencyFirst,
+  DenseWashFrequencyFirst,
+  DenseWashLevelFirst =
+      DenseWashFrequencyFirst + DenseWashCurvePointCount,
+  BodyDecayFrequencyFirst =
+      DenseWashLevelFirst + DenseWashCurvePointCount,
   BodyDecaySecondsFirst =
       BodyDecayFrequencyFirst + BodyDecayCurvePointCount,
-  WashFrequencyFirst =
+  ResolvedFrequencyFirst =
       BodyDecaySecondsFirst + BodyDecayCurvePointCount,
-  WashLevelFirst = WashFrequencyFirst + WashCurvePointCount,
-  Count = WashLevelFirst + WashCurvePointCount
+  ResolvedLevelFirst = ResolvedFrequencyFirst + ResolvedModePointCount,
+  Count = ResolvedLevelFirst + ResolvedModePointCount
 };
 
 inline constexpr std::size_t CrashMacroCount =

@@ -203,6 +203,8 @@ if (testControls) {
       const mode = document.getElementById("view-mode");
       const model = document.querySelector("#model-level input");
       const shape = document.querySelector("#body-controls input");
+      const washDensity = document.querySelector(
+        '[data-fit-key="dense_mode_density"] input[type="range"]');
       const bodyLowT60 = document.querySelector(
         '[data-fit-key="body_decay_seconds_0"] input');
       const sidebar = document.querySelector("aside");
@@ -262,8 +264,20 @@ if (testControls) {
             fiveBodyT60Knots: document.querySelectorAll(
               "#decay-editor .editor-point").length === 5,
             sharedT60Editor: Boolean(document.querySelector("#decay-editor svg")),
-            modalPaintBars: document.querySelectorAll("#wash-editor .editor-bar")
+            resolvedModeBars: document.querySelectorAll(
+              "#resolved-editor .editor-bar")
               .length === 12,
+            resolvedPaintMode: Boolean(document.querySelector(
+              "#resolved-editor .editor-mode input[type=checkbox]",
+            )),
+            noResolvedModeToggle: !document.querySelector(
+              '[data-fit-key="resolved_modes_enabled"]'),
+            denseWashCurve: document.querySelectorAll(
+              "#dense-wash-editor .editor-point").length === 8,
+            continuousWashDensity: washDensity instanceof HTMLInputElement &&
+              washDensity.step !== "1",
+            waveformDragDisabled:
+              document.getElementById("waveform")._fullLayout?.dragmode === false,
             turbulenceDefaultOn: document.querySelector(
               "#turbulence-toggle input")?.checked === true,
             noStrikeEllipse: getComputedStyle(

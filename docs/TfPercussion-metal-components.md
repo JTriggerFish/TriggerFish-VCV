@@ -126,18 +126,29 @@ high-density response. These are parallel audible representations of the same
 dispersed excitation, not a serial effects chain:
 
 ```text
-body drive ----------------> arbitrary modal bank -> modal radiation --------+
-         `-> dispersion -> statistical cloud -------------------------------+
-                         `-> three-band turbulent energy residual -> residual radiation -> output
+body drive ----+-----------> arbitrary modal bank -> modal radiation --------+
+               |                    ^                                        |
+               `-> dispersion -----+-> statistical cloud -> wash radiation -+-> output
+                                `----> three-band turbulent residual
+                                                   -> turbulence radiation --+
 ```
 
-The raw dispersion tap is not mixed into the output by default. The dense
-residual is: it represents real audible energy that was intentionally excluded
-from the sparse bank. Direct body excitation keeps the fitted modal poles free
-of forced nonlinear sidebands; an optional weak dispersion-to-modal feed is an
-ablation rather than a default. Keeping separate radiation paths allows their
-spectral balance and spatial presentation to be fitted without misusing modal
-gains as post-EQ.
+The raw dispersion tap is not mixed into the output. It excites both modal
+representations and the turbulent residual. Resolved modes additionally retain
+a strong direct-body feed for the immediate coherent response; the dense cloud
+uses only a weak direct bypass so its audible development follows the bloom.
+Keeping separate radiation paths allows their spectral balance and spatial
+presentation to be fitted without misusing modal gains as post-EQ. Turbulence
+is not scaled by the resolved-to-wash balance; its own amount controls that
+parallel source.
+
+A local contact and the dispersed bloom enter each modal bank through separate
+excitation projections but write the same modal state. The contact projection
+carries the current strike's location and velocity colour. Bloom uses a fixed
+body-wide projection. Consequently a retrigger adds force to stored energy
+without changing how an earlier strike's circulating bloom excites the bank.
+The self-phase stage likewise derives its excursion from the instantaneous loop
+signal rather than a latched latest-strike velocity.
 
 The sparse bank uses independently parameterized two-pole modes. Each mode has
 an explicit frequency, T60/decay, excitation gain, and observation gain. This
@@ -161,7 +172,11 @@ ERB-domain decay envelope. Older gain grids are interpolated into the current
 profile; the decay endpoints remain the named low/high decay controls and only
 four internal decay offsets are free. Both curves are interpolated at
 instrument preparation, so no per-sample table lookup or independently exposed
-modal gain is added.
+modal gain is added. The normalized gain profile is applied to modal excitation,
+so it describes stored spectral energy. Per-path level and radiation remain a
+separate observation stage. This factorization is transfer-equivalent for the
+present independent linear modes but remains meaningful if coupling or
+state-dependent loss is added later.
 
 For strong, noise-like metallic responses, a second dense representation may
 approximate unresolved nonlinear energy transfer. The turbulent residual splits
@@ -174,6 +189,19 @@ damping gains to their state. Zero band gains make it exactly inaudible. This
 path is retained only because a private-corpus-A ablation improved envelope and flatness;
 the current anchor still fails fine-spectrum acceptance, so it is not yet a
 calibrated default.
+
+This three-band reservoir is a TriggerFish perceptual heuristic, not an
+implementation of a published wave-turbulence algorithm. The closest physical
+reference, [Cirio et al. (2018)](https://www.cs.columbia.edu/cg/waveturb/),
+detects chaos in a nonlinear low-frequency shell simulation and evolves a
+time-varying spectral-energy distribution with a frequency-domain diffusion
+model before adding the synthesized turbulent texture to the shell sound.
+[Skare and Abel (2019)](https://www.dafx.de/paper-archive/2019/DAFx2019_paper_48.pdf)
+instead retain a very large modal bank and approximate nonlinear energy transfer
+by activating or coupling measured high-energy modes. Both keep structured modal
+sound alongside the nonlinear contribution. A future residual replacement should
+therefore test a multi-band energy cascade driving dense modes; the present
+filtered-noise readout must not be described as either paper's method.
 
 A coupled wet-only fractional-comb network remains an ablation if the modal
 cloud lacks measured temporal correlation. Its branches are parallel when

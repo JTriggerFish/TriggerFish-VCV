@@ -47,8 +47,10 @@ double Difference(const std::vector<float> &first,
 } // namespace
 
 int main() {
-  Check(tf_crash_api_version() == 4, "API version is explicit");
-  Check(tf_crash_macro_count() == 82, "the fitting surface is versioned");
+  Check(tf_crash_api_version() == 7, "API version is explicit");
+  Check(tf_crash_macro_count() == 97, "the fitting surface is versioned");
+  Check(std::abs(tf_crash_macro_default(0) + 20.f) < 1.e-6f,
+        "the crash workbench starts at -20 dB model level");
   Check(tf_crash_macro_key(0) != nullptr &&
             tf_crash_macro_name(0) != nullptr &&
             tf_crash_macro_unit(0) != nullptr,
@@ -58,22 +60,29 @@ int main() {
   Check(tf_crash_macro_name(tf_crash_macro_count()) == nullptr,
         "out-of-range macro metadata is rejected");
   auto painted = tfworkbench::DefaultCrashMacros();
-  std::size_t firstFrequency{};
-  std::size_t firstLevel{};
-  std::size_t secondLevel{};
+  std::size_t firstFrequency = painted.size();
+  std::size_t firstLevel = painted.size();
+  std::size_t secondLevel = painted.size();
   for (std::size_t index = 0; index < painted.size(); ++index) {
     const auto &key = tfworkbench::CrashMacroDescription(index).key;
-    if (key == "wash_frequency_0") firstFrequency = index;
-    else if (key == "wash_level_0") firstLevel = index;
-    else if (key == "wash_level_1") secondLevel = index;
+    if (key == "resolved_frequency_0") firstFrequency = index;
+    else if (key == "resolved_level_0") firstLevel = index;
+    else if (key == "resolved_level_1") secondLevel = index;
   }
+  Check(firstFrequency < painted.size() && firstLevel < painted.size() &&
+            secondLevel < painted.size(),
+        "resolved-mode macros have stable keys");
   painted[firstFrequency] = 177.f;
   painted[firstLevel] = 12.f;
   painted[secondLevel] = -12.f;
   const auto paintedFit = tfworkbench::ApplyCrashMacros({}, painted);
+  const auto defaultFit = tfworkbench::ApplyCrashMacros(
+      {}, tfworkbench::DefaultCrashMacros());
   Check(std::abs(paintedFit.sparseFrequencyHz[0] - 177.f) < 1.e-5f &&
             paintedFit.sparseAmplitude[0] > paintedFit.sparseAmplitude[1],
-        "modal paint directly places and levels resolved modes");
+        "resolved editor directly places and levels resolved modes");
+  Check(paintedFit.denseGainEnvelopeDb == defaultFit.denseGainEnvelopeDb,
+        "resolved-mode paint cannot colour the dense wash");
   Check(tf_crash_create(0.f) == 0, "invalid sample rates are rejected");
   const auto handle = tf_crash_create(48000.f);
   Check(handle != 0, "a renderer session can be created");

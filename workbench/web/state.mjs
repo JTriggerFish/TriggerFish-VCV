@@ -1,4 +1,4 @@
-const FitSchema = "triggerfish-percussion-fit-v4";
+const FitSchema = "triggerfish-percussion-fit-v7";
 
 export function snapshotState(state, name = "Snapshot") {
   return Object.freeze({
@@ -7,7 +7,7 @@ export function snapshotState(state, name = "Snapshot") {
     parentId: state.activeSnapshotId ?? null,
     createdAt: new Date().toISOString(),
     name,
-    renderer: { graph: "crash-experimental-v4", api: 4, macros: "crash-macros-v4" },
+    renderer: { graph: "crash-experimental-v7", api: 7, macros: "crash-macros-v7" },
     reference: state.reference ? {
       id: state.reference.id,
       sha256: state.reference.sha256,
@@ -31,9 +31,9 @@ export function validateFit(value, descriptors = []) {
   const macros = value?.controls?.macros;
   const event = value?.controls?.event;
   const analysis = value?.controls?.analysis;
-  if (value?.schema !== FitSchema || value?.renderer?.api !== 4 ||
-      value?.renderer?.graph !== "crash-experimental-v4" ||
-      value?.renderer?.macros !== "crash-macros-v4" ||
+  if (value?.schema !== FitSchema || value?.renderer?.api !== 7 ||
+      value?.renderer?.graph !== "crash-experimental-v7" ||
+      value?.renderer?.macros !== "crash-macros-v7" ||
       !Array.isArray(macros) || macros.length !== descriptors.length ||
       !event || !analysis || typeof value?.reference?.id !== "string" ||
       typeof value?.reference?.sha256 !== "string") {

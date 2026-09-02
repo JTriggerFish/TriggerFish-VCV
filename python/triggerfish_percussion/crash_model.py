@@ -158,8 +158,6 @@ class CrashFit:
     dense_high_cut_q: float = 0.707
     strength_gamma: float = 1.15
     body_strength_gamma: float = 0.8
-    dense_strength_gamma: float = 0.8
-    dense_velocity_loss_nepers_per_second: float = 0.0
 
     def __post_init__(self):
         object.__setattr__(

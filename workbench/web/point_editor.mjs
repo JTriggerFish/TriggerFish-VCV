@@ -1,4 +1,5 @@
 const Svg = "http://www.w3.org/2000/svg";
+const DragThresholdSquared = 16;
 const clamp = (value, minimum, maximum) =>
   Math.max(minimum, Math.min(maximum, value));
 
@@ -22,47 +23,95 @@ export class PointEditor {
   constructor(parent, options) {
     this.options = options;
     this.selected = 0;
+    this.drag = null;
     this.svg = svgElement("svg", {
       class: "point-editor", viewBox: "0 0 360 180", role: "img",
       "aria-label": options.label,
     });
+    if (options.paint) this.buildPaintMode(parent);
     parent.append(this.svg);
+    this.bindDragLifecycle();
     this.bindPainting();
     this.paint();
   }
 
+  buildPaintMode(parent) {
+    const label = document.createElement("label");
+    label.className = "editor-mode";
+    this.paintToggle = document.createElement("input");
+    this.paintToggle.type = "checkbox";
+    this.paintToggle.onchange = () => {
+      this.svg.classList.toggle("painting", this.paintToggle.checked);
+    };
+    label.append(this.paintToggle, "Draw bars");
+    const hint = document.createElement("span");
+    hint.textContent = "Shift erases · Alt temporarily draws";
+    label.append(hint);
+    parent.append(label);
+  }
+
   bindPainting() {
     if (!this.options.paint) return;
-    this.svg.oncontextmenu = event => event.preventDefault();
     this.svg.addEventListener("pointerdown", event => {
-      if (event.target !== this.svg &&
-          !event.target.classList.contains("editor-grid")) return;
-      const erase = event.shiftKey || event.button === 2;
-      const update = current => {
-        const bounds = this.svg.getBoundingClientRect();
-        const x = 360 * (current.clientX - bounds.left) / bounds.width;
-        const y = 180 * (current.clientY - bounds.top) / bounds.height;
-        const points = this.options.points();
-        let nearest = 0;
-        for (let index = 1; index < points.length; ++index) {
-          if (Math.abs(this.xPosition(points[index].x) - x) <
-              Math.abs(this.xPosition(points[nearest].x) - x)) nearest = index;
-        }
-        this.selected = nearest;
-        this.options.select?.(nearest);
-        this.options.setPoint(
-          nearest, points[nearest].x,
-          erase ? this.options.yMinimum : this.yValue(y),
-        );
-        this.paint();
+      if ((!this.paintToggle?.checked && !event.altKey) || event.button !== 0)
+        return;
+      event.preventDefault();
+      this.drag = {
+        kind: "paint", pointerId: event.pointerId, erase: event.shiftKey,
       };
       this.svg.setPointerCapture(event.pointerId);
-      update(event);
-      this.svg.onpointermove = update;
+      this.updatePaint(event);
     });
-    this.svg.addEventListener("pointerup", () => {
-      this.svg.onpointermove = null;
+  }
+
+  bindDragLifecycle() {
+    this.svg.addEventListener("pointermove", event => {
+      if (!this.drag || event.pointerId !== this.drag.pointerId) return;
+      if (this.drag.kind === "paint") this.updatePaint(event);
+      else this.updateHandle(event);
     });
+    const finish = event => {
+      if (!this.drag || event.pointerId !== this.drag.pointerId) return;
+      if (this.svg.hasPointerCapture(event.pointerId)) {
+        this.svg.releasePointerCapture(event.pointerId);
+      }
+      this.drag = null;
+    };
+    this.svg.addEventListener("pointerup", finish);
+    this.svg.addEventListener("pointercancel", finish);
+  }
+
+  updatePaint(event) {
+    const bounds = this.svg.getBoundingClientRect();
+    const x = 360 * (event.clientX - bounds.left) / bounds.width;
+    const y = 180 * (event.clientY - bounds.top) / bounds.height;
+    const points = this.options.points();
+    let nearest = 0;
+    for (let index = 1; index < points.length; ++index) {
+      if (Math.abs(this.xPosition(points[index].x) - x) <
+          Math.abs(this.xPosition(points[nearest].x) - x)) nearest = index;
+    }
+    this.selected = nearest;
+    this.options.select?.(nearest);
+    this.options.setPoint(
+      nearest, points[nearest].x,
+      this.drag.erase ? this.options.yMinimum : this.yValue(y),
+    );
+    this.paint();
+  }
+
+  updateHandle(event) {
+    const dx = event.clientX - this.drag.clientX;
+    const dy = event.clientY - this.drag.clientY;
+    if (!this.drag.active && dx * dx + dy * dy < DragThresholdSquared) return;
+    this.drag.active = true;
+    const bounds = this.svg.getBoundingClientRect();
+    const x = this.xPosition(this.drag.point.x) + 360 * dx / bounds.width;
+    const y = this.yPosition(this.drag.point.y) + 180 * dy / bounds.height;
+    const nextX = this.options.movableX
+      ? this.xValue(x) : this.drag.point.x;
+    this.options.setPoint(this.drag.index, nextX, this.yValue(y));
+    this.paint();
   }
 
   xPosition(value) {
@@ -135,26 +184,24 @@ export class PointEditor {
   addPoint(point, index) {
     const bindDrag = element => {
       element.onpointerdown = event => {
+        if (event.button !== 0) return;
+        if (this.paintToggle?.checked || event.altKey) return;
+        event.preventDefault();
         event.stopPropagation();
         this.selected = index;
         this.options.select?.(index);
+        this.drag = {
+          kind: "handle", pointerId: event.pointerId, index,
+          clientX: event.clientX, clientY: event.clientY,
+          point: { ...this.options.points()[index] }, active: false,
+        };
         this.svg.setPointerCapture(event.pointerId);
-        update(event);
-        this.svg.onpointermove = update;
       };
       element.ondblclick = event => {
         event.preventDefault(); event.stopPropagation();
         this.options.resetPoint(index);
         this.paint();
       };
-    };
-    const update = event => {
-      const bounds = this.svg.getBoundingClientRect();
-      const x = 360 * (event.clientX - bounds.left) / bounds.width;
-      const y = 180 * (event.clientY - bounds.top) / bounds.height;
-      const nextX = this.options.movableX ? this.xValue(x) : point.x;
-      this.options.setPoint(index, nextX, this.yValue(y));
-      this.paint();
     };
     if (this.options.bars) {
       const bar = svgElement("line", {
@@ -170,7 +217,6 @@ export class PointEditor {
       class: `editor-point${index === this.selected ? " selected" : ""}`,
       tabindex: 0,
     });
-    this.svg.onpointerup = () => { this.svg.onpointermove = null; };
     bindDrag(circle);
     this.svg.append(circle);
   }

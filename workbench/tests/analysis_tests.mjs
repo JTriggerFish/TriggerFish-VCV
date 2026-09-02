@@ -40,6 +40,16 @@ const matched = matchedModelLevelDb({
 });
 assert.ok(Math.abs(matched - (-36 + 20 * Math.log10(2))) < 1e-6);
 
+const delayedReference = new Float32Array(tone.length + 480);
+delayedReference.set(reference, 480);
+const onsetMatched = matchedModelLevelDb({
+  currentDb: -36, reference: delayedReference,
+  referenceSampleRate: sampleRate, referenceStartSeconds: .01,
+  synthesis, synthesisSampleRate: sampleRate,
+  minimumDb: -60, maximumDb: 12,
+});
+assert.ok(Math.abs(onsetMatched - (-36 + 20 * Math.log10(2))) < 1e-6);
+
 const forward = wheelPanSeconds(0, 120, 0, 1000, 500, 8);
 const backward = wheelPanSeconds(0, -120, 0, 1000, 500, 8);
 assert.equal(forward + backward, 0);

@@ -14,6 +14,15 @@ using tfdsp::percussion::ErbRate;
 using tfdsp::percussion::InverseErbRate;
 constexpr float PiOverTwo = 1.57079632679489661923f;
 constexpr float DefaultBloomDevelopment = .44875992f;
+constexpr std::array<float, DenseWashCurvePointCount>
+    StartingDenseWashFrequencyHz{
+        120.f, 500.f, 1500.f, 3000.f, 6000.f, 10000.f, 16000.f, 21000.f};
+constexpr std::array<float, DenseWashCurvePointCount> StartingDenseWashLevelDb{
+    -7.f, -4.5f, -2.5f, 0.f, 2.5f, 2.f, -4.f, -7.f};
+constexpr std::array<float, BodyDecayCurvePointCount> StartingDecayFrequencyHz{
+    150.f, 500.f, 1500.f, 6000.f, 16000.f};
+constexpr std::array<float, BodyDecayCurvePointCount> StartingDecaySeconds{
+    3.5f, 2.8f, 2.5f, 4.5f, .35f};
 
 struct CurvePoint {
   float frequency;
@@ -47,11 +56,11 @@ std::array<CrashMacroDescriptor, CrashMacroCount> BuildDescriptors() {
     result[Index(macro)] = std::move(descriptor);
   };
   set(CrashMacro::ModelLevelDb,
-      Linear("model_level_db", "Model level", "dB", -60.f, 12.f, -36.f));
+      Linear("model_level_db", "Model level", "dB", -60.f, 12.f, -20.f));
   set(CrashMacro::ImpactToneNoise,
-      Linear("impact_tone_noise", "Impact: ping to noise", "", 0.f, 1.f, .5f));
+      Linear("impact_tone_noise", "Impact: ping to noise", "", 0.f, 1.f, .9f));
   set(CrashMacro::ImpactWidth,
-      Logarithmic("impact_width", "Contact width", "x", .25f, 4.f, 1.f));
+      Logarithmic("impact_width", "Contact width", "x", .25f, 4.f, .65f));
   set(CrashMacro::BloomAmount,
       Linear("bloom_amount", "Bloom amount", "", 0.f, 1.f, .35f));
   set(CrashMacro::BloomDevelopment,
@@ -59,13 +68,13 @@ std::array<CrashMacroDescriptor, CrashMacroCount> BuildDescriptors() {
              DefaultBloomDevelopment));
   set(CrashMacro::BodyToneWash,
       Linear("body_tone_wash", "Resolved to wash", "", 0.f, 1.f,
-             .68554716f));
+             1.f));
   set(CrashMacro::BodyBrightness,
       Linear("body_brightness", "Global wash tilt", "dB/oct", -8.f, 5.f,
              -1.f));
   set(CrashMacro::DirectGain,
-      Linear("direct_gain", "Direct contact level", "", 0.f, 2.f,
-             fit.directGain));
+      Linear("direct_gain", "Contact presence", "", 0.f, 2.f,
+             .95f));
 
   set(CrashMacro::TurbulenceEnabled,
       {"turbulence_enabled", "Enable turbulent residual", "", 0.f, 1.f, 1.f,
@@ -73,7 +82,7 @@ std::array<CrashMacroDescriptor, CrashMacroCount> BuildDescriptors() {
   const float turbulenceAmount = std::cbrt(
       fit.turbulenceGain[0] * fit.turbulenceGain[1] * fit.turbulenceGain[2]);
   set(CrashMacro::TurbulenceAmount,
-      Logarithmic("turbulence_amount", "Amount", "", .001f, 2.f,
+      Logarithmic("turbulence_amount", "Output level", "", .001f, 2.f,
                   turbulenceAmount));
   set(CrashMacro::TurbulencePersistence,
       Logarithmic("turbulence_persistence", "Persistence", "x", .25f, 4.f,
@@ -129,8 +138,7 @@ std::array<CrashMacroDescriptor, CrashMacroCount> BuildDescriptors() {
             CrashMacro::DirectColourGain, CrashMacro::DirectColourQ,
             CrashMacro::DirectHighCut, CrashMacro::DirectHighCutQ, "direct",
             fit.directRadiationEnabled, fit.directLowCutHz, fit.directLowCutQ,
-            fit.directColourFrequencyHz, fit.directColourGainDb,
-            fit.directColourQ, fit.directHighCutHz, fit.directHighCutQ);
+            7000.f, 4.f, .7f, fit.directHighCutHz, fit.directHighCutQ);
   radiation(CrashMacro::SparseRadiationEnabled, CrashMacro::SparseLowCut,
             CrashMacro::SparseLowCutQ, CrashMacro::SparseColourFrequency,
             CrashMacro::SparseColourGain, CrashMacro::SparseColourQ,
@@ -152,12 +160,9 @@ std::array<CrashMacroDescriptor, CrashMacroCount> BuildDescriptors() {
   set(CrashMacro::DenseMaximumFrequency,
       Logarithmic("dense_maximum_frequency", "Upper frequency", "Hz", 4000.f,
                   22000.f, fit.denseMaximumFrequencyHz));
-  set(CrashMacro::DenseFrequencyWarp,
-      Logarithmic("dense_frequency_warp", "Density bias", "", .25f, 4.f,
-                  fit.denseFrequencyWarp));
   set(CrashMacro::DenseModeDensity,
-      Logarithmic("dense_mode_density", "Mode density", "", .01f, 1.f,
-                  fit.denseModeDensity));
+      Logarithmic("dense_mode_density", "Mode density", "x", 1.f / 32.f,
+                  2.f, 2.f));
   set(CrashMacro::DenseSpacingJitter,
       Linear("dense_spacing_jitter", "Spacing irregularity", "", 0.f, .95f,
              fit.denseSpacingJitter));
@@ -168,24 +173,35 @@ std::array<CrashMacroDescriptor, CrashMacroCount> BuildDescriptors() {
       Linear("dense_gain_spread", "Level spread", "dB", 0.f, 18.f,
              fit.denseGainSpreadDb));
 
+  for (std::size_t point = 0; point < DenseWashCurvePointCount; ++point) {
+    result[Index(CrashMacro::DenseWashFrequencyFirst) + point] = Logarithmic(
+        "dense_wash_frequency_" + std::to_string(point),
+        "Wash colour centre " + std::to_string(point + 1), "Hz",
+        40.f, 22000.f, StartingDenseWashFrequencyHz[point]);
+    result[Index(CrashMacro::DenseWashLevelFirst) + point] = Linear(
+        "dense_wash_level_" + std::to_string(point),
+        "Wash colour " + std::to_string(point + 1), "dB", -24.f, 24.f,
+        StartingDenseWashLevelDb[point]);
+  }
+
   for (std::size_t point = 0; point < BodyDecayCurvePointCount; ++point) {
     result[Index(CrashMacro::BodyDecayFrequencyFirst) + point] = Logarithmic(
         "body_decay_frequency_" + std::to_string(point),
         "Decay centre " + std::to_string(point + 1), "Hz", 40.f, 20000.f,
-        fit.bodyDecayFrequencyHz[point]);
+        StartingDecayFrequencyHz[point]);
     result[Index(CrashMacro::BodyDecaySecondsFirst) + point] = Logarithmic(
         "body_decay_seconds_" + std::to_string(point),
         "Body T60 " + std::to_string(point + 1), "s", .02f, 20.f,
-        fit.bodyDecaySeconds[point]);
+        StartingDecaySeconds[point]);
   }
 
-  for (std::size_t point = 0; point < WashCurvePointCount; ++point) {
-    result[Index(CrashMacro::WashFrequencyFirst) + point] = Logarithmic(
-        "wash_frequency_" + std::to_string(point),
-        "Mode centre " + std::to_string(point + 1), "Hz", 40.f, 22000.f,
+  for (std::size_t point = 0; point < ResolvedModePointCount; ++point) {
+    result[Index(CrashMacro::ResolvedFrequencyFirst) + point] = Logarithmic(
+        "resolved_frequency_" + std::to_string(point),
+        "Resolved mode " + std::to_string(point + 1), "Hz", 40.f, 22000.f,
         fit.sparseFrequencyHz[point]);
-    result[Index(CrashMacro::WashLevelFirst) + point] = Linear(
-        "wash_level_" + std::to_string(point),
+    result[Index(CrashMacro::ResolvedLevelFirst) + point] = Linear(
+        "resolved_level_" + std::to_string(point),
         "Mode level " + std::to_string(point + 1), "dB", -24.f, 24.f,
         0.f);
   }
@@ -244,10 +260,10 @@ float SmoothCurve(const std::array<CurvePoint, Count> &points,
   return points.back().level;
 }
 
-void ApplyModalPaint(CrashCymbalFitParameters &fit,
-                     const CrashMacroValues &values) noexcept {
-  const auto points = ReadCurve<WashCurvePointCount>(
-      values, CrashMacro::WashFrequencyFirst, CrashMacro::WashLevelFirst);
+void ApplyResolvedPaint(CrashCymbalFitParameters &fit,
+                        const CrashMacroValues &values) noexcept {
+  const auto points = ReadCurve<ResolvedModePointCount>(
+      values, CrashMacro::ResolvedFrequencyFirst, CrashMacro::ResolvedLevelFirst);
   float meanDb = 0.f;
   for (const auto &point : points)
     meanDb += point.level / points.size();
@@ -256,18 +272,29 @@ void ApplyModalPaint(CrashCymbalFitParameters &fit,
     fit.sparseAmplitude[mode] *=
         std::pow(10.f, (points[mode].level - meanDb) / 20.f);
   }
+}
+
+void ApplyDenseWashPaint(CrashCymbalFitParameters &fit,
+                         const CrashMacroValues &values) noexcept {
+  const auto points = ReadCurve<DenseWashCurvePointCount>(
+      values, CrashMacro::DenseWashFrequencyFirst,
+      CrashMacro::DenseWashLevelFirst);
   const float minimumErb = ErbRate(fit.denseMinimumFrequencyHz);
   const float maximumErb = ErbRate(fit.denseMaximumFrequencyHz);
   constexpr std::size_t Count =
       tfdsp::percussion::StatisticalModalCloudParameters::GainEnvelopePointCount;
+  std::array<float, Count> sampledCurve{};
+  float meanDb = 0.f;
   for (std::size_t point = 0; point < Count; ++point) {
     const float position = static_cast<float>(point) /
         static_cast<float>(Count - 1);
     const float frequency = InverseErbRate(
         minimumErb + position * (maximumErb - minimumErb));
-    fit.denseGainEnvelopeDb[point] +=
-        SmoothCurve(points, frequency) - meanDb;
+    sampledCurve[point] = SmoothCurve(points, frequency);
+    meanDb += sampledCurve[point] / static_cast<float>(Count);
   }
+  for (std::size_t point = 0; point < Count; ++point)
+    fit.denseGainEnvelopeDb[point] += sampledCurve[point] - meanDb;
 }
 
 void ApplyBodyDecay(CrashCymbalFitParameters &fit,
@@ -358,12 +385,12 @@ CrashCymbalFitParameters ApplyCrashMacros(
 
   fit.denseMinimumFrequencyHz = Value(values, CrashMacro::DenseMinimumFrequency);
   fit.denseMaximumFrequencyHz = Value(values, CrashMacro::DenseMaximumFrequency);
-  fit.denseFrequencyWarp = Value(values, CrashMacro::DenseFrequencyWarp);
   fit.denseModeDensity = Value(values, CrashMacro::DenseModeDensity);
   fit.denseSpacingJitter = Value(values, CrashMacro::DenseSpacingJitter);
   fit.denseDecaySpreadOctaves = Value(values, CrashMacro::DenseDecaySpread);
   fit.denseGainSpreadDb = Value(values, CrashMacro::DenseGainSpread);
-  ApplyModalPaint(fit, values);
+  ApplyResolvedPaint(fit, values);
+  ApplyDenseWashPaint(fit, values);
   ApplyBodyDecay(fit, values);
   ApplyTurbulence(fit, values);
 

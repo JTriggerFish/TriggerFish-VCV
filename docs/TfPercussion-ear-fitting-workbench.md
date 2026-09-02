@@ -50,26 +50,38 @@ solo, and limiter metering are never serialized as instrument parameters.
 
 The first pass intentionally fits one qualified reference hit. Velocity and
 location response curves are locked in this mode because one hit cannot
-identify them. The always-visible fitting controls are:
+identify them. The renderer still has a conservative built-in velocity law:
+stronger contact is shorter and brighter, high-frequency modal projection
+opens progressively, and the nonlinear bloom/turbulent wash grows faster than
+the direct strike. This preserves an immediately playable instrument while a
+multi-velocity grid is used later to calibrate the exact relationships. The
+always-visible fitting controls are:
 
 | Control | UI | Perceptual role | Initial mapping |
 | --- | --- | --- | --- |
 | Model level | bipolar dB slider | match the stored source level | one pre-monitor output trim; never the limiter |
-| Contact | independent sliders | ping/noise balance and contact width | coordinated pulse, chirp, noise and micro-contact gains/durations; hardness and implement remain event inputs |
+| Contact | independent sliders | near-field level, ping/noise balance and contact width | direct presentation plus coordinated pulse, chirp, noise and micro-contact gains/durations; hardness and implement remain event inputs |
 | Bloom | independent sliders | nonlinear spread amount and development time | dispersion drive/excursion and constrained feedback mapping |
-| Body balance | independent sliders | resolved/tonal to dense/wash; global wash tilt | sparse/dense balance and broad dense tilt |
-| Modal paint | 12-bar ERB editor | resolved ridge placement and surrounding wash salience | each bar directly places one resolved mode; one smooth relative curve derived from the bars colours the dense population |
-| Dense wash | independent sliders | range, density, bias and statistical irregularity | stable modal population; density activates a deterministic subset without relocating modes or changing RMS level |
+| Body balance | sliders plus branch toggle | resolved/tonal to dense/wash; global wash tilt; explicit resolved-mode ablation | sparse/dense balance and broad dense tilt |
+| Resolved modal ridges | 12-bar ERB editor plus enable switch | direct placement of deliberately audible modes | each bar controls one resolved mode only; disabling the branch makes this editor acoustically inert |
+| Dense modal wash | smooth ERB curve plus continuous sliders | broad spectral colour, range, density and statistical irregularity | the relative colour curve changes modal energy without moving resonances. Density continuously spans the equivalent of 64--4096 active modes. The implementation activates a deterministic nested subset and crossfades the boundary mode; the original 2048-mode bank remains the `1x` factory case and values above it progressively add a separately seeded extension bank. |
 | Body T60 | five-knot log curve | absolute frequency-dependent decay | one curve sampled by sparse modes, dense modes and turbulence |
-| Turbulence | three-knot log curve plus amount/persistence | stochastic residual colour and duration | mean-free colour curve, orthogonal overall level and relative persistence |
+| Turbulence | three-knot log curve plus amount/persistence | stochastic residual colour and duration | a bloom-driven branch parallel to the dense modal cloud; mean-free colour curve, orthogonal overall level and relative persistence |
 | Radiation | per-path EQ controls | observation colour, not stored-body loss | direct, resolved and dense-path static filters |
 | Size meta | unlabelled scalar slider | useful broad starting point | expands visibly into the detailed controls; centre is the exact neutral default and saved fits contain only expanded values |
 
 The curve editors use log-frequency or ERB horizontal spacing and raised-cosine
 interpolation, so moving one knot has a local, smooth effect without spline
-overshoot. Frequencies remain ordered. Modal-paint level is relative because
-both modal banks are energy-normalized; their global balance and level are
-controlled elsewhere.
+overshoot. Frequencies remain ordered. Resolved-mode and dense-wash curves are
+independent and relative because the modal banks are energy-normalized; global
+balance and level are controlled elsewhere.
+
+Curve backgrounds are inert by default. A handle drag starts only after a small
+movement threshold and remains relative to its starting value. The resolved editor
+adds an explicit **Draw bars** mode for a continuous sweep begun anywhere in the
+grid; Shift erases, while Alt temporarily enables the same gesture without
+latching the mode. Mirror-spectrogram source alignment similarly requires
+Shift-drag, and the decorative waveform does not capture background drags.
 Turbulence subtracts the mean of its three colour levels before applying its
 separate Amount control. The underlying 33-point dense profile is an
 implementation detail and is never shown as unrelated sliders.
@@ -209,10 +221,12 @@ must use one declared audition-gain policy; independent peak normalization is
 never the default because it hides velocity and decay-level errors.
 
 The model-level default is reference-relative rather than a fixed factory
-number. On reference selection, the workbench matches synthesis and reference
-RMS over their first second with the model's linear output trim, then renders
-again at that value. Double-clicking model level repeats that match; all other
-sliders, pads, selectors, and monitor controls reset to their declared defaults.
+number. On reference selection, the workbench aligns the declared source onset
+and matches synthesis and reference RMS over the first 300 ms with the model's
+linear output trim, then renders again at that value. This keeps a long wash
+from turning down and perceptually distancing the contact. Double-clicking
+model level repeats that match; all other sliders, pads, selectors, and monitor
+controls reset to their declared defaults.
 
 In the default mirror view, an unmodified wheel pans both time origins together.
 Equal forward and backward wheel deltas cancel exactly and are not clamped at
@@ -225,7 +239,7 @@ origins and the full viewport.
 Completed foundations include the separate Emscripten target, deterministic
 native/Wasm comparison, persistent real-time triggering, A/B reference
 transport, safety limiter, corpus browser, asynchronous STFT, comparison views,
-the modal-paint/shared-T60/turbulence editors, and JSON snapshots. Remaining
+the resolved-mode/dense-colour/shared-T60/turbulence editors, and JSON snapshots. Remaining
 work is undo/redo and snapshot A/B, rolling live-output capture, true-peak
 limiter qualification, and macro qualification before the first retained
 listening fit.

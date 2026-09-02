@@ -39,6 +39,8 @@ struct CrashCymbalFitParameters {
   float denseMaximumFrequencyHz{18000.f};
   float denseFrequencyWarp{1.f};
   float denseSpacingJitter{.82f};
+  // Active cloud density in 2048-mode banks. Values above one progressively
+  // add an independent extension bank without changing the primary cloud.
   float denseModeDensity{1.f};
   float denseDecaySpreadOctaves{.15f};
   float denseTiltDbPerOctave{-1.f};
@@ -75,7 +77,8 @@ struct CrashCymbalFitParameters {
   float directGain{.18f};
   float sparseGain{.35f};
   float denseGain{.65f};
-  float sparseBloomGain{0.f};
+  // Resolved modes hear both the immediate strike and the dispersed body.
+  float sparseBloomGain{1.f};
   float bodyBypassGain{.06f};
   float outputGain{1.f};
   bool directRadiationEnabled{true};
@@ -104,22 +107,25 @@ struct CrashCymbalFitParameters {
   float denseHighCutQ{.707f};
   float strengthGamma{1.15f};
   float bodyStrengthGamma{.8f};
-  float denseStrengthGamma{.8f};
-  float denseVelocityLossNepersPerSecond{0.f};
+  float velocityBrightnessDbPerOctave{4.f};
 };
 
 struct CrashCymbalParameters {
   CrashSparseModes::Parameters sparseModes{};
   CrashDenseModes::Parameters denseModes{};
+  CrashDenseModes::Parameters denseExtensionModes{};
   CrashSparseModes::Projection sparseBellProjection{};
   CrashSparseModes::Projection sparseBowProjection{};
   CrashSparseModes::Projection sparseEdgeProjection{};
   CrashDenseModes::Projection denseBellProjection{};
   CrashDenseModes::Projection denseBowProjection{};
   CrashDenseModes::Projection denseEdgeProjection{};
+  CrashDenseModes::Projection denseExtensionBellProjection{};
+  CrashDenseModes::Projection denseExtensionBowProjection{};
+  CrashDenseModes::Projection denseExtensionEdgeProjection{};
   DispersionLoopParameters dispersion{};
   TurbulentResidualParameters turbulence{};
-  ObservationModel<3>::Parameters observation{};
+  ObservationModel<4>::Parameters observation{};
   CrashCymbalFitParameters fit{};
 };
 

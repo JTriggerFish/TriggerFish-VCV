@@ -75,21 +75,22 @@ export class FitControls {
     this.slider("model_level_db", "model-level", {
       reset: () => this.onLevelReset(),
     });
-    this.sliders("impact-controls", ["impact_tone_noise", "impact_width"], {
+    this.sliders("impact-controls", [
+      "direct_gain", "impact_tone_noise", "impact_width",
+    ], {
       impact_tone_noise: ["ping", "noise"], impact_width: ["short", "broad"],
     });
     this.sliders("bloom-controls", ["bloom_amount", "bloom_development"], {
       bloom_amount: ["subtle", "strong"],
       bloom_development: ["immediate", "slow"],
     });
-    this.sliders("body-controls", [
-      "body_tone_wash", "body_brightness", "direct_gain",
-    ], {
+    this.sliders("body-controls", ["body_tone_wash", "body_brightness"], {
       body_tone_wash: ["resolved", "wash"],
       body_brightness: ["dark", "bright"],
     });
-    this.buildWashEditor();
+    this.buildResolvedEditor();
     this.buildDenseControls();
+    this.buildDenseWashEditor();
     this.buildDecayEditor();
     this.buildTurbulence();
     this.buildRadiation();
@@ -164,7 +165,7 @@ export class FitControls {
     return clamp(value, Math.min(lower, upper), Math.max(lower, upper));
   }
 
-  setCurvePoint(curve, index, frequency, level) {
+  setCurvePoint(curve, index, frequency, level, changeKey = "curve") {
     const frequencyDescriptor = curve.frequencies[index];
     const levelDescriptor = curve.levels[index];
     this.state.macros[frequencyDescriptor.index] = this.orderedFrequency(
@@ -173,7 +174,7 @@ export class FitControls {
     this.state.macros[levelDescriptor.index] = clamp(
       level, levelDescriptor.minimum, levelDescriptor.maximum,
     );
-    this.onChange("modal_paint");
+    this.onChange(changeKey);
   }
 
   buildCurveInspector(parentId, titleText, curve, index, editor) {
@@ -191,11 +192,11 @@ export class FitControls {
     });
   }
 
-  buildWashEditor() {
-    const parent = document.getElementById("wash-editor");
-    const curve = this.curveDescriptors("wash");
+  buildResolvedEditor() {
+    const parent = document.getElementById("resolved-editor");
+    const curve = this.curveDescriptors("resolved");
     const editor = new PointEditor(parent, {
-      label: "Resolved ridges and dense-wash spectrum",
+      label: "Resolved modal ridges",
       xMinimum: 40, xMaximum: 22000, xScale: "erb",
       yMinimum: -24, yMaximum: 24, bars: true, paint: true,
       yTicks: [
@@ -208,9 +209,9 @@ export class FitControls {
         y: this.state.macros[curve.levels[index].index],
       })),
       setPoint: (index, frequency, level) => {
-        this.setCurvePoint(curve, index, frequency, level);
+        this.setCurvePoint(curve, index, frequency, level, "resolved_modes");
         this.buildCurveInspector(
-          "wash-selection", "Selected bar", curve, index, editor,
+          "resolved-selection", "Selected mode", curve, index, editor,
         );
       },
       resetPoint: index => {
@@ -218,30 +219,75 @@ export class FitControls {
           curve.frequencies[index].defaultValue;
         this.state.macros[curve.levels[index].index] =
           curve.levels[index].defaultValue;
-        this.onChange("modal_paint");
+        this.onChange("resolved_modes");
         this.buildCurveInspector(
-          "wash-selection", "Selected bar", curve, index, editor,
+          "resolved-selection", "Selected mode", curve, index, editor,
         );
       },
       select: index => this.buildCurveInspector(
-        "wash-selection", "Selected bar", curve, index, editor,
+        "resolved-selection", "Selected mode", curve, index, editor,
       ),
     });
-    this.washCurve = curve;
-    this.washEditor = editor;
-    this.buildCurveInspector("wash-selection", "Selected bar", curve, 0, editor);
+    this.resolvedCurve = curve;
+    this.resolvedEditor = editor;
+    this.buildCurveInspector(
+      "resolved-selection", "Selected mode", curve, 0, editor,
+    );
   }
 
   buildDenseControls() {
     this.sliders("dense-controls", [
       "dense_minimum_frequency", "dense_maximum_frequency",
-      "dense_frequency_warp", "dense_mode_density", "dense_spacing_jitter",
-      "dense_gain_spread", "dense_decay_spread",
+      "dense_mode_density",
     ], {
-      dense_frequency_warp: ["high biased", "low biased"],
       dense_mode_density: ["sparse", "dense"],
-      dense_spacing_jitter: ["regular", "irregular"],
     });
+    this.sliders("dense-controls", [
+      "dense_spacing_jitter", "dense_gain_spread", "dense_decay_spread",
+    ], { dense_spacing_jitter: ["regular", "irregular"] });
+  }
+
+  buildDenseWashEditor() {
+    const parent = document.getElementById("dense-wash-editor");
+    const curve = this.curveDescriptors("dense_wash");
+    const editor = new PointEditor(parent, {
+      label: "Dense wash spectral colour",
+      xMinimum: 40, xMaximum: 22000, xScale: "erb",
+      yMinimum: -24, yMaximum: 24, connected: true,
+      yTicks: [
+        { value: -18, label: "-18" }, { value: 0, label: "0 dB" },
+        { value: 18, label: "+18" },
+      ],
+      movableX: true,
+      points: () => curve.frequencies.map((frequency, index) => ({
+        x: this.state.macros[frequency.index],
+        y: this.state.macros[curve.levels[index].index],
+      })),
+      setPoint: (index, frequency, level) => {
+        this.setCurvePoint(curve, index, frequency, level, "dense_wash_colour");
+        this.buildCurveInspector(
+          "dense-wash-selection", "Selected colour knot", curve, index, editor,
+        );
+      },
+      resetPoint: index => {
+        this.state.macros[curve.frequencies[index].index] =
+          curve.frequencies[index].defaultValue;
+        this.state.macros[curve.levels[index].index] =
+          curve.levels[index].defaultValue;
+        this.onChange("dense_wash_colour");
+        this.buildCurveInspector(
+          "dense-wash-selection", "Selected colour knot", curve, index, editor,
+        );
+      },
+      select: index => this.buildCurveInspector(
+        "dense-wash-selection", "Selected colour knot", curve, index, editor,
+      ),
+    });
+    this.denseWashCurve = curve;
+    this.denseWashEditor = editor;
+    this.buildCurveInspector(
+      "dense-wash-selection", "Selected colour knot", curve, 0, editor,
+    );
   }
 
   buildDecayEditor() {
@@ -360,19 +406,26 @@ export class FitControls {
     }
   }
 
-  checkbox(key, parentId) {
+  checkbox(key, parentId, onToggle) {
     const descriptor = this.descriptor(key);
     const label = document.createElement("label");
     label.className = "checkbox-row";
+    label.dataset.fitKey = key;
     const input = document.createElement("input");
     input.type = "checkbox"; input.checked = this.value(key) >= .5;
-    input.onchange = () => this.setValue(key, input.checked ? 1 : 0);
+    input.onchange = () => {
+      this.setValue(key, input.checked ? 1 : 0);
+      onToggle?.(input.checked);
+    };
     input.ondblclick = event => {
       event.preventDefault();
       input.checked = descriptor.defaultValue >= .5;
       this.setValue(key, descriptor.defaultValue);
+      onToggle?.(input.checked);
     };
     label.append(input, descriptor.name);
     document.getElementById(parentId).append(label);
+    onToggle?.(input.checked);
   }
+
 }

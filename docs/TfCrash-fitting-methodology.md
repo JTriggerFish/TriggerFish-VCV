@@ -37,19 +37,30 @@ works across its own strike regions and velocities.
 ## Current synthesis graph
 
 ```text
-contact direct --------------------------------------> contact observation
+contact direct --------------------------------------> contact observation --+
        |
-       `-> body drive -----> sparse arbitrary modal bank -> modal observation
-                 |
-                 `-> nonlinear dispersion -> dense modal cloud ---------+
-                                          `-> turbulent energy residual -+-> residual observation
+       `-> body drive ----> sparse-input sum -> sparse modal bank
+                                                     -> modal observation ----+
+                 |             ^
+                 `-> nonlinear dispersion --+-> dense modal cloud
+                                             |       -> wash observation ----+-> output
+                                             +-> sparse-input sum           |
+                                             `-> turbulent residual
+                                                     -> turbulence observation+
 ```
 
 The sparse modal bank owns resolved persistent structure. The deterministic
-modal cloud and optional turbulent residual own dense metallic wash. The raw
+modal cloud and turbulent residual own complementary dense metallic wash. The raw
 dispersion signal is an excitation/analysis tap, not an automatically audible
 layer. The renderer is mono; any stereo presentation belongs after the physical
 instrument state. Passive mute can only remove stored or future energy.
+
+Contact and bloom are independently projected inputs to each modal bank but add
+to one stored modal state. Strike location and velocity therefore colour only
+the new contact force; a fixed body-wide bloom projection prevents a later hit
+from recolouring energy already circulating. The nonlinear dispersion stage is
+signal driven internally and has no latest-hit drive latch. A zero-strength
+event is a strict no-op.
 
 This graph is deliberately decomposable: each branch can be soloed, bypassed,
 and compared. Its architecture may change when listening shows that a component
