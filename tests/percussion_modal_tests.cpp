@@ -3,6 +3,7 @@
 #include "tfdsp/percussion/modal_bank.hpp"
 #include "tfdsp/percussion/modal_constraint.hpp"
 #include "tfdsp/percussion/statistical_modal_cloud.hpp"
+#include "tfdsp/percussion/stochastic_modal_field.hpp"
 #include "tfdsp/percussion/turbulent_residual.hpp"
 
 #include <array>
@@ -280,6 +281,66 @@ void TestTurbulentResidualIsRepeatable() {
   }
 }
 
+void TestStochasticPhaseBroadeningPreservesEnergy() {
+  using Field = tfdsp::percussion::StochasticModalField<1>;
+  Field::Parameters coherent{{
+      {1200.f, 2.f, 1.f, 1.f, 0.f, 0.f, 0},
+  }};
+  auto diffused = coherent;
+  diffused[0].phaseBandwidthHz = 1800.f;
+  Field first;
+  Field second;
+  first.Prepare(48000.f, coherent, {}, 700.f, 6500.f);
+  second.Prepare(48000.f, diffused, {}, 700.f, 6500.f);
+  double outputDifference = 0.0;
+  for (int sample = 0; sample < 4096; ++sample) {
+    const float input = sample == 0 ? 1.f : 0.f;
+    const double coherentOutput = first.ProcessExcitedPair(input, 0.f);
+    const double diffusedOutput = second.ProcessExcitedPair(input, 0.f);
+    const double difference = coherentOutput - diffusedOutput;
+    outputDifference += difference * difference;
+  }
+  Check(outputDifference > 1.0,
+        "phase bandwidth audibly decorrelates a modal ridge");
+  CheckNear(second.StoredEnergy() / first.StoredEnergy(), 1.0, 1.5e-4,
+            "phase broadening changes coherence without changing energy");
+}
+
+void TestLocalModalExchangeIsPassive() {
+  using Field = tfdsp::percussion::StochasticModalField<4>;
+  Field::Parameters parameters{{
+      {700.f, 3.f, 1.f, 1.f, 0.f, 0.f, 0},
+      {900.f, 3.f, .7f, 1.f, .4f, 0.f, 0},
+      {1300.f, 3.f, .5f, 1.f, -.3f, 0.f, 1},
+      {1700.f, 3.f, .3f, 1.f, .8f, 0.f, 1},
+  }};
+  Field independent;
+  Field coupled;
+  independent.Prepare(48000.f, parameters, {}, 600.f, 1500.f);
+  coupled.Prepare(48000.f, parameters, {.02f, 17}, 600.f, 1500.f);
+  double outputDifference = 0.0;
+  double maximumSpontaneousGrowth = 0.0;
+  double priorCoupledEnergy = 0.0;
+  for (int sample = 0; sample < 4096; ++sample) {
+    const float input = sample == 0 ? 1.f : 0.f;
+    const double independentOutput = independent.ProcessExcitedPair(input, 0.f);
+    const double coupledOutput = coupled.ProcessExcitedPair(input, 0.f);
+    const double difference = independentOutput - coupledOutput;
+    outputDifference += difference * difference;
+    const double energy = coupled.StoredEnergy();
+    if (sample > 0)
+      maximumSpontaneousGrowth = std::max(
+          maximumSpontaneousGrowth, energy - priorCoupledEnergy);
+    priorCoupledEnergy = energy;
+  }
+  Check(outputDifference > 1.0,
+        "local exchange moves energy within and between adjacent packets");
+  CheckNear(coupled.StoredEnergy() / independent.StoredEnergy(), 1.0, 2.e-4,
+            "local Givens exchange preserves stored modal energy");
+  Check(maximumSpontaneousGrowth < 2.e-6,
+        "local exchange never creates unforced modal energy");
+}
+
 } // namespace
 
 int main() {
@@ -295,6 +356,8 @@ int main() {
   TestDenseCloudDensityPreservesPlacementAndLevel();
   TestTurbulentResidualStoresAndPassivelyLosesEnergy();
   TestTurbulentResidualIsRepeatable();
+  TestStochasticPhaseBroadeningPreservesEnergy();
+  TestLocalModalExchangeIsPassive();
   if (percussion_test::failures == 0)
     std::cout << "All percussion modal tests passed\n";
   return percussion_test::failures == 0 ? 0 : 1;

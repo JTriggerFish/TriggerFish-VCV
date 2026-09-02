@@ -7,6 +7,7 @@ from dataclasses import asdict, dataclass
 import numpy as np
 
 DENSE_GAIN_ENVELOPE_POINT_COUNT = 33
+BODY_DECAY_POINT_COUNT = 8
 
 
 @dataclass(frozen=True)
@@ -24,6 +25,18 @@ class CrashFit:
         3589.0,
         4428.0,
         5707.0,
+        6500.0,
+        7350.0,
+        8250.0,
+        9200.0,
+        10250.0,
+        11350.0,
+        12000.0,
+        12750.0,
+        13500.0,
+        14100.0,
+        14600.0,
+        15000.0,
     )
     sparse_decay_ratio: tuple[float, ...] = (
         0.7,
@@ -38,6 +51,18 @@ class CrashFit:
         0.7,
         0.7,
         0.7,
+        0.68,
+        0.65,
+        0.62,
+        0.6,
+        0.58,
+        0.56,
+        0.55,
+        0.54,
+        0.53,
+        0.52,
+        0.51,
+        0.5,
     )
     sparse_amplitude: tuple[float, ...] = (
         0.35,
@@ -52,17 +77,43 @@ class CrashFit:
         0.5,
         0.4,
         0.25,
+        0.32,
+        0.38,
+        0.44,
+        0.5,
+        0.56,
+        0.6,
+        0.62,
+        0.6,
+        0.54,
+        0.46,
+        0.35,
+        0.22,
     )
-    sparse_phase_radians: tuple[float, ...] = (0.0,) * 12
+    sparse_phase_radians: tuple[float, ...] = (0.0,) * 24
+    field_turbulence_scale: tuple[float, ...] = (1.0,) * 24
     sparse_tune: float = 1.0
     body_decay_frequency_hz: tuple[float, ...] = (
-        200.0,
+        0.0,
         500.0,
         1500.0,
         5000.0,
-        15000.0,
+        8000.0,
+        12000.0,
+        16000.0,
+        24000.0,
     )
-    body_decay_seconds: tuple[float, ...] = (4.0, 4.0, 3.8, 2.3, 1.2)
+    body_decay_seconds: tuple[float, ...] = (4.0, 4.0, 3.8, 2.3, 1.8, 1.5, 1.3, 1.2)
+    body_decay_active: tuple[bool, ...] = (
+        True,
+        True,
+        True,
+        True,
+        False,
+        False,
+        False,
+        True,
+    )
     dense_minimum_frequency_hz: float = 180.0
     dense_maximum_frequency_hz: float = 18000.0
     dense_frequency_warp: float = 1.0
@@ -116,6 +167,14 @@ class CrashFit:
     dispersion_low_decay_seconds: float = 0.9
     dispersion_middle_decay_seconds: float = 0.65
     dispersion_high_decay_seconds: float = 0.42
+    dispersion_diffusion: float = 1.0
+    bloom_body_gain: float = 1.0
+    unified_body_enabled: bool = True
+    field_gain: float = 0.73824115
+    field_turbulence: float = 0.65
+    field_packet_spread_erb: float = 6.0
+    field_phase_bandwidth_erb: float = 1.0
+    field_exchange: float = 0.35
     contact_duration_scale: float = 1.0
     contact_pulse_gain: float = 1.0
     contact_chirp_gain: float = 1.0
@@ -167,6 +226,14 @@ class CrashFit:
                 self.dense_gain_envelope_db, DENSE_GAIN_ENVELOPE_POINT_COUNT
             ),
         )
+        frequencies, seconds, active = _upgrade_decay_curve(
+            self.body_decay_frequency_hz,
+            self.body_decay_seconds,
+            self.body_decay_active,
+        )
+        object.__setattr__(self, "body_decay_frequency_hz", frequencies)
+        object.__setattr__(self, "body_decay_seconds", seconds)
+        object.__setattr__(self, "body_decay_active", active)
 
     def native(self):
         import _triggerfish_dsp as native
@@ -198,6 +265,34 @@ def _resample_envelope(values, point_count: int) -> tuple[float, ...]:
     positions = np.linspace(0.0, 1.0, source.size)
     target = np.linspace(0.0, 1.0, point_count)
     return tuple(float(value) for value in np.interp(target, positions, source))
+
+
+def _upgrade_decay_curve(frequencies, seconds, active):
+    """Upgrade the former five-knot curve to eight fixed-capacity slots."""
+    frequencies = tuple(float(value) for value in frequencies)
+    seconds = tuple(float(value) for value in seconds)
+    active = tuple(bool(value) for value in active)
+    if len(frequencies) == len(seconds) == len(active) == BODY_DECAY_POINT_COUNT:
+        return frequencies, seconds, active
+    if len(frequencies) == len(seconds) == 5:
+        return (
+            (0.0, *frequencies, 20000.0, 24000.0),
+            (seconds[0], *seconds, seconds[-1], seconds[-1]),
+            (True, True, True, True, True, True, False, True),
+        )
+    if len(frequencies) == BODY_DECAY_POINT_COUNT and len(seconds) == 5:
+        seconds = (
+            seconds[0],
+            seconds[1],
+            seconds[2],
+            seconds[3],
+            1.0,
+            1.0,
+            1.0,
+            seconds[4],
+        )
+        return frequencies, seconds, (True, True, True, True, False, False, False, True)
+    raise ValueError("body decay curve needs five legacy or eight current points")
 
 
 def render_crash(

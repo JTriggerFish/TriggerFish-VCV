@@ -119,6 +119,10 @@ excite a body is not mistaken for an independently mixed noise layer.
 
 The remaining design is split by responsibility:
 
+- [Nonlinear resonator architecture](TfPercussion-nonlinear-resonator-architecture.md):
+  self-contained signal flow, contact and bloom behaviour, the 408-state
+  unified stochastic modal field, energy invariants, controls, and current
+  limitations.
 - [Metallic percussion DSP components](TfPercussion-metal-components.md):
   dispersion, feedback causality, resonators, shifters, fractional delay,
   radiation, and live loss.
@@ -140,11 +144,13 @@ The remaining design is split by responsibility:
 
 ## Open architectural questions
 
-- How much inter-resonator coupling improves the dense cymbal residual before
-  it exposes a comb lattice, becomes generic reverberation, or causes late
-  energy regrowth.
+- Whether the fixed 17-state packet provides enough density at every anchor or
+  should become an adaptive allocation after perceptual validation.
+- Whether local orthogonal modal exchange is sufficient, and how much exchange
+  improves metallic evolution before it blurs useful ridges or causes
+  implausible redistribution between decay regions.
 - Whether slow delay modulation remains necessary once self-phase distortion
-  and coupled resonators are present.
+  and stochastic modal diffusion are present.
 - Whether the slow and self-modulated reads should ultimately be combined.
 - Whether bell/plate and later shell/membrane subsystems need separate
   dispersion loops or only separate resonator projections.
@@ -158,16 +164,16 @@ The remaining design is split by responsibility:
 
 ## Cymbal representation decision
 
-Persistent cymbal structure uses an arbitrary modal bank whose frequencies,
-decays, excitation gains, and observation gains are independently fitted.
-Unresolved metallic wash uses a deterministic statistical modal cloud whose
-individual modes are generated from smooth fitted distributions. Both are
-audible parallel branches: direct body drive excites the sparse bank, while the
-dispersion output excites the cloud. Raw dispersion is analysis/excitation
-only. A weak dispersion-to-sparse feed, coupled delay network, and fixed
-frequency shifts remain ablations, not substitutes for direct mode placement.
-This division preserves an interpretable modal parameterization while retaining
-an efficient path for perceptual density and bloom.
+The current proposed crash body is one stochastic modal field. Twenty-four
+editable anchors each expand to a coherent centre and sixteen stochastic
+satellites. Direct contact and dispersed bloom excite the same stored field.
+Normalized centre-to-satellite drive, ERB-domain spread, magnitude-preserving
+phase diffusion, and local orthogonal energy exchange provide a continuous
+resolved-ridge-to-wash trajectory. Raw dispersion remains excitation and
+analysis only. The former sparse modal bank, statistical cloud, and turbulent
+reservoir remain a legacy workbench comparator rather than three parts of the
+proposed output. The complete graph and equations are in the
+[nonlinear resonator architecture](TfPercussion-nonlinear-resonator-architecture.md).
 
 All percussion bodies are mono unless a physical topology explicitly contains
 multiple bodies. Mono output remains a complete supported presentation.

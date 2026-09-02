@@ -8,7 +8,8 @@
 
 namespace tfworkbench {
 
-inline constexpr std::size_t ResolvedModePointCount = 12;
+inline constexpr std::size_t ResolvedModePointCount =
+    tfdsp::percussion::CrashSparseModeCount;
 inline constexpr std::size_t DenseWashCurvePointCount = 8;
 inline constexpr std::size_t TurbulenceCurvePointCount = 3;
 inline constexpr std::size_t BodyDecayCurvePointCount =
@@ -20,10 +21,18 @@ enum class CrashMacro : std::size_t {
   ModelLevelDb,
   ImpactToneNoise,
   ImpactWidth,
-  BloomAmount,
+  BloomLevel,
+  BloomNonlinearity,
   BloomDevelopment,
+  BloomDiffusion,
   BodyToneWash,
   BodyBrightness,
+  UnifiedBodyEnabled,
+  FieldTurbulence,
+  FieldPacketSpread,
+  FieldPhaseBandwidth,
+  FieldExchange,
+  FieldGain,
   DirectGain,
   TurbulenceEnabled,
   TurbulenceAmount,
@@ -69,10 +78,13 @@ enum class CrashMacro : std::size_t {
       DenseWashLevelFirst + DenseWashCurvePointCount,
   BodyDecaySecondsFirst =
       BodyDecayFrequencyFirst + BodyDecayCurvePointCount,
-  ResolvedFrequencyFirst =
+  BodyDecayActiveFirst =
       BodyDecaySecondsFirst + BodyDecayCurvePointCount,
+  ResolvedFrequencyFirst =
+      BodyDecayActiveFirst + BodyDecayCurvePointCount,
   ResolvedLevelFirst = ResolvedFrequencyFirst + ResolvedModePointCount,
-  Count = ResolvedLevelFirst + ResolvedModePointCount
+  ResolvedTurbulenceFirst = ResolvedLevelFirst + ResolvedModePointCount,
+  Count = ResolvedTurbulenceFirst + ResolvedModePointCount
 };
 
 inline constexpr std::size_t CrashMacroCount =
@@ -92,6 +104,7 @@ using CrashMacroValues = std::array<float, CrashMacroCount>;
 
 const CrashMacroDescriptor &CrashMacroDescription(std::size_t index) noexcept;
 CrashMacroValues DefaultCrashMacros() noexcept;
+tfdsp::percussion::CrashCymbalFitParameters CrashWorkbenchBaseFit() noexcept;
 tfdsp::percussion::CrashCymbalFitParameters ApplyCrashMacros(
     const tfdsp::percussion::CrashCymbalFitParameters &base,
     const CrashMacroValues &values) noexcept;

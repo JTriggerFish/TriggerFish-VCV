@@ -67,6 +67,8 @@ void CrashCymbal::Prepare(const float sampleRate,
   const float maximumDelay = std::max(512.f, .025f * sampleRate);
   dispersion_.Prepare(sampleRate, maximumDelay, parameters.dispersion);
   turbulence_.Prepare(sampleRate, parameters.turbulence);
+  modalField_.Prepare(sampleRate, parameters.modalField,
+                      parameters.modalFieldControls, 700.f, 6500.f);
   sparseModes_.Prepare(sampleRate, parameters.sparseModes, 700.f, 6500.f);
   denseModes_.Prepare(sampleRate, parameters.denseModes, 700.f, 6500.f);
   denseExtensionModes_.Prepare(
@@ -76,12 +78,15 @@ void CrashCymbal::Prepare(const float sampleRate,
       tfdsp::FiniteNormalOrZero(parameters.fit.sparseBloomGain), 0.f, 2.f);
   denseBypassGain_ = std::clamp(
       tfdsp::FiniteNormalOrZero(parameters.fit.bodyBypassGain), 0.f, 2.f);
+  bloomBodyGain_ = std::clamp(
+      tfdsp::FiniteNormalOrZero(parameters.fit.bloomBodyGain), 0.f, 2.f);
   sparseEnabled_ = parameters.observation[1].gain > 0.f;
   denseEnabled_ = parameters.observation[2].gain > 0.f;
   denseExtensionEnabled_ = denseExtensionModes_.ActiveModeCount() > 0;
   turbulenceEnabled_ = std::any_of(
       parameters.turbulence.gain.begin(), parameters.turbulence.gain.end(),
       [](const float gain) { return gain > 0.f; });
+  unifiedBodyEnabled_ = parameters.fit.unifiedBodyEnabled;
   delayConstraint_.Prepare(sampleRate, .003f, .08f);
   modalConstraint_.Prepare(sampleRate, .001f, .003f, .08f);
   Reset();
@@ -91,6 +96,7 @@ void CrashCymbal::Reset() noexcept {
   contact_.Reset();
   dispersion_.Reset();
   turbulence_.Reset();
+  modalField_.Reset();
   sparseModes_.Reset();
   denseModes_.Reset();
   denseExtensionModes_.Reset();
@@ -104,6 +110,7 @@ void CrashCymbal::Reset() noexcept {
       parameters_.denseBowProjection);
   denseExtensionModes_.SetSecondaryExcitationProjection(
       parameters_.denseExtensionBowProjection);
+  modalField_.SetSecondaryExcitationProjection(parameters_.fieldBowProjection);
   bodyDriveScale_ = 1.f;
 }
 
@@ -125,20 +132,29 @@ CrashCymbalFrame CrashCymbal::ProcessFrame() noexcept {
   const auto contact = contact_.Process();
   const float bodyDrive = bodyDriveScale_ * contact.bodyDrive;
   const float bloom = dispersion_.Process(bodyDrive, delayLoss);
-  const float sparseBloom = sparseBloomGain_ * bloom;
-  const float sparse = ProcessModalBody(
-      sparseModes_, sparseEnabled_, bodyDrive, sparseBloom, modalLoss);
-  const float denseContact = denseBypassGain_ * bodyDrive;
-  const float modalDense = ProcessModalBody(
-      denseModes_, denseEnabled_, denseContact, bloom, modalLoss);
-  const float modalDenseExtension = ProcessModalBody(
-      denseExtensionModes_, denseEnabled_ && denseExtensionEnabled_,
-      denseContact, bloom, modalLoss);
-  const float turbulent = turbulenceEnabled_
-      ? turbulence_.Process(bloom, modalLoss)
-      : 0.f;
-  const float dense = tfdsp::FiniteNormalOrZero(
-      modalDense + modalDenseExtension);
+  const float bodyBloom = bloomBodyGain_ * bloom;
+  float sparse = 0.f;
+  float dense = 0.f;
+  float turbulent = 0.f;
+  if (unifiedBodyEnabled_) {
+    dense = modalField_.ProcessExcitedPair(
+        bodyDrive, bodyBloom, modalLoss);
+  } else {
+    const float sparseBloom = sparseBloomGain_ * bodyBloom;
+    sparse = ProcessModalBody(
+        sparseModes_, sparseEnabled_, bodyDrive, sparseBloom, modalLoss);
+    const float denseContact = denseBypassGain_ * bodyDrive;
+    const float modalDense = ProcessModalBody(
+        denseModes_, denseEnabled_, denseContact, bodyBloom, modalLoss);
+    const float modalDenseExtension = ProcessModalBody(
+        denseExtensionModes_, denseEnabled_ && denseExtensionEnabled_,
+        denseContact, bodyBloom, modalLoss);
+    turbulent = turbulenceEnabled_
+        ? turbulence_.Process(bodyBloom, modalLoss)
+        : 0.f;
+    dense = tfdsp::FiniteNormalOrZero(
+        modalDense + modalDenseExtension);
+  }
   const ObservationModel<4>::SourceFrame sources{
       contact.directRadiation, sparse, dense, turbulent};
   return {
@@ -276,10 +292,12 @@ ContactExciterParameters CrashCymbal::ContactParameters(
       implementMix(0.f, .95f, .95f),
       implementMix(0.f, .2f, .8f),
       implementMix(0.f, .12f, .28f),
-      implementMix(.5f, .24f, .32f),
-      implementMix(.35f, .5f, .72f),
-      implementMix(1.f, .22f, .25f),
-      implementMix(.7f, .42f, .85f)};
+      // A brush contains many more contacts than a stick. Its routing is
+      // energy-normalized here while its long stochastic gesture is retained.
+      implementMix(.0175f, .24f, .32f),
+      implementMix(.07f, .5f, .72f),
+      implementMix(.035f, .22f, .25f),
+      implementMix(.14f, .42f, .85f)};
   return result;
 }
 
@@ -296,6 +314,9 @@ void CrashCymbal::SetExcitationProjection(const float value,
       location, parameters_.denseExtensionBellProjection,
       parameters_.denseExtensionBowProjection,
       parameters_.denseExtensionEdgeProjection);
+  fieldProjection_ = InterpolateProjection(
+      location, parameters_.fieldBellProjection,
+      parameters_.fieldBowProjection, parameters_.fieldEdgeProjection);
   const float velocityBrightness =
       parameters_.fit.velocityBrightnessDbPerOctave;
   ApplyVelocityColour(sparseProjection_, parameters_.sparseModes, strength,
@@ -305,9 +326,12 @@ void CrashCymbal::SetExcitationProjection(const float value,
   ApplyVelocityColour(denseExtensionProjection_,
                       parameters_.denseExtensionModes, strength,
                       velocityBrightness);
+  ApplyVelocityColour(fieldProjection_, parameters_.modalField, strength,
+                      velocityBrightness);
   sparseModes_.SetExcitationProjection(sparseProjection_);
   denseModes_.SetExcitationProjection(denseProjection_);
   denseExtensionModes_.SetExcitationProjection(denseExtensionProjection_);
+  modalField_.SetExcitationProjection(fieldProjection_);
 }
 
 } // namespace tfdsp::percussion

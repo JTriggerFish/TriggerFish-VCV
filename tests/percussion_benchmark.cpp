@@ -194,6 +194,8 @@ void BenchmarkCrashCymbal() {
   BenchmarkCrashVariant("complete crash", fit);
   fit.denseModeDensity = 2.f;
   BenchmarkCrashVariant("complete crash, 4096 wash modes", fit);
+  fit.unifiedBodyEnabled = true;
+  BenchmarkCrashVariant("unified 408-mode crash", fit);
 }
 
 } // namespace

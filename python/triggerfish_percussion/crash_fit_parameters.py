@@ -70,8 +70,9 @@ def _parameter_address(name: str) -> tuple[str, int | None]:
     return field, int(suffix[:-1])
 
 
+BODY_DECAY_SLOTS = (0, 1, 2, 3, 7)
 BODY_DECAY_PARAMETERS = tuple(
-    parameter(f"body_decay_seconds[{index}]", 0.02, 20.0) for index in range(5)
+    parameter(f"body_decay_seconds[{index}]", 0.02, 20.0) for index in BODY_DECAY_SLOTS
 )
 TURBULENCE_PARAMETERS = (
     *(parameter(f"turbulence_gain[{index}]", 0.0, 1.0) for index in range(3)),
@@ -186,6 +187,82 @@ CAUSAL_STAGES = (
 )
 
 
+# Current one-field graph. The older CAUSAL_STAGES remain loadable for legacy
+# diagnostic artifacts, but new fits must not spend evaluations on controls
+# that are disconnected when unified_body_enabled is true.
+UNIFIED_CAUSAL_STAGES = (
+    CAUSAL_STAGES[0],
+    CausalStage(
+        "unified-impact-balance",
+        0.015,
+        (
+            parameter("direct_gain", 0.0, 2.0),
+            parameter("field_gain", 0.0, 3.0),
+            parameter("direct_colour_frequency_hz", 1000.0, 16000.0),
+            parameter("direct_colour_gain_db", -12.0, 12.0),
+            parameter("direct_high_cut_hz", 8000.0, 22000.0),
+            parameter("strength_gamma", 0.35, 3.0),
+            parameter("body_strength_gamma", 0.2, 2.5),
+        ),
+        requires_quality=False,
+    ),
+    CausalStage(
+        "unified-initial-body",
+        0.100,
+        (
+            parameter("field_gain", 0.0, 3.0),
+            parameter("dense_tilt_db_per_octave", -8.0, 5.0),
+            parameter("field_turbulence", 0.0, 1.0),
+            parameter("field_packet_spread_erb", 0.0, 12.0),
+            parameter("field_phase_bandwidth_erb", 0.0, 4.0),
+            parameter("field_exchange", 0.0, 1.0),
+            parameter("bloom_body_gain", 0.0, 2.0),
+            parameter("dispersion_drive", 0.0, 8.0),
+            parameter("dispersion_excursion_samples", 0.0, 16.0),
+            parameter("dispersion_feedback", 0.7, 0.9995, 0.002),
+            parameter("dispersion_diffusion", 0.0, 1.0),
+            parameter("dispersion_low_decay_seconds", 0.1, 2.0),
+            parameter("dispersion_middle_decay_seconds", 0.08, 1.5),
+            parameter("dispersion_high_decay_seconds", 0.05, 1.0),
+            *BODY_DECAY_PARAMETERS,
+            parameter("dense_colour_frequency_hz", 1000.0, 16000.0),
+            parameter("dense_colour_gain_db", -12.0, 12.0),
+            parameter("dense_high_cut_hz", 8000.0, 22000.0),
+        ),
+        requires_quality=False,
+        requires_acceptance_gate=False,
+    ),
+    CausalStage(
+        "unified-bloom",
+        0.250,
+        (
+            parameter("field_turbulence", 0.0, 1.0),
+            parameter("field_packet_spread_erb", 0.0, 12.0),
+            parameter("field_phase_bandwidth_erb", 0.0, 4.0),
+            parameter("field_exchange", 0.0, 1.0),
+            parameter("bloom_body_gain", 0.0, 2.0),
+            parameter("dispersion_drive", 0.0, 8.0),
+            parameter("dispersion_excursion_samples", 0.0, 16.0),
+            parameter("dispersion_feedback", 0.7, 0.9995, 0.002),
+            parameter("dispersion_diffusion", 0.0, 1.0),
+            parameter("dispersion_low_decay_seconds", 0.1, 2.0),
+            parameter("dispersion_middle_decay_seconds", 0.08, 1.5),
+            parameter("dispersion_high_decay_seconds", 0.05, 1.0),
+            *BODY_DECAY_PARAMETERS,
+        ),
+        requires_quality=False,
+        requires_acceptance_gate=False,
+    ),
+    CausalStage(
+        "unified-tail",
+        4.000,
+        BODY_DECAY_PARAMETERS,
+        requires_quality=False,
+        requires_acceptance_gate=False,
+    ),
+)
+
+
 ALL_CAUSAL_PARAMETERS = tuple(
     {item.name: item for stage in CAUSAL_STAGES for item in stage.parameters}.values()
 )
@@ -241,7 +318,7 @@ _SCREENED_RESIDUAL = _selected_parameters(
     "turbulence_persistence",
 )
 _SCREENED_DECAY = _selected_parameters(
-    *(f"body_decay_seconds[{index}]" for index in range(5)),
+    *(f"body_decay_seconds[{index}]" for index in BODY_DECAY_SLOTS),
 )
 _SCREENED_JOINT = tuple(
     {
@@ -326,7 +403,7 @@ _INITIAL_DECAY_TURBULENCE = _selected_parameters(
     "turbulence_persistence",
 )
 _INITIAL_DECAY_LOSS = _selected_parameters(
-    *(f"body_decay_seconds[{index}]" for index in range(5)),
+    *(f"body_decay_seconds[{index}]" for index in BODY_DECAY_SLOTS),
 )
 _INITIAL_DECAY_JOINT = tuple(
     {

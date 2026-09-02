@@ -19,11 +19,12 @@ void Check(const bool condition, const char *message) {
 }
 
 std::vector<float> Render(const std::uint32_t handle, const std::uint32_t seed,
-                          const float location, const std::size_t blockSize) {
-  constexpr std::size_t FrameCount = 8192;
-  std::vector<float> result(FrameCount);
+                          const float location, const std::size_t blockSize,
+                          const float implement = .75f,
+                          const std::size_t frameCount = 8192) {
+  std::vector<float> result(frameCount);
   Check(tf_crash_reset(handle) == 1, "reset accepts a live handle");
-  Check(tf_crash_trigger(handle, .8f, location, .65f, .75f, .2f, seed) == 1,
+  Check(tf_crash_trigger(handle, .8f, location, .65f, implement, .2f, seed) == 1,
         "trigger accepts a live handle");
   for (std::size_t first = 0; first < result.size(); first += blockSize) {
     const auto count = std::min(blockSize, result.size() - first);
@@ -44,11 +45,18 @@ double Difference(const std::vector<float> &first,
   return result;
 }
 
+double Energy(const std::vector<float> &audio) {
+  double result = 0.0;
+  for (const float sample : audio)
+    result += static_cast<double>(sample) * sample;
+  return result;
+}
+
 } // namespace
 
 int main() {
-  Check(tf_crash_api_version() == 7, "API version is explicit");
-  Check(tf_crash_macro_count() == 97, "the fitting surface is versioned");
+  Check(tf_crash_api_version() == 12, "API version is explicit");
+  Check(tf_crash_macro_count() == 167, "the fitting surface is versioned");
   Check(std::abs(tf_crash_macro_default(0) + 20.f) < 1.e-6f,
         "the crash workbench starts at -20 dB model level");
   Check(tf_crash_macro_key(0) != nullptr &&
@@ -63,26 +71,79 @@ int main() {
   std::size_t firstFrequency = painted.size();
   std::size_t firstLevel = painted.size();
   std::size_t secondLevel = painted.size();
+  std::size_t unified = painted.size();
+  std::size_t fieldTurbulence = painted.size();
+  std::size_t bloomDiffusion = painted.size();
+  std::size_t bloomLevel = painted.size();
+  std::size_t bloomNonlinearity = painted.size();
+  std::size_t firstDecayActive = painted.size();
+  std::size_t firstModeTurbulence = painted.size();
   for (std::size_t index = 0; index < painted.size(); ++index) {
     const auto &key = tfworkbench::CrashMacroDescription(index).key;
     if (key == "resolved_frequency_0") firstFrequency = index;
     else if (key == "resolved_level_0") firstLevel = index;
     else if (key == "resolved_level_1") secondLevel = index;
+    else if (key == "unified_body_enabled") unified = index;
+    else if (key == "field_turbulence") fieldTurbulence = index;
+    else if (key == "bloom_diffusion") bloomDiffusion = index;
+    else if (key == "bloom_level") bloomLevel = index;
+    else if (key == "bloom_nonlinearity") bloomNonlinearity = index;
+    else if (key == "body_decay_active_0") firstDecayActive = index;
+    else if (key == "resolved_turbulence_0") firstModeTurbulence = index;
   }
   Check(firstFrequency < painted.size() && firstLevel < painted.size() &&
-            secondLevel < painted.size(),
-        "resolved-mode macros have stable keys");
+            secondLevel < painted.size() && unified < painted.size() &&
+            fieldTurbulence < painted.size() && bloomDiffusion < painted.size() &&
+            bloomLevel < painted.size() && bloomNonlinearity < painted.size() &&
+            firstDecayActive < painted.size() &&
+            firstModeTurbulence < painted.size(),
+        "modal-field macros have stable keys");
+  Check(tfworkbench::CrashMacroDescription(firstFrequency).maximum == 15000.f,
+        "the constructive modal editor stops at 15 kHz");
   painted[firstFrequency] = 177.f;
   painted[firstLevel] = 12.f;
   painted[secondLevel] = -12.f;
-  const auto paintedFit = tfworkbench::ApplyCrashMacros({}, painted);
+  painted[firstModeTurbulence] = 0.f;
+  const auto baseFit = tfworkbench::CrashWorkbenchBaseFit();
+  const auto paintedFit = tfworkbench::ApplyCrashMacros(baseFit, painted);
   const auto defaultFit = tfworkbench::ApplyCrashMacros(
-      {}, tfworkbench::DefaultCrashMacros());
+      baseFit, tfworkbench::DefaultCrashMacros());
   Check(std::abs(paintedFit.sparseFrequencyHz[0] - 177.f) < 1.e-5f &&
             paintedFit.sparseAmplitude[0] > paintedFit.sparseAmplitude[1],
         "resolved editor directly places and levels resolved modes");
+  Check(paintedFit.fieldTurbulenceScale[0] == 0.f,
+        "each modal anchor owns a turbulence-response scaler");
   Check(paintedFit.denseGainEnvelopeDb == defaultFit.denseGainEnvelopeDb,
         "resolved-mode paint cannot colour the dense wash");
+  Check(std::abs(defaultFit.contactChirpGain - baseFit.contactChirpGain) <
+                1.e-6f &&
+            std::abs(defaultFit.contactDurationScale -
+                     baseFit.contactDurationScale) < 1.e-6f &&
+            std::abs(defaultFit.dispersionDrive - baseFit.dispersionDrive) <
+                1.e-6f &&
+            std::abs(defaultFit.dispersionExcursionSamples -
+                     baseFit.dispersionExcursionSamples) < 1.e-5f,
+        "neutral macros preserve the fitted contact and bloom");
+  auto noBloom = tfworkbench::DefaultCrashMacros();
+  noBloom[bloomLevel] = 0.f;
+  const auto noBloomFit = tfworkbench::ApplyCrashMacros(baseFit, noBloom);
+  Check(noBloomFit.bloomBodyGain == 0.f &&
+            std::abs(noBloomFit.dispersionDrive - baseFit.dispersionDrive) <
+                1.e-6f,
+        "bloom level reaches zero without changing loop nonlinearity");
+  Check(defaultFit.bodyDecayActive.front() &&
+            defaultFit.bodyDecayActive.back(),
+        "the T60 envelope always retains DC and Nyquist boundaries");
+  auto cleared = tfworkbench::DefaultCrashMacros();
+  for (std::size_t mode = 0; mode < 24; ++mode) {
+    const auto index = firstLevel + mode;
+    cleared[index] = tfworkbench::CrashMacroDescription(index).minimum;
+  }
+  const auto clearedFit = tfworkbench::ApplyCrashMacros(baseFit, cleared);
+  Check(std::all_of(clearedFit.sparseAmplitude.begin(),
+                    clearedFit.sparseAmplitude.end(),
+                    [](const float amplitude) { return amplitude == 0.f; }),
+        "clearing the modal editor deactivates every anchor exactly");
   Check(tf_crash_create(0.f) == 0, "invalid sample rates are rejected");
   const auto handle = tf_crash_create(48000.f);
   Check(handle != 0, "a renderer session can be created");
@@ -98,6 +159,50 @@ int main() {
   Check(std::all_of(first.begin(), first.end(), [](const float sample) {
     return std::isfinite(sample);
   }), "rendered samples remain finite");
+  const auto brush = Render(handle, 17, .8f, 256, 0.f, 48000);
+  const auto stick = Render(handle, 17, .8f, 256, 1.f, 48000);
+  const double brushToStick = Energy(brush) / std::max(Energy(stick), 1.e-30);
+  if (!(brushToStick > .2 && brushToStick < 4.))
+    std::cerr << "workbench brush/stick energy ratio: " << brushToStick << '\n';
+  Check(brushToStick > .2 && brushToStick < 4.,
+        "factory brush energy remains comparable to the stick family");
+
+  Check(tf_crash_macro_set(handle, fieldTurbulence, 0.f) &&
+            tf_crash_macro_commit(handle),
+        "the unified field can collapse to coherent anchors");
+  const auto coherent = Render(handle, 17, .8f, 256);
+  Check(tf_crash_macro_set(handle, fieldTurbulence, 1.f) &&
+            tf_crash_macro_commit(handle),
+        "the unified field accepts maximum turbulence");
+  const auto diffuse = Render(handle, 17, .8f, 256);
+  const double coherentEnergy =
+      Difference(coherent, std::vector<float>(coherent.size()));
+  Check(Difference(coherent, diffuse) > 1.e-4 * coherentEnergy,
+        "unified turbulence materially changes the body response");
+  Check(tf_crash_macro_set(handle, unified, 0.f) &&
+            tf_crash_macro_commit(handle),
+        "the legacy body remains available for A/B testing");
+  const auto legacy = Render(handle, 17, .8f, 256);
+  Check(Difference(diffuse, legacy) > 1.e-3,
+        "unified and legacy body paths are acoustically distinct");
+  Check(tf_crash_macro_set(handle, unified, 1.f) &&
+            tf_crash_macro_set(handle, bloomDiffusion, 0.f) &&
+            tf_crash_macro_commit(handle),
+        "the bloom allpass chain can collapse to matched delays");
+  const auto focusedBloom = Render(handle, 17, .8f, 256);
+  Check(tf_crash_macro_set(handle, bloomDiffusion, 1.f) &&
+            tf_crash_macro_commit(handle),
+        "the bloom allpass chain can restore full diffusion");
+  const auto diffuseBloom = Render(handle, 17, .8f, 256);
+  const double bloomEnergy =
+      Difference(focusedBloom, std::vector<float>(focusedBloom.size()));
+  Check(Difference(focusedBloom, diffuseBloom) > 1.e-4 * bloomEnergy,
+        "bloom diffusion materially changes the body excitation");
+  for (std::size_t index = 0; index < tf_crash_macro_count(); ++index)
+    Check(tf_crash_macro_set(handle, index, tf_crash_macro_default(index)),
+          "factory controls can be restored after ablation");
+  Check(tf_crash_macro_commit(handle),
+        "restored factory controls prepare successfully");
 
   const auto controlHandle = tf_crash_create(48000.f);
   Check(controlHandle != 0, "a second live renderer can be created");

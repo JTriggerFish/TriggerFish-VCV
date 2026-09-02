@@ -6,8 +6,10 @@ import { readReferences } from "./references.mjs";
 import { ReferenceBrowser } from "./reference_browser.mjs";
 import { SpectrogramView } from "./spectrogram.mjs";
 import { downloadFit, readFit, snapshotState } from "./state.mjs";
+import { Tooltips } from "./tooltips.mjs";
 
 const byId = id => document.getElementById(id);
+new Tooltips();
 const state = {
   reference: null, references: [], synthesis: null, snapshots: [],
   macros: [], activeSnapshotId: null,
@@ -81,6 +83,9 @@ function paintPerformanceControls() {
   byId("hardness").value = state.event.hardness;
   byId("hardness").nextElementSibling.textContent =
     state.event.hardness.toFixed(2);
+  byId("contact-spread").value = state.event.contactSpread;
+  byId("contact-spread").nextElementSibling.textContent =
+    state.event.contactSpread.toFixed(2);
 }
 
 function setStatus(message) { byId("status").textContent = message; }
@@ -119,6 +124,14 @@ function buildControls() {
     onLevelReset: () => requestLevelMatch(),
   });
   fitControls.build();
+  applyBodyUiMode(fitControls.bodyMode(), false);
+}
+
+function applyBodyUiMode(mode, notify = true) {
+  const selected = mode === "legacy" ? "legacy" : "unified";
+  document.body.dataset.bodyMode = selected;
+  byId("body-ui-mode").value = selected;
+  fitControls?.setBodyMode(selected, notify);
 }
 
 function analyze(kind, samples, sampleRate, cacheKey) {
@@ -295,6 +308,7 @@ function drawWaveform() {
 function setReference(reference) {
   const firstReference = !state.reference;
   state.reference = reference;
+  fitControls?.decayEditor?.refresh();
   audition.setTrim(reference.corpus?.auditionTrimDb ?? 0);
   byId("calibration-trim").textContent =
     `Corpus trim ${audition.trimDb >= 0 ? "+" : ""}${audition.trimDb.toFixed(1)} dB`;
@@ -374,6 +388,7 @@ async function restore(item) {
 
 function buildPageValues() {
   fitControls.build();
+  applyBodyUiMode(fitControls.bodyMode(), false);
   paintPerformanceControls();
   byId("colour-range").value = state.analysis.dynamicRangeDb;
   byId("colour-range").nextElementSibling.textContent =
@@ -393,6 +408,8 @@ async function initialize() {
     repeat: byId("reference-repeat"),
   }, setReference, setStatus);
   await referenceBrowser.initialize();
+  byId("body-ui-mode").onchange = event =>
+    applyBodyUiMode(event.currentTarget.value);
   byId("reference-files").onchange = async event => {
     try {
       const loaded = await readReferences(event.target.files);
@@ -435,6 +452,17 @@ async function initialize() {
     event.currentTarget.value = state.eventDefaults.hardness;
     event.currentTarget.dispatchEvent(new Event("input"));
   };
+  byId("contact-spread").oninput = event => {
+    state.event.contactSpread = Number(event.currentTarget.value);
+    event.currentTarget.nextElementSibling.textContent =
+      state.event.contactSpread.toFixed(2);
+    scheduleRender();
+  };
+  byId("contact-spread").ondblclick = event => {
+    event.preventDefault();
+    event.currentTarget.value = state.eventDefaults.contactSpread;
+    event.currentTarget.dispatchEvent(new Event("input"));
+  };
   document.querySelectorAll('input[name="implement"]').forEach(input => {
     input.onchange = event => {
       state.event.implement = Number(event.currentTarget.value);
@@ -451,7 +479,7 @@ async function initialize() {
     state.event.seed += 1;
     audition.trigger({ ...state.event }).catch(error => setStatus(String(error)));
   };
-  bindAnalysisControls(); bindSnapshotControls();
+  bindAnalysisControls(); bindAnalysisDivider(); bindSnapshotControls();
   renderSynthesis();
   setInterval(() => {
     const latency = audition.latencyMs ? ` · ${audition.latencyMs.toFixed(0)} ms` : "";
@@ -469,6 +497,53 @@ async function initialize() {
         ? `Live DSP ready · ${audition.macroCommitMs.toFixed(0)} ms`
         : "Live DSP idle";
   }, 100);
+}
+
+function bindAnalysisDivider() {
+  const divider = byId("analysis-divider");
+  const analysis = document.querySelector(".analysis");
+  const storageKey = "tf-spectrogram-height-v2";
+  const apply = height => {
+    const maximum = Math.min(620, Math.max(220, .65 * window.innerHeight));
+    const value = Math.round(Math.max(110, Math.min(maximum, height)));
+    analysis.style.setProperty("--spectrogram-height", `${value}px`);
+    divider.setAttribute("aria-valuenow", value);
+    return value;
+  };
+  let height = apply(Number(localStorage.getItem(storageKey)) || 300);
+  let drag = null;
+  divider.onpointerdown = event => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    drag = { pointerId: event.pointerId, y: event.clientY, height };
+    divider.setPointerCapture(event.pointerId);
+  };
+  divider.onpointermove = event => {
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    height = apply(drag.height + event.clientY - drag.y);
+  };
+  const finish = event => {
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    drag = null;
+    localStorage.setItem(storageKey, height);
+    if (divider.hasPointerCapture(event.pointerId)) {
+      divider.releasePointerCapture(event.pointerId);
+    }
+  };
+  divider.onpointerup = finish;
+  divider.onpointercancel = finish;
+  divider.ondblclick = event => {
+    event.preventDefault();
+    height = apply(300);
+    localStorage.setItem(storageKey, height);
+  };
+  divider.onkeydown = event => {
+    if (!["ArrowUp", "ArrowDown", "Home"].includes(event.key)) return;
+    event.preventDefault();
+    height = apply(event.key === "Home" ? 300 :
+      height + (event.key === "ArrowDown" ? 12 : -12));
+    localStorage.setItem(storageKey, height);
+  };
 }
 
 function bindAnalysisControls() {

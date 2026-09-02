@@ -16,6 +16,7 @@ const output = resolve(options.output);
 await mkdir(output, { recursive: true });
 for (const name of [
   "index.html", "styles.css", "app.mjs", "fit_controls.mjs", "point_editor.mjs",
+  "modal_editor.mjs", "decay_curve_editor.mjs", "tooltips.mjs",
   "size_meta.mjs", "engine.mjs", "audio.mjs",
   "references.mjs", "analysis.mjs", "analysis_worker.mjs",
   "render_worker.mjs",

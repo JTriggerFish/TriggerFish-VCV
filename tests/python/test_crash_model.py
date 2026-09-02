@@ -44,6 +44,7 @@ from triggerfish_percussion.crash_fit_parameters import (
     SCREENED_INITIAL_DECAY_STAGES,
     SINGLE_HIT_ATTACK_PARAMETERS,
     SINGLE_HIT_UNIDENTIFIABLE_PARAMETERS,
+    UNIFIED_CAUSAL_STAGES,
     fit_parameter_value,
     replace_fit_parameters,
     single_hit_stages,
@@ -84,6 +85,34 @@ def test_native_crash_parameters_round_trip_and_render():
     assert np.array_equal(first, repeated)
     assert np.isfinite(first).all()
     assert np.max(np.abs(first)) > 0
+
+
+def test_python_modal_grid_matches_the_native_constructive_defaults():
+    fit = CrashFit()
+    parameters = native.CrashCymbalFitParameters()
+    for field in (
+        "sparse_frequency_hz",
+        "sparse_decay_ratio",
+        "sparse_amplitude",
+        "body_decay_frequency_hz",
+        "body_decay_seconds",
+        "body_decay_active",
+    ):
+        np.testing.assert_allclose(getattr(fit, field), getattr(parameters, field))
+
+
+def test_legacy_decay_upgrade_preserves_all_five_interior_knots():
+    frequencies = (150.0, 500.0, 1500.0, 6000.0, 16000.0)
+    seconds = (3.5, 2.8, 2.5, 4.5, 0.35)
+    fit = CrashFit(
+        body_decay_frequency_hz=frequencies,
+        body_decay_seconds=seconds,
+    )
+    assert fit.body_decay_frequency_hz[1:6] == frequencies
+    assert fit.body_decay_seconds[1:6] == seconds
+    assert fit.body_decay_seconds[0] == seconds[0]
+    assert fit.body_decay_seconds[-1] == seconds[-1]
+    assert fit.body_decay_active == (True, True, True, True, True, True, False, True)
 
 
 def test_dense_mode_seed_is_repeatable_and_object_specific():
@@ -131,6 +160,14 @@ def test_spectral_profile_refinement_cannot_collapse_source_balance():
     assert "dense_gain" not in names
 
 
+def test_unified_fit_can_identify_bloom_routing_separately_from_body_level():
+    stages = {stage.name: stage for stage in UNIFIED_CAUSAL_STAGES}
+    for name in ("unified-initial-body", "unified-bloom"):
+        parameters = {item.name for item in stages[name].parameters}
+        assert "bloom_body_gain" in parameters
+        assert "field_gain" in parameters or name == "unified-bloom"
+
+
 def test_screened_initial_decay_keeps_earlier_gates_and_one_final_gate():
     stages = SCREENED_INITIAL_DECAY_STAGES
     assert [stage.name for stage in stages[:3]] == [
@@ -142,7 +179,7 @@ def test_screened_initial_decay_keeps_earlier_gates_and_one_final_gate():
     assert stages[-1].requires_acceptance_gate
     names = [parameter.name for parameter in stages[-1].parameters]
     assert len(names) == len(set(names))
-    for index in range(1, 5):
+    for index in (1, 2, 3, 7):
         assert f"body_decay_seconds[{index}]" in names
 
 
@@ -470,10 +507,10 @@ def test_reference_residual_subtracts_an_explicit_persistent_mode():
     tau_seconds = 0.7
     samples = np.exp(-time / tau_seconds) * np.cos(2 * np.pi * 1000.0 * time)
     fit = CrashFit(
-        sparse_frequency_hz=(1000.0,) + (2000.0,) * 11,
-        body_decay_seconds=(np.log(1000.0) * tau_seconds,) * 5,
-        sparse_decay_ratio=(1.0,) * 12,
-        sparse_amplitude=(1.0,) + (0.0,) * 11,
+        sparse_frequency_hz=(1000.0,) + (2000.0,) * 23,
+        body_decay_seconds=(np.log(1000.0) * tau_seconds,) * 8,
+        sparse_decay_ratio=(1.0,) * 24,
+        sparse_amplitude=(1.0,) + (0.0,) * 23,
     )
     cell = CrashFitCell("synthetic", AudioBuffer(samples, sample_rate), 1.0)
     modal, residual = reference_modal_residual(cell, fit)

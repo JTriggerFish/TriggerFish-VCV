@@ -121,6 +121,61 @@ pole/recurrence shift so an accidental sample of latency cannot pass unnoticed.
 
 ## Sparse modes and dense residual
 
+### Experimental unified modal field
+
+The complete current instrument graph, including contact, bloom, modal-state
+equations, energy accounting, control mapping, and observation, is documented
+in the self-contained
+[nonlinear resonator architecture](TfPercussion-nonlinear-resonator-architecture.md).
+This section keeps
+the reusable metallic-component rationale and legacy comparison.
+
+The crash workbench can replace the three body renderers below with one
+stochastic modal field. Twenty-four editable anchors, limited to a useful
+40 Hz--15 kHz design range, each generate one exact centre mode and sixteen
+symmetric ERB-domain satellites. Anchor energy is normalized
+before it is divided between the centre and satellites, so increasing
+turbulence does not implicitly increase body level. The same contact and bloom
+forces excite one stored field and one radiation path.
+
+Each mode can receive independent signed phase kicks. For a requested
+decorrelation bandwidth `B`, the fixed rotation uses
+`cos(theta) = exp(-pi * B / sampleRate)` and a randomly signed `sin(theta)`.
+The rotation has unit magnitude: it broadens the expected spectral line without
+changing modal energy or the separately declared T60. At zero bandwidth it is
+exactly the ordinary deterministic modal recurrence.
+
+Neighbouring states also undergo small randomly signed Givens rotations.
+Alternating pairings exchange energy within a packet and across adjacent packet
+boundaries. These rotations are orthogonal, so they cannot inject energy. The
+main Turbulence macro transfers energy from each coherent centre to its
+satellites and increases packet spread, phase bandwidth, and exchange. Every
+anchor also has a paintable `0..2x` response scaler. Zero keeps that packet
+coherent, one follows the global trajectory, and values above one reach its
+diffuse endpoint earlier. Neighbour exchange uses the geometric mean of the two
+local amounts, so a clean packet cannot be randomized through its neighbour.
+The last three global controls remain visible as advanced workbench ablations
+while the turbulence trajectory is calibrated.
+
+The displayed bell around an anchor is a design metaphor for this stochastic
+neighbourhood, not a claim that the cymbal contains a literal Gaussian family
+of physical eigenmodes. This is a constructive perceptual approximation, not the wave-turbulence solver
+of Cirio et al. Its acceptance criteria are smooth resolved-to-diffuse
+interpolation, invariant level and T60, stable restrikes, useful location
+projections, and a better match to reference ridge width and occupancy than the
+legacy branches. The workbench retains the legacy path for direct A/B testing;
+it is not part of the proposed final instrument topology.
+
+The bloom loop separately exposes all-pass diffusion. Scaling every Schroeder
+coefficient to zero leaves the matched pure delays in place, preserving causal
+loop length while removing frequency-dependent group-delay dispersion. This is
+kept independent from bloom level, development, and nonlinear self-phase.
+
+### Legacy three-branch comparator
+
+The following topology remains implemented only for workbench A/B diagnosis.
+It is not the current proposed crash body.
+
 A cymbal output is divided into resolvable persistent structure and unresolved
 high-density response. These are parallel audible representations of the same
 dispersed excitation, not a serial effects chain:
@@ -133,8 +188,9 @@ body drive ----+-----------> arbitrary modal bank -> modal radiation --------+
                                                    -> turbulence radiation --+
 ```
 
-The raw dispersion tap is not mixed into the output. It excites both modal
-representations and the turbulent residual. Resolved modes additionally retain
+The raw dispersion tap is not mixed into the output. An independent bloom-route
+gain sends it to both modal representations and the turbulent residual; at zero
+the loop may still evolve for analysis but cannot excite the body. Resolved modes additionally retain
 a strong direct-body feed for the immediate coherent response; the dense cloud
 uses only a weak direct bypass so its audible development follows the bloom.
 Keeping separate radiation paths allows their spectral balance and spatial

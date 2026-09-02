@@ -26,11 +26,7 @@ def fit_sparse_modes(
     tails = tuple(modal_tail(cell.reference) for cell in cells)
     required_hits = max(1, int(np.ceil(0.75 * len(cells))))
     stable = stable_modes(tails, 48000, passes, required_hits)
-    ranked = sorted(
-        stable,
-        key=lambda mode: mode.amplitude * np.sqrt(mode.decay_seconds),
-        reverse=True,
-    )[: len(initial.sparse_frequency_hz)]
+    ranked = stratified_modes(stable, len(initial.sparse_frequency_hz))
     selected = tuple(sorted(ranked, key=lambda mode: mode.frequency_hz))
     count = len(initial.sparse_frequency_hz)
     frequencies = list(initial.sparse_frequency_hz)
@@ -41,7 +37,11 @@ def fit_sparse_modes(
         frequencies[index] = mode.frequency_hz
         modal_t60 = np.log(1000.0) * mode.decay_seconds
         decay_ratios[index] = float(
-            np.clip(modal_t60 / _body_t60(initial, mode.frequency_hz), 0.5, 2.0)
+            np.clip(
+                modal_t60 / _body_t60(initial, mode.frequency_hz, 48000),
+                0.5,
+                2.0,
+            )
         )
         amplitudes[index] = mode.amplitude
         phases[index] = mode.phase_radians
@@ -97,6 +97,7 @@ def fit_sparse_projection(
                 direct_gain=0.0,
                 sparse_gain=1.0,
                 dense_gain=0.0,
+                field_gain=1.0,
                 output_gain=1.0,
             )
             rendered = []
@@ -128,6 +129,7 @@ def fit_sparse_projection(
         sparse_amplitude=tuple(amplitudes),
         sparse_phase_radians=tuple(phases),
         sparse_gain=float(np.clip(gain, 0.0, 4.0)),
+        field_gain=float(np.clip(gain, 0.0, 4.0)),
     )
 
 
@@ -146,7 +148,8 @@ def reference_modal_residual(
             fit.sparse_amplitude,
         )
         for decay in (
-            _body_t60(fit, frequency) * float(np.clip(decay_ratio, 0.5, 2.0)),
+            _body_t60(fit, frequency, reference.sample_rate)
+            * float(np.clip(decay_ratio, 0.5, 2.0)),
         )
         if amplitude > 0.0
     )
@@ -170,16 +173,23 @@ def reference_modal_residual(
     )
 
 
-def _body_t60(fit: CrashFit, frequency_hz: float) -> float:
-    """Evaluate the shared log-frequency/log-T60 curve at one mode."""
+def _body_t60(fit: CrashFit, frequency_hz: float, sample_rate: int) -> float:
+    """Match the production ERB-frequency/log-T60 interpolation."""
     frequencies = np.asarray(fit.body_decay_frequency_hz, dtype=float)
     seconds = np.asarray(fit.body_decay_seconds, dtype=float)
+    active = np.asarray(fit.body_decay_active, dtype=bool)
+    frequencies[0] = 0.0
+    frequencies[-1] = 0.5 * sample_rate
+    frequencies = frequencies[active]
+    seconds = seconds[active]
     order = np.argsort(frequencies)
+    rates = 21.4 * np.log10(1.0 + 0.00437 * frequencies[order])
+    target = 21.4 * np.log10(1.0 + 0.00437 * max(frequency_hz, 0.0))
     return float(
         np.exp(
             np.interp(
-                np.log(max(frequency_hz, 1.0)),
-                np.log(np.maximum(frequencies[order], 1.0)),
+                target,
+                rates,
                 np.log(np.maximum(seconds[order], 1.0e-3)),
             )
         )
@@ -194,8 +204,56 @@ def modal_passes() -> tuple[EspritPass, ...]:
             (600.0, 1400.0, 10),
             (1300.0, 3000.0, 12),
             (2800.0, 6000.0, 14),
+            (5500.0, 9000.0, 16),
+            (8500.0, 12000.0, 18),
+            (11500.0, 14000.0, 18),
+            (13500.0, 15000.0, 14),
         )
     )
+
+
+def stratified_modes(
+    modes: tuple[DampedMode, ...], count: int
+) -> tuple[DampedMode, ...]:
+    """Keep energetic ridges without allowing the low spectrum to use every slot."""
+    if count < 1:
+        return ()
+    score = lambda mode: mode.amplitude * np.sqrt(mode.decay_seconds)
+    selected: list[DampedMode] = []
+    # Equal quotas keep paintable packet centres across the audible cymbal
+    # spectrum. Remaining slots are filled globally when a band is sparse.
+    bands = (
+        (100.0, 700.0, 4),
+        (700.0, 1500.0, 4),
+        (1500.0, 3500.0, 4),
+        (3500.0, 7000.0, 4),
+        (7000.0, 10000.0, 4),
+        (10000.0, 12500.0, 2),
+        (12500.0, 15000.1, 2),
+    )
+    scale = count / sum(quota for _, _, quota in bands)
+    quotas = [max(0, round(quota * scale)) for _, _, quota in bands]
+    while sum(quotas) < count:
+        quotas[sum(quotas) % len(quotas)] += 1
+    while sum(quotas) > count:
+        index = max(range(len(quotas)), key=quotas.__getitem__)
+        quotas[index] -= 1
+    for (minimum, maximum, _), quota in zip(bands, quotas):
+        candidates = sorted(
+            (mode for mode in modes if minimum <= mode.frequency_hz < maximum),
+            key=score,
+            reverse=True,
+        )
+        selected.extend(candidates[:quota])
+    if len(selected) < count:
+        selected_ids = {id(mode) for mode in selected}
+        remaining = sorted(
+            (mode for mode in modes if id(mode) not in selected_ids),
+            key=score,
+            reverse=True,
+        )
+        selected.extend(remaining[: count - len(selected)])
+    return tuple(selected[:count])
 
 
 def stable_modes(

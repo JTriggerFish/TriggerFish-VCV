@@ -7,13 +7,14 @@
   <link rel="stylesheet" href="styles.css">
   <script src="vendor/plotly.min.js"></script>
 </head>
-<body>
+<body data-body-mode="unified">
   <header>
     <div><span class="eyebrow">TriggerFish</span><h1>Percussion workbench</h1></div>
     <div class="status"><span id="status">Loading DSP…</span><span id="render-time"></span><span id="live-commit">Live DSP idle</span></div>
   </header>
 
   <nav class="toolbar">
+    <label data-tooltip="Choose the focused unified instrument or the older three-branch body for diagnostics.">Body UI <select id="body-ui-mode"><option value="unified" selected>Unified instrument</option><option value="legacy">Legacy diagnostics</option></select></label>
     <select id="reference-corpus" aria-label="Reference instrument"><option>Loading corpus…</option></select>
     <select id="reference-articulation" aria-label="Reference articulation"></select>
     <label>Velocity <input id="reference-velocity" type="range"><output></output></label>
@@ -34,44 +35,50 @@
           <section><h2>Starting point</h2>
             <label>Size meta <input id="size-meta" type="range" min="0" max="1" value="0.5" step="0.01"><output>0.50</output></label>
           </section>
-          <details open><summary>Contact presentation</summary>
+          <details open><summary data-tooltip="The immediate strike before energy develops in the cymbal body.">Contact presentation</summary>
             <p class="control-help">The audible near-field strike before energy spreads into the cymbal body.</p>
             <div id="impact-controls" data-fit-controls></div>
-            <details><summary>Contact radiation EQ</summary><div id="direct-radiation" data-fit-controls></div></details>
+            <details><summary data-tooltip="Optional event controls that are not needed for an ordinary single strike.">Advanced contact</summary>
+              <label data-tooltip="Temporal distribution of one contact gesture. This is most audible for a brush sweep; ordinary taps can remain near the default.">Gesture spread <input id="contact-spread" type="range" min="0" max="1" value="0.2" step="0.01"><output>0.20</output></label>
+            </details>
           </details>
-          <details open><summary>Nonlinear bloom</summary><div id="bloom-controls" data-fit-controls></div></details>
-          <details open><summary>Body balance</summary><div id="body-controls" data-fit-controls></div></details>
-          <details open><summary>Resolved modal ridges</summary>
-            <p class="control-help">Each bar is one deliberately audible mode. Resolved-to-wash sets the branch balance.</p>
-            <div id="resolved-editor" data-fit-controls></div>
-            <div id="resolved-selection" class="selection-controls" data-fit-controls></div>
+          <details open><summary data-tooltip="Signal-driven dispersion that turns the strike into a developing metallic excitation.">Nonlinear bloom</summary><div id="bloom-controls" data-fit-controls></div></details>
+          <details open data-ui-mode="unified"><summary data-tooltip="High-level controls for the single stored stochastic modal field.">Unified body</summary>
+            <div id="field-turbulence-controls" data-fit-controls></div>
+            <details><summary data-tooltip="Technical controls for the trajectory from coherent ridges to diffuse packets.">Advanced trajectory</summary><div id="field-advanced-controls" data-fit-controls></div></details>
           </details>
-          <details><summary>Turbulent residual</summary>
-            <p class="control-help">A separately observed, bloom-driven stochastic branch in parallel with both modal banks.</p>
-            <div id="turbulence-toggle" data-fit-controls></div>
-            <fieldset id="turbulence-fields">
-              <div id="turbulence-editor" data-fit-controls></div>
-              <div id="turbulence-selection" class="selection-controls" data-fit-controls></div>
-              <div id="turbulence-controls" data-fit-controls></div>
+          <details open data-ui-mode="legacy"><summary>Legacy branch balance</summary>
+            <div id="body-controls" data-fit-controls></div>
+          </details>
+          <details open data-ui-mode="legacy"><summary>Legacy turbulent residual</summary>
+            <fieldset>
+              <div id="turbulence-toggle" data-fit-controls></div>
+              <fieldset id="turbulence-fields">
+                <div id="turbulence-editor" data-fit-controls></div>
+                <div id="turbulence-selection" class="selection-controls" data-fit-controls></div>
+                <div id="turbulence-controls" data-fit-controls></div>
+              </fieldset>
             </fieldset>
           </details>
         </div>
         <div class="control-column">
-          <details open><summary>Dense modal wash</summary>
-            <p class="control-help">A smooth broadband colour envelope plus population and statistical variation. It changes modal energy without moving the underlying resonances.</p>
-            <div id="dense-wash-editor" data-fit-controls></div>
-            <div id="dense-wash-selection" class="selection-controls" data-fit-controls></div>
-            <div id="dense-controls" data-fit-controls></div>
+          <details open data-ui-mode="legacy"><summary>Legacy dense modal wash</summary>
+            <fieldset>
+              <div id="dense-wash-editor" data-fit-controls></div>
+              <div id="dense-wash-selection" class="selection-controls" data-fit-controls></div>
+              <div id="dense-controls" data-fit-controls></div>
+            </fieldset>
           </details>
-          <details open><summary>Body T60</summary>
-            <p class="control-help">Absolute decay curve shared by resolved modes, dense wash and turbulence.</p>
+          <details open><summary data-tooltip="One interpolated frequency-dependent decay curve shared by the modal body.">Body T60</summary>
+            <div class="decay-heading"><p class="control-help">Absolute decay curve shared by every mode. Drag the diamond to move the whole curve.</p><span id="decay-readout">2/8 knots</span></div>
             <div id="decay-editor" data-fit-controls></div>
+            <div class="decay-gesture-help">Double-click empty space to add · double-click an interior knot or press Delete to remove · endpoint frequencies stay at DC and Nyquist</div>
             <div id="decay-selection" class="selection-controls" data-fit-controls></div>
           </details>
-          <details><summary>Observation / radiation</summary>
-            <p class="control-help">Independent static radiation EQ for each source path.</p>
-            <fieldset><legend>Resolved modes</legend><div id="sparse-radiation" data-fit-controls></div></fieldset>
-            <fieldset><legend>Dense wash</legend><div id="dense-radiation" data-fit-controls></div></fieldset>
+          <details open><summary data-tooltip="Broad output bandwidth and colour controls; these filters do not alter stored modal decay.">Output colour</summary>
+            <fieldset><legend>Contact bandwidth</legend><div id="direct-radiation" data-fit-controls></div><details><summary>Advanced</summary><div id="direct-radiation-advanced" data-fit-controls></div></details></fieldset>
+            <fieldset data-ui-mode="unified"><legend>Body bandwidth and colour</legend><div id="dense-radiation" data-fit-controls></div><details><summary>Advanced</summary><div id="dense-radiation-advanced" data-fit-controls></div></details></fieldset>
+            <fieldset data-ui-mode="legacy"><legend>Resolved branch colour</legend><div id="sparse-radiation" data-fit-controls></div><details><summary>Advanced</summary><div id="sparse-radiation-advanced" data-fit-controls></div></details></fieldset>
           </details>
         </div>
       </div>
@@ -80,6 +87,7 @@
     <section class="analysis">
       <div id="waveform"></div>
       <div class="spectrogram-wrap"><canvas id="spectrogram"></canvas></div>
+      <div id="analysis-divider" class="analysis-divider" role="separator" aria-label="Resize spectrogram" aria-orientation="horizontal" aria-valuemin="110" aria-valuemax="620" tabindex="0"></div>
       <div class="analysis-controls">
         <label>View <select id="view-mode"><option value="mirror" selected>Mirror</option><option value="vertical">Vertical split</option><option value="horizontal">Horizontal split</option><option value="difference">Difference</option><option value="reference">Reference</option><option value="synthesis">Synthesis</option></select></label>
         <label>Window <select id="window"><option value="hann">Hann</option><option value="blackman-harris">Blackman–Harris</option><option value="rectangular">Rectangular</option></select></label>
@@ -108,6 +116,36 @@
             </label>
           </div>
         </div>
+      </section>
+      <section class="modal-design" data-ui-mode="unified">
+        <div class="modal-design-heading">
+          <div><h2>Modal packet design</h2><p>Centre lines are coherent modes; translucent bells show their turbulence-driven packet width.</p></div>
+          <span id="modal-readout">24/24 active modes</span>
+        </div>
+        <div class="modal-toolbar" role="toolbar" aria-label="Modal editor tools">
+          <div class="modal-tool-group" aria-label="Editing mode">
+            <span>Tool</span>
+            <button id="modal-tool-edit" class="active" aria-pressed="true" data-tooltip="Select and move anchors. Drag a centre for frequency and level; drag a wing or Ctrl-drag to change its local turbulence width. Shift gives fine movement.">Select &amp; shape</button>
+            <button id="modal-tool-level" aria-pressed="false" data-tooltip="Shape the levels of existing anchors with a Gaussian brush without creating new anchors.">Level brush</button>
+            <button id="modal-tool-paint" aria-pressed="false" data-tooltip="Paint modal anchors continuously. Dragging activates available anchors and shapes nearby levels; Shift narrows the brush and Ctrl widens it.">Paint modes</button>
+          </div>
+          <label data-tooltip="Gaussian width for the Level brush and Paint modes tools.">Brush <input id="modal-brush" type="range" min="0.15" max="5" value="1" step="0.05"><output>1.00 ERB</output></label>
+          <label data-tooltip="Seeds only the modal centres, energies, and local turbulence widths.">Preset <select id="modal-preset"><option value="">Choose…</option><option value="fitted">Fitted start</option><option value="even">Even ERB field</option><option value="low">Low cluster</option><option value="shimmer">High shimmer</option></select></label>
+          <button id="modal-clear" data-tooltip="Deactivate every modal anchor. Double-click empty space to insert modes again.">Clear modes</button>
+        </div>
+        <div class="harmonic-toolbar" aria-label="Optional harmonic reference">
+          <label data-tooltip="Show a design-only harmonic-series reference. This does not pitch or retune the sounding model by itself."><input id="harmonic-guide" type="checkbox"> Harmonic guide</label>
+          <label>Root
+            <select id="harmonic-note" aria-label="Harmonic guide root note" disabled><option value="0">C</option><option value="1">C♯</option><option value="2">D</option><option value="3">D♯</option><option value="4">E</option><option value="5">F</option><option value="6">F♯</option><option value="7">G</option><option value="8">G♯</option><option value="9" selected>A</option><option value="10">A♯</option><option value="11">B</option></select>
+            <select id="harmonic-octave" aria-label="Harmonic guide root octave" disabled><option>0</option><option>1</option><option selected>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select>
+            <output id="harmonic-frequency">110.00 Hz</output>
+          </label>
+          <label data-tooltip="Quantize newly painted, inserted, or moved modal centres to the nearest harmonic."><input id="harmonic-snap" type="checkbox" disabled> Snap edits</label>
+          <button id="harmonic-snap-all" disabled data-tooltip="Move every active modal centre to its nearest harmonic while preserving its level, decay, and turbulence.">Snap active</button>
+        </div>
+        <div id="modal-editor" data-fit-controls></div>
+        <div class="modal-gesture-help">Select &amp; shape: double-click to insert/remove, wheel or wing drag changes width · Level brush: reshape existing anchors · Paint modes: drag to create and shape</div>
+        <div id="modal-selection" class="selection-controls" data-fit-controls></div>
       </section>
     </section>
   </main>

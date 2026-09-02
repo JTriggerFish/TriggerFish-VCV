@@ -24,6 +24,7 @@ from triggerfish_percussion.crash_fit_parameters import (
     CAUSAL_STAGES,
     SCREENED_ATTACK_STAGES,
     SCREENED_INITIAL_DECAY_STAGES,
+    UNIFIED_CAUSAL_STAGES,
     fit_parameter_value,
     replace_fit_parameters,
     single_hit_stages,
@@ -44,7 +45,7 @@ from triggerfish_percussion.report import (
     write_comparison_report,
 )
 
-FIT_SCHEMA = 5
+FIT_SCHEMA = 6
 
 
 def bitwig_cells(root: Path) -> tuple[CrashFitCell, ...]:
@@ -104,7 +105,11 @@ def main() -> None:
         choices=tuple(
             dict.fromkeys(
                 stage.name
-                for stages in (CAUSAL_STAGES, SCREENED_INITIAL_DECAY_STAGES)
+                for stages in (
+                    UNIFIED_CAUSAL_STAGES,
+                    CAUSAL_STAGES,
+                    SCREENED_INITIAL_DECAY_STAGES,
+                )
                 for stage in stages
             )
         ),
@@ -115,7 +120,11 @@ def main() -> None:
         choices=tuple(
             dict.fromkeys(
                 stage.name
-                for stages in (CAUSAL_STAGES, SCREENED_INITIAL_DECAY_STAGES)
+                for stages in (
+                    UNIFIED_CAUSAL_STAGES,
+                    CAUSAL_STAGES,
+                    SCREENED_INITIAL_DECAY_STAGES,
+                )
                 for stage in stages
             )
         ),
@@ -404,7 +413,7 @@ def _selected_stages(arguments, parser):
     elif arguments.screened_initial_decay:
         stages = SCREENED_INITIAL_DECAY_STAGES
     else:
-        stages = CAUSAL_STAGES
+        stages = UNIFIED_CAUSAL_STAGES
     stages = single_hit_stages(stages)
     if arguments.maximum_prefix_seconds is not None:
         stages = tuple(

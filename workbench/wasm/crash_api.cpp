@@ -15,7 +15,7 @@ constexpr std::size_t MaximumSessions = 4;
 struct Session {
   tfdsp::percussion::CrashCymbal cymbal{};
   tfdsp::percussion::CrashCymbalFitParameters baseFit{};
-  tfworkbench::CrashMacroValues macros{tfworkbench::DefaultCrashMacros()};
+  tfworkbench::CrashMacroValues macros{};
   float sampleRate{48000.f};
   bool active{};
 };
@@ -34,7 +34,7 @@ Session *Find(const std::uint32_t handle) noexcept {
 extern "C" {
 
 std::uint32_t tf_crash_api_version() noexcept {
-  return 7;
+  return 12;
 }
 
 std::uint32_t tf_crash_create(const float sampleRate) noexcept {
@@ -44,7 +44,7 @@ std::uint32_t tf_crash_create(const float sampleRate) noexcept {
     auto &session = sessions[index];
     if (session.active)
       continue;
-    session.baseFit = {};
+    session.baseFit = tfworkbench::CrashWorkbenchBaseFit();
     session.macros = tfworkbench::DefaultCrashMacros();
     session.sampleRate = sampleRate;
     session.cymbal.Prepare(

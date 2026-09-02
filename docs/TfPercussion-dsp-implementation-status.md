@@ -78,20 +78,23 @@ The reproducible probes are `dev.ps1 benchmark-percussion` for native
 components and `node workbench/tests/performance_probe.mjs` after
 `dev.ps1 build-workbench` for WebAssembly rendering and STFT analysis.
 
-| Path | Before | Current |
-| --- | ---: | ---: |
-| Crash without either modal bank | 327 ns/sample | 311 ns/sample |
-| Crash with 12 sparse modes only | 382 ns/sample | 325 ns/sample |
-| Crash with 512 dense modes only | 2,620 ns/sample | 861 ns/sample |
-| Complete crash | 2,697 ns/sample | 879 ns/sample |
-| Isolated dispersion loop | 150 ns/sample | 141 ns/sample |
-| Isolated 512-mode cloud | 1,438 ns/sample | 509 ns/sample |
+| Path | Current |
+| --- | ---: |
+| Crash without modal bodies | 344 ns/sample |
+| Crash with 12 sparse modes only | 362 ns/sample |
+| Legacy 2,048-mode dense body | 2,497 ns/sample |
+| Complete legacy crash | 2,531 ns/sample |
+| Legacy 4,096-mode experiment | 4,693 ns/sample |
+| Experimental unified 408-mode field | 4,036 ns/sample |
+| Isolated dispersion loop | 141 ns/sample |
+| Isolated 512-mode cloud | 524 ns/sample |
 
-The optimized complete graph therefore uses about 4.2% of one core at 48 kHz
-and 8.4% at 96 kHz. A 10-second SIMD WebAssembly render takes a median 445 ms
-(927 ns/sample), down from 1.275 seconds (2,657 ns/sample). Native and
-WebAssembly DSP costs agree; JavaScript/Wasm boundary copying is not the
-dominant expense.
+The complete legacy graph therefore uses about 12.1% of one core at 48 kHz;
+the 408-mode unified-field experiment uses about 19.4%. This is the deliberate
+quality-first workbench configuration; the anchor/packet allocation should be
+profiled before it becomes a production module. Native and WebAssembly render
+summaries remain closely matched, so JavaScript/Wasm boundary copying is not
+the dominant expense.
 
 The modal bank now sanitizes stable hit projections once, caches safe per-mode
 damping multipliers until a damping control changes, and separates independent
@@ -112,9 +115,9 @@ For the browser workbench, a 10-second 2048-point, 75%-overlap STFT takes about
 70 ms and stores 3.67 MiB. A 1,089 x 506 heatmap redraw takes about 22 ms. A
 slider-to-completed-analysis cycle previously measured 1.69 seconds: 1.36
 seconds was DSP, 220 ms was the deliberate debounce, and the remainder covered
-analysis and UI painting without a main-thread task over 50 ms. The optimized
-DSP removes about 900 ms from that path. Canvas replacement remains lower
-priority. Reference spectra now use an eight-entry LRU cache (about 29 MiB at
+analysis and UI painting without a main-thread task over 50 ms. The current
+modal-field experiment remains compatible with asynchronous rendering. Canvas
+replacement remains lower priority. Reference spectra now use an eight-entry LRU cache (about 29 MiB at
 the default analysis settings). Snapshots retain audio and controls but
 recompute their spectrogram on restore, reducing a ten-second snapshot from
 about 5.5 MiB to about 1.8 MiB.
@@ -128,23 +131,33 @@ distance, humidity, and frequency when that distinction matters.
 ## Current experimental graph and replacement target
 
 `CrashCymbal` composes the tested contact, serial feedback-dispersion,
-passive-loss, sparse-modal, statistical-modal-cloud, turbulent-residual, and
-observation primitives. The exact C++ graph is exposed to Python and to the
-optional browser workbench through WebAssembly. Graph tests cover repeatability,
-strength, location, hardness, passive mute, finiteness, and five sample rates.
+passive-loss, modal, and observation primitives. The exact C++ graph is
+exposed to Python and to the optional browser workbench through WebAssembly.
+Graph tests cover repeatability, strength, location, hardness, passive mute,
+finiteness, and five sample rates.
+
+The complete implemented signal flow and the unified field's equations are in
+the self-contained
+[nonlinear resonator architecture](TfPercussion-nonlinear-resonator-architecture.md).
 
 An earlier coupled-comb/frequency-shift graph was rejected during calibration:
 its controls could not place persistent ridges independently. The implemented
-replacement sends direct body drive to a small arbitrary modal
-bank and dispersed drive to a deterministic 512-mode statistical cloud. The
-modal residue is explicit and independent of T60; a fixed caller-side unit
-conversion maps contact body drive into modal-force units. The dense branch
-also supports passive velocity-dependent loss, allowing harder hits to damp
-the residual wash faster when reference data supports that behavior. The
-raw dispersion tap remains inaudible. Both rendered body branches have audible,
-separately fitted radiation paths. The sparse bank owns persistent ridges; the
-cloud owns unresolved wash. A weak dispersion-to-sparse feed and the coupled
-comb remain ablations rather than part of the production crash graph.
+replacement originally sent direct body drive to a small arbitrary modal bank
+and dispersed drive to a deterministic statistical cloud, with a separate
+turbulent residual. That graph remains available as the legacy A/B path.
+
+The experimental replacement is one 408-mode stochastic field derived from
+twenty-four editable anchors in a 40 Hz--15 kHz constructive design range. Each anchor expands to a coherent centre mode and
+sixteen nearby satellites. Turbulence transfers normalized excitation energy
+from the centre to the satellites, widens their ERB-scaled frequency packet,
+and enables energy-preserving phase diffusion. At high settings it also turns
+on alternating local Givens rotations, allowing passive energy exchange within
+and between neighbouring packets. A per-anchor response scaler can keep
+selected ridges clean while the global control diffuses the rest. Pole radii
+and the external mute controller
+remain the only declared loss mechanisms. The raw dispersion tap remains
+inaudible, and the field uses one body observation/radiation path. A/B controls
+also expose bloom all-pass diffusion without altering its nominal delay.
 
 ## Calibration boundary
 

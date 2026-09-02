@@ -32,7 +32,9 @@ buttons select Brush, Mallet, or Stick. One adjacent Character slider is
 contextual: bristle stiffness, mallet firmness, or tip hardness. The brush
 family suppresses the stick chirp/impulse and routes a correlated, smoothly
 windowed bristle-contact stream to both direct sound and body drive. Brush
-gesture duration remains an internal event property until trigger/gate duration
+routes are energy-normalized for their much larger number of contacts, with
+more energy sent into the cymbal body than the dry near-field presentation.
+Brush gesture duration remains an internal event property until trigger/gate duration
 controls it directly; it is not exposed as an unrelated fitting slider. Clicking
 triggers; dragging may
 generate a rate-limited sequence only in an explicitly labelled repeat mode.
@@ -61,27 +63,36 @@ always-visible fitting controls are:
 | --- | --- | --- | --- |
 | Model level | bipolar dB slider | match the stored source level | one pre-monitor output trim; never the limiter |
 | Contact | independent sliders | near-field level, ping/noise balance and contact width | direct presentation plus coordinated pulse, chirp, noise and micro-contact gains/durations; hardness and implement remain event inputs |
-| Bloom | independent sliders | nonlinear spread amount and development time | dispersion drive/excursion and constrained feedback mapping |
-| Body balance | sliders plus branch toggle | resolved/tonal to dense/wash; global wash tilt; explicit resolved-mode ablation | sparse/dense balance and broad dense tilt |
-| Resolved modal ridges | 12-bar ERB editor plus enable switch | direct placement of deliberately audible modes | each bar controls one resolved mode only; disabling the branch makes this editor acoustically inert |
+| Bloom | independent sliders | dispersed-body level, nonlinear character, development time, and diffusion | a true body-route gain plus independent dispersion drive/excursion, constrained feedback, and serial-allpass amount |
+| Body model | separate focused and legacy-diagnostic views | one anchor-driven stochastic field by default; the older sparse/dense/noise branches remain only for comparison | modal-field turbulence, ERB packet spread, phase bandwidth and passive neighbour exchange |
+| Modal field anchors | wide 24-anchor ERB editor from 40 Hz to 15 kHz | direct placement of coherent centre lines and their constructive stochastic neighbourhoods | each anchor controls frequency, packet energy, and a `0..2x` response to global turbulence |
 | Dense modal wash | smooth ERB curve plus continuous sliders | broad spectral colour, range, density and statistical irregularity | the relative colour curve changes modal energy without moving resonances. Density continuously spans the equivalent of 64--4096 active modes. The implementation activates a deterministic nested subset and crossfades the boundary mode; the original 2048-mode bank remains the `1x` factory case and values above it progressively add a separately seeded extension bank. |
-| Body T60 | five-knot log curve | absolute frequency-dependent decay | one curve sampled by sparse modes, dense modes and turbulence |
-| Turbulence | three-knot log curve plus amount/persistence | stochastic residual colour and duration | a bloom-driven branch parallel to the dense modal cloud; mean-free colour curve, orthogonal overall level and relative persistence |
-| Radiation | per-path EQ controls | observation colour, not stored-body loss | direct, resolved and dense-path static filters |
+| Body T60 | editable two-to-eight-knot ERB/log curve | absolute frequency-dependent decay | fixed DC/Nyquist boundary positions with editable finite T60 values; one prepared curve sampled by every body mode |
+| Unified turbulence | one primary slider, a per-anchor response curve, and advanced trajectory controls | continuously broadens selected anchors into modal wash and finally noise-like response while others can remain clean | normalized satellite energy, ERB spread, passive phase decorrelation and local orthogonal energy exchange |
+| Radiation | compact bandwidth/colour controls with an Advanced section | observation colour, not stored-body loss | direct and body static filters; enable state and Q remain reachable until ablation establishes that fixed values are sufficient |
 | Size meta | unlabelled scalar slider | useful broad starting point | expands visibly into the detailed controls; centre is the exact neutral default and saved fits contain only expanded values |
 
-The curve editors use log-frequency or ERB horizontal spacing and raised-cosine
-interpolation, so moving one knot has a local, smooth effect without spline
-overshoot. Frequencies remain ordered. Resolved-mode and dense-wash curves are
-independent and relative because the modal banks are energy-normalized; global
-balance and level are controlled elsewhere.
+The spectral-colour editors use log-frequency or ERB horizontal spacing and
+raised-cosine interpolation. The body-decay editor instead uses straight
+segments in ERB versus log-T60 space, exactly matching the DSP preparation
+rule; a new fit starts with the two boundary knots, double-click adds or removes
+interior knots, and its central `ALL` handle translates every knot in log time.
+Frequencies remain ordered. Anchor energies are normalized as a
+group, so their dB bars define relative body colour while the exact `-72 dB`
+floor deactivates an anchor. Global body and model levels are controlled
+elsewhere.
 
-Curve backgrounds are inert by default. A handle drag starts only after a small
-movement threshold and remains relative to its starting value. The resolved editor
-adds an explicit **Draw bars** mode for a continuous sweep begun anywhere in the
-grid; Shift erases, while Alt temporarily enables the same gesture without
-latching the mode. Mirror-spectrogram source alignment similarly requires
-Shift-drag, and the decorative waveform does not capture background drags.
+The focused modal editor presents each constructive packet as a narrow centre
+line with a translucent bell indicating its turbulence-controlled frequency
+neighbourhood. Dragging a centre changes frequency and energy; dragging a wing,
+Ctrl-dragging the centre, or using the mouse wheel changes its local turbulence
+response. Double-click inserts or removes anchors. Draw mode sweeps a Gaussian
+brush across all active anchors; Shift narrows and Ctrl widens the brush.
+Presets and Clear alter only anchor frequency, energy, and local turbulence.
+The spectrogram height has its own draggable separator.
+
+Mirror-spectrogram source alignment requires Shift-drag, and the decorative
+waveform does not capture background drags.
 Turbulence subtracts the mean of its three colour levels before applying its
 separate Amount control. The underlying 33-point dense profile is an
 implementation detail and is never shown as unrelated sliders.

@@ -52,6 +52,7 @@ private:
   ContactExciter contact_{};
   DispersionLoop dispersion_{};
   TurbulentResidual turbulence_{};
+  CrashModalField modalField_{};
   CrashSparseModes sparseModes_{};
   CrashDenseModes denseModes_{};
   CrashDenseModes denseExtensionModes_{};
@@ -62,7 +63,9 @@ private:
   CrashSparseModes::Projection sparseProjection_{};
   CrashDenseModes::Projection denseProjection_{};
   CrashDenseModes::Projection denseExtensionProjection_{};
+  CrashModalField::Projection fieldProjection_{};
   float bodyDriveScale_{1.f};
+  float bloomBodyGain_{1.f};
   float sampleRate_{48000.f};
   float sparseBloomGain_{};
   float denseBypassGain_{};
@@ -70,6 +73,7 @@ private:
   bool denseEnabled_{true};
   bool denseExtensionEnabled_{};
   bool turbulenceEnabled_{};
+  bool unifiedBodyEnabled_{};
 };
 
 } // namespace tfdsp::percussion

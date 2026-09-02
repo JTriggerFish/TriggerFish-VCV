@@ -235,7 +235,7 @@ def _append_spectra(
         bank = ErbFilterbank.create(
             transform.frequencies_hz,
             80.0,
-            min(18000.0, 0.49 * sample_rate),
+            min(15000.0, 0.48 * sample_rate),
             32,
         )
         band_power = bank.apply_power(transform.power)

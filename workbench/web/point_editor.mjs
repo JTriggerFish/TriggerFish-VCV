@@ -147,7 +147,7 @@ export class PointEditor {
   paint() {
     this.svg.replaceChildren();
     const points = this.options.points();
-    for (const frequency of [100, 300, 1000, 3000, 10000]) {
+    for (const frequency of [100, 300, 1000, 3000, 10000, 20000]) {
       if (frequency < this.options.xMinimum || frequency > this.options.xMaximum)
         continue;
       const x = this.xPosition(frequency);

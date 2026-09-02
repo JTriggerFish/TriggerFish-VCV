@@ -5,7 +5,7 @@ import { expandedSizeMeta } from "../web/size_meta.mjs";
 const descriptors = [
   { key: "impact_width", defaultValue: 1, minimum: .25, maximum: 4,
     scale: "logarithmic", index: 0 },
-  { key: "bloom_amount", defaultValue: .35, minimum: 0, maximum: 1,
+  { key: "bloom_nonlinearity", defaultValue: .35, minimum: 0, maximum: 1,
     scale: "linear", index: 1 },
   ...Array.from({ length: 12 }, (_, index) => ({
     key: `resolved_frequency_${index}`, defaultValue: 100 * (index + 1),
@@ -32,7 +32,7 @@ const values = position => Object.fromEntries(
 );
 
 assert.equal(values(.5).impact_width, 1);
-assert.equal(values(.5).bloom_amount, .35);
+assert.equal(values(.5).bloom_nonlinearity, .35);
 assert.equal(values(0).impact_width, 1.8);
 assert.equal(values(1).impact_width, .65);
 assert.equal(values(0).resolved_frequency_5, 600 * .42);

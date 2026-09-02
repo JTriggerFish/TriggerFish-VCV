@@ -5,6 +5,7 @@
 #include "modal_bank.hpp"
 #include "observation_model.hpp"
 #include "statistical_modal_cloud.hpp"
+#include "stochastic_modal_field.hpp"
 #include "turbulent_residual.hpp"
 
 #include <array>
@@ -13,28 +14,44 @@
 
 namespace tfdsp::percussion {
 
-inline constexpr std::size_t CrashSparseModeCount = 12;
+inline constexpr std::size_t CrashSparseModeCount = 24;
 inline constexpr std::size_t CrashDenseModeCount = 2048;
-inline constexpr std::size_t CrashBodyDecayPointCount = 5;
+inline constexpr std::size_t CrashPacketModeCount = 17;
+inline constexpr std::size_t CrashModalFieldModeCount =
+    CrashSparseModeCount * CrashPacketModeCount;
+inline constexpr std::size_t CrashBodyDecayPointCount = 8;
 using CrashSparseModes = ModalBank<CrashSparseModeCount>;
 using CrashDenseModes = ModalBank<CrashDenseModeCount>;
+using CrashModalField = StochasticModalField<CrashModalFieldModeCount>;
 
 struct CrashCymbalFitParameters {
   std::array<float, CrashSparseModeCount> sparseFrequencyHz{
       421.f, 522.f, 689.f, 1094.f, 1475.f, 2009.f,
-      2138.f, 2573.f, 2753.f, 3589.f, 4428.f, 5707.f};
+      2138.f, 2573.f, 2753.f, 3589.f, 4428.f, 5707.f,
+      6500.f, 7350.f, 8250.f, 9200.f, 10250.f, 11350.f,
+      12000.f, 12750.f, 13500.f, 14100.f, 14600.f, 15000.f};
   std::array<float, CrashSparseModeCount> sparseDecayRatio{
       .7f, .7f, .7f, 1.25f, 1.f, 1.f,
-      .95f, .85f, .8f, .7f, .7f, .7f};
+      .95f, .85f, .8f, .7f, .7f, .7f,
+      .68f, .65f, .62f, .6f, .58f, .56f,
+      .55f, .54f, .53f, .52f, .51f, .5f};
   std::array<float, CrashSparseModeCount> sparseAmplitude{
       .35f, .15f, .15f, .55f, .25f, .7f,
-      .65f, .7f, .55f, .5f, .4f, .25f};
+      .65f, .7f, .55f, .5f, .4f, .25f,
+      .32f, .38f, .44f, .5f, .56f, .6f,
+      .62f, .6f, .54f, .46f, .35f, .22f};
   std::array<float, CrashSparseModeCount> sparsePhaseRadians{};
+  std::array<float, CrashSparseModeCount> fieldTurbulenceScale{
+      1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f,
+      1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f,
+      1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f};
   float sparseTune{1.f};
   std::array<float, CrashBodyDecayPointCount> bodyDecayFrequencyHz{
-      200.f, 500.f, 1500.f, 5000.f, 15000.f};
+      0.f, 500.f, 1500.f, 5000.f, 8000.f, 12000.f, 16000.f, 24000.f};
   std::array<float, CrashBodyDecayPointCount> bodyDecaySeconds{
-      4.f, 4.f, 3.8f, 2.3f, 1.2f};
+      4.f, 4.f, 3.8f, 2.3f, 1.8f, 1.5f, 1.3f, 1.2f};
+  std::array<bool, CrashBodyDecayPointCount> bodyDecayActive{
+      true, true, true, true, false, false, false, true};
   float denseMinimumFrequencyHz{180.f};
   float denseMaximumFrequencyHz{18000.f};
   float denseFrequencyWarp{1.f};
@@ -64,6 +81,16 @@ struct CrashCymbalFitParameters {
   float dispersionLowDecaySeconds{.9f};
   float dispersionMiddleDecaySeconds{.65f};
   float dispersionHighDecaySeconds{.42f};
+  float dispersionDiffusion{1.f};
+  // Audible routing from the dispersion return into all body branches.
+  // This is independent of the self-phase nonlinearity inside that loop.
+  float bloomBodyGain{1.f};
+  bool unifiedBodyEnabled{};
+  float fieldGain{.73824115f};
+  float fieldTurbulence{.65f};
+  float fieldPacketSpreadErb{6.f};
+  float fieldPhaseBandwidthErb{1.f};
+  float fieldExchange{.35f};
   float contactDurationScale{1.f};
   float contactPulseGain{1.f};
   float contactChirpGain{1.f};
@@ -114,6 +141,7 @@ struct CrashCymbalParameters {
   CrashSparseModes::Parameters sparseModes{};
   CrashDenseModes::Parameters denseModes{};
   CrashDenseModes::Parameters denseExtensionModes{};
+  CrashModalField::Parameters modalField{};
   CrashSparseModes::Projection sparseBellProjection{};
   CrashSparseModes::Projection sparseBowProjection{};
   CrashSparseModes::Projection sparseEdgeProjection{};
@@ -123,6 +151,10 @@ struct CrashCymbalParameters {
   CrashDenseModes::Projection denseExtensionBellProjection{};
   CrashDenseModes::Projection denseExtensionBowProjection{};
   CrashDenseModes::Projection denseExtensionEdgeProjection{};
+  CrashModalField::Projection fieldBellProjection{};
+  CrashModalField::Projection fieldBowProjection{};
+  CrashModalField::Projection fieldEdgeProjection{};
+  StochasticModalFieldControls modalFieldControls{};
   DispersionLoopParameters dispersion{};
   TurbulentResidualParameters turbulence{};
   ObservationModel<4>::Parameters observation{};

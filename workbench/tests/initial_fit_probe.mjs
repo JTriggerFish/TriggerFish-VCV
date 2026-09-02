@@ -95,76 +95,20 @@ function render(values) {
   return compare(profile(samples, 0));
 }
 
-const paint = (levels) => Object.fromEntries(
-  levels.map((value, index) => [`dense_wash_level_${index}`, value]),
+const cleanHighAnchors = Object.fromEntries(
+  [...descriptors.values()]
+    .filter(item => item.key.startsWith("resolved_frequency_") &&
+      item.defaultValue >= 7000)
+    .map(item => [item.key.replace("frequency", "turbulence"), 0]),
 );
-const paintFrequencies = Object.fromEntries(
-  [120, 500, 1500, 3000, 6000, 10000, 16000, 21000]
-    .map((value, index) => [`dense_wash_frequency_${index}`, value]),
-);
-const decay = (seconds) => Object.fromEntries(
-  seconds.map((value, index) => [`body_decay_seconds_${index}`, value]),
-);
-const decayFrequencies = Object.fromEntries(
-  [150, 500, 1500, 6000, 16000]
-    .map((value, index) => [`body_decay_frequency_${index}`, value]),
-);
-const base = {
-  body_tone_wash: 1,
-  dense_mode_density: 2,
-};
-const contact = {
-  direct_gain: 1.25, direct_colour_frequency: 6500,
-  direct_colour_gain: 6, direct_colour_q: .65,
-  impact_tone_noise: .92,
-};
-const spectral = {
-  ...paintFrequencies,
-  ...paint([-6, -5, -1, 2, 4, 3, -3, -6]),
-};
-const shapedDecay = {
-  ...decayFrequencies, ...decay([3.5, 1.8, 3.2, 5, .7]),
-};
-const turbulence = {
-  turbulence_amount: .2, turbulence_persistence: 1.35,
-  turbulence_frequency_0: 300, turbulence_frequency_1: 3500,
-  turbulence_frequency_2: 10000,
-  turbulence_level_0: -5, turbulence_level_1: 2,
-  turbulence_level_2: 3,
-};
-const refinedSpectral = {
-  ...paintFrequencies,
-  ...paint([-7, -4.5, -2.5, 0, 2.5, 2, -4, -7]),
-};
-const refinedDecay = {
-  ...decayFrequencies, ...decay([3.5, 2.8, 2.5, 4.5, .35]),
-};
-const gentleContact = {
-  direct_gain: .95, direct_colour_frequency: 7000,
-  direct_colour_gain: 4, direct_colour_q: .7,
-  impact_tone_noise: .9,
-};
 const trials = [
-  ["wash only", { ...base }],
-  ["contact", { ...base, ...contact }],
-  ["spectral body", { ...base, ...spectral }],
-  ["decay", { ...base, ...shapedDecay }],
-  ["turbulence", { ...base, ...turbulence }],
-  ["contact + spectrum", { ...base, ...contact, ...spectral }],
-  ["spectrum + decay", { ...base, ...spectral, ...shapedDecay }],
-  ["contact + spectrum + decay", {
-    ...base, ...contact, ...spectral, ...shapedDecay,
-  }],
-  ["refined spectrum + decay", {
-    ...base, ...refinedSpectral, ...refinedDecay,
-  }],
-  ["refined + gentle contact", {
-    ...base, ...gentleContact, ...refinedSpectral, ...refinedDecay,
-  }],
-  ["spectrum + turbulence", { ...base, ...spectral, ...turbulence }],
-  ["combined", {
-    ...base, ...contact, ...spectral, ...shapedDecay, ...turbulence,
-  }],
+  ["coherent anchors", { field_turbulence: 0 }],
+  ["low turbulence", { field_turbulence: .35 }],
+  ["maximum turbulence", { field_turbulence: 1 }],
+  ["no phase diffusion", { field_phase_bandwidth: 0 }],
+  ["no neighbour exchange", { field_exchange: 0 }],
+  ["no bloom all-pass diffusion", { bloom_diffusion: 0 }],
+  ["clean high anchors", cleanHighAnchors],
 ];
 const candidates = trials.map(([name, values]) => ({
   name, values, ...render(values),

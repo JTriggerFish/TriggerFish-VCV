@@ -17,49 +17,61 @@ float Positive(const float value, const float fallback) noexcept {
   return std::isfinite(value) && value > 0.f ? value : fallback;
 }
 
-template <std::size_t Count>
-float LogEnvelope(const std::array<float, Count> &frequencies,
-                  const std::array<float, Count> &values,
-                  const float frequency) noexcept {
-  std::array<std::pair<float, float>, Count> points{};
-  for (std::size_t point = 0; point < Count; ++point) {
-    points[point] = {Positive(frequencies[point], 1.f),
-                     Positive(values[point], 1.f)};
+class BodyDecayEnvelope {
+public:
+  BodyDecayEnvelope(const float sampleRate,
+                    const CrashCymbalFitParameters &fit) noexcept {
+    const float nyquist = .5f * sampleRate;
+    for (std::size_t index = 0; index < CrashBodyDecayPointCount; ++index) {
+      if (index != 0 && index + 1 != CrashBodyDecayPointCount &&
+          !fit.bodyDecayActive[index])
+        continue;
+      const float frequency = index == 0 ? 0.f :
+          index + 1 == CrashBodyDecayPointCount ? nyquist :
+          std::clamp(tfdsp::FiniteNormalOrZero(
+                         fit.bodyDecayFrequencyHz[index]),
+                     1.f, std::max(1.f, nyquist - 1.f));
+      const float seconds = std::clamp(
+          Positive(fit.bodyDecaySeconds[index], 1.f), .01f, 30.f);
+      points_[count_++] = {ErbRate(frequency), std::log(seconds)};
+    }
+    std::sort(points_.begin(), points_.begin() + count_,
+              [](const auto &left, const auto &right) {
+                return left.erbRate < right.erbRate;
+              });
   }
-  std::sort(points.begin(), points.end(), [](const auto &left,
-                                              const auto &right) {
-    return left.first < right.first;
-  });
-  const float target = Positive(frequency, points.front().first);
-  if (target <= points.front().first)
-    return points.front().second;
-  for (std::size_t right = 1; right < Count; ++right) {
-    if (target > points[right].first)
-      continue;
-    const float leftFrequency = points[right - 1].first;
-    const float rightFrequency = std::max(
-        points[right].first, leftFrequency + 1.f);
-    const float amount = std::clamp(
-        std::log(target / leftFrequency) /
-            std::log(rightFrequency / leftFrequency),
-        0.f, 1.f);
-    const float left = points[right - 1].second;
-    const float rightValue = points[right].second;
-    return std::exp(std::log(left) + amount * (std::log(rightValue) -
-                                                std::log(left)));
-  }
-  return points.back().second;
-}
 
-float BodyDecay(const CrashCymbalFitParameters &fit,
-                const float frequency) noexcept {
-  return std::clamp(LogEnvelope(fit.bodyDecayFrequencyHz,
-                                fit.bodyDecaySeconds, frequency),
-                    .01f, 30.f);
-}
+  float At(const float frequency) const noexcept {
+    const float target = ErbRate(std::max(
+        0.f, tfdsp::FiniteNormalOrZero(frequency)));
+    if (target <= points_[0].erbRate)
+      return std::exp(points_[0].logSeconds);
+    for (std::size_t right = 1; right < count_; ++right) {
+      if (target > points_[right].erbRate)
+        continue;
+      const auto &left = points_[right - 1];
+      const float denominator = points_[right].erbRate - left.erbRate;
+      const float amount = denominator > 1.e-6f
+          ? std::clamp((target - left.erbRate) / denominator, 0.f, 1.f)
+          : 1.f;
+      return std::exp(left.logSeconds + amount *
+          (points_[right].logSeconds - left.logSeconds));
+    }
+    return std::exp(points_[count_ - 1].logSeconds);
+  }
+
+private:
+  struct Point {
+    float erbRate{};
+    float logSeconds{};
+  };
+  std::array<Point, CrashBodyDecayPointCount> points_{};
+  std::size_t count_{};
+};
 
 CrashSparseModes::Parameters SparseModes(
-    const float sampleRate, const CrashCymbalFitParameters &fit) noexcept {
+    const float sampleRate, const CrashCymbalFitParameters &fit,
+    const BodyDecayEnvelope &decay) noexcept {
   CrashSparseModes::Parameters result{};
   const float tune = std::clamp(Positive(fit.sparseTune, 1.f), .5f, 2.f);
   float squaredGain = 0.f;
@@ -74,7 +86,7 @@ CrashSparseModes::Parameters SparseModes(
         20.f, .48f * sampleRate);
     result[mode] = {
         frequency,
-        std::clamp(BodyDecay(fit, frequency) *
+        std::clamp(decay.At(frequency) *
                        std::clamp(Positive(fit.sparseDecayRatio[mode], 1.f),
                                   .5f, 2.f),
                    .01f, 30.f),
@@ -89,7 +101,7 @@ CrashSparseModes::Parameters SparseModes(
 
 CrashDenseModes::Parameters DenseModes(
     const float sampleRate, const CrashCymbalFitParameters &fit,
-    const bool extension) {
+    const bool extension, const BodyDecayEnvelope &decay) {
   StatisticalModalCloudParameters cloud;
   cloud.minimumFrequencyHz = fit.denseMinimumFrequencyHz;
   cloud.maximumFrequencyHz = fit.denseMaximumFrequencyHz;
@@ -116,7 +128,7 @@ CrashDenseModes::Parameters DenseModes(
         static_cast<float>(cloud.decayEnvelopeOctaves.size() - 1);
     const float frequency = InverseErbRate(
         minimumErb + position * (maximumErb - minimumErb));
-    cloud.decayEnvelopeOctaves[point] = std::log2(BodyDecay(fit, frequency));
+    cloud.decayEnvelopeOctaves[point] = std::log2(decay.At(frequency));
   }
   cloud.decaySpreadOctaves = fit.denseDecaySpreadOctaves;
   cloud.tiltDbPerOctave = fit.denseTiltDbPerOctave;
@@ -134,6 +146,111 @@ CrashDenseModes::Parameters DenseModes(
   for (auto &mode : result) {
     mode.inputGain = ModalDriveGain * mode.outputGain;
     mode.outputGain = mode.inputGain != 0.f ? 1.f : 0.f;
+  }
+  return result;
+}
+
+float ErbBandwidth(const float frequencyHz) noexcept {
+  return 24.7f * (1.f + .00437f * frequencyHz);
+}
+
+CrashModalField::Parameters ModalField(
+    const float sampleRate, const CrashCymbalFitParameters &fit,
+    const BodyDecayEnvelope &decay) noexcept {
+  struct Anchor {
+    float frequencyHz;
+    float decayRatio;
+    float amplitude;
+    float phaseRadians;
+    float turbulenceScale;
+  };
+  std::array<Anchor, CrashSparseModeCount> anchors{};
+  for (std::size_t index = 0; index < anchors.size(); ++index) {
+    anchors[index] = {
+        fit.sparseFrequencyHz[index], fit.sparseDecayRatio[index],
+        fit.sparseAmplitude[index], fit.sparsePhaseRadians[index],
+        fit.fieldTurbulenceScale[index]};
+  }
+  std::sort(anchors.begin(), anchors.end(), [](const auto &left,
+                                                const auto &right) {
+    return left.frequencyHz < right.frequencyHz;
+  });
+  CrashModalField::Parameters result{};
+  DeterministicRandom random;
+  random.Seed(fit.denseModeSeed ^ 0x4649454cu);
+  const float globalTurbulence = std::clamp(fit.fieldTurbulence, 0.f, 1.f);
+  std::array<float, CrashSparseModeCount> anchorGains{};
+  float anchorSquaredGain = 0.f;
+  for (std::size_t anchor = 0; anchor < anchorGains.size(); ++anchor) {
+    const float frequency = Positive(anchors[anchor].frequencyHz, 1000.f);
+    const float tilt = std::pow(
+        10.f, fit.denseTiltDbPerOctave * std::log2(frequency / 4000.f) / 20.f);
+    const float gain = std::clamp(
+        Positive(anchors[anchor].amplitude, 0.f) * tilt, 0.f, 8.f);
+    anchorGains[anchor] = gain;
+    anchorSquaredGain += gain * gain;
+  }
+  const float anchorNormalization =
+      1.f / std::sqrt(std::max(anchorSquaredGain, 1.e-12f));
+  constexpr float Pi = 3.14159265358979323846f;
+  constexpr std::size_t PairCount = (CrashPacketModeCount - 1) / 2;
+
+  for (std::size_t anchor = 0; anchor < CrashSparseModeCount; ++anchor) {
+    const float turbulence = std::clamp(
+        globalTurbulence * anchors[anchor].turbulenceScale, 0.f, 1.f);
+    const float diffuseEnergy = .9f * turbulence * turbulence;
+    const float coreWeight = std::sqrt(1.f - diffuseEnergy);
+    const float satelliteWeight = std::sqrt(
+        diffuseEnergy / static_cast<float>(CrashPacketModeCount - 1));
+    const float spreadErb = turbulence * std::clamp(
+        fit.fieldPacketSpreadErb, 0.f, 12.f);
+    const float bandwidthErb = turbulence * turbulence * std::clamp(
+        fit.fieldPhaseBandwidthErb, 0.f, 4.f);
+    const float centre = std::clamp(
+        Positive(anchors[anchor].frequencyHz, 1000.f) *
+            std::clamp(Positive(fit.sparseTune, 1.f), .5f, 2.f),
+        20.f, .48f * sampleRate);
+    const float anchorGain = anchorNormalization * anchorGains[anchor];
+    const float decayRatio = std::clamp(
+        Positive(anchors[anchor].decayRatio, 1.f), .5f, 2.f);
+    const auto makeMode = [&](const std::size_t slot, const float frequency,
+                              const float weight, const float phase) {
+      const std::size_t index = anchor * CrashPacketModeCount + slot;
+      const float safeFrequency = std::clamp(frequency, 20.f,
+                                              .48f * sampleRate);
+      result[index] = {
+          safeFrequency,
+          std::clamp(decay.At(safeFrequency) * decayRatio, .01f, 30.f),
+          ModalDriveGain * anchorGain * weight,
+          1.f,
+          phase,
+          bandwidthErb * ErbBandwidth(safeFrequency) *
+              (slot == 0 ? .35f : 1.f),
+          static_cast<std::uint16_t>(anchor),
+          turbulence * turbulence};
+    };
+
+    makeMode(0, centre, coreWeight,
+             std::clamp(anchors[anchor].phaseRadians, -Pi, Pi));
+    const float centreErb = ErbRate(centre);
+    for (std::size_t pair = 0; pair < PairCount; ++pair) {
+      const float radius = std::pow(
+          (static_cast<float>(pair) + 1.f) / static_cast<float>(PairCount),
+          .72f);
+      const float jitter = .85f + .3f * random.Uniform();
+      const float offset = spreadErb * radius * jitter;
+      const float low = InverseErbRate(std::max(ErbRate(20.f),
+                                                centreErb - offset));
+      const float high = InverseErbRate(std::min(ErbRate(.48f * sampleRate),
+                                                 centreErb + offset));
+      makeMode(1 + 2 * pair, low, satelliteWeight, Pi * random.Bipolar());
+      makeMode(2 + 2 * pair, high, satelliteWeight, Pi * random.Bipolar());
+    }
+    auto first = result.begin() + anchor * CrashPacketModeCount;
+    std::sort(first, first + CrashPacketModeCount,
+              [](const auto &left, const auto &right) {
+                return left.frequencyHz < right.frequencyHz;
+              });
   }
   return result;
 }
@@ -165,13 +282,14 @@ DispersionLoopParameters Dispersion(
   result.slowDepthSamples = 1.3f * scale;
   result.slowRateHz = .17f;
   result.firstAllpassDelaySamples = 7.f * scale;
-  result.firstAllpassGain = .61f;
+  const float diffusion = std::clamp(fit.dispersionDiffusion, 0.f, 1.f);
+  result.firstAllpassGain = diffusion * .61f;
   result.secondAllpassDelaySamples = 13.f * scale;
-  result.secondAllpassGain = -.53f;
+  result.secondAllpassGain = diffusion * -.53f;
   result.thirdAllpassDelaySamples = 5.f * scale;
-  result.thirdAllpassGain = .3f;
+  result.thirdAllpassGain = diffusion * .3f;
   result.fourthAllpassDelaySamples = 17.f * scale;
-  result.fourthAllpassGain = -.25f;
+  result.fourthAllpassGain = diffusion * -.25f;
   result.selfPhase.centreDelaySamples = 9.f * scale;
   result.selfPhase.maximumExcursionSamples =
       std::clamp(fit.dispersionExcursionSamples, 0.f, 16.f) * scale;
@@ -191,7 +309,8 @@ DispersionLoopParameters Dispersion(
 }
 
 TurbulentResidualParameters Turbulence(
-    const CrashCymbalFitParameters &fit) noexcept {
+    const CrashCymbalFitParameters &fit,
+    const BodyDecayEnvelope &decay) noexcept {
   TurbulentResidualParameters result;
   for (std::size_t band = 0; band < result.gain.size(); ++band)
     result.gain[band] = std::clamp(fit.turbulenceGain[band], 0.f, 4.f);
@@ -204,9 +323,9 @@ TurbulentResidualParameters Turbulence(
   const float persistence = std::clamp(
       Positive(fit.turbulencePersistence, 1.f), .25f, 4.f);
   result.decay = {
-      persistence * BodyDecay(fit, frequencies[0]),
-      persistence * BodyDecay(fit, frequencies[1]),
-      persistence * BodyDecay(fit, frequencies[2])};
+      persistence * decay.At(frequencies[0]),
+      persistence * decay.At(frequencies[1]),
+      persistence * decay.At(frequencies[2])};
   result.lowCrossoverHz = std::sqrt(frequencies[0] * frequencies[1]);
   result.highCrossoverHz = std::sqrt(frequencies[1] * frequencies[2]);
   result.seed = 0x43524153u;
@@ -260,6 +379,11 @@ ObservationModel<4>::Parameters Observation(
   // state and is never scaled by the resolved-to-wash balance.
   result[3] = result[2];
   result[3].gain = 1.f;
+  if (fit.unifiedBodyEnabled) {
+    result[1].gain = 0.f;
+    result[2].gain = std::clamp(fit.fieldGain, 0.f, 4.f);
+    result[3].gain = 0.f;
+  }
   return result;
 }
 
@@ -269,9 +393,11 @@ CrashCymbalParameters DefaultCrashCymbalParameters(
     const float sampleRate, const CrashCymbalFitParameters &fit) {
   CrashCymbalParameters result;
   result.fit = fit;
-  result.sparseModes = SparseModes(sampleRate, fit);
-  result.denseModes = DenseModes(sampleRate, fit, false);
-  result.denseExtensionModes = DenseModes(sampleRate, fit, true);
+  const BodyDecayEnvelope decay(sampleRate, fit);
+  result.sparseModes = SparseModes(sampleRate, fit, decay);
+  result.denseModes = DenseModes(sampleRate, fit, false, decay);
+  result.denseExtensionModes = DenseModes(sampleRate, fit, true, decay);
+  result.modalField = ModalField(sampleRate, fit, decay);
   SetLocationProjections<CrashSparseModeCount>(
       result.sparseModes, result.sparseBellProjection,
       result.sparseBowProjection, result.sparseEdgeProjection);
@@ -282,8 +408,14 @@ CrashCymbalParameters DefaultCrashCymbalParameters(
       result.denseExtensionModes, result.denseExtensionBellProjection,
       result.denseExtensionBowProjection,
       result.denseExtensionEdgeProjection);
+  SetLocationProjections<CrashModalFieldModeCount>(
+      result.modalField, result.fieldBellProjection,
+      result.fieldBowProjection, result.fieldEdgeProjection);
+  result.modalFieldControls.exchangeAngleRadians =
+      .012f * std::clamp(fit.fieldExchange, 0.f, 1.f);
+  result.modalFieldControls.seed = fit.denseModeSeed ^ 0x4649454cu;
   result.dispersion = Dispersion(sampleRate, fit);
-  result.turbulence = Turbulence(fit);
+  result.turbulence = Turbulence(fit, decay);
   result.observation = Observation(fit);
   return result;
 }

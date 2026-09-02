@@ -4,11 +4,13 @@ This document maps the reusable component library onto snare, kick, cymbal,
 and hi-hat topologies. The structures are candidates to validate, not retained
 implementations.
 
-## Lessons from the snare and kick studies
+## Lessons from the cymbal, snare, and kick studies
 
 The following tutorial studies are useful perceptual prototypes rather than
 authoritative physical derivations:
 
+- Zion Jaymes,
+  [cymbal-synthesis walkthrough](https://www.youtube.com/watch?v=netcpYINyBQ);
 - Zion Jaymes, [Synthesize SNARES that sound REAL using the power of
   FEEDBACK](https://www.youtube.com/watch?v=1Db9rGbth_o);
 - [the snare follow-up](https://www.youtube.com/watch?v=LxV5J6UpR8Y);
@@ -383,7 +385,7 @@ only when ablation shows that each branch explains a distinct measurement.
 | Drive controls velocity-sensitive bloom | incident energy plus self-PM drive | Calibration target |
 | Feedback loop contains every dispersion processor | one explicit outer-loop graph | Core routing |
 | Dispersion is not heard directly | analysis-only dispersion tap | Core routing |
-| Dispersion drives body renderers | parallel arbitrary modal bank and dense-residual inputs | Core routing |
+| Dispersion drives the body renderer | secondary excitation port of the unified stochastic modal field | Core routing |
 | Plugin dry signal is polarity-cancelled | native wet-only implementation; no dry-null hack required | Equivalent implementation |
 | Approximately twelve parallel combs | optional parallel/coupled dense-residual lines | Residual candidate |
 | A few dark lower-order groups plus messy high groups | clustered resonator parameters and group filters | Calibration structure |

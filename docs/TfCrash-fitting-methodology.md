@@ -11,9 +11,20 @@ never be described as a perceptual fit.
 
 Calibration is now fitting-by-ear first. Numerical analysis remains a set of
 diagnostic views and regression checks; it does not approve sound quality.
-Automated search code is retained as experimental developer tooling so useful
-feature extraction and parameter-influence work is not lost, but it is not the
-active fitting workflow.
+Automated search code is retained as experimental developer tooling. It may
+produce a neutral starting state for the ear-fitting workbench, but it never
+approves a fit. The current 24-anchor bootstrap for the `edge v096 r01` cell has
+an overall level-invariant region/ERB RMSE of about 5.85 dB and a contact-region
+RMSE of about 7.19 dB; it is therefore explicitly an editable starting point,
+not a calibrated result.
+
+A fresh search after limiting editable anchor centres to 15 kHz was also kept
+as a rejected experiment rather than promoted automatically. It improved the
+search's final causal-prefix objective, but failed the independent acceptance
+gate: contact/bloom/early ERB shape errors remained roughly 5.6/6.5/8.7 dB,
+fine-spectrum error was 6.7 dB, and the persistent-mode presentation-level
+error was 14.1 dB. This is exactly the boundary between an optimizer seed and
+an accepted listening fit.
 
 ## Reference object
 
@@ -37,30 +48,34 @@ works across its own strike regions and velocities.
 ## Current synthesis graph
 
 ```text
-contact direct --------------------------------------> contact observation --+
+contact direct -------------------------------------> contact observation --+
        |
-       `-> body drive ----> sparse-input sum -> sparse modal bank
-                                                     -> modal observation ----+
-                 |             ^
-                 `-> nonlinear dispersion --+-> dense modal cloud
-                                             |       -> wash observation ----+-> output
-                                             +-> sparse-input sum           |
-                                             `-> turbulent residual
-                                                     -> turbulence observation+
+       +-> immediate projected force --------------------------+
+       |                                                       v
+       `-> nonlinear dispersion -> dispersed projected force -> one stochastic
+                                                               modal field
+                                                                    |
+                                                             body observation
+                                                                    +--------> output
 ```
 
-The sparse modal bank owns resolved persistent structure. The deterministic
-modal cloud and turbulent residual own complementary dense metallic wash. The raw
-dispersion signal is an excitation/analysis tap, not an automatically audible
-layer. The renderer is mono; any stereo presentation belongs after the physical
-instrument state. Passive mute can only remove stored or future energy.
+The experimental body is one 408-mode stored state: 24 paintable anchors, each
+with one coherent centre mode and 16 stochastic satellites. A global turbulence
+control transfers normalized excitation energy from centres to satellites and
+increases ERB spread, phase diffusion, and passive local exchange. A paintable
+per-anchor `0..2x` scaler lets selected ridges stay clean. All anchors share one
+frequency-dependent T60 curve and one mono radiation/output path. The older
+sparse bank, statistical cloud, and separate turbulent residual remain only as
+an explicit A/B implementation. The workbench presents them in a separate
+legacy-diagnostics view, so their controls do not clutter or accidentally alter
+the focused unified workflow.
 
-Contact and bloom are independently projected inputs to each modal bank but add
-to one stored modal state. Strike location and velocity therefore colour only
-the new contact force; a fixed body-wide bloom projection prevents a later hit
-from recolouring energy already circulating. The nonlinear dispersion stage is
-signal driven internally and has no latest-hit drive latch. A zero-strength
-event is a strict no-op.
+Contact and bloom are independently projected inputs but add to that one stored
+modal state. Strike location and velocity therefore colour new force without
+recolouring energy already circulating. The raw dispersion signal is not an
+audible layer. The renderer is mono; stereo presentation belongs after the
+instrument state. Passive mute can only remove stored or future energy, and a
+zero-strength event is a strict no-op.
 
 This graph is deliberately decomposable: each branch can be soloed, bypassed,
 and compared. Its architecture may change when listening shows that a component
@@ -97,12 +112,17 @@ The workbench exposes perceptual macros by default, not every implementation
 parameter. A macro is accepted only when its range is useful, its action is
 reasonably monotonic, and its label predicts what is heard. Raw parameters,
 branch solos, and curve editors remain in an advanced panel for diagnosis.
+Advanced means disclosed on demand, not inaccessible: no active DSP parameter
+is silently fixed by the focused UI. Redundant controls are removed from both
+UI and renderer only after controlled ablation.
 
 The initial macro groups are:
 
 - impact: strength, hardness/contact width, tonal-to-noise contact balance;
-- object: sparse pitch scale, sparse/dense balance, spectral colour;
-- evolution: bloom amount/time and low/mid/high decay shape;
+- object: 24 anchor frequencies/levels up to 15 kHz, global turbulence, per-anchor
+  turbulence response, packet spread, phase bandwidth, passive neighbour
+  exchange, and broad body colour;
+- evolution: bloom route/character/time and the shared frequency-decay shape;
 - strike projection: radial location and implement blend; and
 - constraint/presentation: mute, master level, and safe level matching.
 

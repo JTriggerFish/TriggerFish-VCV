@@ -1,0 +1,117 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="650"
+     viewBox="0 0 1500 650" role="img"
+     aria-labelledby="title description">
+  <title id="title">TriggerFish nonlinear resonator signal flow</title>
+  <desc id="description">A hit enters the contact exciter. Direct contact reaches the observation mix through its radiation filter. Body drive excites the unified modal field immediately and also enters the dispersion feedback loop, whose delayed bloom excites the same field. Mute adds passive loss to dispersion and modal recurrence.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3"
+            orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#b8c5d6"/>
+    </marker>
+    <marker id="loss-arrow" markerWidth="10" markerHeight="10" refX="9" refY="3"
+            orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#ff7b72"/>
+    </marker>
+    <style>
+      .bg { fill:#0d1117; }
+      .title { fill:#f0f6fc; font:700 28px system-ui,sans-serif; }
+      .lane { fill:#8997a8; font:600 15px system-ui,sans-serif; letter-spacing:1px; }
+      .box { stroke-width:2; rx:10; }
+      .event { fill:#342816; stroke:#d8a43d; }
+      .contact { fill:#292218; stroke:#e3b341; }
+      .process { fill:#211c35; stroke:#a78bfa; }
+      .state { fill:#14283b; stroke:#58a6ff; }
+      .observe { fill:#172d26; stroke:#56d39b; }
+      .loss { fill:#351d22; stroke:#ff7b72; }
+      .label { fill:#f0f6fc; font:700 18px system-ui,sans-serif; text-anchor:middle; }
+      .detail { fill:#b8c5d6; font:14px system-ui,sans-serif; text-anchor:middle; }
+      .port { fill:#d7e0ea; font:600 14px system-ui,sans-serif; }
+      .flow { fill:none; stroke:#b8c5d6; stroke-width:3; marker-end:url(#arrow); }
+      .loss-flow { fill:none; stroke:#ff7b72; stroke-width:2.5; stroke-dasharray:8 6; marker-end:url(#loss-arrow); }
+      .junction { fill:#f0f6fc; }
+      .boundary { fill:none; stroke:#384657; stroke-width:1.5; stroke-dasharray:6 7; }
+      .note { fill:#8997a8; font:italic 13px system-ui,sans-serif; }
+    </style>
+  </defs>
+
+  <rect class="bg" width="1500" height="650" rx="14"/>
+  <text class="title" x="40" y="48">Nonlinear resonator: current cymbal signal flow</text>
+
+  <text class="lane" x="40" y="91">EVENT AND CONTACT</text>
+  <text class="lane" x="555" y="91">BODY DEVELOPMENT AND STORAGE</text>
+  <text class="lane" x="1160" y="91">OBSERVATION</text>
+  <line class="boundary" x1="535" y1="75" x2="535" y2="600"/>
+  <line class="boundary" x1="1140" y1="75" x2="1140" y2="600"/>
+
+  <rect class="box event" x="40" y="240" width="170" height="100"/>
+  <text class="label" x="125" y="278">Hit event</text>
+  <text class="detail" x="125" y="305">strength · location</text>
+  <text class="detail" x="125" y="326">implement · hardness</text>
+
+  <rect class="box contact" x="275" y="210" width="230" height="160"/>
+  <text class="label" x="390" y="248">Contact exciter</text>
+  <text class="detail" x="390" y="279">half-sine force · chirp</text>
+  <text class="detail" x="390" y="302">tilted noise · micro-contacts</text>
+  <line x1="300" y1="322" x2="480" y2="322" stroke="#735f34"/>
+  <text class="detail" x="390" y="348">two explicit output ports</text>
+
+  <path class="flow" d="M210 290 H275"/>
+
+  <circle class="junction" cx="545" cy="290" r="5"/>
+  <path class="flow" d="M505 270 H545 V150 H620"/>
+  <text class="port" x="555" y="139">direct contact</text>
+
+  <rect class="box observe" x="620" y="112" width="235" height="78"/>
+  <text class="label" x="737" y="143">Direct radiation</text>
+  <text class="detail" x="737" y="164">gain · static EQ</text>
+  <text class="detail" x="737" y="181">optional relative delay</text>
+
+  <path class="flow" d="M855 151 H1185 V223"/>
+
+  <circle class="junction" cx="545" cy="310" r="5"/>
+  <path class="flow" d="M505 310 H545 V334 H900"/>
+  <text class="port" x="558" y="326">body drive: immediate/primary</text>
+
+  <path class="flow" d="M545 310 V460 H620"/>
+  <text class="port" x="558" y="447">body drive</text>
+
+  <rect class="box process" x="620" y="418" width="235" height="105"/>
+  <text class="label" x="737" y="451">Dispersion loop</text>
+  <text class="detail" x="737" y="478">delays · four allpasses</text>
+  <text class="detail" x="737" y="500">self-phase · feedback loss</text>
+
+  <path class="flow" d="M855 470 H880 V395 H900"/>
+  <text class="port" x="872" y="453" text-anchor="end">bloom:</text>
+  <text class="port" x="872" y="473" text-anchor="end">delayed/secondary</text>
+
+  <rect class="box state" x="900" y="272" width="235" height="155"/>
+  <text class="label" x="1017" y="309">Unified stochastic</text>
+  <text class="label" x="1017" y="333">modal field</text>
+  <text class="detail" x="1017" y="363">24 anchors × 17 states</text>
+  <text class="detail" x="1017" y="386">shared stored energy</text>
+  <text class="detail" x="1017" y="407">diffusion · passive exchange</text>
+
+  <path class="flow" d="M1135 350 H1160 V439 H1185"/>
+  <text class="port" x="1150" y="337">body</text>
+
+  <rect class="box observe" x="1185" y="400" width="180" height="78"/>
+  <text class="label" x="1275" y="426">Body radiation</text>
+  <text class="detail" x="1275" y="449">gain · static EQ</text>
+  <text class="detail" x="1275" y="466">optional relative delay</text>
+
+  <path class="flow" d="M1275 400 V262"/>
+  <rect class="box observe" x="1185" y="184" width="180" height="78"/>
+  <text class="label" x="1275" y="216">Observation mix</text>
+  <text class="detail" x="1275" y="240">no feedback to body</text>
+
+  <path class="flow" d="M1365 223 H1400"/>
+  <text class="port" x="1392" y="207">gain</text>
+  <text class="label" x="1407" y="229" text-anchor="start">MONO OUT</text>
+
+  <rect class="box loss" x="620" y="555" width="235" height="58"/>
+  <text class="label" x="737" y="580">Mute controller</text>
+  <text class="detail" x="737" y="601">smoothed passive loss only</text>
+  <path class="loss-flow" d="M690 555 V535 H705 V523"/>
+  <path class="loss-flow" d="M795 555 V540 H1017 V427"/>
+  <text class="note" x="873" y="589">loss is applied to ongoing bloom and modal recurrence</text>
+</svg>

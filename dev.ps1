@@ -26,6 +26,7 @@ param(
         "test-workbench-wasm",
         "test-workbench-browser",
         "analyze-workbench-start",
+        "fit-crash-start",
         "build-workbench",
         "serve-workbench",
         "benchmark-er",
@@ -352,7 +353,8 @@ switch ($Command) {
         Push-Location $repoRoot
         try {
             & $env:EMSDK_NODE workbench/tests/browser_probe.mjs `
-                http://127.0.0.1:9223 --reload --controls --trigger
+                http://127.0.0.1:9223 build/workbench-browser.png `
+                --reload --controls --trigger
             if ($LASTEXITCODE -ne 0) {
                 throw "Workbench browser probe failed with exit code $LASTEXITCODE."
             }
@@ -372,6 +374,25 @@ switch ($Command) {
                 build/cymbal-calibration/references/private-corpus-a-crash-v1/cells-oh-dyn-v2/044-edge-v096-r01.wav
             if ($LASTEXITCODE -ne 0) {
                 throw "Workbench starting-point analysis failed with exit code $LASTEXITCODE."
+            }
+        }
+        finally {
+            Pop-Location
+        }
+    }
+    "fit-crash-start" {
+        Push-Location $repoRoot
+        try {
+            & uv run python tools/fit_crash_cymbal.py `
+                --cells-manifest build/cymbal-calibration/references/private-corpus-a-crash-v1/cells-oh-dyn-v2/cells.json `
+                --fit-cell "edge v096 r01" `
+                --output build/cymbal-calibration/unified-field-start-v1 `
+                --maximum-evaluations 1200 `
+                --workers $Jobs `
+                --fit-policy first-100ms-tradeoff `
+                --skip-influence
+            if ($LASTEXITCODE -ne 0) {
+                throw "Unified crash starting fit failed with exit code $LASTEXITCODE."
             }
         }
         finally {

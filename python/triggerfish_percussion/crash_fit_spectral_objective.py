@@ -7,7 +7,11 @@ from dataclasses import dataclass
 import numpy as np
 
 from .crash_fit_common import CrashFitCell, render_cell
-from .crash_fit_parameters import fit_parameter_value, replace_fit_parameters
+from .crash_fit_parameters import (
+    BODY_DECAY_SLOTS,
+    fit_parameter_value,
+    replace_fit_parameters,
+)
 from .crash_fit_prefix import (
     PrefixQuality,
     causal_audio_quality,
@@ -35,7 +39,7 @@ class BoundedParameter:
 TEMPORAL_PARAMETERS = (
     *(
         BoundedParameter(f"body_decay_seconds[{index}]", 0.02, 20.0)
-        for index in range(5)
+        for index in BODY_DECAY_SLOTS
     ),
     *(BoundedParameter(f"turbulence_gain[{index}]", 0.0, 1.0) for index in range(3)),
     BoundedParameter("turbulence_persistence", 0.25, 4.0),

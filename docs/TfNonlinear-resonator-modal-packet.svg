@@ -1,0 +1,120 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="700"
+     viewBox="0 0 1500 700" role="img"
+     aria-labelledby="title description">
+  <title id="title">Expansion and processing of one stochastic resonator packet</title>
+  <desc id="description">A painted anchor and global turbulence create one centre oscillator and sixteen ERB-spaced satellites. During audio processing direct contact and bloom excite these complex states, which undergo modal recurrence, magnitude-preserving phase diffusion, and passive neighbour exchange before their outputs are summed.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3"
+            orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#b8c5d6"/>
+    </marker>
+    <style>
+      .bg { fill:#0d1117; }
+      .title { fill:#f0f6fc; font:700 28px system-ui,sans-serif; }
+      .lane { fill:#8997a8; font:600 15px system-ui,sans-serif; letter-spacing:1px; }
+      .box { stroke-width:2; rx:9; }
+      .control { fill:#342816; stroke:#e3b341; }
+      .prepare { fill:#211c35; stroke:#a78bfa; }
+      .state { fill:#14283b; stroke:#58a6ff; }
+      .passive { fill:#172d26; stroke:#56d39b; }
+      .label { fill:#f0f6fc; font:700 17px system-ui,sans-serif; text-anchor:middle; }
+      .detail { fill:#b8c5d6; font:13px system-ui,sans-serif; text-anchor:middle; }
+      .formula { fill:#d7e0ea; font:14px ui-monospace,SFMono-Regular,Consolas,monospace; text-anchor:middle; }
+      .flow { fill:none; stroke:#b8c5d6; stroke-width:3; marker-end:url(#arrow); }
+      .boundary { fill:none; stroke:#384657; stroke-width:1.5; stroke-dasharray:7 7; }
+      .packet-line { fill:none; stroke:#58a6ff; stroke-width:2; opacity:.72; }
+      .satellite { fill:#58a6ff; opacity:.74; }
+      .centre { fill:#e3b341; }
+      .note { fill:#8997a8; font:italic 14px system-ui,sans-serif; }
+    </style>
+  </defs>
+
+  <rect class="bg" width="1500" height="700" rx="14"/>
+  <text class="title" x="40" y="48">One painted anchor becomes one stochastic modal packet</text>
+
+  <text class="lane" x="40" y="91">PREPARATION — PARAMETERS BECOME A FIXED PACKET</text>
+
+  <rect class="box control" x="40" y="125" width="220" height="135"/>
+  <text class="label" x="150" y="160">Painted anchor</text>
+  <text class="detail" x="150" y="188">centre frequency</text>
+  <text class="detail" x="150" y="210">relative level · decay ratio</text>
+  <text class="detail" x="150" y="232">local turbulence scaler</text>
+
+  <rect class="box control" x="40" y="288" width="220" height="118"/>
+  <text class="label" x="150" y="324">Global controls</text>
+  <text class="detail" x="150" y="352">turbulence · max spread</text>
+  <text class="detail" x="150" y="374">phase bandwidth · exchange</text>
+
+  <path class="flow" d="M260 192 H325"/>
+  <path class="flow" d="M260 347 H290 V222 H325"/>
+
+  <rect class="box prepare" x="325" y="145" width="285" height="155"/>
+  <text class="label" x="467" y="180">Local trajectory</text>
+  <text class="formula" x="467" y="209">t = clamp(global × local)</text>
+  <text class="detail" x="467" y="238">normalized centre/satellite energy</text>
+  <text class="detail" x="467" y="261">ERB spread · linewidth · exchange</text>
+  <text class="detail" x="467" y="282">all grow from the same t</text>
+
+  <path class="flow" d="M610 222 H675"/>
+
+  <rect class="box state" x="675" y="115" width="435" height="235"/>
+  <text class="label" x="892" y="151">Prepared packet: 17 complex modal states</text>
+  <line class="packet-line" x1="725" y1="260" x2="1060" y2="260"/>
+  <circle class="satellite" cx="735" cy="260" r="6"/>
+  <circle class="satellite" cx="770" cy="260" r="7"/>
+  <circle class="satellite" cx="806" cy="260" r="8"/>
+  <circle class="satellite" cx="840" cy="260" r="9"/>
+  <circle class="satellite" cx="866" cy="260" r="10"/>
+  <circle class="centre" cx="892" cy="260" r="15"/>
+  <circle class="satellite" cx="918" cy="260" r="10"/>
+  <circle class="satellite" cx="944" cy="260" r="9"/>
+  <circle class="satellite" cx="978" cy="260" r="8"/>
+  <circle class="satellite" cx="1014" cy="260" r="7"/>
+  <circle class="satellite" cx="1050" cy="260" r="6"/>
+  <text class="detail" x="892" y="190">8 lower satellites ← centre → 8 upper satellites</text>
+  <text class="detail" x="892" y="219">offsets are symmetric in ERB rate, with deterministic jitter</text>
+  <text class="formula" x="892" y="310">centreWeight² + Σ satelliteWeight² = 1</text>
+  <text class="detail" x="892" y="333">t = 0 drives only the centre; increasing t fills the packet</text>
+
+  <rect class="box passive" x="1175" y="145" width="275" height="155"/>
+  <text class="label" x="1312" y="180">Shared body definitions</text>
+  <text class="detail" x="1312" y="211">shared 2-8 knot frequency T60 curve</text>
+  <text class="detail" x="1312" y="234">bell · bow · edge projections</text>
+  <text class="detail" x="1312" y="257">deterministic object seed</text>
+  <text class="detail" x="1312" y="280">24 packets produce 408 states</text>
+  <path class="flow" d="M1110 222 H1175"/>
+
+  <line class="boundary" x1="40" y1="445" x2="1460" y2="445"/>
+  <text class="lane" x="40" y="482">AUDIO LOOP — THE PACKET STORES AND EXCHANGES ENERGY</text>
+
+  <rect class="box control" x="40" y="515" width="220" height="115"/>
+  <text class="label" x="150" y="552">Two force inputs</text>
+  <text class="detail" x="150" y="580">direct body drive: localized</text>
+  <text class="detail" x="150" y="604">delayed bloom: body-wide</text>
+
+  <path class="flow" d="M260 572 H325"/>
+  <rect class="box state" x="325" y="515" width="250" height="115"/>
+  <text class="label" x="450" y="550">Modal recurrence</text>
+  <text class="formula" x="450" y="580">z ← r exp(jω) z + drive</text>
+  <text class="detail" x="450" y="606">r is the declared T60 loss</text>
+
+  <path class="flow" d="M575 572 H640"/>
+  <rect class="box passive" x="640" y="515" width="250" height="115"/>
+  <text class="label" x="765" y="550">Phase diffusion</text>
+  <text class="formula" x="765" y="580">z ← exp(±jδ) z</text>
+  <text class="detail" x="765" y="606">widens ridges; preserves |z|²</text>
+
+  <path class="flow" d="M890 572 H955"/>
+  <rect class="box passive" x="955" y="515" width="250" height="115"/>
+  <text class="label" x="1080" y="550">Neighbour exchange</text>
+  <text class="formula" x="1080" y="580">[za, zb] ← G(±θ)[za, zb]</text>
+  <text class="detail" x="1080" y="606">orthogonal; preserves paired energy</text>
+
+  <path class="flow" d="M1205 572 H1270"/>
+  <rect class="box state" x="1270" y="515" width="180" height="115"/>
+  <text class="label" x="1360" y="550">Modal sum</text>
+  <text class="formula" x="1360" y="580">y = Σ gain · Re(z)</text>
+  <text class="detail" x="1360" y="606">to body radiation</text>
+
+  <text class="note" x="40" y="672">Input and pole radii may change energy. Phase diffusion and Givens exchange do not.</text>
+</svg>

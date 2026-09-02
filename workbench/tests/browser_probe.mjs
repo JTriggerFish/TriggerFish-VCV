@@ -72,6 +72,15 @@ const evaluated = await call("Runtime.evaluate", {
   expression, awaitPromise: true, returnByValue: true,
 });
 const result = evaluated.result.value;
+if (result.status === "Loading DSP…") {
+  const diagnostic = await call("Runtime.evaluate", {
+    expression: `import("./app.mjs?diagnostic=1")
+      .then(() => ({ loaded: true }))
+      .catch(error => ({ loaded: false, message: String(error), stack: error.stack }))`,
+    awaitPromise: true, returnByValue: true,
+  });
+  result.moduleDiagnostic = diagnostic.result.value;
+}
 if (profileUi) {
   const profile = await call("Runtime.evaluate", {
     expression: `(() => {
@@ -195,6 +204,7 @@ if (testControls) {
     expression: `new Promise(resolve => {
       const master = document.getElementById("master");
       const hardness = document.getElementById("hardness");
+      const contactSpread = document.getElementById("contact-spread");
       const implementChoices = [...document.querySelectorAll(
         'input[name="implement"]',
       )];
@@ -207,6 +217,9 @@ if (testControls) {
         '[data-fit-key="dense_mode_density"] input[type="range"]');
       const bodyLowT60 = document.querySelector(
         '[data-fit-key="body_decay_seconds_0"] input');
+      const fieldTurbulence = document.querySelector(
+        '[data-fit-key="field_turbulence"] input');
+      const bodyUi = document.getElementById("body-ui-mode");
       const sidebar = document.querySelector("aside");
       const analysis = document.querySelector(".analysis");
       const analysisTop = analysis.getBoundingClientRect().top;
@@ -218,8 +231,10 @@ if (testControls) {
       sidebar.scrollTop = Math.min(240, sidebar.scrollHeight - sidebar.clientHeight);
       const initial = {
         hardness: hardness.value,
+        contactSpread: contactSpread.value,
         implement: implementChoices.find(input => input.checked)?.value,
         model: Number(model.value), shape: shape.value,
+        bodyUi: bodyUi.value,
       };
       const reset = (element, changed, eventName = "input") => {
         element.value = changed;
@@ -228,6 +243,7 @@ if (testControls) {
       };
       reset(master, -30);
       reset(hardness, 0.1);
+      reset(contactSpread, 0.9);
       implementChoices.find(input => input.value === "0").click();
       const brushCharacter = document.getElementById("character-label").textContent;
       implementChoices.find(input => input.value === "0.5").click();
@@ -238,6 +254,69 @@ if (testControls) {
       reset(mode, "difference", "change");
       reset(shape, 0.9);
       reset(model, Math.min(1, initial.model + 0.1));
+      const unifiedVisible = document.querySelector(
+        '[data-ui-mode="unified"]').getClientRects().length > 0;
+      const legacyHidden = document.querySelector(
+        '[data-ui-mode="legacy"]').getClientRects().length === 0;
+      bodyUi.value = "legacy";
+      bodyUi.dispatchEvent(new Event("change"));
+      const legacyVisible = document.querySelector(
+        '[data-ui-mode="legacy"]').getClientRects().length > 0;
+      const unifiedHidden = document.querySelector(
+        '[data-ui-mode="unified"]').getClientRects().length === 0;
+      bodyUi.value = initial.bodyUi;
+      bodyUi.dispatchEvent(new Event("change"));
+      const modal = document.querySelector("#modal-editor svg");
+      const modalCount = modal.querySelectorAll(".modal-bar").length;
+      modal.querySelector(".modal-bar").dispatchEvent(new MouseEvent(
+        "dblclick", { bubbles: true },
+      ));
+      const modalDeleteWorked =
+        modal.querySelectorAll(".modal-bar").length === modalCount - 1;
+      const modalPreset = document.getElementById("modal-preset");
+      modalPreset.value = "fitted";
+      modalPreset.dispatchEvent(new Event("change"));
+      const modalRestoreWorked =
+        modal.querySelectorAll(".modal-bar").length === modalCount;
+      const modalSelection = document.getElementById("modal-selection");
+      const persistentModalInspector =
+        modalSelection.querySelectorAll('input[type="range"]').length === 3 &&
+        [...modalSelection.querySelectorAll('input[type="range"]')]
+          .every(input => input.disabled) &&
+        modalSelection.getClientRects().length > 0;
+      const harmonicGuide = document.getElementById("harmonic-guide");
+      harmonicGuide.checked = true;
+      harmonicGuide.dispatchEvent(new Event("change"));
+      const harmonicGuideWorks =
+        modal.querySelectorAll(".harmonic-grid").length > 1 &&
+        !document.getElementById("harmonic-note").disabled &&
+        !document.getElementById("harmonic-snap").disabled &&
+        !document.getElementById("harmonic-snap-all").disabled;
+      const decayEditor = document.querySelector("#decay-editor svg");
+      const decayCount = decayEditor.querySelectorAll(".editor-point").length;
+      const decayBounds = decayEditor.getBoundingClientRect();
+      decayEditor.dispatchEvent(new MouseEvent("dblclick", {
+        bubbles: true,
+        clientX: decayBounds.left + .63 * decayBounds.width,
+        clientY: decayBounds.top + .45 * decayBounds.height,
+      }));
+      const decayInsertWorked =
+        decayEditor.querySelectorAll(".editor-point").length === decayCount + 1;
+      document.querySelector("#decay-selection button")?.click();
+      const decayRemoveWorked =
+        decayEditor.querySelectorAll(".editor-point").length === decayCount;
+      const divider = document.getElementById("analysis-divider");
+      const dividerStart = divider.getAttribute("aria-valuenow");
+      divider.dispatchEvent(new KeyboardEvent("keydown", {
+        key: "ArrowDown", bubbles: true,
+      }));
+      divider.dispatchEvent(new KeyboardEvent("keydown", {
+        key: "ArrowUp", bubbles: true,
+      }));
+      const modalDesign = document.querySelector(".modal-design");
+      const modalBounds = modal.getBoundingClientRect();
+      const modalDesignBounds = modalDesign.getBoundingClientRect();
+      const modalAspect = modal.viewBox.baseVal.width / modal.viewBox.baseVal.height;
       const deadline = performance.now() + 5000;
       const poll = () => {
         if (document.getElementById("status").textContent === "Ready" ||
@@ -245,6 +324,7 @@ if (testControls) {
           const checks = {
             master: master.value === "-12",
             hardness: hardness.value === initial.hardness,
+            contactSpread: contactSpread.value === initial.contactSpread,
             implement: implementChoices.find(input => input.checked)?.value ===
               initial.implement,
             implementChoices: implementChoices.length === 3,
@@ -261,15 +341,51 @@ if (testControls) {
             shape: shape.value === initial.shape,
             model: Math.abs(Number(model.value) - initial.model) <= 0.11,
             bodyLowT60: bodyLowT60 instanceof HTMLInputElement,
-            fiveBodyT60Knots: document.querySelectorAll(
-              "#decay-editor .editor-point").length === 5,
-            sharedT60Editor: Boolean(document.querySelector("#decay-editor svg")),
-            resolvedModeBars: document.querySelectorAll(
-              "#resolved-editor .editor-bar")
-              .length === 12,
-            resolvedPaintMode: Boolean(document.querySelector(
-              "#resolved-editor .editor-mode input[type=checkbox]",
-            )),
+            flexibleBodyT60Knots:
+              document.querySelectorAll("#decay-editor .editor-point").length === 2 &&
+              document.querySelectorAll("#decay-editor rect.editor-point").length === 2 &&
+              Boolean(document.querySelector("#decay-editor .decay-all-handle")) &&
+              decayInsertWorked && decayRemoveWorked,
+            sharedT60Editor: Boolean(decayEditor),
+            unifiedBodyDefault: initial.bodyUi === "unified",
+            unifiedTurbulenceControl:
+              fieldTurbulence instanceof HTMLInputElement,
+            separateBodyViews: unifiedVisible && legacyHidden &&
+              legacyVisible && unifiedHidden,
+            bloomDiffusionControl: Boolean(document.querySelector(
+              '[data-fit-key="bloom_diffusion"] input')),
+            independentBloomControls: Boolean(document.querySelector(
+              '[data-fit-key="bloom_level"] input')) &&
+              Boolean(document.querySelector(
+                '[data-fit-key="bloom_nonlinearity"] input')),
+            modalPacketEditor: Boolean(document.querySelector(
+              "#modal-editor svg.modal-editor")) &&
+              document.querySelectorAll("#modal-editor .modal-bar").length > 0 &&
+              document.querySelectorAll("#modal-editor .modal-packet").length > 0,
+            modalEditingTools: Boolean(document.getElementById("modal-tool-edit")) &&
+              Boolean(document.getElementById("modal-tool-level")) &&
+              Boolean(document.getElementById("modal-tool-paint")) &&
+              Boolean(document.getElementById("modal-clear")) &&
+              modalDeleteWorked && modalRestoreWorked,
+            persistentModalInspector,
+            harmonicGuideWorks,
+            modalCeiling15k: [...document.querySelectorAll(
+              "#modal-editor .editor-tick")].some(node =>
+                node.textContent === "15k") &&
+              ![...document.querySelectorAll("#modal-editor .editor-tick")]
+                .some(node => node.textContent === "20k"),
+            modalTooltips: Boolean(document.querySelector(
+              "#modal-tool-edit[data-tooltip]")) && Boolean(document.querySelector(
+                '[data-fit-key="field_turbulence"][data-tooltip]')),
+            modalUsesAvailableSpace:
+              modalBounds.width >= modalDesignBounds.width - 30 &&
+              Math.abs(modalAspect - modalBounds.width / modalBounds.height) < .05 &&
+              modalDesignBounds.height >= 375 &&
+              modalBounds.bottom <= modalDesignBounds.bottom &&
+              spectrogram.getBoundingClientRect().bottom <
+                document.getElementById("strike-pad").getBoundingClientRect().top &&
+              document.getElementById("strike-pad").getBoundingClientRect().bottom <
+                modalDesignBounds.top,
             noResolvedModeToggle: !document.querySelector(
               '[data-fit-key="resolved_modes_enabled"]'),
             denseWashCurve: document.querySelectorAll(
@@ -305,8 +421,25 @@ if (testControls) {
                 (value, index) => value === referenceBefore[index],
               );
             })(),
+            resizableSpectrogram: document.getElementById("analysis-divider")
+              .getAttribute("role") === "separator" &&
+              divider.getAttribute("aria-valuenow") === dividerStart,
+            compactRadiation: Boolean(document.getElementById(
+              "direct-radiation-advanced")) && Boolean(document.getElementById(
+                "dense-radiation-advanced")),
           };
-          resolve({ checks, passed: Object.values(checks).every(Boolean) });
+          resolve({
+            checks, passed: Object.values(checks).every(Boolean),
+            layout: {
+              modalWidth: modalBounds.width,
+              designWidth: modalDesignBounds.width,
+              modalBottom: modalBounds.bottom,
+              designBottom: modalDesignBounds.bottom,
+              analysisBottom: analysis.getBoundingClientRect().bottom,
+              viewBoxAspect: modalAspect,
+              elementAspect: modalBounds.width / modalBounds.height,
+            },
+          });
         } else setTimeout(poll, 25);
       };
       poll();
