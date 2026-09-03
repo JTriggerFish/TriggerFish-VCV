@@ -1,5 +1,4 @@
-const ringFrames = 8192;
-const liveLeadFrames = 512;
+import { limiterLookaheadSeconds } from "./limiter_config.mjs";
 
 export class SafeAudition {
   constructor(onStatus = () => {}) {
@@ -10,7 +9,7 @@ export class SafeAudition {
     this.trimDb = 0;
     this.reductionDb = 0;
     this.triggerCount = 0;
-    this.workerReady = false;
+    this.rendererReady = false;
     this.pendingMacros = [];
     this.macroGeneration = 0;
     this.appliedMacroGeneration = 0;
@@ -29,26 +28,21 @@ export class SafeAudition {
   }
 
   async #buildGraph() {
-    if (!crossOriginIsolated || typeof SharedArrayBuffer === "undefined") {
-      throw new Error("real-time audio requires the workbench server");
-    }
     this.context = new AudioContext({ latencyHint: "interactive" });
     if (this.context.state === "running") await this.context.suspend();
     await Promise.all([
-      this.context.audioWorklet.addModule("ring_player_processor.mjs"),
+      this.context.audioWorklet.addModule("crash_audio_worklet_processor.mjs"),
       this.context.audioWorklet.addModule("lookahead_limiter_processor.mjs"),
     ]);
-    this.audioBuffer = new SharedArrayBuffer(
-      ringFrames * Float32Array.BYTES_PER_ELEMENT,
-    );
-    this.controlBuffer = new SharedArrayBuffer(4 * Int32Array.BYTES_PER_ELEMENT);
-    this.control = new Int32Array(this.controlBuffer);
-    this.live = new AudioWorkletNode(this.context, "triggerfish-ring-player", {
-      numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [1],
-      processorOptions: {
-        audioBuffer: this.audioBuffer, controlBuffer: this.controlBuffer,
+
+    const initialGeneration = this.macroGeneration;
+    this.live = new AudioWorkletNode(
+      this.context, "triggerfish-crash-renderer", {
+        numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [1],
+        processorOptions: { macros: [...this.pendingMacros] },
       },
-    });
+    );
+    const ready = this.#bindRenderer(initialGeneration);
     this.liveGain = new GainNode(this.context);
     this.trim = new GainNode(this.context);
     this.limiter = new AudioWorkletNode(
@@ -69,21 +63,29 @@ export class SafeAudition {
     );
     this.setMaster(this.masterDb);
     this.setTrim(this.trimDb);
-    await this.#startWorker();
-    Atomics.store(this.control, 2, 0);
+    await ready;
   }
 
-  #startWorker() {
-    this.worker = new Worker("realtime_engine_worker.mjs", { type: "module" });
+  #bindRenderer(initialGeneration) {
     return new Promise((resolve, reject) => {
-      this.worker.onmessage = ({ data }) => {
+      let starting = true;
+      this.live.onprocessorerror = () => {
+        const error = new Error("crash AudioWorklet processor failed");
+        this.onStatus(error.message);
+        if (starting) reject(error);
+      };
+      this.live.port.onmessage = ({ data }) => {
         if (data.kind === "ready") {
-          this.workerReady = true;
-          const generation = ++this.macroGeneration;
-          this.macroCommitStarted = performance.now();
-          this.worker.postMessage({
-            kind: "macros", values: this.pendingMacros, generation,
-          });
+          this.rendererReady = true;
+          this.appliedMacroGeneration = initialGeneration;
+          this.macroCommitMs = data.elapsedMs;
+          starting = false;
+          if (this.macroGeneration > initialGeneration) {
+            this.live.port.postMessage({
+              kind: "macros", values: this.pendingMacros,
+              generation: this.macroGeneration,
+            });
+          }
           resolve();
         } else if (data.kind === "macros-applied") {
           if (data.generation >= this.appliedMacroGeneration) {
@@ -95,15 +97,9 @@ export class SafeAudition {
         } else if (data.kind === "error") {
           const error = new Error(data.message);
           this.onStatus(error.message);
-          reject(error);
+          if (starting) reject(error);
         }
       };
-      this.worker.onerror = event => reject(new Error(event.message));
-      this.worker.postMessage({
-        kind: "initialize", sampleRate: this.context.sampleRate,
-        macros: this.pendingMacros, audioBuffer: this.audioBuffer,
-        controlBuffer: this.controlBuffer,
-      });
     });
   }
 
@@ -119,10 +115,10 @@ export class SafeAudition {
 
   setMacros(values) {
     this.pendingMacros = [...values];
-    if (this.workerReady) {
-      const generation = ++this.macroGeneration;
-      this.macroCommitStarted = performance.now();
-      this.worker.postMessage({ kind: "macros", values, generation });
+    const generation = ++this.macroGeneration;
+    this.macroCommitStarted = performance.now();
+    if (this.rendererReady) {
+      this.live.port.postMessage({ kind: "macros", values, generation });
     }
   }
 
@@ -130,8 +126,10 @@ export class SafeAudition {
     await this.#prepare();
     this.#stopSource();
     this.liveGain.gain.value = 1;
-    this.worker.postMessage({ kind: "trigger", event });
+    this.live.port.postMessage({ kind: "trigger", event });
   }
+
+  async activate() { await this.#prepare(); }
 
   async play(samples, sampleRate) {
     await this.#prepare();
@@ -153,7 +151,7 @@ export class SafeAudition {
   stop() {
     this.#stopSource();
     if (this.liveGain) this.liveGain.gain.value = 1;
-    this.worker?.postMessage({ kind: "reset" });
+    this.live?.port.postMessage({ kind: "reset" });
   }
 
   #stopSource() {
@@ -166,7 +164,7 @@ export class SafeAudition {
 
   get reduction() { return this.reductionDb; }
   get state() { return this.context?.state ?? "off"; }
-  get underflows() { return this.control ? Atomics.load(this.control, 2) : 0; }
+  get underflows() { return 0; }
   get outputDb() {
     if (!this.meter) return -Infinity;
     this.meter.getFloatTimeDomainData(this.meterSamples);
@@ -174,11 +172,24 @@ export class SafeAudition {
     for (const sample of this.meterSamples) peak = Math.max(peak, Math.abs(sample));
     return 20 * Math.log10(Math.max(peak, 1e-9));
   }
-  get latencyMs() {
-    if (!this.context) return 0;
-    return 1000 * ((this.context.baseLatency ?? 0) +
-      (this.context.outputLatency ?? 0) +
-      liveLeadFrames / this.context.sampleRate + 0.005);
+  get latencyMs() { return this.latencyBreakdown.totalMs; }
+  get latencyBreakdown() {
+    const limiterMs = 1000 * limiterLookaheadSeconds;
+    if (!this.context) {
+      return {
+        workletQuantumFrames: 128, workletQuantumMs: 0,
+        limiterMs, browserDeviceMs: 0, totalMs: 0,
+      };
+    }
+    const workletQuantumFrames = this.context.renderQuantumSize ?? 128;
+    const workletQuantumMs =
+      1000 * workletQuantumFrames / this.context.sampleRate;
+    const browserDeviceMs = 1000 * ((this.context.baseLatency ?? 0) +
+      (this.context.outputLatency ?? 0));
+    return {
+      workletQuantumFrames, workletQuantumMs, limiterMs, browserDeviceMs,
+      totalMs: workletQuantumMs + limiterMs + browserDeviceMs,
+    };
   }
   get sampleRate() { return this.context?.sampleRate ?? 0; }
   get macroCommitPending() {

@@ -2,11 +2,9 @@
 
 #include "contact_exciter.hpp"
 #include "dispersion_loop.hpp"
-#include "modal_bank.hpp"
 #include "observation_model.hpp"
 #include "statistical_modal_cloud.hpp"
 #include "stochastic_modal_field.hpp"
-#include "turbulent_residual.hpp"
 
 #include <array>
 #include <cstddef>
@@ -15,13 +13,10 @@
 namespace tfdsp::percussion {
 
 inline constexpr std::size_t CrashSparseModeCount = 24;
-inline constexpr std::size_t CrashDenseModeCount = 2048;
 inline constexpr std::size_t CrashPacketModeCount = 17;
 inline constexpr std::size_t CrashModalFieldModeCount =
     CrashSparseModeCount * CrashPacketModeCount;
 inline constexpr std::size_t CrashBodyDecayPointCount = 8;
-using CrashSparseModes = ModalBank<CrashSparseModeCount>;
-using CrashDenseModes = ModalBank<CrashDenseModeCount>;
 using CrashModalField = StochasticModalField<CrashModalFieldModeCount>;
 
 struct CrashCymbalFitParameters {
@@ -85,7 +80,6 @@ struct CrashCymbalFitParameters {
   // Audible routing from the dispersion return into all body branches.
   // This is independent of the self-phase nonlinearity inside that loop.
   float bloomBodyGain{1.f};
-  bool unifiedBodyEnabled{};
   float fieldGain{.73824115f};
   float fieldTurbulence{.65f};
   float fieldPacketSpreadErb{6.f};
@@ -138,26 +132,13 @@ struct CrashCymbalFitParameters {
 };
 
 struct CrashCymbalParameters {
-  CrashSparseModes::Parameters sparseModes{};
-  CrashDenseModes::Parameters denseModes{};
-  CrashDenseModes::Parameters denseExtensionModes{};
   CrashModalField::Parameters modalField{};
-  CrashSparseModes::Projection sparseBellProjection{};
-  CrashSparseModes::Projection sparseBowProjection{};
-  CrashSparseModes::Projection sparseEdgeProjection{};
-  CrashDenseModes::Projection denseBellProjection{};
-  CrashDenseModes::Projection denseBowProjection{};
-  CrashDenseModes::Projection denseEdgeProjection{};
-  CrashDenseModes::Projection denseExtensionBellProjection{};
-  CrashDenseModes::Projection denseExtensionBowProjection{};
-  CrashDenseModes::Projection denseExtensionEdgeProjection{};
   CrashModalField::Projection fieldBellProjection{};
   CrashModalField::Projection fieldBowProjection{};
   CrashModalField::Projection fieldEdgeProjection{};
   StochasticModalFieldControls modalFieldControls{};
   DispersionLoopParameters dispersion{};
-  TurbulentResidualParameters turbulence{};
-  ObservationModel<4>::Parameters observation{};
+  ObservationModel<2>::Parameters observation{};
   CrashCymbalFitParameters fit{};
 };
 

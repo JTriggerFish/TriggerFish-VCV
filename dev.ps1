@@ -33,6 +33,7 @@ param(
         "benchmark-reverb",
         "benchmark-electric-piano",
         "benchmark-percussion",
+        "benchmark-workbench",
         "python-test",
         "shell",
         "rack-dep",
@@ -441,6 +442,26 @@ switch ($Command) {
     }
     "benchmark-percussion" {
         Invoke-Mingw "cd '$repoMsys' && cmake -S . -B build/dsp-tests -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DTRIGGERFISH_BUILD_PYTHON=OFF && cmake --build build/dsp-tests --target triggerfish_percussion_benchmark -j$Jobs && ./build/dsp-tests/triggerfish_percussion_benchmark.exe"
+    }
+    "benchmark-workbench" {
+        & $PSCommandPath -Command build-workbench -Jobs $Jobs
+        if ($LASTEXITCODE -ne 0) {
+            throw "Workbench build failed with exit code $LASTEXITCODE."
+        }
+        $emsdkEnvironment = Join-Path $emsdkRoot "emsdk_env.ps1"
+        Assert-Path $emsdkEnvironment "Emscripten SDK environment script"
+        . $emsdkEnvironment
+        Push-Location $repoRoot
+        try {
+            & $env:EMSDK_NODE workbench/tests/performance_probe.mjs `
+                build/workbench-wasm/site/engine.mjs
+            if ($LASTEXITCODE -ne 0) {
+                throw "Workbench benchmark failed with exit code $LASTEXITCODE."
+            }
+        }
+        finally {
+            Pop-Location
+        }
     }
     "python-test" {
         $previousPath = $env:Path

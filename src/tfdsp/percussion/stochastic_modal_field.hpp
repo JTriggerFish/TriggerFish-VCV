@@ -72,8 +72,8 @@ public:
           tfdsp::FiniteNormalOrZero(parameters[source].decaySeconds), .001f,
           60.f);
       const float angle = TwoPi * frequency / sampleRate_;
-      cosine_[mode] = std::cos(angle);
-      sine_[mode] = std::sin(angle);
+      const float oscillatorCosine = std::cos(angle);
+      const float oscillatorSine = std::sin(angle);
       radius_[mode] = std::exp(std::log(.001f) / (decay * sampleRate_));
       inputGain_[mode] = inputGain;
       outputGain_[mode] = outputGain;
@@ -85,16 +85,36 @@ public:
       const float bandwidth = std::clamp(
           tfdsp::FiniteNormalOrZero(parameters[source].phaseBandwidthHz),
           0.f, .45f * sampleRate_);
-      phaseCosine_[mode] = std::exp(-3.14159265358979323846f * bandwidth /
-                                    sampleRate_);
-      phaseSine_[mode] = std::sqrt(
-          std::max(0.f, 1.f - phaseCosine_[mode] * phaseCosine_[mode]));
+      const float phaseCosine = std::exp(
+          -3.14159265358979323846f * bandwidth / sampleRate_);
+      const float phaseSine = std::sqrt(
+          std::max(0.f, 1.f - phaseCosine * phaseCosine));
+      // A stochastic phase kick follows the ordinary modal rotation. Compose
+      // the two rotations here so the audio loop needs only one complex
+      // multiply for either random sign.
+      float positiveCosine = phaseCosine * oscillatorCosine -
+          phaseSine * oscillatorSine;
+      float positiveSine = phaseSine * oscillatorCosine +
+          phaseCosine * oscillatorSine;
+      float negativeCosine = phaseCosine * oscillatorCosine +
+          phaseSine * oscillatorSine;
+      float negativeSine = phaseCosine * oscillatorSine -
+          phaseSine * oscillatorCosine;
+      NormalizeRotation(positiveCosine, positiveSine);
+      NormalizeRotation(negativeCosine, negativeSine);
+      cosineCentre_[mode] = .5f * (positiveCosine + negativeCosine);
+      cosineSpread_[mode] = .5f * (positiveCosine - negativeCosine);
+      sineCentre_[mode] = .5f * (positiveSine + negativeSine);
+      sineSpread_[mode] = .5f * (positiveSine - negativeSine);
       packet_[mode] = parameters[source].packet;
       exchangeAmount_[mode] = Unit(parameters[source].exchangeAmount);
       band_[mode] = frequency < lowCrossoverHz_
           ? 0
           : static_cast<std::uint8_t>(frequency < highCrossoverHz_ ? 1 : 2);
       effectiveRadius_[mode] = radius_[mode];
+      primaryDriveGain_[mode] = inputGain * excitationProjection_[mode];
+      secondaryDriveGain_[mode] =
+          inputGain * secondaryExcitationProjection_[mode];
     }
     PrepareExchange();
     damping_ = {};
@@ -109,12 +129,13 @@ public:
   }
 
   void SetExcitationProjection(const Projection &projection) noexcept {
-    SetProjection(projection, excitationProjection_);
+    SetProjection(projection, excitationProjection_, primaryDriveGain_);
   }
 
   void SetSecondaryExcitationProjection(
       const Projection &projection) noexcept {
-    SetProjection(projection, secondaryExcitationProjection_);
+    SetProjection(
+        projection, secondaryExcitationProjection_, secondaryDriveGain_);
   }
 
   float ProcessExcitedPair(
@@ -124,8 +145,7 @@ public:
     secondaryInput = tfdsp::FiniteNormalOrZero(secondaryInput);
     UpdateDamping(damping);
     Propagate(primaryInput, secondaryInput);
-    ExchangeNeighbours();
-    return SumOutput();
+    return ExchangeNeighboursAndSum();
   }
 
   std::size_t ActiveModeCount() const noexcept { return activeModeCount_; }
@@ -155,6 +175,19 @@ private:
     return std::clamp(tfdsp::FiniteNormalOrZero(value), 0.f, 1.f);
   }
 
+  static void NormalizeRotation(float &cosine, float &sine) noexcept {
+    const float inverseLength = 1.f / std::sqrt(cosine * cosine + sine * sine);
+    cosine *= inverseLength;
+    sine *= inverseLength;
+    if (std::abs(cosine) >= std::abs(sine)) {
+      sine = std::copysign(
+          std::sqrt(std::max(0.f, 1.f - cosine * cosine)), sine);
+    } else {
+      cosine = std::copysign(
+          std::sqrt(std::max(0.f, 1.f - sine * sine)), cosine);
+    }
+  }
+
   void SetExchangeAngle(float angle) noexcept {
     angle = std::clamp(tfdsp::FiniteNormalOrZero(angle), 0.f, .05f);
     maximumExchangeAngle_ = angle;
@@ -164,6 +197,11 @@ private:
     exchangeCosine_.fill(1.f);
     exchangeSine_.fill(0.f);
     for (std::size_t first = 0; first + 1 < activeModeCount_; ++first) {
+      const auto packetDistance = packet_[first] > packet_[first + 1]
+          ? packet_[first] - packet_[first + 1]
+          : packet_[first + 1] - packet_[first];
+      if (packetDistance > 1)
+        continue;
       const float amount = std::sqrt(
           exchangeAmount_[first] * exchangeAmount_[first + 1]);
       const float angle = maximumExchangeAngle_ * amount;
@@ -172,9 +210,12 @@ private:
     }
   }
 
-  void SetProjection(const Projection &source, Projection &destination) noexcept {
-    for (std::size_t mode = 0; mode < activeModeCount_; ++mode)
+  void SetProjection(const Projection &source, Projection &destination,
+                     Projection &driveGain) noexcept {
+    for (std::size_t mode = 0; mode < activeModeCount_; ++mode) {
       destination[mode] = SafeProjection(source[sourceIndex_[mode]]);
+      driveGain[mode] = inputGain_[mode] * destination[mode];
+    }
   }
 
   void UpdateDamping(const ModalDampingGains damping) noexcept {
@@ -193,25 +234,18 @@ private:
 
   void Propagate(const float primaryInput,
                  const float secondaryInput) noexcept {
+    PrepareRandomSigns();
     for (std::size_t mode = 0; mode < activeModeCount_; ++mode) {
       const float priorReal = real_[mode];
       const float priorImaginary = imaginary_[mode];
-      float rotatedReal = cosine_[mode] * priorReal -
-          sine_[mode] * priorImaginary;
-      float rotatedImaginary = sine_[mode] * priorReal +
-          cosine_[mode] * priorImaginary;
-      if (phaseSine_[mode] > 0.f) {
-        const float randomSine = (random_.NextBits() & 1u)
-            ? phaseSine_[mode] : -phaseSine_[mode];
-        const float diffusedReal = phaseCosine_[mode] * rotatedReal -
-            randomSine * rotatedImaginary;
-        rotatedImaginary = randomSine * rotatedReal +
-            phaseCosine_[mode] * rotatedImaginary;
-        rotatedReal = diffusedReal;
-      }
-      const float drive = inputGain_[mode] *
-          (excitationProjection_[mode] * primaryInput +
-           secondaryExcitationProjection_[mode] * secondaryInput);
+      const float cosine = cosineCentre_[mode] +
+          randomSign_[mode] * cosineSpread_[mode];
+      const float sine = sineCentre_[mode] +
+          randomSign_[mode] * sineSpread_[mode];
+      const float rotatedReal = cosine * priorReal - sine * priorImaginary;
+      const float rotatedImaginary = sine * priorReal + cosine * priorImaginary;
+      const float drive = primaryDriveGain_[mode] * primaryInput +
+          secondaryDriveGain_[mode] * secondaryInput;
       real_[mode] = tfdsp::FiniteNormalOrZero(
           effectiveRadius_[mode] * rotatedReal +
           inputPhaseCosine_[mode] * drive);
@@ -221,33 +255,61 @@ private:
     }
   }
 
-  void ExchangeNeighbours() noexcept {
+  void PrepareRandomSigns() noexcept {
+    std::uint32_t randomBits = 0;
+    unsigned randomBitsRemaining = 0;
+    for (std::size_t mode = 0; mode < activeModeCount_; ++mode) {
+      if (randomBitsRemaining == 0) {
+        randomBits = random_.NextBits();
+        randomBitsRemaining = 32;
+      }
+      randomSign_[mode] = static_cast<float>(2 * (randomBits & 1u)) - 1.f;
+      randomBits >>= 1;
+      --randomBitsRemaining;
+    }
+  }
+
+  float ExchangeNeighboursAndSum() noexcept {
     if (maximumExchangeAngle_ == 0.f || activeModeCount_ < 2)
-      return;
+      return SumOutput();
     const std::size_t offset = oddExchange_ ? 1 : 0;
     oddExchange_ = !oddExchange_;
-    for (std::size_t first = offset; first + 1 < activeModeCount_; first += 2) {
+    PrepareExchangeSigns(offset);
+    float output = offset == 1 ? outputGain_[0] * real_[0] : 0.f;
+    std::size_t first = offset;
+    for (; first + 1 < activeModeCount_; first += 2) {
       const std::size_t second = first + 1;
-      const auto packetDistance = packet_[first] > packet_[second]
-          ? packet_[first] - packet_[second]
-          : packet_[second] - packet_[first];
-      if (packetDistance > 1)
-        continue;
-      const float sine = (random_.NextBits() & 1u)
-          ? exchangeSine_[first] : -exchangeSine_[first];
+      const float sine = randomSign_[first] * exchangeSine_[first];
       RotatePair(real_[first], real_[second], exchangeCosine_[first], sine);
       RotatePair(imaginary_[first], imaginary_[second],
                  exchangeCosine_[first], sine);
+      output += outputGain_[first] * real_[first] +
+          outputGain_[second] * real_[second];
+    }
+    if (first < activeModeCount_)
+      output += outputGain_[first] * real_[first];
+    return tfdsp::FiniteNormalOrZero(output);
+  }
+
+  void PrepareExchangeSigns(const std::size_t offset) noexcept {
+    std::uint32_t randomBits = 0;
+    unsigned randomBitsRemaining = 0;
+    for (std::size_t first = offset; first + 1 < activeModeCount_; first += 2) {
+      if (randomBitsRemaining == 0) {
+        randomBits = random_.NextBits();
+        randomBitsRemaining = 32;
+      }
+      randomSign_[first] = static_cast<float>(2 * (randomBits & 1u)) - 1.f;
+      randomBits >>= 1;
+      --randomBitsRemaining;
     }
   }
 
   static void RotatePair(float &first, float &second, const float cosine,
                          const float sine) noexcept {
     const float oldFirst = first;
-    first = tfdsp::FiniteNormalOrZero(
-        cosine * oldFirst - sine * second);
-    second = tfdsp::FiniteNormalOrZero(
-        sine * oldFirst + cosine * second);
+    first = cosine * oldFirst - sine * second;
+    second = sine * oldFirst + cosine * second;
   }
 
   float SumOutput() const noexcept {
@@ -259,16 +321,19 @@ private:
 
   std::array<float, ModeCount> real_{};
   std::array<float, ModeCount> imaginary_{};
-  std::array<float, ModeCount> cosine_{};
-  std::array<float, ModeCount> sine_{};
+  std::array<float, ModeCount> cosineCentre_{};
+  std::array<float, ModeCount> cosineSpread_{};
+  std::array<float, ModeCount> sineCentre_{};
+  std::array<float, ModeCount> sineSpread_{};
+  std::array<float, ModeCount> randomSign_{};
   std::array<float, ModeCount> radius_{};
   std::array<float, ModeCount> effectiveRadius_{};
   std::array<float, ModeCount> inputGain_{};
+  std::array<float, ModeCount> primaryDriveGain_{};
+  std::array<float, ModeCount> secondaryDriveGain_{};
   std::array<float, ModeCount> outputGain_{};
   std::array<float, ModeCount> inputPhaseCosine_{};
   std::array<float, ModeCount> inputPhaseSine_{};
-  std::array<float, ModeCount> phaseCosine_{};
-  std::array<float, ModeCount> phaseSine_{};
   std::array<std::uint8_t, ModeCount> band_{};
   std::array<std::uint16_t, ModeCount> packet_{};
   std::array<float, ModeCount> exchangeAmount_{};

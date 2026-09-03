@@ -1,6 +1,6 @@
 #include "crash_cymbal_parameters.hpp"
 
-#include "statistical_modal_cloud.hpp"
+#include "erb_scale.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -68,87 +68,6 @@ private:
   std::array<Point, CrashBodyDecayPointCount> points_{};
   std::size_t count_{};
 };
-
-CrashSparseModes::Parameters SparseModes(
-    const float sampleRate, const CrashCymbalFitParameters &fit,
-    const BodyDecayEnvelope &decay) noexcept {
-  CrashSparseModes::Parameters result{};
-  const float tune = std::clamp(Positive(fit.sparseTune, 1.f), .5f, 2.f);
-  float squaredGain = 0.f;
-  for (const float amplitude : fit.sparseAmplitude) {
-    const float gain = std::clamp(Positive(amplitude, 0.f), 0.f, 8.f);
-    squaredGain += gain * gain;
-  }
-  const float normalization = 1.f / std::sqrt(std::max(squaredGain, 1.e-12f));
-  for (std::size_t mode = 0; mode < result.size(); ++mode) {
-    const float frequency = std::clamp(
-        Positive(fit.sparseFrequencyHz[mode], 1000.f) * tune,
-        20.f, .48f * sampleRate);
-    result[mode] = {
-        frequency,
-        std::clamp(decay.At(frequency) *
-                       std::clamp(Positive(fit.sparseDecayRatio[mode], 1.f),
-                                  .5f, 2.f),
-                   .01f, 30.f),
-        ModalDriveGain,
-        normalization * std::clamp(Positive(fit.sparseAmplitude[mode], 0.f),
-                                   0.f, 8.f),
-        std::clamp(fit.sparsePhaseRadians[mode],
-                   -3.14159265358979323846f, 3.14159265358979323846f)};
-  }
-  return result;
-}
-
-CrashDenseModes::Parameters DenseModes(
-    const float sampleRate, const CrashCymbalFitParameters &fit,
-    const bool extension, const BodyDecayEnvelope &decay) {
-  StatisticalModalCloudParameters cloud;
-  cloud.minimumFrequencyHz = fit.denseMinimumFrequencyHz;
-  cloud.maximumFrequencyHz = fit.denseMaximumFrequencyHz;
-  cloud.frequencyWarp = fit.denseFrequencyWarp;
-  cloud.spacingJitter = fit.denseSpacingJitter;
-  const float requestedBanks = std::clamp(fit.denseModeDensity, 0.f, 2.f);
-  const float bankDensity = extension
-      ? std::max(requestedBanks - 1.f, 0.f)
-      : std::min(requestedBanks, 1.f);
-  const float totalModes = requestedBanks * CrashDenseModeCount;
-  const float bankModes = bankDensity * CrashDenseModeCount;
-  cloud.modeDensity = bankDensity;
-  cloud.lowDecaySeconds = 1.f;
-  cloud.highDecaySeconds = 1.f;
-  cloud.decayCurve = 1.f;
-  const float minimum = std::clamp(fit.denseMinimumFrequencyHz, 20.f,
-                                   .45f * sampleRate);
-  const float maximum = std::clamp(fit.denseMaximumFrequencyHz,
-                                   minimum + 1.f, .48f * sampleRate);
-  const float minimumErb = ErbRate(minimum);
-  const float maximumErb = ErbRate(maximum);
-  for (std::size_t point = 0; point < cloud.decayEnvelopeOctaves.size(); ++point) {
-    const float position = static_cast<float>(point) /
-        static_cast<float>(cloud.decayEnvelopeOctaves.size() - 1);
-    const float frequency = InverseErbRate(
-        minimumErb + position * (maximumErb - minimumErb));
-    cloud.decayEnvelopeOctaves[point] = std::log2(decay.At(frequency));
-  }
-  cloud.decaySpreadOctaves = fit.denseDecaySpreadOctaves;
-  cloud.tiltDbPerOctave = fit.denseTiltDbPerOctave;
-  cloud.gainEnvelopeDb = fit.denseGainEnvelopeDb;
-  cloud.gainSpreadDb = fit.denseGainSpreadDb;
-  cloud.outputGain = totalModes > 0.f
-      ? std::sqrt(bankModes / totalModes) : 0.f;
-  cloud.seed = extension
-      ? fit.denseModeSeed ^ 0x4558544eu : fit.denseModeSeed;
-  auto result = MakeStatisticalModalCloud<CrashDenseModeCount>(sampleRate, cloud);
-  // The painted cloud envelope is a normalized excitation-energy
-  // distribution. Radiation and branch level remain observation concerns.
-  // For independent linear modes this factorization preserves the transfer
-  // product while giving the stored state the intended physical semantics.
-  for (auto &mode : result) {
-    mode.inputGain = ModalDriveGain * mode.outputGain;
-    mode.outputGain = mode.inputGain != 0.f ? 1.f : 0.f;
-  }
-  return result;
-}
 
 float ErbBandwidth(const float frequencyHz) noexcept {
   return 24.7f * (1.f + .00437f * frequencyHz);
@@ -308,33 +227,9 @@ DispersionLoopParameters Dispersion(
   return result;
 }
 
-TurbulentResidualParameters Turbulence(
-    const CrashCymbalFitParameters &fit,
-    const BodyDecayEnvelope &decay) noexcept {
-  TurbulentResidualParameters result;
-  for (std::size_t band = 0; band < result.gain.size(); ++band)
-    result.gain[band] = std::clamp(fit.turbulenceGain[band], 0.f, 4.f);
-  std::array<float, 3> frequencies{};
-  frequencies[0] = std::clamp(fit.turbulenceFrequencyHz[0], 40.f, 8000.f);
-  frequencies[1] = std::clamp(fit.turbulenceFrequencyHz[1],
-                              frequencies[0] * 1.05f, 14000.f);
-  frequencies[2] = std::clamp(fit.turbulenceFrequencyHz[2],
-                              frequencies[1] * 1.05f, 20000.f);
-  const float persistence = std::clamp(
-      Positive(fit.turbulencePersistence, 1.f), .25f, 4.f);
-  result.decay = {
-      persistence * decay.At(frequencies[0]),
-      persistence * decay.At(frequencies[1]),
-      persistence * decay.At(frequencies[2])};
-  result.lowCrossoverHz = std::sqrt(frequencies[0] * frequencies[1]);
-  result.highCrossoverHz = std::sqrt(frequencies[1] * frequencies[2]);
-  result.seed = 0x43524153u;
-  return result;
-}
-
-ObservationModel<4>::Parameters Observation(
+ObservationModel<2>::Parameters Observation(
     const CrashCymbalFitParameters &fit) noexcept {
-  ObservationModel<4>::Parameters result{};
+  ObservationModel<2>::Parameters result{};
   result[0].gain = std::clamp(fit.directGain, 0.f, 4.f);
   result[0].radiationEnabled = fit.directRadiationEnabled;
   result[0].radiation.lowCutHz =
@@ -348,42 +243,19 @@ ObservationModel<4>::Parameters Observation(
   result[0].radiation.highCutHz =
       std::clamp(fit.directHighCutHz, 1000.f, 22000.f);
   result[0].radiation.highCutQ = std::clamp(fit.directHighCutQ, .25f, 4.f);
-  result[1].gain = std::clamp(fit.sparseGain, 0.f, 4.f);
-  result[1].radiationEnabled = fit.sparseRadiationEnabled;
+  result[1].gain = std::clamp(fit.fieldGain, 0.f, 4.f);
+  result[1].radiationEnabled = fit.denseRadiationEnabled;
   result[1].radiation.lowCutHz =
-      std::clamp(fit.sparseLowCutHz, 10.f, 1000.f);
-  result[1].radiation.lowCutQ = std::clamp(fit.sparseLowCutQ, .25f, 4.f);
-  result[1].radiation.colourFrequencyHz =
-      std::clamp(fit.colourFrequencyHz, 100.f, 18000.f);
-  result[1].radiation.colourGainDb =
-      std::clamp(fit.colourGainDb, -18.f, 18.f);
-  result[1].radiation.colourQ = std::clamp(fit.sparseColourQ, .25f, 12.f);
-  result[1].radiation.highCutHz =
-      std::clamp(fit.highCutHz, 1000.f, 22000.f);
-  result[1].radiation.highCutQ = std::clamp(fit.sparseHighCutQ, .25f, 4.f);
-  result[2].gain = std::clamp(fit.denseGain, 0.f, 4.f);
-  result[2].radiationEnabled = fit.denseRadiationEnabled;
-  result[2].radiation.lowCutHz =
       std::clamp(fit.denseLowCutHz, 10.f, 1000.f);
-  result[2].radiation.lowCutQ = std::clamp(fit.denseLowCutQ, .25f, 4.f);
-  result[2].radiation.colourFrequencyHz =
+  result[1].radiation.lowCutQ = std::clamp(fit.denseLowCutQ, .25f, 4.f);
+  result[1].radiation.colourFrequencyHz =
       std::clamp(fit.denseColourFrequencyHz, 100.f, 18000.f);
-  result[2].radiation.colourGainDb =
+  result[1].radiation.colourGainDb =
       std::clamp(fit.denseColourGainDb, -18.f, 18.f);
-  result[2].radiation.colourQ = std::clamp(fit.denseColourQ, .25f, 12.f);
-  result[2].radiation.highCutHz =
+  result[1].radiation.colourQ = std::clamp(fit.denseColourQ, .25f, 12.f);
+  result[1].radiation.highCutHz =
       std::clamp(fit.denseHighCutHz, 1000.f, 22000.f);
-  result[2].radiation.highCutQ = std::clamp(fit.denseHighCutQ, .25f, 4.f);
-  // Turbulence is generated and observed independently from the dense modal
-  // cloud. It starts with the same radiation curve, but owns separate filter
-  // state and is never scaled by the resolved-to-wash balance.
-  result[3] = result[2];
-  result[3].gain = 1.f;
-  if (fit.unifiedBodyEnabled) {
-    result[1].gain = 0.f;
-    result[2].gain = std::clamp(fit.fieldGain, 0.f, 4.f);
-    result[3].gain = 0.f;
-  }
+  result[1].radiation.highCutQ = std::clamp(fit.denseHighCutQ, .25f, 4.f);
   return result;
 }
 
@@ -394,20 +266,7 @@ CrashCymbalParameters DefaultCrashCymbalParameters(
   CrashCymbalParameters result;
   result.fit = fit;
   const BodyDecayEnvelope decay(sampleRate, fit);
-  result.sparseModes = SparseModes(sampleRate, fit, decay);
-  result.denseModes = DenseModes(sampleRate, fit, false, decay);
-  result.denseExtensionModes = DenseModes(sampleRate, fit, true, decay);
   result.modalField = ModalField(sampleRate, fit, decay);
-  SetLocationProjections<CrashSparseModeCount>(
-      result.sparseModes, result.sparseBellProjection,
-      result.sparseBowProjection, result.sparseEdgeProjection);
-  SetLocationProjections<CrashDenseModeCount>(
-      result.denseModes, result.denseBellProjection,
-      result.denseBowProjection, result.denseEdgeProjection);
-  SetLocationProjections<CrashDenseModeCount>(
-      result.denseExtensionModes, result.denseExtensionBellProjection,
-      result.denseExtensionBowProjection,
-      result.denseExtensionEdgeProjection);
   SetLocationProjections<CrashModalFieldModeCount>(
       result.modalField, result.fieldBellProjection,
       result.fieldBowProjection, result.fieldEdgeProjection);
@@ -415,7 +274,6 @@ CrashCymbalParameters DefaultCrashCymbalParameters(
       .012f * std::clamp(fit.fieldExchange, 0.f, 1.f);
   result.modalFieldControls.seed = fit.denseModeSeed ^ 0x4649454cu;
   result.dispersion = Dispersion(sampleRate, fit);
-  result.turbulence = Turbulence(fit, decay);
   result.observation = Observation(fit);
   return result;
 }

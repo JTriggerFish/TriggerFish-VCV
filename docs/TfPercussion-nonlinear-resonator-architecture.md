@@ -46,9 +46,10 @@ There are two routes out of the contact model:
 
 1. **Direct contact radiation** is the near-field tick, scrape, or impact heard
    before the body has developed.
-2. **Body drive** excites both the modal field immediately and the dispersion
-   loop. The loop's delayed output, called **bloom**, provides a second
-   excitation port into the same modal field.
+2. **Body drive** excites the modal field immediately and, through an
+   implement-dependent coupling gain, the dispersion loop. The loop's delayed
+   output, called **bloom**, provides a second excitation port into the same
+   modal field.
 
 The dispersion signal is deliberately not audible by itself. Its job is to
 turn a compact collision into a developing, correlated force that excites the
@@ -60,10 +61,11 @@ projection. During each audio sample it then performs:
 
 ```text
 contact = ContactExciter::Process()
-bloom   = DispersionLoop::Process(contact.bodyDrive, bloomMuteLoss)
+bloom   = DispersionLoop::Process(
+              implementBloomCoupling * contact.bodyDrive, bloomMuteLoss)
 body    = StochasticModalField::ProcessExcitedPair(
               contact.bodyDrive, bloom, modalMuteLoss)
-output  = ObservationModel::Process({contact.directRadiation, 0, body, 0})
+output  = ObservationModel::Process({contact.directRadiation, body})
 ```
 
 The zero source slots belong to the disabled legacy sparse and turbulent
@@ -90,6 +92,15 @@ mallet, and stick. Within each family, hardness or character changes contact
 duration, chirp contribution, noise bandwidth, and micro-contact statistics.
 A brush has no coherent pulse or chirp in the present routing; its baseline
 gesture is distributed even at minimum spread.
+
+Brush stiffness keeps the seeded bristle-event realization fixed. It moves
+continuous noise tilt, micro-contact bandwidth, and individual contact decay;
+changing the knob therefore reshapes one gesture instead of selecting an
+unrelated random event set. The noise-colour filters are energy-normalized so
+bandwidth is not an implicit gain control. Fine bristles are darker and more
+overlapping, while stiff/coarse bristles are brighter and more articulated.
+Even the stiff endpoint retains enough overlap to remain a fused brush texture
+rather than exposing separate grains.
 
 Velocity is more than an output multiplier. It changes:
 
@@ -143,7 +154,9 @@ remove the loop's propagation delay or turn bloom into direct sound.
 Bloom is a force signal, not a second body and not an audible effect return. It
 feeds the secondary excitation projection of the modal field. Consequently,
 the early body response can remain localized while later energy becomes more
-body-wide and diffuse.
+body-wide and diffuse. A brush drives the modal field normally but couples only
+a small fraction of that force into nonlinear bloom; otherwise small stiffness
+changes can cross a loop operating threshold and create unrelated level spikes.
 
 ## 3. Unified stochastic modal field
 
@@ -471,12 +484,15 @@ claim of equal or better sound quality than every legacy branch or reference
 recording. Fits are accepted by reference comparison and listening, never by an
 aggregate numerical score alone.
 
-The fixed 408-state implementation is intentionally quality-first and is
-currently more expensive than the legacy 2,048-state cloud because each state
-has complex recurrence, stochastic phase work, and optional neighbour
-exchange. SIMD layout, adaptive packet population, and lower control-rate
-random/exchange updates are optimization candidates only after the topology is
-perceptually validated.
+The fixed 408-state implementation remains quality-first, but its hot loop is
+structured for SIMD. Fixed modal and phase rotations are composed during
+preparation; projected input gains are cached when a hit changes them; complete
+PRNG words are expanded into branch-free sign arrays before vectorizable modal
+and exchange passes; and static packet compatibility is resolved outside the
+audio loop. The optimized field retains per-sample stochastic phase and
+neighbour exchange. It changes the precise seeded stochastic realization, not
+the field's fitted frequencies, T60s, projections, diffusion bandwidths, or
+passive exchange angles.
 
 ## References and provenance
 

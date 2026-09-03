@@ -1,9 +1,12 @@
+import { limiterLookaheadSeconds } from "./limiter_config.mjs";
+
 const ceiling = 10 ** (-1 / 20);
 
 class LookaheadLimiter extends AudioWorkletProcessor {
   constructor() {
     super();
-    this.lookahead = Math.max(1, Math.round(0.005 * sampleRate));
+    this.lookahead = Math.max(
+      1, Math.round(limiterLookaheadSeconds * sampleRate));
     this.ringSize = this.lookahead + 1;
     this.release = Math.exp(-1 / (0.1 * sampleRate));
     this.rings = [];

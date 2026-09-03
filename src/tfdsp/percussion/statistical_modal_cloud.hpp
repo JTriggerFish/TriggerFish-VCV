@@ -1,6 +1,7 @@
 #pragma once
 
 #include "deterministic_random.hpp"
+#include "erb_scale.hpp"
 #include "modal_bank.hpp"
 
 #include <algorithm>
@@ -42,14 +43,6 @@ inline float InterpolateEnvelope(const std::array<float, PointCount> &points,
   const auto right = std::min(left + 1, Last);
   const float amount = coordinate - static_cast<float>(left);
   return points[left] + amount * (points[right] - points[left]);
-}
-
-inline float ErbRate(const float frequencyHz) noexcept {
-  return 21.4f * std::log10(1.f + .00437f * frequencyHz);
-}
-
-inline float InverseErbRate(const float erbRate) noexcept {
-  return (std::pow(10.f, erbRate / 21.4f) - 1.f) / .00437f;
 }
 
 inline float GeometricMix(float first, float second,

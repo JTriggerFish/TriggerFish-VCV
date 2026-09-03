@@ -1,4 +1,3 @@
-import { PointEditor } from "./point_editor.mjs";
 import { ModalEditor } from "./modal_editor.mjs";
 import { DecayCurveEditor } from "./decay_curve_editor.mjs";
 import { expandedSizeMeta } from "./size_meta.mjs";
@@ -139,15 +138,9 @@ export class FitControls {
       bloom_development: ["immediate", "slow"],
       bloom_diffusion: ["focused", "diffuse"],
     });
-    this.sliders("body-controls", ["body_tone_wash"], {
-      body_tone_wash: ["resolved", "wash"],
-    });
     this.buildResolvedEditor();
     this.buildBodyModel();
-    this.buildDenseControls();
-    this.buildDenseWashEditor();
     this.buildDecayEditor();
-    this.buildTurbulence();
     this.buildRadiation();
   }
 
@@ -166,16 +159,6 @@ export class FitControls {
       field_phase_bandwidth: ["coherent", "diffuse"],
       field_exchange: ["independent", "coupled"],
     }, () => this.resolvedEditor?.refresh());
-  }
-
-  setBodyMode(mode, notify = true) {
-    const descriptor = this.descriptor("unified_body_enabled");
-    this.state.macros[descriptor.index] = mode === "unified" ? 1 : 0;
-    if (notify) this.onChange("body_ui_mode");
-  }
-
-  bodyMode() {
-    return this.value("unified_body_enabled") >= .5 ? "unified" : "legacy";
   }
 
   applySizeMeta(position) {
@@ -473,61 +456,6 @@ export class FitControls {
     this.onChange(`modal_preset_${name}`);
   }
 
-  buildDenseControls() {
-    this.sliders("dense-controls", [
-      "dense_minimum_frequency", "dense_maximum_frequency",
-      "dense_mode_density",
-    ], {
-      dense_mode_density: ["sparse", "dense"],
-    });
-    this.sliders("dense-controls", [
-      "dense_spacing_jitter", "dense_gain_spread", "dense_decay_spread",
-    ], { dense_spacing_jitter: ["regular", "irregular"] });
-  }
-
-  buildDenseWashEditor() {
-    const parent = document.getElementById("dense-wash-editor");
-    const curve = this.curveDescriptors("dense_wash");
-    const editor = new PointEditor(parent, {
-      label: "Dense wash spectral colour",
-      xMinimum: 40, xMaximum: 22000, xScale: "erb",
-      yMinimum: -24, yMaximum: 24, connected: true,
-      yTicks: [
-        { value: -18, label: "-18" }, { value: 0, label: "0 dB" },
-        { value: 18, label: "+18" },
-      ],
-      movableX: true,
-      points: () => curve.frequencies.map((frequency, index) => ({
-        x: this.state.macros[frequency.index],
-        y: this.state.macros[curve.levels[index].index],
-      })),
-      setPoint: (index, frequency, level) => {
-        this.setCurvePoint(curve, index, frequency, level, "dense_wash_colour");
-        this.buildCurveInspector(
-          "dense-wash-selection", "Selected colour knot", curve, index, editor,
-        );
-      },
-      resetPoint: index => {
-        this.state.macros[curve.frequencies[index].index] =
-          curve.frequencies[index].defaultValue;
-        this.state.macros[curve.levels[index].index] =
-          curve.levels[index].defaultValue;
-        this.onChange("dense_wash_colour");
-        this.buildCurveInspector(
-          "dense-wash-selection", "Selected colour knot", curve, index, editor,
-        );
-      },
-      select: index => this.buildCurveInspector(
-        "dense-wash-selection", "Selected colour knot", curve, index, editor,
-      ),
-    });
-    this.denseWashCurve = curve;
-    this.denseWashEditor = editor;
-    this.buildCurveInspector(
-      "dense-wash-selection", "Selected colour knot", curve, 0, editor,
-    );
-  }
-
   buildDecayEditor() {
     const parent = document.getElementById("decay-editor");
     const curve = this.curveDescriptors("body_decay");
@@ -642,7 +570,7 @@ export class FitControls {
     const remove = document.createElement("button");
     remove.type = "button";
     remove.disabled = slot === 0 || slot === last;
-    remove.textContent = remove.disabled ? "Boundary knot" : "Delete knot";
+    remove.textContent = "Delete knot";
     remove.title = remove.disabled
       ? "DC and Nyquist boundary knots cannot be deleted"
       : "Delete this interior knot (also: double-click it or press Delete)";
@@ -654,78 +582,13 @@ export class FitControls {
     parent.append(remove);
   }
 
-  buildTurbulence() {
-    const descriptor = this.descriptor("turbulence_enabled");
-    const parent = document.getElementById("turbulence-toggle");
-    const label = document.createElement("label");
-    label.className = "checkbox-row";
-    const input = document.createElement("input");
-    input.type = "checkbox"; input.checked = this.value(descriptor.key) >= .5;
-    const fields = document.getElementById("turbulence-fields");
-    const update = () => {
-      fields.disabled = !input.checked;
-      this.setValue(descriptor.key, input.checked ? 1 : 0);
-    };
-    input.onchange = update;
-    input.ondblclick = event => {
-      event.preventDefault();
-      input.checked = descriptor.defaultValue >= .5; update();
-    };
-    label.append(input, descriptor.name); parent.append(label);
-    const curve = this.curveDescriptors("turbulence");
-    const editor = new PointEditor(document.getElementById("turbulence-editor"), {
-      label: "Turbulence spectral colour",
-      xMinimum: 40, xMaximum: 20000,
-      yMinimum: -18, yMaximum: 18, connected: true,
-      yTicks: [
-        { value: -12, label: "-12" }, { value: 0, label: "0 dB" },
-        { value: 12, label: "+12" },
-      ],
-      movableX: true,
-      points: () => curve.frequencies.map((frequency, index) => ({
-        x: this.state.macros[frequency.index],
-        y: this.state.macros[curve.levels[index].index],
-      })),
-      setPoint: (index, frequency, level) => {
-        this.setCurvePoint(curve, index, frequency, level);
-        this.buildCurveInspector(
-          "turbulence-selection", "Selected colour knot", curve, index, editor,
-        );
-      },
-      resetPoint: index => {
-        this.state.macros[curve.frequencies[index].index] =
-          curve.frequencies[index].defaultValue;
-        this.state.macros[curve.levels[index].index] =
-          curve.levels[index].defaultValue;
-        this.onChange("turbulence_curve");
-        this.buildCurveInspector(
-          "turbulence-selection", "Selected colour knot", curve, index, editor,
-        );
-      },
-      select: index => this.buildCurveInspector(
-        "turbulence-selection", "Selected colour knot", curve, index, editor,
-      ),
-    });
-    this.buildCurveInspector(
-      "turbulence-selection", "Selected colour knot", curve, 0, editor,
-    );
-    this.sliders("turbulence-controls", [
-      "turbulence_amount", "turbulence_persistence",
-    ]);
-    fields.disabled = !input.checked;
-  }
-
   buildRadiation() {
     this.sliders("direct-radiation", ["direct_low_cut", "direct_high_cut"]);
     this.sliders("dense-radiation", [
       "dense_low_cut", "dense_high_cut",
       "dense_colour_frequency", "dense_colour_gain",
     ]);
-    this.sliders("sparse-radiation", [
-      "sparse_low_cut", "sparse_high_cut",
-      "sparse_colour_frequency", "sparse_colour_gain",
-    ]);
-    for (const path of ["direct", "sparse", "dense"]) {
+    for (const path of ["direct", "dense"]) {
       this.checkbox(`${path}_radiation_enabled`, `${path}-radiation-advanced`);
       this.sliders(`${path}-radiation-advanced`, [
         `${path}_low_cut_q`, `${path}_colour_q`, `${path}_high_cut_q`,

@@ -21,10 +21,11 @@ void Check(const bool condition, const char *message) {
 std::vector<float> Render(const std::uint32_t handle, const std::uint32_t seed,
                           const float location, const std::size_t blockSize,
                           const float implement = .75f,
-                          const std::size_t frameCount = 8192) {
+                          const std::size_t frameCount = 8192,
+                          const float hardness = .65f) {
   std::vector<float> result(frameCount);
   Check(tf_crash_reset(handle) == 1, "reset accepts a live handle");
-  Check(tf_crash_trigger(handle, .8f, location, .65f, implement, .2f, seed) == 1,
+  Check(tf_crash_trigger(handle, .8f, location, hardness, implement, .2f, seed) == 1,
         "trigger accepts a live handle");
   for (std::size_t first = 0; first < result.size(); first += blockSize) {
     const auto count = std::min(blockSize, result.size() - first);
@@ -52,6 +53,31 @@ double Energy(const std::vector<float> &audio) {
   return result;
 }
 
+double HighFrequencyFraction(const std::vector<float> &audio) {
+  constexpr double coefficient = 1.0 -
+      std::exp(-6.283185307179586 * 5000.0 / 48000.0);
+  double low = 0.0;
+  double highEnergy = 0.0;
+  double totalEnergy = 0.0;
+  for (const float sample : audio) {
+    low += coefficient * (sample - low);
+    const double high = sample - low;
+    highEnergy += high * high;
+    totalEnergy += static_cast<double>(sample) * sample;
+  }
+  return highEnergy / std::max(totalEnergy, 1.e-30);
+}
+
+double CrestFactor(const std::vector<float> &audio) {
+  const auto peak = *std::max_element(
+      audio.begin(), audio.end(), [](const float first, const float second) {
+        return std::abs(first) < std::abs(second);
+      });
+  const double rms = std::sqrt(Energy(audio) /
+      std::max<std::size_t>(1, audio.size()));
+  return std::abs(peak) / std::max(rms, 1.e-30);
+}
+
 } // namespace
 
 int main() {
@@ -71,7 +97,6 @@ int main() {
   std::size_t firstFrequency = painted.size();
   std::size_t firstLevel = painted.size();
   std::size_t secondLevel = painted.size();
-  std::size_t unified = painted.size();
   std::size_t fieldTurbulence = painted.size();
   std::size_t bloomDiffusion = painted.size();
   std::size_t bloomLevel = painted.size();
@@ -83,7 +108,6 @@ int main() {
     if (key == "resolved_frequency_0") firstFrequency = index;
     else if (key == "resolved_level_0") firstLevel = index;
     else if (key == "resolved_level_1") secondLevel = index;
-    else if (key == "unified_body_enabled") unified = index;
     else if (key == "field_turbulence") fieldTurbulence = index;
     else if (key == "bloom_diffusion") bloomDiffusion = index;
     else if (key == "bloom_level") bloomLevel = index;
@@ -92,7 +116,7 @@ int main() {
     else if (key == "resolved_turbulence_0") firstModeTurbulence = index;
   }
   Check(firstFrequency < painted.size() && firstLevel < painted.size() &&
-            secondLevel < painted.size() && unified < painted.size() &&
+            secondLevel < painted.size() &&
             fieldTurbulence < painted.size() && bloomDiffusion < painted.size() &&
             bloomLevel < painted.size() && bloomNonlinearity < painted.size() &&
             firstDecayActive < painted.size() &&
@@ -160,12 +184,32 @@ int main() {
     return std::isfinite(sample);
   }), "rendered samples remain finite");
   const auto brush = Render(handle, 17, .8f, 256, 0.f, 48000);
+  const auto softBrush = Render(handle, 17, .8f, 256, 0.f, 48000, 0.f);
+  const auto stiffBrush = Render(handle, 17, .8f, 256, 0.f, 48000, 1.f);
+  const auto middleBrush = Render(handle, 17, .8f, 256, 0.f, 48000, .5f);
+  const auto adjacentBrush = Render(handle, 17, .8f, 256, 0.f, 48000, .51f);
   const auto stick = Render(handle, 17, .8f, 256, 1.f, 48000);
   const double brushToStick = Energy(brush) / std::max(Energy(stick), 1.e-30);
-  if (!(brushToStick > .2 && brushToStick < 4.))
-    std::cerr << "workbench brush/stick energy ratio: " << brushToStick << '\n';
-  Check(brushToStick > .2 && brushToStick < 4.,
+  const double softToStick = Energy(softBrush) / std::max(Energy(stick), 1.e-30);
+  const double stiffToStick = Energy(stiffBrush) / std::max(Energy(stick), 1.e-30);
+  const double softBrightness = HighFrequencyFraction(softBrush);
+  const double stiffBrightness = HighFrequencyFraction(stiffBrush);
+  if (!(brushToStick > .3 && brushToStick < 1.5 &&
+        softToStick > .3 && softToStick < 1.5 &&
+        stiffToStick > .3 && stiffToStick < 1.5))
+    std::cerr << "workbench brush/stick energy ratios: " << softToStick
+              << ", " << brushToStick << ", " << stiffToStick << '\n';
+  Check(brushToStick > .3 && brushToStick < 1.5 &&
+            softToStick > .3 && softToStick < 1.5 &&
+            stiffToStick > .3 && stiffToStick < 1.5,
         "factory brush energy remains comparable to the stick family");
+  Check(stiffBrightness > 1.35 * softBrightness,
+        "bristle stiffness audibly increases high-frequency articulation");
+  Check(CrestFactor(stiffBrush) < 12.,
+        "stiff bristle contacts remain a fused brush texture");
+  Check(Difference(middleBrush, adjacentBrush) <
+            .1 * Difference(softBrush, stiffBrush),
+        "small bristle-stiffness moves preserve the contact realization");
 
   Check(tf_crash_macro_set(handle, fieldTurbulence, 0.f) &&
             tf_crash_macro_commit(handle),
@@ -179,14 +223,7 @@ int main() {
       Difference(coherent, std::vector<float>(coherent.size()));
   Check(Difference(coherent, diffuse) > 1.e-4 * coherentEnergy,
         "unified turbulence materially changes the body response");
-  Check(tf_crash_macro_set(handle, unified, 0.f) &&
-            tf_crash_macro_commit(handle),
-        "the legacy body remains available for A/B testing");
-  const auto legacy = Render(handle, 17, .8f, 256);
-  Check(Difference(diffuse, legacy) > 1.e-3,
-        "unified and legacy body paths are acoustically distinct");
-  Check(tf_crash_macro_set(handle, unified, 1.f) &&
-            tf_crash_macro_set(handle, bloomDiffusion, 0.f) &&
+  Check(tf_crash_macro_set(handle, bloomDiffusion, 0.f) &&
             tf_crash_macro_commit(handle),
         "the bloom allpass chain can collapse to matched delays");
   const auto focusedBloom = Render(handle, 17, .8f, 256);

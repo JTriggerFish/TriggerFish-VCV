@@ -65,10 +65,9 @@ control transfers normalized excitation energy from centres to satellites and
 increases ERB spread, phase diffusion, and passive local exchange. A paintable
 per-anchor `0..2x` scaler lets selected ridges stay clean. All anchors share one
 frequency-dependent T60 curve and one mono radiation/output path. The older
-sparse bank, statistical cloud, and separate turbulent residual remain only as
-an explicit A/B implementation. The workbench presents them in a separate
-legacy-diagnostics view, so their controls do not clutter or accidentally alter
-the focused unified workflow.
+sparse bank, statistical cloud, and separate turbulent residual primitives are
+retained as reusable DSP modules, but their crash graph, state, and controls are
+disconnected. They cannot alter the active renderer.
 
 Contact and bloom are independently projected inputs but add to that one stored
 modal state. Strike location and velocity therefore colour new force without

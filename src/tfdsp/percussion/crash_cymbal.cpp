@@ -44,17 +44,6 @@ void ApplyVelocityColour(std::array<float, Count> &projection,
   }
 }
 
-template <typename Bank>
-float ProcessModalBody(Bank &bank, const bool enabled,
-                       const float contact, const float bloom,
-                       const ModalDampingGains damping) noexcept {
-  if (!enabled)
-    return 0.f;
-  return contact != 0.f
-      ? bank.ProcessExcitedPair(contact, bloom, damping)
-      : bank.ProcessSecondaryExcited(bloom, damping);
-}
-
 } // namespace
 
 void CrashCymbal::Prepare(const float sampleRate,
@@ -66,27 +55,11 @@ void CrashCymbal::Prepare(const float sampleRate,
   contact_.Prepare(sampleRate);
   const float maximumDelay = std::max(512.f, .025f * sampleRate);
   dispersion_.Prepare(sampleRate, maximumDelay, parameters.dispersion);
-  turbulence_.Prepare(sampleRate, parameters.turbulence);
   modalField_.Prepare(sampleRate, parameters.modalField,
                       parameters.modalFieldControls, 700.f, 6500.f);
-  sparseModes_.Prepare(sampleRate, parameters.sparseModes, 700.f, 6500.f);
-  denseModes_.Prepare(sampleRate, parameters.denseModes, 700.f, 6500.f);
-  denseExtensionModes_.Prepare(
-      sampleRate, parameters.denseExtensionModes, 700.f, 6500.f);
   observation_.Prepare(sampleRate, .01f, parameters.observation);
-  sparseBloomGain_ = std::clamp(
-      tfdsp::FiniteNormalOrZero(parameters.fit.sparseBloomGain), 0.f, 2.f);
-  denseBypassGain_ = std::clamp(
-      tfdsp::FiniteNormalOrZero(parameters.fit.bodyBypassGain), 0.f, 2.f);
   bloomBodyGain_ = std::clamp(
       tfdsp::FiniteNormalOrZero(parameters.fit.bloomBodyGain), 0.f, 2.f);
-  sparseEnabled_ = parameters.observation[1].gain > 0.f;
-  denseEnabled_ = parameters.observation[2].gain > 0.f;
-  denseExtensionEnabled_ = denseExtensionModes_.ActiveModeCount() > 0;
-  turbulenceEnabled_ = std::any_of(
-      parameters.turbulence.gain.begin(), parameters.turbulence.gain.end(),
-      [](const float gain) { return gain > 0.f; });
-  unifiedBodyEnabled_ = parameters.fit.unifiedBodyEnabled;
   delayConstraint_.Prepare(sampleRate, .003f, .08f);
   modalConstraint_.Prepare(sampleRate, .001f, .003f, .08f);
   Reset();
@@ -95,22 +68,13 @@ void CrashCymbal::Prepare(const float sampleRate,
 void CrashCymbal::Reset() noexcept {
   contact_.Reset();
   dispersion_.Reset();
-  turbulence_.Reset();
   modalField_.Reset();
-  sparseModes_.Reset();
-  denseModes_.Reset();
-  denseExtensionModes_.Reset();
   observation_.Reset();
   delayConstraint_.Reset();
   modalConstraint_.Reset();
   SetExcitationProjection(1.f, .8f);
-  sparseModes_.SetSecondaryExcitationProjection(
-      parameters_.sparseBowProjection);
-  denseModes_.SetSecondaryExcitationProjection(
-      parameters_.denseBowProjection);
-  denseExtensionModes_.SetSecondaryExcitationProjection(
-      parameters_.denseExtensionBowProjection);
   modalField_.SetSecondaryExcitationProjection(parameters_.fieldBowProjection);
+  bloomDriveScale_ = 1.f;
   bodyDriveScale_ = 1.f;
 }
 
@@ -120,6 +84,11 @@ void CrashCymbal::Trigger(const CrashCymbalHit &hit) noexcept {
     return;
   SetExcitationProjection(hit.location, strength);
   contact_.Trigger(ContactParameters(hit));
+  const float implement = Unit(hit.implement);
+  const float brush = Unit(1.f - 2.f * implement);
+  const float stick = Unit(2.f * implement - 1.f);
+  const float mallet = 1.f - brush - stick;
+  bloomDriveScale_ = .075f * brush + .55f * mallet + stick;
   const float directGamma = std::clamp(parameters_.fit.strengthGamma, .25f, 4.f);
   const float bodyGamma =
       std::clamp(parameters_.fit.bodyStrengthGamma, .1f, 4.f);
@@ -131,39 +100,17 @@ CrashCymbalFrame CrashCymbal::ProcessFrame() noexcept {
   const auto modalLoss = modalConstraint_.Process();
   const auto contact = contact_.Process();
   const float bodyDrive = bodyDriveScale_ * contact.bodyDrive;
-  const float bloom = dispersion_.Process(bodyDrive, delayLoss);
+  const float bloom = dispersion_.Process(
+      bloomDriveScale_ * bodyDrive, delayLoss);
   const float bodyBloom = bloomBodyGain_ * bloom;
-  float sparse = 0.f;
-  float dense = 0.f;
-  float turbulent = 0.f;
-  if (unifiedBodyEnabled_) {
-    dense = modalField_.ProcessExcitedPair(
-        bodyDrive, bodyBloom, modalLoss);
-  } else {
-    const float sparseBloom = sparseBloomGain_ * bodyBloom;
-    sparse = ProcessModalBody(
-        sparseModes_, sparseEnabled_, bodyDrive, sparseBloom, modalLoss);
-    const float denseContact = denseBypassGain_ * bodyDrive;
-    const float modalDense = ProcessModalBody(
-        denseModes_, denseEnabled_, denseContact, bodyBloom, modalLoss);
-    const float modalDenseExtension = ProcessModalBody(
-        denseExtensionModes_, denseEnabled_ && denseExtensionEnabled_,
-        denseContact, bodyBloom, modalLoss);
-    turbulent = turbulenceEnabled_
-        ? turbulence_.Process(bodyBloom, modalLoss)
-        : 0.f;
-    dense = tfdsp::FiniteNormalOrZero(
-        modalDense + modalDenseExtension);
-  }
-  const ObservationModel<4>::SourceFrame sources{
-      contact.directRadiation, sparse, dense, turbulent};
+  const float body = modalField_.ProcessExcitedPair(
+      bodyDrive, bodyBloom, modalLoss);
+  const ObservationModel<2>::SourceFrame sources{
+      contact.directRadiation, body};
   return {
       contact.directRadiation,
       bloom,
-      sparse,
-      dense,
-      turbulent,
-      tfdsp::FiniteNormalOrZero(dense + turbulent),
+      body,
       tfdsp::FiniteNormalOrZero(
           parameters_.fit.outputGain * observation_.Process(sources))};
 }
@@ -226,6 +173,13 @@ ContactExciterParameters CrashCymbal::ContactParameters(
   // extends that baseline gesture; it never collapses the brush into a stick-
   // like impulse.
   const float brushSpread = .3f + .7f * spread;
+  // Reserve more of the knob's travel for the bright end, where the cymbal
+  // body becomes increasingly sensitive to small bandwidth changes.
+  const float brushCharacter = hardness * hardness;
+  // Fine bristles sustain more overlapping contact energy. Keep perceived
+  // strike strength broadly stable while retaining that longer, darker shape.
+  const float brushLevel = Mix(
+      .62f, 1.f, brushCharacter * brushCharacter);
 
   ContactExciterParameters result;
   result.pulseDurationSeconds =
@@ -261,8 +215,11 @@ ContactExciterParameters CrashCymbal::ContactParameters(
   result.noise.amplitude = velocityNoise * amplitude * Mix(.25f, .7f, edge) *
       implementMix(1.1f, .7f, .88f) *
       std::clamp(tfdsp::FiniteNormalOrZero(fit.contactNoiseGain), 0.f, 4.f);
-  result.noise.tiltDb = 7.f * velocityOffset + Mix(-4.f, 1.f, hardness) +
-      implementMix(-1.f, -6.f, 1.f) +
+  const float contactTiltDb = implementMix(
+      Mix(-10.f, 4.f, brushCharacter),
+      Mix(-10.f, -5.f, hardness),
+      Mix(-3.f, 2.f, hardness));
+  result.noise.tiltDb = 7.f * velocityOffset + contactTiltDb +
       std::clamp(tfdsp::FiniteNormalOrZero(fit.contactNoiseTiltDb), -18.f, 18.f);
   result.noise.tiltPivotHz = 4200.f;
   result.noise.seed = hit.seed ^ 0x4e4f4953u;
@@ -270,18 +227,23 @@ ContactExciterParameters CrashCymbal::ContactParameters(
       microDurationScale *
       implementMix(Mix(8.f, 36.f, brushSpread), 1.2f, .8f) *
       Mix(.004f, .014f, edge);
+  // Keep a brush's event realization stable while stiffness moves. Modulating
+  // the stochastic event probability changes which contacts exist and makes a
+  // continuous knob produce unrelated, non-monotonic gestures.
   result.microContacts.densityHz = implementMix(
-      Mix(1200.f, 6500.f, hardness) * Mix(.75f, 1.25f, spread),
+      9000.f * Mix(.75f, 1.25f, spread),
       .25f * Mix(5500.f, 15000.f, hardness),
       1.1f * Mix(5500.f, 15000.f, hardness)) *
       std::clamp(tfdsp::FiniteNormalOrZero(fit.contactMicroDensityScale),
                  .25f, 4.f);
   result.microContacts.microDecaySeconds = implementMix(
-      Mix(.0014f, .00055f, hardness),
+      Mix(.0018f, .0005f, brushCharacter),
       Mix(.0009f, .00025f, hardness),
       Mix(.0009f, .00025f, hardness));
-  result.microContacts.brightness = implementMix(.65f, .25f, 1.f) *
-      Mix(.7f, 1.f, hardness);
+  result.microContacts.brightness = implementMix(
+      Mix(.2f, .85f, brushCharacter),
+      .25f * Mix(.7f, 1.f, hardness),
+      Mix(.7f, 1.f, hardness));
   result.microContacts.amplitude = velocityMicro * amplitude *
       Mix(.18f, .5f, edge) *
       implementMix(1.4f, .3f, 1.f) *
@@ -294,43 +256,23 @@ ContactExciterParameters CrashCymbal::ContactParameters(
       implementMix(0.f, .12f, .28f),
       // A brush contains many more contacts than a stick. Its routing is
       // energy-normalized here while its long stochastic gesture is retained.
-      implementMix(.0175f, .24f, .32f),
-      implementMix(.07f, .5f, .72f),
-      implementMix(.035f, .22f, .25f),
-      implementMix(.14f, .42f, .85f)};
+      implementMix(.035f * brushLevel, .24f, .32f),
+      implementMix(.14f * brushLevel, .5f, .72f),
+      implementMix(.07f * brushLevel, .22f, .25f),
+      implementMix(.28f * brushLevel, .42f, .85f)};
   return result;
 }
 
 void CrashCymbal::SetExcitationProjection(const float value,
                                           const float strength) noexcept {
   const float location = Unit(value);
-  sparseProjection_ = InterpolateProjection(
-      location, parameters_.sparseBellProjection,
-      parameters_.sparseBowProjection, parameters_.sparseEdgeProjection);
-  denseProjection_ = InterpolateProjection(
-      location, parameters_.denseBellProjection,
-      parameters_.denseBowProjection, parameters_.denseEdgeProjection);
-  denseExtensionProjection_ = InterpolateProjection(
-      location, parameters_.denseExtensionBellProjection,
-      parameters_.denseExtensionBowProjection,
-      parameters_.denseExtensionEdgeProjection);
+  const float velocityBrightness =
+      parameters_.fit.velocityBrightnessDbPerOctave;
   fieldProjection_ = InterpolateProjection(
       location, parameters_.fieldBellProjection,
       parameters_.fieldBowProjection, parameters_.fieldEdgeProjection);
-  const float velocityBrightness =
-      parameters_.fit.velocityBrightnessDbPerOctave;
-  ApplyVelocityColour(sparseProjection_, parameters_.sparseModes, strength,
-                      velocityBrightness);
-  ApplyVelocityColour(denseProjection_, parameters_.denseModes, strength,
-                      velocityBrightness);
-  ApplyVelocityColour(denseExtensionProjection_,
-                      parameters_.denseExtensionModes, strength,
-                      velocityBrightness);
   ApplyVelocityColour(fieldProjection_, parameters_.modalField, strength,
                       velocityBrightness);
-  sparseModes_.SetExcitationProjection(sparseProjection_);
-  denseModes_.SetExcitationProjection(denseProjection_);
-  denseExtensionModes_.SetExcitationProjection(denseExtensionProjection_);
   modalField_.SetExcitationProjection(fieldProjection_);
 }
 

@@ -34,6 +34,10 @@ family suppresses the stick chirp/impulse and routes a correlated, smoothly
 windowed bristle-contact stream to both direct sound and body drive. Brush
 routes are energy-normalized for their much larger number of contacts, with
 more energy sent into the cymbal body than the dry near-field presentation.
+Stiffness continuously moves a fixed seeded gesture from dark, overlapping
+fine-bristle contact toward a brighter, more articulated coarse-bristle sound;
+it does not regenerate stochastic contacts or drive the full stick-strength
+nonlinear bloom.
 Brush gesture duration remains an internal event property until trigger/gate duration
 controls it directly; it is not exposed as an unrelated fitting slider. Clicking
 triggers; dragging may
@@ -181,18 +185,32 @@ JSON export is the durable source of truth.
 
 ## Rendering and analysis scheduling
 
-The C++/WebAssembly renderer runs continuously in a dedicated worker and fills
-a lock-free shared ring. An `AudioWorklet` consumes 128-frame browser quanta
-from a 512-frame target lead; neither DSP rendering nor queue waiting runs on
-the DOM thread. The worklet wakes the producer with shared-memory atomics rather
-than relying on timer polling. A strike addresses the persistent renderer state
-after the already-published 512-frame lead, so repeated hits accumulate in the
-same cymbal with deterministic low latency. The worklet owns the read index and
-the DSP worker owns the write index; neither side rewrites the other side's
-cursor. Structural macro commits happen synchronously in the DSP worker and
-become audible after the published lead block. The header shows an elapsed
-“Preparing live DSP” timer while a rebuild is pending, then retains the
-measured completion time. A later shadow-state swap can remove this short gap.
+The C++/WebAssembly renderer runs directly inside an `AudioWorkletProcessor`.
+Each process callback advances the persistent cymbal state for the browser's
+render quantum, currently 128 frames in supported browsers, and writes those
+samples straight to the worklet output. There is no ordinary Worker producer,
+shared ring, timer polling, or extra TriggerFish render lead. Repeated strikes
+therefore address the same state at the next message/worklet boundary rather
+than after a pre-rendered queue.
+
+Emscripten emits a dedicated single-file `worklet` build of the same C++ source
+as the offline renderer. The processor is registered immediately and attaches
+to the shared Wasm module when its initialization promise settles; it outputs
+silence during that short startup interval. Structural macro commits still
+rebuild coefficients synchronously in the audio thread. The header shows an
+elapsed “Preparing live DSP” timer while that rebuild is pending. A later
+prepared-state handoff can eliminate this bounded real-time-thread operation if
+profiling shows it is necessary.
+
+The top-right settings dialog owns workstation concerns rather than instrument
+parameters. Its MIDI panel requests Web MIDI access only after an explicit user
+gesture, enumerates and hot-plugs connected inputs, and permits either all
+inputs/channels or one device/channel. Every note-on triggers the current
+location and implement; MIDI velocity replaces strike strength. Note number is
+deliberately unassigned until the later pitch-following design is specified.
+The same dialog reports the worklet quantum, limiter lookahead, and browser's
+best available device-latency estimate. MIDI preferences are local browser
+settings and are not part of a fitted instrument snapshot.
 
 The current corpus browser exposes one qualified private 320-cell grid as an
 instrument: five articulations, sixteen velocities and four variations. Only
@@ -218,14 +236,16 @@ The listening path is:
 reference or synthesis -> shared audition trim -> lookahead limiter -> master -> output
 ```
 
-The initial limiter uses a 5 ms lookahead, immediate downward gain, a lookahead
+The initial limiter uses a 3 ms lookahead, immediate downward gain, a lookahead
 hold, 100 ms smooth release and a conservative -1 dBFS sample-peak ceiling.
 Gain reduction, audio-context state, output level, acknowledged strikes and
 queue underruns are visible. It starts enabled and cannot be bypassed from the
 ordinary UI. A later true-peak qualification pass may replace its detector
 without changing the graph boundary. An explicit offline diagnostic may export
 pre-limiter audio to confirm that the model is stable and not being “fitted
-into” protection.
+into” protection. This is browser audition protection only: it is not compiled
+into, or placed in the signal path of, the percussion DSP library or Rack
+modules.
 
 Analysis defaults to the pre-limiter renderer output. Reference and synthesis
 must use one declared audition-gain policy; independent peak normalization is
@@ -250,7 +270,8 @@ origins and the full viewport.
 Completed foundations include the separate Emscripten target, deterministic
 native/Wasm comparison, persistent real-time triggering, A/B reference
 transport, safety limiter, corpus browser, asynchronous STFT, comparison views,
-the resolved-mode/dense-colour/shared-T60/turbulence editors, and JSON snapshots. Remaining
-work is undo/redo and snapshot A/B, rolling live-output capture, true-peak
-limiter qualification, and macro qualification before the first retained
-listening fit.
+the modal-packet/shared-T60/body-colour editors, JSON snapshots, MIDI note-on
+audition, and direct Wasm rendering in an AudioWorklet. Remaining work is
+undo/redo and snapshot A/B, rolling live-output capture, true-peak limiter
+qualification, and macro qualification before the first retained listening
+fit.

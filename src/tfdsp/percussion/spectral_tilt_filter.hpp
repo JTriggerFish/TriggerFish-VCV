@@ -29,6 +29,19 @@ public:
     coefficient_ = 1.f - std::exp(-6.283185307179586f * pivotHz / sampleRate_);
     lowGain_ = std::pow(10.f, -tiltDb / 40.f);
     highGain_ = std::pow(10.f, tiltDb / 40.f);
+    if (tiltDb == 0.f) {
+      outputGain_ = 1.f;
+      return;
+    }
+    const float pole = 1.f - coefficient_;
+    const float denominator = 2.f - coefficient_;
+    const float lowVariance = coefficient_ / denominator;
+    const float highVariance = 2.f * pole * pole / denominator;
+    const float covariance = coefficient_ * pole / denominator;
+    const float outputVariance = lowGain_ * lowGain_ * lowVariance +
+        highGain_ * highGain_ * highVariance +
+        2.f * lowGain_ * highGain_ * covariance;
+    outputGain_ = 1.f / std::sqrt(std::max(outputVariance, 1.e-12f));
   }
 
   float Process(const float input) noexcept {
@@ -37,7 +50,7 @@ public:
     lowState_ = tfdsp::FiniteNormalOrZero(lowState_);
     const float high = safeInput - lowState_;
     return tfdsp::FiniteNormalOrZero(
-        lowGain_ * lowState_ + highGain_ * high);
+        outputGain_ * (lowGain_ * lowState_ + highGain_ * high));
   }
 
 private:
@@ -46,6 +59,7 @@ private:
   float lowState_{};
   float lowGain_{1.f};
   float highGain_{1.f};
+  float outputGain_{1.f};
 };
 
 } // namespace tfdsp::percussion

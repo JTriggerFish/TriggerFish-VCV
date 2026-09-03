@@ -70,33 +70,28 @@ room-reverb velvet FDN or its coefficient set.
 
 ## Performance profile
 
-Measurements on 2026-09-02 used an AMD Ryzen 9 PRO 8945HS, GCC 16.2 MinGW
+Measurements on 2026-09-03 used an AMD Ryzen 9 PRO 8945HS, GCC 16.2 MinGW
 Release build, 48 kHz, and the current default crash graph. They are development
 measurements rather than cross-machine budgets.
 
 The reproducible probes are `dev.ps1 benchmark-percussion` for native
-components and `node workbench/tests/performance_probe.mjs` after
-`dev.ps1 build-workbench` for WebAssembly rendering and STFT analysis.
+components and `dev.ps1 benchmark-workbench` for WebAssembly rendering and
+STFT analysis.
 
 | Path | Current |
 | --- | ---: |
-| Crash without modal bodies | 344 ns/sample |
-| Crash with 12 sparse modes only | 362 ns/sample |
-| Legacy 2,048-mode dense body | 2,497 ns/sample |
-| Complete legacy crash | 2,531 ns/sample |
-| Legacy 4,096-mode experiment | 4,693 ns/sample |
-| Experimental unified 408-mode field | 4,036 ns/sample |
+| Unified 408-mode crash | 1,133 ns/sample |
+| Isolated unified field, phase and exchange | 845 ns/sample |
 | Isolated dispersion loop | 141 ns/sample |
 | Isolated 512-mode cloud | 524 ns/sample |
 
-The complete legacy graph therefore uses about 12.1% of one core at 48 kHz;
-the 408-mode unified-field experiment uses about 19.4%. This is the deliberate
-quality-first workbench configuration; the anchor/packet allocation should be
-profiled before it becomes a production module. Native and WebAssembly render
-summaries remain closely matched, so JavaScript/Wasm boundary copying is not
-the dominant expense.
+The unified crash uses about 5.4% of one core at 48 kHz. Its measured 128-frame
+p99, including a hit in the sampled tail, is 167 microseconds inside a
+2,667-microsecond deadline (6.3%). Even a 16-frame p99 is below 10% of its
+deadline. These figures qualify
+one native monophonic core, not a complete Rack patch or a 96 kHz budget.
 
-The modal bank now sanitizes stable hit projections once, caches safe per-mode
+The modal bank sanitizes stable hit projections once, caches safe per-mode
 damping multipliers until a damping control changes, and separates independent
 state recurrence from ordered output reduction. This lets GCC vectorize the
 hot recurrence and lets Emscripten use `simd128` without `-ffast-math` or a
@@ -104,20 +99,29 @@ change to finite-value recovery. A separate `-ffast-math` experiment reached
 836 ns/sample, so the safe implementation is now within about 9% of that unsafe
 upper bound.
 
+The unified field additionally composes its fixed modal and random-phase
+rotations during preparation, caches projected drive gains at hit time, and
+expands complete PRNG words into branch-free sign arrays before its recurrence
+and exchange passes. Static packet compatibility is removed from the audio
+loop. Neighbour exchange operates on states already sanitized by propagation,
+so it does not repeat finite/subnormal classification inside a bounded
+orthogonal transform. A unified hit no longer prepares the inactive legacy
+4,096-mode projections. Together these changes reduced the same 408-state
+topology from 4,014 to 1,149 ns/sample; they change stochastic realization but
+not the fitted modal, decay, projection, diffusion, or exchange parameters.
+
 The remaining optimization order is:
 
-1. Benchmark aligned modal arrays and vector-width reductions before changing
-   the number of modes. Mode-count or residual-substitution changes require
-   controlled listening tests and are not the first optimization.
-2. Only then inspect the smaller dispersion and observation paths.
+1. Qualify the optimized stochastic statistics and sound against retained
+   snapshots before considering mode-count changes.
+2. Profile the smaller dispersion and observation paths only if the assembled
+   Rack module misses its production CPU budget.
 
-For the browser workbench, a 10-second 2048-point, 75%-overlap STFT takes about
-70 ms and stores 3.67 MiB. A 1,089 x 506 heatmap redraw takes about 22 ms. A
-slider-to-completed-analysis cycle previously measured 1.69 seconds: 1.36
-seconds was DSP, 220 ms was the deliberate debounce, and the remainder covered
-analysis and UI painting without a main-thread task over 50 ms. The current
-modal-field experiment remains compatible with asynchronous rendering. Canvas
-replacement remains lower priority. Reference spectra now use an eight-entry LRU cache (about 29 MiB at
+For the browser workbench, the optimized Wasm graph renders ten seconds in
+about 642 ms (6.4% of real time). A ten-second 2048-point, 75%-overlap STFT
+takes about 73 ms and stores 3.67 MiB. A 1,089 x 506 heatmap redraw takes about
+22 ms. Rendering and analysis remain asynchronous; Canvas replacement remains
+lower priority. Reference spectra use an eight-entry LRU cache (about 29 MiB at
 the default analysis settings). Snapshots retain audio and controls but
 recompute their spectrogram on restore, reducing a ten-second snapshot from
 about 5.5 MiB to about 1.8 MiB.
@@ -144,9 +148,11 @@ An earlier coupled-comb/frequency-shift graph was rejected during calibration:
 its controls could not place persistent ridges independently. The implemented
 replacement originally sent direct body drive to a small arbitrary modal bank
 and dispersed drive to a deterministic statistical cloud, with a separate
-turbulent residual. That graph remains available as the legacy A/B path.
+turbulent residual. Those primitive implementations remain available for later
+instruments, but the old graph, routing, state, and A/B selector are
+disconnected from `CrashCymbal` and the workbench.
 
-The experimental replacement is one 408-mode stochastic field derived from
+The active body is one 408-mode stochastic field derived from
 twenty-four editable anchors in a 40 Hz--15 kHz constructive design range. Each anchor expands to a coherent centre mode and
 sixteen nearby satellites. Turbulence transfers normalized excitation energy
 from the centre to the satellites, widens their ERB-scaled frequency packet,
@@ -156,7 +162,7 @@ and between neighbouring packets. A per-anchor response scaler can keep
 selected ridges clean while the global control diffuses the rest. Pole radii
 and the external mute controller
 remain the only declared loss mechanisms. The raw dispersion tap remains
-inaudible, and the field uses one body observation/radiation path. A/B controls
+inaudible, and the field uses one body observation/radiation path. The controls
 also expose bloom all-pass diffusion without altering its nominal delay.
 
 ## Calibration boundary

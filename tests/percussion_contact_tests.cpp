@@ -85,13 +85,15 @@ void TestTonalContactChirp() {
 }
 
 double RenderMicroContacts(const std::uint32_t seed, const float amplitude,
-                           float *capture = nullptr) {
+                           float *capture = nullptr,
+                           const float brightness = .7f) {
   tfdsp::percussion::MicroContactBurst burst;
   burst.Prepare(48000.f);
   tfdsp::percussion::MicroContactBurstParameters parameters;
   parameters.durationSeconds = .05f;
   parameters.densityHz = 9000.f;
   parameters.amplitude = amplitude;
+  parameters.brightness = brightness;
   parameters.seed = seed;
   burst.Trigger(parameters);
   double energy = 0.0;
@@ -128,6 +130,24 @@ void TestMicroContacts() {
   Check(energy > 1.e-5, "dense micro-contact cluster produces energy");
   CheckNear(RenderMicroContacts(1234, .25f) / energy, .0625, 1.e-6,
             "micro-contact energy follows squared hit strength");
+
+  float dark[Samples]{};
+  float bright[Samples]{};
+  const double darkEnergy = RenderMicroContacts(51, 1.f, dark, 0.f);
+  const double brightEnergy = RenderMicroContacts(51, 1.f, bright, 1.f);
+  Check(brightEnergy / darkEnergy > .5 && brightEnergy / darkEnergy < 2.,
+        "micro-contact brightness preserves approximate source energy");
+  double darkDifference = 0.0;
+  double brightDifference = 0.0;
+  for (std::size_t sample = 1; sample < Samples; ++sample) {
+    const double darkDelta = dark[sample] - dark[sample - 1];
+    const double brightDelta = bright[sample] - bright[sample - 1];
+    darkDifference += darkDelta * darkDelta;
+    brightDifference += brightDelta * brightDelta;
+  }
+  Check(brightDifference / brightEnergy >
+            2. * darkDifference / darkEnergy,
+        "micro-contact brightness changes colour after energy normalization");
 }
 
 void TestEnvelopedWhiteNoise() {
@@ -203,8 +223,32 @@ void TestNoiseTilt() {
     if (sample > 100)
       brightHighEnergy += brightOutput * brightOutput;
   }
-  Check(brightHighEnergy > 4.0 * darkHighEnergy,
+  Check(brightHighEnergy > 2.0 * darkHighEnergy,
         "positive noise tilt raises high-band energy relative to negative tilt");
+
+  neutral.Reset();
+  dark.Reset();
+  bright.Reset();
+  std::uint32_t random = 0x51f15e2du;
+  double inputEnergy = 0.0;
+  double darkEnergy = 0.0;
+  double brightEnergy = 0.0;
+  for (std::size_t sample = 0; sample < 100000; ++sample) {
+    random ^= random << 13;
+    random ^= random >> 17;
+    random ^= random << 5;
+    const float input = 2.f *
+        (static_cast<float>(random) / 4294967295.f) - 1.f;
+    inputEnergy += input * input;
+    const float darkOutput = dark.Process(input);
+    const float brightOutput = bright.Process(input);
+    darkEnergy += darkOutput * darkOutput;
+    brightEnergy += brightOutput * brightOutput;
+  }
+  Check(darkEnergy / inputEnergy > .95 && darkEnergy / inputEnergy < 1.05 &&
+            brightEnergy / inputEnergy > .95 &&
+            brightEnergy / inputEnergy < 1.05,
+        "noise tilt preserves white-noise energy while changing colour");
 
   neutral.Reset();
   Check(neutral.Process(std::numeric_limits<float>::denorm_min()) == 0.f &&

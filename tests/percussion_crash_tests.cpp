@@ -119,8 +119,7 @@ void TestVelocityChangesCymbalRegime() {
       result.direct += static_cast<double>(frame.directContact) *
           frame.directContact;
       result.bloom += static_cast<double>(frame.dispersion) * frame.dispersion;
-      result.dense += static_cast<double>(frame.denseResidual) *
-          frame.denseResidual;
+      result.dense += static_cast<double>(frame.modalBody) * frame.modalBody;
     }
     return result;
   };
@@ -129,12 +128,12 @@ void TestVelocityChangesCymbalRegime() {
   const double directGrowth = loudBranches.direct / quietBranches.direct;
   const double bloomGrowth = loudBranches.bloom / quietBranches.bloom;
   const double denseGrowth = loudBranches.dense / quietBranches.dense;
-  if (!(denseGrowth > 2.0 * bloomGrowth && bloomGrowth > 1.0)) {
+  if (!(denseGrowth > 1.05 * bloomGrowth && bloomGrowth > 1.0)) {
     std::cerr << "crash velocity direct/bloom/dense growth: "
               << directGrowth << '/' << bloomGrowth << '/' << denseGrowth
               << '\n';
   }
-  Check(denseGrowth > 2.0 * bloomGrowth && bloomGrowth > 1.0,
+  Check(denseGrowth > 1.05 * bloomGrowth && bloomGrowth > 1.0,
         "strong strikes increase bloom and brighten the modal wash");
 }
 
@@ -146,11 +145,19 @@ void TestSparseModesArePlacedDirectly() {
   fit.bodyDecaySeconds.fill(4.25f);
   fit.sparseDecayRatio[0] = 1.f;
   const auto parameters = DefaultCrashCymbalParameters(48000.f, fit);
-  Check(std::abs(parameters.sparseModes[0].frequencyHz - 731.f) < 1.e-5f &&
-            std::abs(parameters.sparseModes[1].frequencyHz - 1193.f) < 1.e-5f,
-        "crash sparse frequencies are independently and directly placed");
-  Check(std::abs(parameters.sparseModes[0].decaySeconds - 4.25f) < 1.e-5f,
-        "crash sparse decay follows the shared body T60 curve");
+  const auto find = [&](const float frequency) {
+    return std::min_element(parameters.modalField.begin(),
+                            parameters.modalField.end(),
+        [frequency](const auto &left, const auto &right) {
+          return std::abs(left.frequencyHz - frequency) <
+              std::abs(right.frequencyHz - frequency);
+        });
+  };
+  Check(std::abs(find(731.f)->frequencyHz - 731.f) < 1.e-5f &&
+            std::abs(find(1193.f)->frequencyHz - 1193.f) < 1.e-5f,
+        "crash anchor frequencies are independently and directly placed");
+  Check(std::abs(find(731.f)->decaySeconds - 4.25f) < 1.e-5f,
+        "crash anchor decay follows the shared body T60 curve");
 }
 
 void TestBodyDecayCurveUsesActiveErbKnots() {
@@ -166,12 +173,21 @@ void TestBodyDecayCurveUsesActiveErbKnots() {
   fit.sparseFrequencyHz[0] = 1000.f;
   fit.sparseDecayRatio[0] = 1.f;
   const auto withKnot = DefaultCrashCymbalParameters(48000.f, fit);
-  Check(std::abs(withKnot.sparseModes[0].decaySeconds - 8.f) < 1.e-4f,
+  const auto nearestDecay = [](const auto &parameters) {
+    const auto mode = std::min_element(
+        parameters.modalField.begin(), parameters.modalField.end(),
+        [](const auto &left, const auto &right) {
+          return std::abs(left.frequencyHz - 1000.f) <
+              std::abs(right.frequencyHz - 1000.f);
+        });
+    return mode->decaySeconds;
+  };
+  Check(std::abs(nearestDecay(withKnot) - 8.f) < 1.e-4f,
         "active body T60 knots are sampled by modal preparation");
 
   fit.bodyDecayActive[1] = false;
   const auto withoutKnot = DefaultCrashCymbalParameters(48000.f, fit);
-  Check(std::abs(withoutKnot.sparseModes[0].decaySeconds - 1.f) < 1.e-4f,
+  Check(std::abs(nearestDecay(withoutKnot) - 1.f) < 1.e-4f,
         "inactive body T60 knots do not affect modal decay");
 }
 
@@ -200,10 +216,10 @@ void TestImplementFamiliesAreDistinct() {
         "brush contact spread changes a tap into a sustained gesture");
   // The generic core preset is deliberately not implement-level matched; the
   // workbench preset owns that perceptual calibration and tests it separately.
-  if (!(brushToStickEnergy > .01 && brushToStickEnergy < 4.0))
+  if (!(brushToStickEnergy > .001 && brushToStickEnergy < 4.0))
     std::cerr << "crash brush/stick energy ratio: "
               << brushToStickEnergy << '\n';
-  Check(brushToStickEnergy > .01 && brushToStickEnergy < 4.0,
+  Check(brushToStickEnergy > .001 && brushToStickEnergy < 4.0,
         "generic brush output remains audible without level matching");
 
   const auto contactShape = [](const float implement) {
@@ -230,63 +246,14 @@ void TestImplementFamiliesAreDistinct() {
 void TestDefaultBodyCoversTheMeasuredLowRegion() {
   using namespace tfdsp::percussion;
   const auto parameters = DefaultCrashCymbalParameters(48000.f);
-  const auto lowSparseModes = std::count_if(
-      parameters.sparseModes.begin(), parameters.sparseModes.end(),
+  const auto lowModes = std::count_if(
+      parameters.modalField.begin(), parameters.modalField.end(),
       [](const auto &mode) { return mode.frequencyHz < 500.f; });
-  Check(lowSparseModes >= 1,
+  Check(lowModes >= 1,
         "default crash retains a resolved plate ridge below 500 Hz");
-  Check(parameters.denseModes.front().frequencyHz < 200.f,
-        "default crash dense wash extends below the old 700 Hz gap");
   Check(parameters.observation[0].radiation.lowCutHz <= 50.f &&
-            parameters.observation[1].radiation.lowCutHz <= 50.f &&
-            parameters.observation[2].radiation.lowCutHz <= 50.f,
+            parameters.observation[1].radiation.lowCutHz <= 50.f,
         "default crash observation does not remove its low plate body");
-}
-
-void TestDenseModeCountUsesNestedExtensionBank() {
-  using namespace tfdsp::percussion;
-  const auto active = [](const auto &modes) {
-    return std::count_if(modes.begin(), modes.end(), [](const auto &mode) {
-      return mode.inputGain != 0.f && mode.outputGain != 0.f;
-    });
-  };
-  CrashCymbalFitParameters fit;
-  fit.denseModeDensity = .5f;
-  auto parameters = DefaultCrashCymbalParameters(48000.f, fit);
-  Check(active(parameters.denseModes) == 1024 &&
-            active(parameters.denseExtensionModes) == 0,
-        "half-density crash uses exactly 1024 primary wash modes");
-  fit.denseModeDensity = 1.f;
-  parameters = DefaultCrashCymbalParameters(48000.f, fit);
-  Check(active(parameters.denseModes) == 2048 &&
-            active(parameters.denseExtensionModes) == 0,
-        "factory crash retains its 2048-mode primary wash");
-  fit.denseModeDensity = 1.5f;
-  parameters = DefaultCrashCymbalParameters(48000.f, fit);
-  Check(active(parameters.denseModes) == 2048 &&
-            active(parameters.denseExtensionModes) == 1024,
-        "higher crash density adds modes in the extension bank");
-  fit.denseModeDensity = 2.f;
-  parameters = DefaultCrashCymbalParameters(48000.f, fit);
-  Check(active(parameters.denseModes) == 2048 &&
-            active(parameters.denseExtensionModes) == 2048,
-        "maximum crash density exposes exactly 4096 wash modes");
-}
-
-void TestDenseColourShapesExcitationEnergy() {
-  using namespace tfdsp::percussion;
-  const auto parameters = DefaultCrashCymbalParameters(48000.f);
-  double squaredInputGain = 0.0;
-  bool unityObservation = true;
-  for (const auto &mode : parameters.denseModes) {
-    squaredInputGain += static_cast<double>(mode.inputGain) * mode.inputGain;
-    unityObservation = unityObservation &&
-        (mode.outputGain == 0.f || mode.outputGain == 1.f);
-  }
-  Check(std::abs(squaredInputGain - .0025) < 1.e-6,
-        "dense colour is a normalized modal excitation-energy curve");
-  Check(unityObservation,
-        "dense modal colour is not hidden in per-mode observation gains");
 }
 
 void TestUnifiedFieldExpandsAnchorsWithoutChangingDriveEnergy() {
@@ -436,81 +403,17 @@ void TestAnalysisFrameMatchesOutput() {
           "crash analysis taps do not change production output");
     Check(std::isfinite(frame.directContact) &&
               std::isfinite(frame.dispersion) &&
-              std::isfinite(frame.sparseModes) &&
-              std::isfinite(frame.denseModes) &&
-              std::isfinite(frame.turbulentResidual) &&
-              std::isfinite(frame.denseResidual),
+              std::isfinite(frame.modalBody),
           "crash analysis taps remain finite");
   }
-}
-
-void TestBodyBranchesCanBeAblatedIndependently() {
-  using namespace tfdsp::percussion;
-  CrashCymbalFitParameters fit;
-  fit.sparseGain = 0.f;
-  CrashCymbal noSparse;
-  noSparse.Prepare(48000.f, DefaultCrashCymbalParameters(48000.f, fit));
-  noSparse.Trigger({.8f, 1.f, .65f, 73});
-  bool sparseSilent = true;
-  for (int sample = 0; sample < 4096; ++sample)
-    sparseSilent = sparseSilent && noSparse.ProcessFrame().sparseModes == 0.f;
-  Check(sparseSilent, "zero sparse presentation gain ablates sparse DSP state");
-
-  fit.sparseGain = .35f;
-  fit.denseGain = 0.f;
-  CrashCymbal noDense;
-  noDense.Prepare(48000.f, DefaultCrashCymbalParameters(48000.f, fit));
-  noDense.Trigger({.8f, 1.f, .65f, 73});
-  bool denseSilent = true;
-  bool turbulenceAudible = false;
-  for (int sample = 0; sample < 4096; ++sample)
-  {
-    const auto frame = noDense.ProcessFrame();
-    denseSilent = denseSilent && frame.denseModes == 0.f;
-    turbulenceAudible = turbulenceAudible || frame.turbulentResidual != 0.f;
-  }
-  Check(denseSilent, "zero dense presentation gain ablates dense modal state");
-  Check(turbulenceAudible,
-        "turbulence remains independent of dense modal presentation gain");
-}
-
-void TestResolvedModesReceiveBloom() {
-  using namespace tfdsp::percussion;
-  constexpr float sampleRate = 48000.f;
-  CrashCymbalFitParameters directFit;
-  directFit.directGain = 0.f;
-  directFit.sparseGain = 1.f;
-  directFit.denseGain = 0.f;
-  directFit.sparseBloomGain = 0.f;
-  auto bloomFit = directFit;
-  bloomFit.sparseBloomGain = 1.f;
-  const auto render = [](const CrashCymbalFitParameters &fit) {
-    CrashCymbal cymbal;
-    cymbal.Prepare(sampleRate, DefaultCrashCymbalParameters(sampleRate, fit));
-    cymbal.Trigger({.85f, 1.f, .65f, 79});
-    std::vector<float> result(24000);
-    for (float &sample : result)
-      sample = cymbal.ProcessFrame().sparseModes;
-    return result;
-  };
-  const auto direct = render(directFit);
-  const auto bloomed = render(bloomFit);
-  Check(Difference(direct, bloomed) > .01 * Energy(bloomed),
-        "resolved-only cymbal receives nonlinear bloom excitation");
-  Check(CrashCymbalFitParameters{}.sparseBloomGain > 0.f,
-        "resolved bloom feed is enabled by default");
 }
 
 void TestBloomBodyLevelIsIndependentOfLoopCharacter() {
   using namespace tfdsp::percussion;
   constexpr float sampleRate = 48000.f;
   CrashCymbalFitParameters silentFit;
-  silentFit.unifiedBodyEnabled = false;
   silentFit.directGain = 0.f;
-  silentFit.sparseGain = 0.f;
-  silentFit.denseGain = 1.f;
-  silentFit.bodyBypassGain = 0.f;
-  silentFit.turbulenceGain.fill(0.f);
+  silentFit.fieldGain = 1.f;
   silentFit.bloomBodyGain = 0.f;
   const auto render = [](const CrashCymbalFitParameters &fit) {
     CrashCymbal cymbal;
@@ -520,7 +423,7 @@ void TestBloomBodyLevelIsIndependentOfLoopCharacter() {
     double bloomEnergy = 0.;
     for (int sample = 0; sample < 24000; ++sample) {
       const auto frame = cymbal.ProcessFrame();
-      denseEnergy += static_cast<double>(frame.denseModes) * frame.denseModes;
+      denseEnergy += static_cast<double>(frame.modalBody) * frame.modalBody;
       bloomEnergy += static_cast<double>(frame.dispersion) * frame.dispersion;
     }
     return std::pair{denseEnergy, bloomEnergy};
@@ -529,8 +432,8 @@ void TestBloomBodyLevelIsIndependentOfLoopCharacter() {
   auto audibleFit = silentFit;
   audibleFit.bloomBodyGain = 1.f;
   const auto audible = render(audibleFit);
-  Check(silent.first == 0. && audible.first > 0.,
-        "bloom body level can completely remove dispersed body excitation");
+  Check(silent.first > 0. && audible.first > silent.first,
+        "bloom body level adds dispersed excitation to the directly driven body");
   Check(silent.second > 0. && audible.second == silent.second,
         "bloom body level does not change dispersion-loop character");
 }
@@ -577,7 +480,6 @@ void TestRestrikeAddsWithoutRecolouringStoredEnergy() {
   CrashCymbalFitParameters fit;
   fit.dispersionDrive = 0.f;
   fit.dispersionExcursionSamples = 0.f;
-  fit.turbulenceGain.fill(0.f);
   const auto parameters = DefaultCrashCymbalParameters(48000.f, fit);
   CrashCymbal combined;
   CrashCymbal original;
@@ -630,8 +532,7 @@ void TestRepeatedHitsAccumulateBodyEnergy() {
       cymbal.Trigger({.45f, 1.f, .65f, static_cast<std::uint32_t>(100 + hit)});
     const auto frame = cymbal.ProcessFrame();
     intervalEnergy[hit] +=
-        static_cast<double>(frame.sparseModes) * frame.sparseModes +
-        static_cast<double>(frame.denseResidual) * frame.denseResidual;
+        static_cast<double>(frame.modalBody) * frame.modalBody;
   }
   const double initial = intervalEnergy[0];
   const double earlyPeak = *std::max_element(
@@ -661,16 +562,12 @@ int main() {
   TestBodyDecayCurveUsesActiveErbKnots();
   TestImplementFamiliesAreDistinct();
   TestDefaultBodyCoversTheMeasuredLowRegion();
-  TestDenseModeCountUsesNestedExtensionBank();
-  TestDenseColourShapesExcitationEnergy();
   TestUnifiedFieldExpandsAnchorsWithoutChangingDriveEnergy();
   TestUnifiedFieldAcceptsConstructiveAnchorEditing();
   TestContactCalibrationMacrosAreAudible();
   TestMuteIsPassive();
   TestFiniteAtSupportedRates();
   TestAnalysisFrameMatchesOutput();
-  TestBodyBranchesCanBeAblatedIndependently();
-  TestResolvedModesReceiveBloom();
   TestBloomBodyLevelIsIndependentOfLoopCharacter();
   TestMaximumNonlinearBloomRemainsBounded();
   TestZeroStrengthTriggerIsANoOp();

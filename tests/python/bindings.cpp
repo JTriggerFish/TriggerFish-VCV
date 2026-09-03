@@ -1062,7 +1062,6 @@ PYBIND11_MODULE(_triggerfish_dsp, module)
 			&CrashFit::dispersionHighDecaySeconds)
 		.def_readwrite("dispersion_diffusion", &CrashFit::dispersionDiffusion)
 		.def_readwrite("bloom_body_gain", &CrashFit::bloomBodyGain)
-		.def_readwrite("unified_body_enabled", &CrashFit::unifiedBodyEnabled)
 		.def_readwrite("field_gain", &CrashFit::fieldGain)
 		.def_readwrite("field_turbulence", &CrashFit::fieldTurbulence)
 		.def_readwrite("field_packet_spread_erb", &CrashFit::fieldPacketSpreadErb)
@@ -1161,15 +1160,14 @@ PYBIND11_MODULE(_triggerfish_dsp, module)
 			tfdsp::percussion::DefaultCrashCymbalParameters(rate, fit));
 		cymbal.Trigger(
 			{strength, location, hardness, seed, implement, contactSpread});
-		py::array_t<float> result({sampleCount, py::ssize_t{5}});
+		py::array_t<float> result({sampleCount, py::ssize_t{4}});
 		auto output = result.mutable_unchecked<2>();
 		for (py::ssize_t sample = 0; sample < sampleCount; ++sample) {
 			const auto frame = cymbal.ProcessFrame();
 			output(sample, 0) = frame.directContact;
 			output(sample, 1) = frame.dispersion;
-			output(sample, 2) = frame.sparseModes;
-			output(sample, 3) = frame.denseResidual;
-			output(sample, 4) = frame.output;
+			output(sample, 2) = frame.modalBody;
+			output(sample, 3) = frame.output;
 		}
 		return result;
 	}, py::arg("sample_count"), py::arg("sample_rate") = 48000.0,

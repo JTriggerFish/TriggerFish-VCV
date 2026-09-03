@@ -9,11 +9,14 @@
 #include "tfdsp/percussion/observation_model.hpp"
 #include "tfdsp/percussion/statistical_modal_cloud.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <iostream>
 #include <string_view>
+#include <vector>
 
 namespace {
 
@@ -151,6 +154,31 @@ void BenchmarkModalBanks() {
   });
 }
 
+void BenchmarkModalField() {
+  auto parameters = tfdsp::percussion::DefaultCrashCymbalParameters(48000.f);
+  const auto measure = [&](const std::string_view name,
+                           const bool phase, const bool exchange) {
+    auto modes = parameters.modalField;
+    if (!phase) {
+      for (auto &mode : modes)
+        mode.phaseBandwidthHz = 0.f;
+    }
+    auto controls = parameters.modalFieldControls;
+    if (!exchange)
+      controls.exchangeAngleRadians = 0.f;
+    tfdsp::percussion::CrashModalField field;
+    field.Prepare(48000.f, modes, controls, 700.f, 6500.f);
+    Measure(name, [&](const std::size_t sample) {
+      const float input = sample % 24000 == 0 ? 1.f : 0.f;
+      return field.ProcessExcitedPair(input, .5f * input);
+    });
+  };
+  measure("408-mode field, coherent", false, false);
+  measure("408-mode field, phase only", true, false);
+  measure("408-mode field, exchange only", false, true);
+  measure("408-mode field, phase and exchange", true, true);
+}
+
 void BenchmarkDispersion() {
   tfdsp::percussion::DispersionLoop loop;
   tfdsp::percussion::DispersionLoopParameters parameters;
@@ -175,27 +203,41 @@ void BenchmarkCrashVariant(const std::string_view name,
 
 void BenchmarkCrashCymbal() {
   tfdsp::percussion::CrashCymbalFitParameters fit;
-  BenchmarkCrashVariant("crash without modal banks", [&] {
-    auto result = fit;
-    result.sparseGain = 0.f;
-    result.denseGain = 0.f;
-    return result;
-  }());
-  BenchmarkCrashVariant("crash with sparse bank", [&] {
-    auto result = fit;
-    result.denseGain = 0.f;
-    return result;
-  }());
-  BenchmarkCrashVariant("crash with dense bank", [&] {
-    auto result = fit;
-    result.sparseGain = 0.f;
-    return result;
-  }());
-  BenchmarkCrashVariant("complete crash", fit);
-  fit.denseModeDensity = 2.f;
-  BenchmarkCrashVariant("complete crash, 4096 wash modes", fit);
-  fit.unifiedBodyEnabled = true;
-  BenchmarkCrashVariant("unified 408-mode crash", fit);
+  BenchmarkCrashVariant("408-mode crash", fit);
+}
+
+void BenchmarkCrashDeadlines() {
+  using Clock = std::chrono::steady_clock;
+  tfdsp::percussion::CrashCymbalFitParameters fit;
+  tfdsp::percussion::CrashCymbal cymbal;
+  cymbal.Prepare(
+      48000.f, tfdsp::percussion::DefaultCrashCymbalParameters(48000.f, fit));
+  tfdsp::percussion::CrashCymbalHit hit{};
+  constexpr std::size_t BlockCount = 2000;
+  for (const std::size_t blockFrames : {16u, 32u, 64u, 128u, 256u}) {
+    std::vector<double> elapsedMicroseconds;
+    elapsedMicroseconds.reserve(BlockCount);
+    for (std::size_t block = 0; block < BlockCount; ++block) {
+      const auto start = Clock::now();
+      if (block % 64 == 0) {
+        hit.seed = static_cast<std::uint32_t>(block + blockFrames);
+        cymbal.Trigger(hit);
+      }
+      float sum = 0.f;
+      for (std::size_t frame = 0; frame < blockFrames; ++frame)
+        sum += cymbal.Process();
+      sink = sum;
+      const auto stop = Clock::now();
+      elapsedMicroseconds.push_back(
+          std::chrono::duration<double, std::micro>(stop - start).count());
+    }
+    std::sort(elapsedMicroseconds.begin(), elapsedMicroseconds.end());
+    const double p99 = elapsedMicroseconds[BlockCount * 99 / 100];
+    const double deadline = 1.e6 * static_cast<double>(blockFrames) / 48000.;
+    std::cout << "crash, " << blockFrames << "-frame blocks: "
+              << p99 << " us p99 / " << deadline << " us deadline ("
+              << 100. * p99 / deadline << "% p99)\n";
+  }
 }
 
 } // namespace
@@ -207,7 +249,9 @@ int main() {
   BenchmarkFrequencyShifter();
   BenchmarkResonators();
   BenchmarkModalBanks();
+  BenchmarkModalField();
   BenchmarkDispersion();
   BenchmarkObservation();
   BenchmarkCrashCymbal();
+  BenchmarkCrashDeadlines();
 }

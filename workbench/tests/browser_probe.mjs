@@ -157,6 +157,26 @@ if (profileUi) {
   result.profile.interaction = interaction.result.value;
 }
 if (testAudio) {
+  await call("Runtime.evaluate", {
+    expression: `new Promise(resolve => {
+      const deadline = performance.now() + 15000;
+      let readySince = 0;
+      const poll = () => {
+        const ready = document.getElementById("status")?.textContent === "Ready" &&
+          document.getElementById("live-commit")?.textContent
+            .startsWith("Live DSP ready");
+        readySince = ready ? (readySince || performance.now()) : 0;
+        if (readySince && performance.now() - readySince >= 500 ||
+            performance.now() >= deadline) {
+          document.getElementById("stop").click();
+          resolve();
+        } else setTimeout(poll, 50);
+      };
+      poll();
+    })`,
+    awaitPromise: true,
+  });
+  await new Promise(resolve => setTimeout(resolve, 100));
   const button = await call("Runtime.evaluate", {
     expression: `(() => {
       const bounds = document.getElementById("play-synthesis").getBoundingClientRect();
@@ -212,14 +232,21 @@ if (testControls) {
       const colour = document.getElementById("colour-range");
       const mode = document.getElementById("view-mode");
       const model = document.querySelector("#model-level input");
-      const shape = document.querySelector("#body-controls input");
-      const washDensity = document.querySelector(
-        '[data-fit-key="dense_mode_density"] input[type="range"]');
       const bodyLowT60 = document.querySelector(
         '[data-fit-key="body_decay_seconds_0"] input');
       const fieldTurbulence = document.querySelector(
         '[data-fit-key="field_turbulence"] input');
-      const bodyUi = document.getElementById("body-ui-mode");
+      const settingsDialog = document.getElementById("settings-dialog");
+      document.getElementById("settings-open").click();
+      const settingsOpened = settingsDialog.open;
+      const directWorklet = document.getElementById("audio-buffer-status")
+        .textContent.includes("128-frame direct worklet");
+      const midiSettingsPresent =
+        document.getElementById("midi-enable") instanceof HTMLButtonElement &&
+        document.getElementById("midi-input") instanceof HTMLSelectElement &&
+        document.getElementById("midi-channel") instanceof HTMLSelectElement;
+      document.getElementById("settings-close").click();
+      const settingsClosed = !settingsDialog.open;
       const sidebar = document.querySelector("aside");
       const analysis = document.querySelector(".analysis");
       const analysisTop = analysis.getBoundingClientRect().top;
@@ -233,8 +260,7 @@ if (testControls) {
         hardness: hardness.value,
         contactSpread: contactSpread.value,
         implement: implementChoices.find(input => input.checked)?.value,
-        model: Number(model.value), shape: shape.value,
-        bodyUi: bodyUi.value,
+        model: Number(model.value),
       };
       const reset = (element, changed, eventName = "input") => {
         element.value = changed;
@@ -252,20 +278,7 @@ if (testControls) {
       reset(sizeMeta, 0.1);
       reset(colour, 50);
       reset(mode, "difference", "change");
-      reset(shape, 0.9);
       reset(model, Math.min(1, initial.model + 0.1));
-      const unifiedVisible = document.querySelector(
-        '[data-ui-mode="unified"]').getClientRects().length > 0;
-      const legacyHidden = document.querySelector(
-        '[data-ui-mode="legacy"]').getClientRects().length === 0;
-      bodyUi.value = "legacy";
-      bodyUi.dispatchEvent(new Event("change"));
-      const legacyVisible = document.querySelector(
-        '[data-ui-mode="legacy"]').getClientRects().length > 0;
-      const unifiedHidden = document.querySelector(
-        '[data-ui-mode="unified"]').getClientRects().length === 0;
-      bodyUi.value = initial.bodyUi;
-      bodyUi.dispatchEvent(new Event("change"));
       const modal = document.querySelector("#modal-editor svg");
       const modalCount = modal.querySelectorAll(".modal-bar").length;
       modal.querySelector(".modal-bar").dispatchEvent(new MouseEvent(
@@ -294,6 +307,9 @@ if (testControls) {
         !document.getElementById("harmonic-snap-all").disabled;
       const decayEditor = document.querySelector("#decay-editor svg");
       const decayCount = decayEditor.querySelectorAll(".editor-point").length;
+      const boundaryDelete = document.querySelector("#decay-selection button");
+      const boundaryDeleteIsClear = boundaryDelete?.textContent === "Delete knot" &&
+        boundaryDelete.disabled;
       const decayBounds = decayEditor.getBoundingClientRect();
       decayEditor.dispatchEvent(new MouseEvent("dblclick", {
         bubbles: true,
@@ -302,7 +318,10 @@ if (testControls) {
       }));
       const decayInsertWorked =
         decayEditor.querySelectorAll(".editor-point").length === decayCount + 1;
-      document.querySelector("#decay-selection button")?.click();
+      const interiorDelete = document.querySelector("#decay-selection button");
+      const interiorDeleteIsEnabled = interiorDelete?.textContent === "Delete knot" &&
+        !interiorDelete.disabled;
+      interiorDelete?.click();
       const decayRemoveWorked =
         decayEditor.querySelectorAll(".editor-point").length === decayCount;
       const divider = document.getElementById("analysis-divider");
@@ -323,6 +342,8 @@ if (testControls) {
             performance.now() >= deadline) {
           const checks = {
             master: master.value === "-12",
+            settingsMenu: settingsOpened && settingsClosed && directWorklet &&
+              midiSettingsPresent,
             hardness: hardness.value === initial.hardness,
             contactSpread: contactSpread.value === initial.contactSpread,
             implement: implementChoices.find(input => input.checked)?.value ===
@@ -338,20 +359,19 @@ if (testControls) {
             sizeMeta: sizeMeta.value === "0.5",
             colour: colour.value === "90",
             mode: mode.value === "mirror",
-            shape: shape.value === initial.shape,
             model: Math.abs(Number(model.value) - initial.model) <= 0.11,
             bodyLowT60: bodyLowT60 instanceof HTMLInputElement,
             flexibleBodyT60Knots:
               document.querySelectorAll("#decay-editor .editor-point").length === 2 &&
               document.querySelectorAll("#decay-editor rect.editor-point").length === 2 &&
               Boolean(document.querySelector("#decay-editor .decay-all-handle")) &&
+              boundaryDeleteIsClear && interiorDeleteIsEnabled &&
               decayInsertWorked && decayRemoveWorked,
             sharedT60Editor: Boolean(decayEditor),
-            unifiedBodyDefault: initial.bodyUi === "unified",
             unifiedTurbulenceControl:
               fieldTurbulence instanceof HTMLInputElement,
-            separateBodyViews: unifiedVisible && legacyHidden &&
-              legacyVisible && unifiedHidden,
+            noLegacyBodyUi: !document.getElementById("body-ui-mode") &&
+              !document.querySelector('[data-ui-mode="legacy"]'),
             bloomDiffusionControl: Boolean(document.querySelector(
               '[data-fit-key="bloom_diffusion"] input')),
             independentBloomControls: Boolean(document.querySelector(
@@ -388,14 +408,8 @@ if (testControls) {
                 modalDesignBounds.top,
             noResolvedModeToggle: !document.querySelector(
               '[data-fit-key="resolved_modes_enabled"]'),
-            denseWashCurve: document.querySelectorAll(
-              "#dense-wash-editor .editor-point").length === 8,
-            continuousWashDensity: washDensity instanceof HTMLInputElement &&
-              washDensity.step !== "1",
             waveformDragDisabled:
               document.getElementById("waveform")._fullLayout?.dragmode === false,
-            turbulenceDefaultOn: document.querySelector(
-              "#turbulence-toggle input")?.checked === true,
             noStrikeEllipse: getComputedStyle(
               document.getElementById("strike-pad"), "::after").content === "none",
             twoControlColumns: getComputedStyle(
@@ -408,9 +422,6 @@ if (testControls) {
             strikeVisible: document.getElementById("strike-pad")
               .getBoundingClientRect().bottom <=
               analysis.getBoundingClientRect().bottom,
-            turbulenceInLeftColumn: Boolean(document.querySelector(
-              ".control-column:first-child #turbulence-toggle",
-            )),
             referenceColourScale: document.getElementById("colour-ceiling")
               .textContent.startsWith("Reference ceiling"),
             livePreparationVisible: document.getElementById("live-commit")

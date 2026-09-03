@@ -24,10 +24,7 @@ struct CrashCymbalHit {
 struct CrashCymbalFrame {
   float directContact{};
   float dispersion{};
-  float sparseModes{};
-  float denseModes{};
-  float turbulentResidual{};
-  float denseResidual{};
+  float modalBody{};
   float output{};
 };
 
@@ -51,29 +48,16 @@ private:
 
   ContactExciter contact_{};
   DispersionLoop dispersion_{};
-  TurbulentResidual turbulence_{};
   CrashModalField modalField_{};
-  CrashSparseModes sparseModes_{};
-  CrashDenseModes denseModes_{};
-  CrashDenseModes denseExtensionModes_{};
-  ObservationModel<4> observation_{};
+  ObservationModel<2> observation_{};
   DynamicLossController delayConstraint_{};
   ModalConstraintController modalConstraint_{};
   CrashCymbalParameters parameters_{};
-  CrashSparseModes::Projection sparseProjection_{};
-  CrashDenseModes::Projection denseProjection_{};
-  CrashDenseModes::Projection denseExtensionProjection_{};
   CrashModalField::Projection fieldProjection_{};
   float bodyDriveScale_{1.f};
+  float bloomDriveScale_{1.f};
   float bloomBodyGain_{1.f};
   float sampleRate_{48000.f};
-  float sparseBloomGain_{};
-  float denseBypassGain_{};
-  bool sparseEnabled_{true};
-  bool denseEnabled_{true};
-  bool denseExtensionEnabled_{};
-  bool turbulenceEnabled_{};
-  bool unifiedBodyEnabled_{};
 };
 
 } // namespace tfdsp::percussion

@@ -4,6 +4,7 @@ import { FitControls } from "./fit_controls.mjs";
 import { matchedModelLevelDb } from "./level_match.mjs";
 import { readReferences } from "./references.mjs";
 import { ReferenceBrowser } from "./reference_browser.mjs";
+import { SettingsController } from "./settings.mjs";
 import { SpectrogramView } from "./spectrogram.mjs";
 import { downloadFit, readFit, snapshotState } from "./state.mjs";
 import { Tooltips } from "./tooltips.mjs";
@@ -33,6 +34,19 @@ view.setSettings({
   dynamicRangeDb: state.analysis.dynamicRangeDb,
 });
 const audition = new SafeAudition(setStatus);
+let midiTriggerSeed = 0;
+const settings = new SettingsController({
+  audition,
+  onStatus: setStatus,
+  onMidiNote: ({ velocity }) => {
+    const event = {
+      ...state.event,
+      strength: Math.max(.01, velocity),
+      seed: (state.event.seed + ++midiTriggerSeed) >>> 0,
+    };
+    audition.trigger(event).catch(error => setStatus(String(error)));
+  },
+});
 const worker = new Worker("analysis_worker.mjs", { type: "module" });
 const renderWorker = new Worker("render_worker.mjs", { type: "module" });
 const generations = { reference: 0, synthesis: 0 };
@@ -89,6 +103,12 @@ function paintPerformanceControls() {
 }
 
 function setStatus(message) { byId("status").textContent = message; }
+function setReadyIfIdle() {
+  if (!pendingAnalysis.size && !renderInFlight && !renderTimer &&
+      !pendingLevelMatch) {
+    setStatus("Ready");
+  }
+}
 function updateColourCeiling() {
   const peak = state.referenceSpectrum?.peakDb;
   byId("colour-ceiling").textContent = Number.isFinite(peak)
@@ -124,14 +144,6 @@ function buildControls() {
     onLevelReset: () => requestLevelMatch(),
   });
   fitControls.build();
-  applyBodyUiMode(fitControls.bodyMode(), false);
-}
-
-function applyBodyUiMode(mode, notify = true) {
-  const selected = mode === "legacy" ? "legacy" : "unified";
-  document.body.dataset.bodyMode = selected;
-  byId("body-ui-mode").value = selected;
-  fitControls?.setBodyMode(selected, notify);
 }
 
 function analyze(kind, samples, sampleRate, cacheKey) {
@@ -174,7 +186,7 @@ function analyzeReference() {
   state.referenceSpectrum = cached;
   view.setData("reference", cached);
   updateColourCeiling();
-  if (!pendingAnalysis.size) setStatus("Ready");
+  setReadyIfIdle();
 }
 
 worker.onmessage = ({ data }) => {
@@ -187,18 +199,22 @@ worker.onmessage = ({ data }) => {
     cacheReferenceSpectrum(data.cacheKey, data.result);
     updateColourCeiling();
   }
-  if (!pendingAnalysis.size) setStatus("Ready");
+  setReadyIfIdle();
 };
 
 function scheduleRender() {
   clearTimeout(renderTimer);
   audition.setMacros(state.macros);
   setStatus("Rendering…");
-  renderTimer = setTimeout(renderSynthesis, 220);
+  renderTimer = setTimeout(() => {
+    renderTimer = undefined;
+    renderSynthesis();
+  }, 220);
 }
 
 function renderSynthesis() {
   clearTimeout(renderTimer);
+  renderTimer = undefined;
   const sampleRate = state.reference?.sampleRate ?? 48000;
   const duration = byId("render-seconds").value;
   const seconds = duration === "reference"
@@ -258,7 +274,7 @@ renderWorker.onmessage = ({ data }) => {
     const request = queuedRender;
     queuedRender = null;
     dispatchRender(request);
-  }
+  } else setReadyIfIdle();
 };
 
 renderWorker.onerror = event => {
@@ -388,7 +404,6 @@ async function restore(item) {
 
 function buildPageValues() {
   fitControls.build();
-  applyBodyUiMode(fitControls.bodyMode(), false);
   paintPerformanceControls();
   byId("colour-range").value = state.analysis.dynamicRangeDb;
   byId("colour-range").nextElementSibling.textContent =
@@ -400,6 +415,7 @@ async function initialize() {
   engine = await CrashEngine.create();
   buildControls();
   audition.setMacros(state.macros);
+  settings.bind();
   audition.initialize().catch(error => setStatus(String(error)));
   referenceBrowser = new ReferenceBrowser({
     corpus: byId("reference-corpus"),
@@ -408,8 +424,6 @@ async function initialize() {
     repeat: byId("reference-repeat"),
   }, setReference, setStatus);
   await referenceBrowser.initialize();
-  byId("body-ui-mode").onchange = event =>
-    applyBodyUiMode(event.currentTarget.value);
   byId("reference-files").onchange = async event => {
     try {
       const loaded = await readReferences(event.target.files);
@@ -496,6 +510,7 @@ async function initialize() {
       : audition.macroCommitMs > 0
         ? `Live DSP ready · ${audition.macroCommitMs.toFixed(0)} ms`
         : "Live DSP idle";
+    settings.paintAudioStatus();
   }, 100);
 }
 

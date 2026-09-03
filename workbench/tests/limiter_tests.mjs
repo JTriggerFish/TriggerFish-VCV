@@ -20,6 +20,7 @@ function process(processor, samples) {
 }
 
 const limiter = new Limiter();
+assert.equal(limiter.lookahead, 144);
 const input = new Float32Array(4096);
 input[64] = 2;
 const output = process(limiter, input);

@@ -56,6 +56,18 @@ public:
     const float brightness = std::clamp(FiniteOr(parameters.brightness, 0.f), 0.f, 1.f);
     const float cutoffHz = 800.f * std::pow(.45f * sampleRate_ / 800.f, brightness);
     lowpassCoefficient_ = std::exp(-6.283185307179586f * cutoffHz / sampleRate_);
+    const auto whiteNoiseVariance = [](const float pole) noexcept {
+      const float feed = 1.f - pole;
+      return feed / (2.f - feed);
+    };
+    constexpr float ReferenceBrightness = .7f;
+    const float referenceCutoff = 800.f *
+        std::pow(.45f * sampleRate_ / 800.f, ReferenceBrightness);
+    const float referencePole =
+        std::exp(-6.283185307179586f * referenceCutoff / sampleRate_);
+    colourGain_ = std::sqrt(
+        whiteNoiseVariance(referencePole) /
+        std::max(whiteNoiseVariance(lowpassCoefficient_), 1.e-12f));
     amplitude_ = std::clamp(
         tfdsp::FiniteNormalOrZero(FiniteOr(parameters.amplitude, 0.f)),
         0.f, 16.f);
@@ -90,7 +102,7 @@ public:
     highpassState_ = tfdsp::FiniteNormalOrZero(highpassState_);
     previousLowpass_ = lowpassState_;
 
-    const float output = .5f * amplitude_ * windowSine_ *
+    const float output = .5f * colourGain_ * amplitude_ * windowSine_ *
                          contactEnvelope_ * highpassState_;
     const float nextWindowSine = windowSine_ * windowRotationCosine_ +
                                  windowCosine_ * windowRotationSine_;
@@ -113,6 +125,7 @@ private:
   float eventProbability_{};
   float contactDecay_{};
   float lowpassCoefficient_{};
+  float colourGain_{1.f};
   float highpassCoefficient_{};
   float contactEnvelope_{};
   float lowpassState_{};

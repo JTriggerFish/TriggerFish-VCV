@@ -421,7 +421,6 @@ CrashCymbalFitParameters CrashWorkbenchBaseFit() noexcept {
   fit.bodyDecaySeconds = StartingDecaySeconds;
   fit.bodyDecayActive = StartingDecayActive;
   fit.denseTiltDbPerOctave = -.668371f;
-  fit.unifiedBodyEnabled = true;
   fit.fieldGain = .0376872f;
   fit.fieldTurbulence = .698536f;
   fit.fieldPacketSpreadErb = 4.41885f;
@@ -501,13 +500,7 @@ CrashCymbalFitParameters ApplyCrashMacros(
       base.dispersionHighDecaySeconds * developmentScale;
   fit.dispersionDiffusion = Value(values, CrashMacro::BloomDiffusion);
 
-  const float body = PiOverTwo * Value(values, CrashMacro::BodyToneWash);
-  const float bodyGain = std::hypot(base.sparseGain, base.denseGain);
-  fit.sparseGain = bodyGain * std::cos(body);
-  fit.denseGain = bodyGain * std::sin(body);
   fit.denseTiltDbPerOctave = Value(values, CrashMacro::BodyBrightness);
-  fit.unifiedBodyEnabled =
-      Value(values, CrashMacro::UnifiedBodyEnabled) >= .5f;
   fit.fieldTurbulence = Value(values, CrashMacro::FieldTurbulence);
   fit.fieldPacketSpreadErb = Value(values, CrashMacro::FieldPacketSpread);
   fit.fieldPhaseBandwidthErb =
@@ -516,16 +509,8 @@ CrashCymbalFitParameters ApplyCrashMacros(
   fit.fieldGain = Value(values, CrashMacro::FieldGain);
   fit.directGain = Value(values, CrashMacro::DirectGain);
 
-  fit.denseMinimumFrequencyHz = Value(values, CrashMacro::DenseMinimumFrequency);
-  fit.denseMaximumFrequencyHz = Value(values, CrashMacro::DenseMaximumFrequency);
-  fit.denseModeDensity = Value(values, CrashMacro::DenseModeDensity);
-  fit.denseSpacingJitter = Value(values, CrashMacro::DenseSpacingJitter);
-  fit.denseDecaySpreadOctaves = Value(values, CrashMacro::DenseDecaySpread);
-  fit.denseGainSpreadDb = Value(values, CrashMacro::DenseGainSpread);
   ApplyResolvedPaint(fit, values);
-  ApplyDenseWashPaint(fit, values);
   ApplyBodyDecay(fit, values);
-  ApplyTurbulence(fit, values);
 
   fit.directRadiationEnabled =
       Value(values, CrashMacro::DirectRadiationEnabled) >= .5f;
@@ -536,15 +521,6 @@ CrashCymbalFitParameters ApplyCrashMacros(
   fit.directColourQ = Value(values, CrashMacro::DirectColourQ);
   fit.directHighCutHz = Value(values, CrashMacro::DirectHighCut);
   fit.directHighCutQ = Value(values, CrashMacro::DirectHighCutQ);
-  fit.sparseRadiationEnabled =
-      Value(values, CrashMacro::SparseRadiationEnabled) >= .5f;
-  fit.sparseLowCutHz = Value(values, CrashMacro::SparseLowCut);
-  fit.sparseLowCutQ = Value(values, CrashMacro::SparseLowCutQ);
-  fit.colourFrequencyHz = Value(values, CrashMacro::SparseColourFrequency);
-  fit.colourGainDb = Value(values, CrashMacro::SparseColourGain);
-  fit.sparseColourQ = Value(values, CrashMacro::SparseColourQ);
-  fit.highCutHz = Value(values, CrashMacro::SparseHighCut);
-  fit.sparseHighCutQ = Value(values, CrashMacro::SparseHighCutQ);
   fit.denseRadiationEnabled =
       Value(values, CrashMacro::DenseRadiationEnabled) >= .5f;
   fit.denseLowCutHz = Value(values, CrashMacro::DenseLowCut);

@@ -58,6 +58,33 @@ if(EMSCRIPTEN)
     "-sEXPORTED_RUNTIME_METHODS=['HEAPF32','UTF8ToString']"
   )
 
+  # A self-contained copy of the same C++ API for the browser audio rendering
+  # thread. AudioWorkletGlobalScope has no fetch API, so the Wasm bytes must be
+  # embedded in the module loaded by audioWorklet.addModule().
+  add_executable(triggerfish_percussion_audio_wasm)
+  triggerfish_workbench_target(triggerfish_percussion_audio_wasm)
+  set_target_properties(triggerfish_percussion_audio_wasm PROPERTIES
+    OUTPUT_NAME "triggerfish-percussion-audio"
+    SUFFIX ".mjs"
+  )
+  target_compile_options(triggerfish_percussion_audio_wasm PRIVATE -msimd128)
+  target_link_options(triggerfish_percussion_audio_wasm PRIVATE
+    "-msimd128"
+    "--no-entry"
+    "-sMODULARIZE=1"
+    "-sEXPORT_ES6=1"
+    "-sENVIRONMENT=worklet"
+    "-sSINGLE_FILE=1"
+    "-sWASM_ASYNC_COMPILATION=0"
+    "-sFILESYSTEM=0"
+    "-sALLOW_MEMORY_GROWTH=0"
+    "-sINITIAL_MEMORY=33554432"
+    "-sSTACK_SIZE=2097152"
+    "-sASSERTIONS=1"
+    "-sEXPORTED_FUNCTIONS=['_tf_crash_create','_tf_crash_destroy','_tf_crash_reset','_tf_crash_trigger','_tf_crash_process','_tf_crash_macro_count','_tf_crash_macro_default','_tf_crash_macro_set','_tf_crash_macro_commit','_malloc','_free']"
+    "-sEXPORTED_RUNTIME_METHODS=['HEAPF32']"
+  )
+
   enable_testing()
   find_program(NODE_EXECUTABLE NAMES node nodejs)
   if(NODE_EXECUTABLE)
@@ -74,10 +101,6 @@ if(EMSCRIPTEN)
       COMMAND ${NODE_EXECUTABLE}
         ${CMAKE_CURRENT_LIST_DIR}/tests/limiter_tests.mjs
     )
-    add_test(NAME triggerfish_workbench_ring_player_tests
-      COMMAND ${NODE_EXECUTABLE}
-        ${CMAKE_CURRENT_LIST_DIR}/tests/ring_player_tests.mjs
-    )
     add_test(NAME triggerfish_workbench_size_meta_tests
       COMMAND ${NODE_EXECUTABLE}
         ${CMAKE_CURRENT_LIST_DIR}/tests/size_meta_tests.mjs
@@ -86,12 +109,17 @@ if(EMSCRIPTEN)
       COMMAND ${NODE_EXECUTABLE}
         ${CMAKE_CURRENT_LIST_DIR}/tests/state_tests.mjs
     )
+    add_test(NAME triggerfish_workbench_settings_tests
+      COMMAND ${NODE_EXECUTABLE}
+        ${CMAKE_CURRENT_LIST_DIR}/tests/settings_tests.mjs
+    )
     add_custom_target(triggerfish_workbench_site
       COMMAND ${NODE_EXECUTABLE}
         ${CMAKE_CURRENT_LIST_DIR}/web/build.mjs
         --module $<TARGET_FILE:triggerfish_percussion_wasm>
+        --audio-module $<TARGET_FILE:triggerfish_percussion_audio_wasm>
         --output ${CMAKE_BINARY_DIR}/site
-      DEPENDS triggerfish_percussion_wasm
+      DEPENDS triggerfish_percussion_wasm triggerfish_percussion_audio_wasm
       COMMENT "Assembling the optional percussion workbench site"
     )
   else()
