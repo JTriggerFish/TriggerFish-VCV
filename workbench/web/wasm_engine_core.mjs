@@ -36,7 +36,7 @@ export class WasmPercussionEngine {
           this.module._tf_percussion_parameter_name(handle, index)),
         unit: this.module.UTF8ToString(
           this.module._tf_percussion_parameter_unit(handle, index)),
-        scale: ["linear", "logarithmic", "boolean"][
+        scale: ["linear", "logarithmic", "boolean", "choice"][
           this.module._tf_percussion_parameter_scale(handle, index)
         ],
         minimum: this.module._tf_percussion_parameter_minimum(

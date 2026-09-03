@@ -8,6 +8,11 @@ import {
   validateCrashAdapterPatch,
 } from "../web/metallic_plate_patch.mjs";
 import { PatchSchema, validatePatch } from "../web/percussion_patch.mjs";
+import {
+  createAcousticKickPatch, createMembranePatch, membranePresetValues,
+  membraneRoutingValues,
+  validateMembranePatch,
+} from "../web/membrane_patch.mjs";
 
 const descriptors = [
   {
@@ -180,5 +185,70 @@ for (let mask = 0; mask < 8; ++mask) {
 const brokenKickOutput = structuredClone(kick);
 brokenKickOutput.connections[3].enabled = false;
 assert.throws(() => validateKickPatch(brokenKickOutput), /required/);
+
+const membraneDescriptors = [
+  { index: 0, key: "model_level_db", minimum: -60, maximum: 12, defaultValue: -10 },
+  { index: 1, key: "fundamental_hz", minimum: 25, maximum: 500, defaultValue: 105 },
+  { index: 2, key: "tension_octaves", minimum: -.25, maximum: .6, defaultValue: .11 },
+  { index: 3, key: "contact_level", minimum: 0, maximum: 3, defaultValue: .7 },
+  { index: 4, key: "fm_level", minimum: 0, maximum: 2, defaultValue: .18 },
+  { index: 5, key: "direct_level", minimum: 0, maximum: 3, defaultValue: .3 },
+  { index: 6, key: "equalizer_mode", minimum: 0, maximum: 2, defaultValue: 1,
+    scale: "choice" },
+  { index: 7, key: "colour_frequency_hz", minimum: 40, maximum: 20000,
+    defaultValue: 2800, scale: "logarithmic" },
+  { index: 8, key: "colour_gain_db", minimum: -24, maximum: 24,
+    defaultValue: 0 },
+];
+const membrane = createMembranePatch(
+  membraneDescriptors, [-10, 105, .11, .7, .18, .3, 1, 2800, 0],
+);
+assert.equal(validatePatch(membrane, membraneDescriptors), membrane);
+assert.equal(validateMembranePatch(membrane), membrane);
+assert.deepEqual(membraneRoutingValues(membrane), [.35, 1, .08, .45, 1]);
+const acousticKick = membranePresetValues(
+  "acousticKick", membraneDescriptors,
+);
+assert.equal(acousticKick[1], 52);
+assert.equal(acousticKick[4], .5);
+const acousticKickPatch = createAcousticKickPatch(
+  membraneDescriptors,
+);
+assert.equal(acousticKickPatch.id, "factory.membrane.acoustic-kick-01");
+assert.equal(acousticKickPatch.name, "Acoustic kick");
+assert.equal(validateMembranePatch(acousticKickPatch), acousticKickPatch);
+const tomAfterKick = membranePresetValues("tom", membraneDescriptors);
+assert.deepEqual(acousticKick.slice(7), [105, 2.5]);
+assert.deepEqual(tomAfterKick.slice(7), [2800, 0],
+  "factory presets restore their own defaults instead of prior values");
+const fractionalChoice = structuredClone(membrane);
+fractionalChoice.nodes.find(node => node.id === "membrane-eq")
+  .parameters.equalizer_mode = 1.5;
+assert.throws(
+  () => validatePatch(fractionalChoice, membraneDescriptors), /parameter/,
+);
+const renamedRoutes = structuredClone(membrane);
+renamedRoutes.connections.slice(0, 5).forEach((route, index) => {
+  route.id = `arbitrary-${index}`;
+});
+renamedRoutes.connections[0].gain = 0;
+assert.equal(validateMembranePatch(renamedRoutes), renamedRoutes);
+assert.deepEqual(membraneRoutingValues(renamedRoutes), [0, 1, .08, .45, 1]);
+const brokenMembrane = structuredClone(membrane);
+brokenMembrane.connections.find(route => route.required).enabled = false;
+assert.throws(() => validateMembranePatch(brokenMembrane), /required/);
+for (let mask = 0; mask < 32; ++mask) {
+  const candidate = structuredClone(membrane);
+  for (let index = 0; index < 5; ++index)
+    candidate.connections[index].enabled = Boolean(mask & (1 << index));
+  validatePatch(candidate, membraneDescriptors);
+  const direct = Boolean(mask & 1) || Boolean(mask & 4);
+  const body = Boolean(mask & 16) &&
+    (Boolean(mask & 2) || Boolean(mask & 8));
+  if (direct || body) assert.equal(validateMembranePatch(candidate), candidate);
+  else assert.throws(
+    () => validateMembranePatch(candidate), /no audible route/,
+  );
+}
 
 console.log("percussion patch tests passed");

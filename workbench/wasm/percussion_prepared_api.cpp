@@ -15,9 +15,14 @@ std::uint32_t tf_percussion_prepared_size(
     const std::uint32_t handle) noexcept {
   const auto *session = Find(handle);
   if (!session) return 0;
-  return static_cast<std::uint32_t>(session->recipe == Recipe::MetallicPlate
-      ? sizeof(tfworkbench::PreparedMetallicRecipe)
-      : sizeof(tfworkbench::PreparedKickRecipe));
+  switch (session->recipe) {
+  case Recipe::MetallicPlate:
+    return sizeof(tfworkbench::PreparedMetallicRecipe);
+  case Recipe::CompactKick: return sizeof(tfworkbench::PreparedKickRecipe);
+  case Recipe::MembraneDrum:
+    return sizeof(tfworkbench::PreparedMembraneRecipe);
+  default: return 0;
+  }
 }
 
 int tf_percussion_export_prepared(
@@ -39,7 +44,7 @@ int tf_percussion_export_prepared(
       prepared.parameters = tfdsp::percussion::PrepareCrashCymbalParameters(
           session->sampleRate, parameters);
       std::memcpy(destination, &prepared, sizeof(prepared));
-    } else {
+    } else if (session->recipe == Recipe::CompactKick) {
       tfworkbench::PreparedKickRecipe prepared;
       prepared.header.recipe = static_cast<std::uint32_t>(session->recipe);
       prepared.header.byteSize = sizeof(prepared);
@@ -47,6 +52,17 @@ int tf_percussion_export_prepared(
       prepared.parameters = tfworkbench::ApplyKickParameters(
           session->kickValues);
       prepared.parameters.routing = session->kickRouting;
+      std::memcpy(destination, &prepared, sizeof(prepared));
+    } else {
+      tfworkbench::PreparedMembraneRecipe prepared;
+      prepared.header.recipe = static_cast<std::uint32_t>(session->recipe);
+      prepared.header.byteSize = sizeof(prepared);
+      prepared.header.sampleRate = session->sampleRate;
+      auto parameters = tfworkbench::ApplyMembraneParameters(
+          session->membraneValues);
+      parameters.routing = session->membraneRouting;
+      prepared.parameters = tfdsp::percussion::PrepareMembraneDrumParameters(
+          session->sampleRate, parameters);
       std::memcpy(destination, &prepared, sizeof(prepared));
     }
     return 1;
@@ -88,6 +104,19 @@ int tf_percussion_apply_prepared(
       tfworkbench::PreparedKickRecipe prepared;
       std::memcpy(&prepared, source, sizeof(prepared));
       session->kick.Prepare(session->sampleRate, prepared.parameters);
+      return 1;
+    }
+    if (session->recipe == Recipe::MembraneDrum &&
+        byteSize == sizeof(tfworkbench::PreparedMembraneRecipe)) {
+      tfworkbench::PreparedMembraneRecipe prepared;
+      std::memcpy(&prepared, source, sizeof(prepared));
+      if (!std::isfinite(prepared.parameters.sampleRate) ||
+          !std::isfinite(prepared.parameters.membrane.sampleRate) ||
+          std::abs(prepared.parameters.sampleRate - session->sampleRate) >
+              .01f ||
+          std::abs(prepared.parameters.membrane.sampleRate -
+                   session->sampleRate) > .01f) return 0;
+      session->membrane.Prepare(prepared.parameters);
       return 1;
     }
   } catch (...) {

@@ -23,8 +23,10 @@ void Initialize(Session &session, const Recipe recipe,
   session.crashBase = CrashWorkbenchBaseFit();
   session.crashValues = DefaultCrashMacros();
   session.kickValues = DefaultKickParameters();
+  session.membraneValues = DefaultMembraneParameters();
   session.cymbalRouting = {};
   session.kickRouting = {};
+  session.membraneRouting = {};
 }
 
 } // namespace
@@ -50,17 +52,27 @@ std::uint32_t Allocate(const std::uint32_t recipe,
 
 const ParameterDescriptor *Description(
     const Session &session, const std::size_t index) noexcept {
-  if (session.recipe == Recipe::MetallicPlate) {
+  switch (session.recipe) {
+  case Recipe::MetallicPlate:
     return index < ActiveCrashMacroCount
         ? &ActiveCrashMacroDescription(index) : nullptr;
+  case Recipe::CompactKick:
+    return index < session.kickValues.size()
+        ? &KickParameterDescription(index) : nullptr;
+  case Recipe::MembraneDrum:
+    return index < session.membraneValues.size()
+        ? &MembraneParameterDescription(index) : nullptr;
+  default: return nullptr;
   }
-  return index < session.kickValues.size()
-      ? &KickParameterDescription(index) : nullptr;
 }
 
 std::size_t ParameterCount(const Session &session) noexcept {
-  return session.recipe == Recipe::MetallicPlate
-      ? ActiveCrashMacroCount : session.kickValues.size();
+  switch (session.recipe) {
+  case Recipe::MetallicPlate: return ActiveCrashMacroCount;
+  case Recipe::CompactKick: return session.kickValues.size();
+  case Recipe::MembraneDrum: return session.membraneValues.size();
+  default: return 0;
+  }
 }
 
 void Prepare(Session &session) {
@@ -72,14 +84,24 @@ void Prepare(Session &session) {
     session.cymbal.Prepare(session.sampleRate, parameters);
     return;
   }
-  auto parameters = ApplyKickParameters(session.kickValues);
-  parameters.routing = session.kickRouting;
-  session.kick.Prepare(session.sampleRate, parameters);
+  if (session.recipe == Recipe::CompactKick) {
+    auto parameters = ApplyKickParameters(session.kickValues);
+    parameters.routing = session.kickRouting;
+    session.kick.Prepare(session.sampleRate, parameters);
+    return;
+  }
+  auto parameters = ApplyMembraneParameters(session.membraneValues);
+  parameters.routing = session.membraneRouting;
+  session.membrane.Prepare(session.sampleRate, parameters);
 }
 
 float Process(Session &session) noexcept {
-  return session.recipe == Recipe::MetallicPlate
-      ? session.cymbal.Process() : session.kick.Process();
+  switch (session.recipe) {
+  case Recipe::MetallicPlate: return session.cymbal.Process();
+  case Recipe::CompactKick: return session.kick.Process();
+  case Recipe::MembraneDrum: return session.membrane.Process();
+  default: return 0.f;
+  }
 }
 
 } // namespace tfworkbench::detail

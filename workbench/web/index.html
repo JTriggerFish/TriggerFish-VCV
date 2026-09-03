@@ -74,6 +74,12 @@
       </section>
       <div class="control-columns">
         <div class="control-column">
+          <section data-module-id="membrane-output"><h2>Membrane output</h2><div id="membrane-output-controls" data-membrane-controls></div></section>
+          <section data-module-id="membrane-body"><h2>Starting patches</h2><div id="membrane-preset-controls" class="button-row" data-membrane-controls></div></section>
+          <details open data-module-id="membrane-contact"><summary data-tooltip="Finite contact force, chirp, noise, and fused micro-contact cluster.">Contact exciter</summary><div id="membrane-contact-controls" data-membrane-controls></div></details>
+          <details open data-module-id="membrane-fm"><summary data-tooltip="An optional correlated-FM transient which can drive the membrane or radiate directly.">FM supplement</summary><div id="membrane-fm-controls" data-membrane-controls></div></details>
+          <details open data-module-id="membrane-body"><summary data-tooltip="One persistent modal membrane shared by all overlapping strikes.">Modal membrane</summary><div id="membrane-body-controls" data-membrane-controls></div></details>
+          <details open data-module-id="membrane-tension"><summary data-tooltip="A bounded strike-history envelope briefly raises effective tension; it is not a measurement of modal energy.">Strike energy and tension</summary><div id="membrane-tension-controls" data-membrane-controls></div></details>
           <section data-module-id="kick-output"><h2>Output</h2><div id="kick-output-controls" data-kick-controls></div></section>
           <details open data-module-id="kick-primary"><summary data-tooltip="The main pitch-dropping, FM-broadened kick body.">Primary FM body</summary><div id="kick-primary-controls" data-kick-controls></div></details>
           <details open data-module-id="kick-secondary"><summary data-tooltip="A correlated second body branch that adds membrane complexity without a resonator network.">Secondary FM body</summary><div id="kick-secondary-controls" data-kick-controls></div></details>
@@ -95,6 +101,12 @@
           </details>
         </div>
         <div class="control-column">
+          <details open data-module-id="membrane-observation"><summary data-tooltip="Balances direct contact and persistent body without changing their stored energy.">Membrane observation</summary><div id="membrane-observation-controls" data-membrane-controls></div></details>
+          <details open data-module-id="membrane-eq"><summary data-tooltip="Swappable output-only equalizers: bypass, compact radiation, or four-band parametric.">Output equalizer</summary>
+            <div id="membrane-eq-mode-controls" data-membrane-controls></div>
+            <div id="membrane-radiation-panel"><div id="membrane-radiation-controls" data-membrane-controls></div></div>
+            <div id="membrane-multiband-panel"><div id="membrane-multiband-controls" data-membrane-controls></div></div>
+          </details>
           <details open data-module-id="kick-click"><summary data-tooltip="A short tilted noise burst for beater contact.">Click source</summary><div id="kick-click-controls" data-kick-controls></div></details>
           <details open data-module-id="kick-observation"><summary data-tooltip="Static output radiation filtering; it does not feed the synthesis branches.">Kick observation</summary><div id="kick-observation-controls" data-kick-controls></div></details>
           <details open data-module-id="body"><summary data-tooltip="One interpolated frequency-dependent decay curve shared by the modal body.">Body T60</summary>
@@ -153,6 +165,25 @@
           <label class="character-control"><span>Beater hardness</span><input id="kick-hardness" type="range" min="0" max="1" value="0.5" step="0.01"><output>0.50</output>
             <span class="slider-endpoints"><i>soft</i><i>hard</i></span>
           </label>
+        </div>
+      </section>
+      <section class="performance-panel" data-module-id="membrane-contact"><h2>Membrane strike</h2>
+        <div class="performance-controls">
+          <div id="membrane-pad" class="strike-pad">
+            <span class="strike-x"><i>centre</i><i>mid</i><i>edge</i></span>
+            <span class="strike-y"><i>strong</i><i>light</i></span>
+          </div>
+          <div class="implement-controls">
+            <fieldset class="implement-family"><legend>Implement</legend>
+              <label><input type="radio" name="membrane-implement" value="0">Brush</label>
+              <label><input type="radio" name="membrane-implement" value="0.5">Mallet</label>
+              <label><input type="radio" name="membrane-implement" value="1" checked>Stick</label>
+            </fieldset>
+            <label class="character-control"><span id="membrane-character-label">Tip hardness</span><input id="membrane-hardness" type="range" min="0" max="1" value="0.5" step="0.01"><output>0.50</output>
+              <span id="membrane-character-endpoints" class="slider-endpoints"><i>soft / round</i><i>hard / sharp</i></span>
+            </label>
+            <label class="character-control"><span>Gesture spread</span><input id="membrane-contact-spread" type="range" min="0" max="1" value="0.25" step="0.01"><output>0.25</output></label>
+          </div>
         </div>
       </section>
       <section class="modal-design" data-module-id="body">

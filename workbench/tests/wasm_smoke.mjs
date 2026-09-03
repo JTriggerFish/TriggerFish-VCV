@@ -9,7 +9,7 @@ if (wasm._tf_crash_api_version() !== 1 ||
     wasm._tf_percussion_api_version() !== 1) {
   throw new Error("unexpected API version");
 }
-if (wasm._tf_percussion_recipe_count() !== 2) {
+if (wasm._tf_percussion_recipe_count() !== 3) {
   throw new Error("unexpected recipe count");
 }
 if (wasm.UTF8ToString(wasm._tf_percussion_recipe_key(1)) !==
@@ -138,6 +138,22 @@ if (!kickAudio.every(Number.isFinite) ||
   throw new Error("kick recipe output is invalid");
 }
 wasm._tf_percussion_destroy(kick);
+
+const membrane = wasm._tf_percussion_create(2, 48000);
+if (!membrane || wasm._tf_percussion_parameter_count(membrane) !== 31 ||
+    wasm._tf_percussion_route_count(membrane) !== 5) {
+  throw new Error("membrane recipe allocation failed");
+}
+if (!wasm._tf_percussion_trigger(membrane, .8, .35, .6, 1, .2, 92) ||
+    !wasm._tf_percussion_process(membrane, outputPointer, frameCount)) {
+  throw new Error("membrane recipe render failed");
+}
+const membraneAudio = wasm.HEAPF32.slice(kickStart, kickStart + frameCount);
+if (!membraneAudio.every(Number.isFinite) ||
+    !membraneAudio.some(sample => Math.abs(sample) > 1e-6)) {
+  throw new Error("membrane recipe output is invalid");
+}
+wasm._tf_percussion_destroy(membrane);
 wasm._free(outputPointer);
 console.log(JSON.stringify({
   api: 1, frames: frameCount, peak, energy, absoluteSum, earlyEnergy,

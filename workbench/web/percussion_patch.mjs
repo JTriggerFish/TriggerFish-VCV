@@ -26,6 +26,7 @@ function validateNode(node, nodes, descriptorByKey) {
   for (const [key, parameter] of Object.entries(node.parameters ?? {})) {
     const descriptor = descriptorByKey.get(key);
     if (!descriptor || !Number.isFinite(parameter) ||
+        descriptor.scale === "choice" && !Number.isInteger(parameter) ||
         parameter < descriptor.minimum || parameter > descriptor.maximum) {
       throw new Error(`invalid module parameter: ${node.id}.${key}`);
     }

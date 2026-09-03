@@ -1,12 +1,13 @@
 #pragma once
 
-#include "fractional_delay_line.hpp"
 #include "tfdsp/finite_audio.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <stdexcept>
+#include <vector>
 
 namespace tfdsp::percussion {
 
@@ -14,17 +15,29 @@ namespace tfdsp::percussion {
 // supports exact zero delay, which is required for a direct microphone path.
 class ObservationDelay {
 public:
+  // Production observation paths fit inline (10 ms at the supported 384 kHz
+  // ceiling). Longer experimental paths retain an explicit dynamic fallback.
+  static constexpr std::size_t InlineDelaySamples = 3840;
+
   void Prepare(const float maximumDelaySamples, const float delaySamples) {
     if (!std::isfinite(maximumDelaySamples) || maximumDelaySamples < 1.f)
       throw std::invalid_argument("observation delay capacity is too small");
     maximumDelaySamples_ = maximumDelaySamples;
-    line_.Prepare(std::max(maximumDelaySamples,
-                           FractionalDelayLine::MinimumSincDelaySamples));
+    bufferSize_ = static_cast<std::size_t>(
+        std::ceil(maximumDelaySamples)) + 1;
+    if (bufferSize_ > inlineBuffer_.size())
+      extendedBuffer_.assign(bufferSize_, 0.f);
+    else
+      extendedBuffer_.clear();
     SetStaticDelaySamples(delaySamples);
   }
 
   void Reset() noexcept {
-    line_.Reset();
+    if (UsesExtendedBuffer())
+      std::fill(extendedBuffer_.begin(), extendedBuffer_.end(), 0.f);
+    else
+      inlineBuffer_.fill(0.f);
+    writeIndex_ = 0;
     previousInput_ = previousOutput_ = 0.f;
   }
 
@@ -45,7 +58,7 @@ public:
     input = tfdsp::FiniteNormalOrZero(input);
     const float delayed = integerDelaySamples_ == 0
                               ? input
-                              : line_.ReadInteger(integerDelaySamples_);
+                              : ReadInteger(integerDelaySamples_);
     float output = delayed;
     if (!bypassAllpass_) {
       output = allpassCoefficient_ * delayed + previousInput_ -
@@ -53,14 +66,39 @@ public:
       previousInput_ = delayed;
       previousOutput_ = tfdsp::FiniteNormalOrZero(output);
     }
-    line_.Push(input);
+    Sample(writeIndex_) = input;
+    if (++writeIndex_ == bufferSize_) writeIndex_ = 0;
     return tfdsp::FiniteNormalOrZero(output);
   }
 
   float DelaySamples() const noexcept { return delaySamples_; }
 
 private:
-  FractionalDelayLine line_{};
+  float ReadInteger(const std::size_t delaySamples) const noexcept {
+    const auto index = writeIndex_ >= delaySamples
+                           ? writeIndex_ - delaySamples
+                           : writeIndex_ + bufferSize_ - delaySamples;
+    return Sample(index);
+  }
+
+  bool UsesExtendedBuffer() const noexcept {
+    return bufferSize_ > inlineBuffer_.size();
+  }
+
+  float &Sample(const std::size_t index) noexcept {
+    return UsesExtendedBuffer() ? extendedBuffer_[index]
+                                : inlineBuffer_[index];
+  }
+
+  float Sample(const std::size_t index) const noexcept {
+    return UsesExtendedBuffer() ? extendedBuffer_[index]
+                                : inlineBuffer_[index];
+  }
+
+  std::array<float, InlineDelaySamples + 1> inlineBuffer_{};
+  std::vector<float> extendedBuffer_{};
+  std::size_t bufferSize_{2};
+  std::size_t writeIndex_{};
   float maximumDelaySamples_{1.f};
   float delaySamples_{};
   float allpassCoefficient_{};

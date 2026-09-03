@@ -4,7 +4,7 @@
 
 namespace tfworkbench {
 
-enum class ParameterScale : int { Linear, Logarithmic, Boolean };
+enum class ParameterScale : int { Linear, Logarithmic, Boolean, Choice };
 
 struct ParameterDescriptor {
   std::string key;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "compact_kick_parameters.hpp"
+#include "fixed_mixer.hpp"
 #include "tfdsp/finite_audio.hpp"
 
 #include <array>
@@ -65,6 +66,7 @@ private:
 
   std::array<EventVoice, VoiceCount> voices_{};
   ObservationModel<1> observation_{};
+  FixedMixer<3> sourceMixer_{};
   CompactKickParameters parameters_{};
   std::uint64_t generation_{};
 };

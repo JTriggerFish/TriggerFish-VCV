@@ -529,7 +529,7 @@ if (testControls) {
           const hitsAfter = Number(document.getElementById("limiter").textContent
             .match(/hits (\\d+)/)?.[1] ?? 0);
           const checks = {
-            selector: select.options.length === 2 && select.value === "1",
+            selector: select.options.length === 3 && select.value === "1",
             controls: document.querySelectorAll(
               '[data-kick-key] input[type="range"]',
             ).length === 15,
@@ -560,6 +560,72 @@ if (testControls) {
   });
   result.controls.kickRecipe = kickRecipe.result.value;
   result.controls.checks.kickRecipe = result.controls.kickRecipe.passed;
+  const membraneRecipe = await call("Runtime.evaluate", {
+    expression: `new Promise(resolve => {
+      const select = document.getElementById("instrument-recipe");
+      select.value = "2";
+      select.dispatchEvent(new Event("change"));
+      const deadline = performance.now() + 12000;
+      const poll = () => {
+        const ready = document.getElementById("status").textContent === "Ready" &&
+          document.getElementById("live-commit").textContent
+            .startsWith("Live DSP ready");
+        if (!ready && performance.now() < deadline) {
+          setTimeout(poll, 50);
+          return;
+        }
+        const preset = [...document.querySelectorAll(
+          "#membrane-preset-controls button",
+        )].find(button => button.textContent === "Acoustic kick");
+        preset?.click();
+        const hitsBefore = Number(document.getElementById("limiter").textContent
+          .match(/hits (\\d+)/)?.[1] ?? 0);
+        document.getElementById("play-synthesis").click();
+        let loudestDb = -Infinity;
+        const sampleMeter = setInterval(() => {
+          const match = document.getElementById("limiter").textContent
+            .match(/out (-?\\d+) dBFS/);
+          if (match) loudestDb = Math.max(loudestDb, Number(match[1]));
+        }, 25);
+        setTimeout(() => {
+          clearInterval(sampleMeter);
+          const hitsAfter = Number(document.getElementById("limiter").textContent
+            .match(/hits (\\d+)/)?.[1] ?? 0);
+          const checks = {
+            selector: select.options.length === 3 && select.value === "2",
+            controls: document.querySelectorAll(
+              '[data-membrane-key] input[type="range"]',
+            ).length === 30,
+            presets: Boolean(preset) && document.querySelector(
+              '[data-membrane-key="fundamental_hz"] output',
+            )?.textContent.startsWith("52.0"),
+            equalizerModes: document.querySelectorAll(
+              "#membrane-eq-mode-controls option",
+            ).length === 3,
+            contextualPanels: getComputedStyle(document.querySelector(
+              '[data-module-id="membrane-body"]',
+            )).display !== "none" && getComputedStyle(document.querySelector(
+              '[data-module-id="kick-primary"]',
+            )).display === "none",
+            routing: document.querySelectorAll(
+              "#routing-compact .routing-node",
+            ).length === 9 && document.querySelectorAll(
+              "#routing-compact .routing-edge",
+            ).length === 11,
+            label: document.getElementById("routing-recipe-label")
+              .textContent === "Membrane drum",
+            liveAudio: hitsAfter > hitsBefore && loudestDb > -80,
+          };
+          resolve({ checks, passed: Object.values(checks).every(Boolean), loudestDb });
+        }, 500);
+      };
+      poll();
+    })`,
+    awaitPromise: true, returnByValue: true,
+  });
+  result.controls.membraneRecipe = membraneRecipe.result.value;
+  result.controls.checks.membraneRecipe =
+    result.controls.membraneRecipe.passed;
   result.controls.passed = Object.values(result.controls.checks).every(Boolean);
 }
 if (screenshot) {

@@ -98,6 +98,26 @@ filter's phase retunes the loop, but it entangles damping and pitch. Our model
 should expose those two effects separately and permit the shortcut only as a
 candidate reduced implementation.
 
+**Implemented first candidate.** `MembraneResonator<16>` stores one quadrature
+state per arbitrary mode and accepts location-dependent force projections.
+`StrikeEnergyEnvelope` accumulates bounded squared strike strength, decays
+passively, and supplies a separate global tension multiplier. It is explicitly
+an event-history control signal, not a measurement of energy in the modal
+state. The modal bank independently normalizes its force and observation
+vectors across mode count. New drive is reduced only when it would exceed the
+declared stored-state energy capacity; this preserves the existing tail and
+prevents unsafe retrigger growth without clipping the audio output. Oscillator
+coefficients are refreshed every 16 samples without resetting phase or
+amplitude state; modal loss remains independent. Contact and correlated-FM
+transients use an
+eight-voice pool, while every event drives the same membrane state, so repeated
+hits build the shared resonator state instead of replacing a previous tail.
+
+The compiled `drum.membrane.v1` recipe observes direct contact and body output
+separately, then applies a selectable bypass, compact radiation, or four-band
+parametric output EQ. Its Open tom and Acoustic kick workbench presets are
+starting parameter sets for the same graph, not separate DSP implementations.
+
 #### Passive resonator coupling and acoustic cavity
 
 **Status: deferred structured-model extension.** None of the compact

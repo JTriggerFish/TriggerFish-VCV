@@ -8,8 +8,9 @@ is the durable design format shared by the browser workbench, fitting tools,
 factory instruments, and Rack serialization. It is not the audio-thread
 execution representation.
 
-The first two production recipes are the metallic plate and compact FM kick.
-Both expose named patch parameters through one recipe-aware C/WebAssembly API;
+The first three production recipes are the metallic plate, compact FM kick,
+and shared-state membrane drum. All expose named patch parameters through one
+recipe-aware C/WebAssembly API;
 the earlier crash-only API remains only as a compatibility wrapper.
 
 ## Signal-flow boundary
@@ -26,9 +27,11 @@ feedback-delay body, or locally coupled modal field is therefore one node, not
 a cycle in the patch graph. This keeps scheduling deterministic and prevents a
 patch editor from creating an unqualified zero-delay feedback loop.
 
-Modules have typed, named input and output ports. The initial patch contains
-audio ports; event, scalar-control, body-motion, and energy ports will be added
-as their first consumers are implemented. Port types, component versions,
+Modules have typed, named input and output ports. The membrane recipe adds the
+first scalar-control port between its strike-history/tension envelope and modal
+body. That envelope is not presented as measured body energy; event,
+body-motion, and normalized-energy ports are added only with concrete
+consumers. Port types, component versions,
 parameter descriptors, and presentation metadata belong to one module
 registry rather than being repeated in every patch.
 
@@ -61,8 +64,12 @@ of registered recipes. A recipe owns a statically ordered schedule of typed C++
 calls; it is not a general graph interpreter. The metallic-plate recipe
 compiles five optional audio connections to prepared gains at those call sites.
 The compact-kick recipe similarly compiles three source-to-mixer routes around
-two correlated-FM sources and one noise click. This makes every routing state
-explicit while keeping the sample loop free of JSON parsing, allocation,
+two correlated-FM sources and one noise click. The membrane recipe compiles
+five optional gains around contact and correlated-FM exciters, two fixed
+mixers, a normalized and energy-bounded persistent 16-mode membrane, a
+strike-history/tension envelope, a
+two-source observation, and a selectable output EQ. This makes every routing
+state explicit while keeping the sample loop free of JSON parsing, allocation,
 virtual dispatch, and topology discovery.
 
 The workbench may change each recipe's optional source connections live. It
@@ -71,7 +78,9 @@ mix/observation/output connections are locked. Module replacement and arbitrary
 new connections remain unavailable until another registered recipe declares
 and implements them. A structural edit prepares a replacement voice away from
 the audio callback and
-swaps it at a safe boundary. Parameters declare whether they are structural,
+swaps it at a safe boundary. Expensive membrane modal coefficients are carried
+in the prepared recipe blob, and fixed-capacity observation delays keep
+prepared installation allocation-free. Parameters declare whether they are structural,
 sampled at the next hit, or continuously smoothed.
 
 The compact routing overview remains visible above the complete parameter
@@ -122,9 +131,11 @@ hybrids as long as their port contracts and energy invariants remain valid.
 2. **Complete:** move shared module descriptors and recipe matching behind the
    Wasm boundary, retain statically ordered schedules, and prove the boundary
    with a second complete compact-kick recipe.
-3. Add reusable mixers, output selection, transient voice pooling, and
-   selectable observation EQ.
-4. Implement the membrane recipe.
-5. Add body-energy tension and the snare-wire interaction.
+3. **Complete:** add reusable fixed mixers, transient voice pooling, and
+   selectable bypass/radiation/multiband observation EQ.
+4. **Complete:** implement the shared-state modal membrane recipe and expose
+   tom and acoustic-kick starting patches in the workbench.
+5. **Partial:** the strike-history tension envelope is implemented; add the body-driven
+   snare-wire interaction.
 6. Generate reduced Rack controls from performance mappings and embed factory
    patches in the instrument modules.

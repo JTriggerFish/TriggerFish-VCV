@@ -2,6 +2,7 @@
 
 #include "tfdsp/percussion/compact_kick_parameters.hpp"
 #include "tfdsp/percussion/crash_cymbal_parameters.hpp"
+#include "tfdsp/percussion/membrane_drum_parameters.hpp"
 
 #include <cstdint>
 #include <type_traits>
@@ -29,7 +30,13 @@ struct PreparedKickRecipe {
   tfdsp::percussion::CompactKickParameters parameters{};
 };
 
+struct PreparedMembraneRecipe {
+  PreparedRecipeHeader header{};
+  tfdsp::percussion::MembraneDrumPreparedParameters parameters{};
+};
+
 static_assert(std::is_trivially_copyable_v<PreparedMetallicRecipe>);
 static_assert(std::is_trivially_copyable_v<PreparedKickRecipe>);
+static_assert(std::is_trivially_copyable_v<PreparedMembraneRecipe>);
 
 } // namespace tfworkbench

@@ -111,6 +111,7 @@ void CompactKick::Prepare(const float sampleRate,
   parameters_ = parameters;
   for (auto &voice : voices_) voice.Prepare(sampleRate);
   observation_.Prepare(sampleRate, .01f, parameters.observation);
+  sourceMixer_.SetGains(parameters.routing.gains);
   Reset();
 }
 
@@ -147,10 +148,8 @@ CompactKickFrame CompactKick::ProcessFrame() noexcept {
     frame.secondary += event.secondary;
     frame.click += event.click;
   }
-  const float mix =
-      parameters_.routing.Get(CompactKickRoute::PrimaryToMix) * frame.primary +
-      parameters_.routing.Get(CompactKickRoute::SecondaryToMix) * frame.secondary +
-      parameters_.routing.Get(CompactKickRoute::ClickToMix) * frame.click;
+  const float mix = sourceMixer_.Process(
+      {frame.primary, frame.secondary, frame.click});
   frame.output = parameters_.outputGain * observation_.Process({mix});
   frame.output = tfdsp::FiniteNormalOrZero(frame.output);
   return frame;

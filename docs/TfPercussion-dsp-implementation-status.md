@@ -206,7 +206,18 @@ sites and can be toggled in the expanded view. The adapter rejects silent or
 unsupported structures. A second compact-kick patch exercises the same schema,
 shared C/WebAssembly API, snapshots, routing view, contextual controls, live
 AudioWorklet path, and fixed-schedule execution with a structurally different
-six-node graph. Module replacement and arbitrary new connection endpoints wait
+six-node graph. A third membrane patch adds fixed two-source mixers, an
+eight-voice contact/FM transient pool, a shared 16-mode body, accumulating
+strike-history-driven tension, and selectable bypass/radiation/four-band
+presentation. The history envelope is intentionally distinct from measured
+modal energy. The modal drive and readout are mode-count normalized, while a
+passive stored-state capacity bounds rapid retrigger growth without an output
+clipper. Prepared blobs contain the compiled modal coefficients, and the short
+observation delays use fixed storage, so worklet installation does not allocate.
+Its tom and acoustic-kick starting patches share that compiled topology. The
+native membrane graph measured about 216 ns/sample at 48 kHz on the development
+machine (about 1.0% of one core at nominal rate). Module replacement and
+arbitrary new connection endpoints wait
 for another registered, statically ordered recipe.
 
 The Python numerical-analysis implementation and its remaining real-data gates

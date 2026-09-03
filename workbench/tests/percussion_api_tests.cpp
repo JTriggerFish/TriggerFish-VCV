@@ -95,13 +95,14 @@ std::uint32_t ParameterIndex(const std::uint32_t handle,
 int main() {
   Check(tf_percussion_api_version() == 1,
         "unreleased percussion API remains version one");
-  Check(tf_percussion_recipe_count() == 2,
-        "two compiled percussion recipes are registered");
+  Check(tf_percussion_recipe_count() == 3,
+        "three compiled percussion recipes are registered");
   Check(std::string_view(tf_percussion_recipe_key(0)) == "metal.cymbal.v1" &&
-            std::string_view(tf_percussion_recipe_key(1)) == "drum.kick-fm.v1",
+            std::string_view(tf_percussion_recipe_key(1)) == "drum.kick-fm.v1" &&
+            std::string_view(tf_percussion_recipe_key(2)) == "drum.membrane.v1",
         "recipe keys are stable");
-  Check(tf_percussion_recipe_key(2) == nullptr &&
-            tf_percussion_create(2, 48000.f) == 0,
+  Check(tf_percussion_recipe_key(3) == nullptr &&
+            tf_percussion_create(3, 48000.f) == 0,
         "unknown recipes are rejected");
 
   const auto metallic = tf_percussion_create(0, 48000.f);
@@ -164,6 +165,30 @@ int main() {
   tf_percussion_destroy(kick);
   Check(!tf_percussion_process(kick, nullptr, 0),
         "destroyed recipe handles cannot be reused");
+
+  const auto membrane = tf_percussion_create(2, 48000.f);
+  Check(membrane != 0 && tf_percussion_recipe(membrane) == 2,
+        "membrane session can be created");
+  Check(tf_percussion_parameter_count(membrane) == 31 &&
+            tf_percussion_route_count(membrane) == 5,
+        "membrane exposes its bounded controls and routing");
+  const auto membranePitch = ParameterIndex(membrane, "fundamental_hz");
+  const auto eqMode = ParameterIndex(membrane, "equalizer_mode");
+  Check(membranePitch < 31 && eqMode < 31,
+        "membrane parameters have stable identifiers");
+  Check(tf_percussion_parameter_scale(membrane, eqMode) == 3,
+        "membrane output EQ declares a discrete choice control");
+  Check(!tf_percussion_parameter_set(membrane, eqMode, 1.5f) &&
+            tf_percussion_parameter_set(membrane, eqMode, 2.f) &&
+            tf_percussion_parameter_set(membrane, eqMode, 1.f),
+        "fractional choices are rejected and integral choices are accepted");
+  const auto membraneFirst = Render(membrane, 71, 128);
+  Check(Energy(membraneFirst) > 1.e-5 &&
+            membraneFirst == Render(membrane, 71, 37),
+        "membrane API is audible, deterministic, and block independent");
+  CheckPreparedRoundTrip(
+      membrane, 2, "prepared membrane recipe is sample-identical");
+  tf_percussion_destroy(membrane);
 
   std::array<std::uint32_t, 4> pool{};
   for (auto &pooled : pool) pooled = tf_percussion_create(0, 48000.f);

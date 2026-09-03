@@ -33,10 +33,13 @@ export class PerformanceControls {
   bind() {
     this.#bindMetallicControls();
     this.#bindKickControls();
+    this.#bindMembraneControls();
   }
 
   paint() {
     if (this.state.recipeKey === "metal.cymbal.v1") this.#paintMetallic();
+    else if (this.state.recipeKey === "drum.membrane.v1")
+      this.#paintMembrane();
     else this.#paintKick();
   }
 
@@ -86,6 +89,27 @@ export class PerformanceControls {
     };
   }
 
+  #bindMembraneControls() {
+    this.#bindSlider("membrane-hardness", "hardness", () => .5);
+    this.#bindSlider("membrane-contact-spread", "contactSpread", () => .25);
+    document.querySelectorAll('input[name="membrane-implement"]').forEach(input => {
+      input.onchange = event => {
+        this.state.event.implement = Number(event.currentTarget.value);
+        this.#paintMembrane();
+        this.scheduleRender();
+      };
+    });
+    byId("membrane-pad").onpointerdown = event => {
+      const bounds = event.currentTarget.getBoundingClientRect();
+      this.state.event.location = clamp01(
+        (event.clientX - bounds.left) / bounds.width);
+      this.state.event.strength = Math.max(.02, clamp01(
+        1 - (event.clientY - bounds.top) / bounds.height));
+      ++this.state.event.seed;
+      this.#trigger();
+    };
+  }
+
   #bindSlider(id, key, defaultValue) {
     byId(id).oninput = event => {
       this.state.event[key] = Number(event.currentTarget.value);
@@ -115,6 +139,19 @@ export class PerformanceControls {
 
   #paintKick() {
     this.#paintSlider("kick-hardness", this.state.event.hardness);
+  }
+
+  #paintMembrane() {
+    const family = selectedImplement(this.state.event.implement);
+    this.state.event.implement = family.value;
+    document.querySelectorAll('input[name="membrane-implement"]').forEach(input => {
+      input.checked = Number(input.value) === family.value;
+    });
+    byId("membrane-character-label").textContent = family.label;
+    const endpoints = byId("membrane-character-endpoints").querySelectorAll("i");
+    [endpoints[0].textContent, endpoints[1].textContent] = family.endpoints;
+    this.#paintSlider("membrane-hardness", this.state.event.hardness);
+    this.#paintSlider("membrane-contact-spread", this.state.event.contactSpread);
   }
 
   #paintSlider(id, value) {

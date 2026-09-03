@@ -12,6 +12,7 @@ const types = [
     type: "exciter.contact", version: 1, name: "Contact", role: "exciter",
     inputs: [], outputs: [
       { name: "direct", type: "audio" }, { name: "body", type: "audio" },
+      { name: "event", type: "event" },
     ],
   },
   {
@@ -66,6 +67,31 @@ const types = [
     inputs: [{ name: "source", type: "audio" }],
     outputs: [{ name: "audio", type: "audio" }],
   },
+  {
+    type: "transform.sum2", version: 1, name: "Two-source mix", role: "transform",
+    inputs: [{ name: "a", type: "audio" }, { name: "b", type: "audio" }],
+    outputs: [{ name: "audio", type: "audio" }],
+  },
+  {
+    type: "interaction.strike-energy", version: 1,
+    name: "Strike energy", role: "interaction",
+    inputs: [{ name: "strike", type: "event" }],
+    outputs: [{ name: "tension", type: "control" }],
+  },
+  {
+    type: "body.membrane-modal", version: 1,
+    name: "Modal membrane", role: "body",
+    inputs: [
+      { name: "drive", type: "audio" }, { name: "tension", type: "control" },
+    ],
+    outputs: [{ name: "audio", type: "audio" }],
+  },
+  {
+    type: "observation.equalizer", version: 1,
+    name: "Selectable EQ", role: "observation",
+    inputs: [{ name: "audio", type: "audio" }],
+    outputs: [{ name: "audio", type: "audio" }],
+  },
 ];
 
 export const ModuleTypes = new Map(types.map(item => [item.type, item]));
@@ -73,7 +99,7 @@ export const ModuleTypes = new Map(types.map(item => [item.type, item]));
 export const RecipeTypes = new Map([
   ["metal.cymbal.v1", { name: "Metallic plate", available: true }],
   ["metal.pair.v1", { name: "Interacting metallic plates", available: false }],
-  ["drum.membrane.v1", { name: "Membrane", available: false }],
+  ["drum.membrane.v1", { name: "Membrane", available: true }],
   ["drum.snare.v1", { name: "Membrane with wires", available: false }],
   ["drum.kick-fm.v1", { name: "Compact FM kick", available: true }],
   ["drum.kick-acoustic.v1", {

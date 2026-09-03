@@ -17,8 +17,9 @@ await mkdir(output, { recursive: true });
 for (const name of [
   "index.html", "styles.css", "app.mjs", "fit_controls.mjs", "point_editor.mjs",
   "percussion_patch.mjs", "percussion_registry.mjs",
-  "metallic_plate_patch.mjs", "compact_kick_patch.mjs",
+  "metallic_plate_patch.mjs", "compact_kick_patch.mjs", "membrane_patch.mjs",
   "recipe_adapter.mjs", "routing_view.mjs", "kick_controls.mjs",
+  "membrane_controls.mjs",
   "routing_controller.mjs", "performance_controls.mjs",
   "analysis_controls.mjs", "recipe_controller.mjs", "waveform_view.mjs",
   "modal_editor.mjs", "decay_curve_editor.mjs", "tooltips.mjs",

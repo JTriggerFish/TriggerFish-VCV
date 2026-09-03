@@ -22,6 +22,8 @@ add_library(triggerfish_dsp STATIC
 	src/tfdsp/percussion/compact_kick_parameters.cpp
 	src/tfdsp/percussion/crash_cymbal.cpp
 	src/tfdsp/percussion/crash_cymbal_parameters.cpp
+	src/tfdsp/percussion/membrane_drum.cpp
+	src/tfdsp/percussion/membrane_drum_parameters.cpp
 	src/tfdsp/early_reflections.hpp
 	src/tfdsp/event_merge.hpp
 	src/tfdsp/early_reflections_worker.cpp
@@ -174,6 +176,13 @@ if(BUILD_TESTING)
 		triggerfish_dsp)
 	add_test(NAME triggerfish_percussion_kick_tests
 		COMMAND triggerfish_percussion_kick_tests)
+
+	add_executable(triggerfish_percussion_membrane_tests
+		tests/percussion_membrane_tests.cpp)
+	target_link_libraries(triggerfish_percussion_membrane_tests PRIVATE
+		triggerfish_dsp)
+	add_test(NAME triggerfish_percussion_membrane_tests
+		COMMAND triggerfish_percussion_membrane_tests)
 
 	add_executable(triggerfish_percussion_micro_contact_tests
 		tests/percussion_micro_contact_tests.cpp)

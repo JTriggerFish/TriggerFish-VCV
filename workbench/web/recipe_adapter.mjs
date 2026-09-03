@@ -6,6 +6,10 @@ import {
   createCrashPatch, macroValuesFromPatch, patchWithMacroValues,
   routingValuesFromPatch, validateCrashAdapterPatch,
 } from "./metallic_plate_patch.mjs";
+import {
+  createMembranePatch, membraneRoutingValues, membraneValuesFromPatch,
+  patchWithMembraneValues, validateMembranePatch,
+} from "./membrane_patch.mjs";
 
 const adapters = new Map([
   ["metal.cymbal.v1", {
@@ -21,6 +25,13 @@ const adapters = new Map([
     values: kickValuesFromPatch,
     routing: kickRoutingValues,
     validate: validateKickPatch,
+  }],
+  ["drum.membrane.v1", {
+    create: createMembranePatch,
+    withValues: patchWithMembraneValues,
+    values: membraneValuesFromPatch,
+    routing: membraneRoutingValues,
+    validate: validateMembranePatch,
   }],
 ]);
 

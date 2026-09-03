@@ -7,6 +7,7 @@
 #include "tfdsp/percussion/frequency_shifter.hpp"
 #include "tfdsp/percussion/micro_contact_process.hpp"
 #include "tfdsp/percussion/modal_bank.hpp"
+#include "tfdsp/percussion/membrane_drum.hpp"
 #include "tfdsp/percussion/observation_model.hpp"
 #include "tfdsp/percussion/statistical_modal_cloud.hpp"
 
@@ -218,6 +219,17 @@ void BenchmarkCompactKick() {
   });
 }
 
+void BenchmarkMembraneDrum() {
+  tfdsp::percussion::MembraneDrum drum;
+  drum.Prepare(48000.f,
+               tfdsp::percussion::DefaultMembraneDrumParameters());
+  const tfdsp::percussion::MembraneDrumHit hit{};
+  Measure("16-mode membrane drum", [&](const std::size_t sample) {
+    if (sample % 24000 == 0) drum.Trigger(hit);
+    return drum.Process();
+  });
+}
+
 void BenchmarkCrashDeadlines() {
   using Clock = std::chrono::steady_clock;
   tfdsp::percussion::CrashCymbalFitParameters fit;
@@ -266,5 +278,6 @@ int main() {
   BenchmarkObservation();
   BenchmarkCrashCymbal();
   BenchmarkCompactKick();
+  BenchmarkMembraneDrum();
   BenchmarkCrashDeadlines();
 }
