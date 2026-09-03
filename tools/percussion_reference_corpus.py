@@ -21,6 +21,7 @@ def _cell(
     repeat: int = 1,
     hardness: float = 0.65,
     implement: float = 1.0,
+    contact_spread: float = 0.2,
 ) -> dict[str, object]:
     return {
         "label": label,
@@ -31,6 +32,7 @@ def _cell(
         "location": location,
         "hardness": hardness,
         "implement": implement,
+        "contactSpread": contact_spread,
         "onset_seconds": 0.0,
         "seed": 1000 + velocity * 7 + repeat,
         "split": "audition",
@@ -45,7 +47,13 @@ def _private_crash(root: Path) -> tuple[dict[str, object], dict[str, Path]] | No
     source = json.loads(manifest.read_text(encoding="utf-8"))
     cells = []
     paths = {}
+    selected_velocities = {24, 48, 72, 96, 120}
     for source_cell in source["cells"]:
+        if (
+            source_cell["midi_velocity"] not in selected_velocities
+            or source_cell["repeat"] != 1
+        ):
+            continue
         path = (root / source_cell["path"]).resolve()
         if not path.is_file() or root.resolve() not in path.parents:
             continue
@@ -70,6 +78,15 @@ def _private_crash(root: Path) -> tuple[dict[str, object], dict[str, Path]] | No
             "id": PRIVATE_CRASH_ID,
             "name": "Private crash A",
             "audition_trim_db": 25.5,
+            "calibration": {
+                "id": "crash-standard",
+                "name": "Crash — medium edge",
+                "recipe": "metal.cymbal.v1",
+                "parameter_preset": "metallic-default",
+                "articulation": "edge",
+                "velocity": 72,
+                "repeat": 1,
+            },
             "cells": cells,
         },
         paths,
@@ -81,6 +98,10 @@ def _curated(
     name: str,
     specifications: list[tuple[Path, str, str, int, float, float, int]],
     trim_db: float = 0.0,
+    calibration: dict[str, object] | None = None,
+    hardness: float = 0.65,
+    implement: float = 1.0,
+    contact_spread: float = 0.2,
 ) -> tuple[dict[str, object], dict[str, Path]] | None:
     cells = []
     paths = {}
@@ -104,6 +125,9 @@ def _curated(
             strength,
             location,
             repeat,
+            hardness,
+            implement,
+            contact_spread,
         )
         cells.append(cell)
         paths[unquote(cell["url"])] = path.resolve()
@@ -114,6 +138,7 @@ def _curated(
             "id": corpus_id,
             "name": name,
             "audition_trim_db": trim_db,
+            "calibration": calibration,
             "cells": cells,
         },
         paths,
@@ -149,7 +174,21 @@ def _snare(library: Path):
                     1,
                 )
             )
-    return _curated("acoustic-snare-maple", "Acoustic snare — maple", specs, 6.0)
+    return _curated(
+        "acoustic-snare-maple",
+        "Acoustic snare — maple",
+        specs,
+        5.0,
+        {
+            "id": "snare-standard",
+            "name": "Snare — medium centre",
+            "recipe": "drum.snare.v1",
+            "parameter_preset": "snare-default",
+            "articulation": "main",
+            "velocity": 82,
+            "repeat": 1,
+        },
+    )
 
 
 def _kick(library: Path):
@@ -169,7 +208,23 @@ def _kick(library: Path):
                 1,
             )
         )
-    return _curated("acoustic-kick-oak", "Acoustic kick — oak", specs, 4.0)
+    return _curated(
+        "acoustic-kick-oak",
+        "Acoustic kick — oak",
+        specs,
+        2.0,
+        {
+            "id": "kick-standard",
+            "name": "Kick — medium centre",
+            "recipe": "drum.kick-fm.v1",
+            "parameter_preset": "kick-default",
+            "articulation": "centre",
+            "velocity": 64,
+            "repeat": 1,
+        },
+        hardness=0.5,
+        implement=0.5,
+    )
 
 
 def _gong(library: Path):
@@ -188,7 +243,24 @@ def _gong(library: Path):
                 repeat,
             )
         )
-    return _curated("gong-dresden", "Dresden gong", specs, -3.0)
+    return _curated(
+        "gong-dresden",
+        "Dresden gong",
+        specs,
+        -6.0,
+        {
+            "id": "gong-standard",
+            "name": "Gong — representative mallet",
+            "recipe": "metal.cymbal.v1",
+            "parameter_preset": "gong-start",
+            "articulation": "mallet",
+            "velocity": 96,
+            "repeat": 3,
+        },
+        hardness=0.35,
+        implement=0.5,
+        contact_spread=0.3,
+    )
 
 
 def _ride(reference_root: Path):
@@ -213,7 +285,21 @@ def _ride(reference_root: Path):
                     1,
                 )
             )
-    return _curated("ride-21-reference", "21-inch ride reference", specs, 9.0)
+    return _curated(
+        "ride-21-reference",
+        "21-inch ride reference",
+        specs,
+        -3.0,
+        {
+            "id": "ride-standard",
+            "name": "Ride — medium bow",
+            "recipe": "metal.cymbal.v1",
+            "parameter_preset": "ride-start",
+            "articulation": "bow",
+            "velocity": 82,
+            "repeat": 1,
+        },
+    )
 
 
 def build_catalog(

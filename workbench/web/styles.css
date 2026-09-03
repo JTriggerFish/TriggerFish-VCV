@@ -9,6 +9,9 @@ header { justify-content:space-between; } h1 { display:inline; margin:0 0 0 10px
 .eyebrow { color:var(--accent); text-transform:uppercase; letter-spacing:.16em; font-size:11px; }
 .status { display:flex; gap:18px; color:var(--muted); }
 .toolbar { position:sticky; top:0; z-index:3; flex-wrap:wrap; }
+.calibration-picker { gap:8px; padding:4px 6px 4px 9px; border:1px solid #6a5430; border-radius:6px; background:#19160f; }
+.calibration-picker strong { color:var(--accent); font-size:10px; letter-spacing:.08em; text-transform:uppercase; }
+.calibration-picker select { min-width:190px; border-color:#80683e; }
 button,.file,select,input { font:inherit; } button,.file,select { border:1px solid var(--line); background:#1b222c; color:var(--ink); border-radius:5px; padding:7px 10px; }
 button:hover,.file:hover { border-color:var(--accent); } .file { cursor:pointer; } .file input { display:none; }
 button:disabled { opacity:.45; cursor:not-allowed; }

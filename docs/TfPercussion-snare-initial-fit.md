@@ -33,11 +33,14 @@ The main fitted choices are:
 | Membrane fundamental | 185 Hz |
 | General membrane T60 | 0.12 s |
 | Persistent ring | 675 Hz, 1.8 s, 0.30x |
-| Wire engagement / release | 6 ms / 10 ms |
-| Wire motion threshold | 0.012 |
+| Direct/body velocity exponents | 2.59 / 2.23 |
+| Velocity compression | 3.64x |
+| Wire engagement / release | 45 ms / 30 ms |
+| Wire motion threshold | 0.050 |
+| Wire motion high-pass | 1,000 Hz |
 | Wire range | 520--9,000 Hz |
-| Wire T60 / density | 60 ms / 0.90 |
-| Wire observation level | 0.35x |
+| Wire T60 / density | 25 ms / 0.90 |
+| Wire observation level | 4.00x |
 | Output high cut | 10 kHz |
 
 ## Causal diagnostics
@@ -47,17 +50,27 @@ It deliberately keeps contact, initial decay, body, and tail separate.
 
 | Region | Reference RMS | Synth RMS | Reference centroid | Synth centroid |
 | --- | ---: | ---: | ---: | ---: |
-| 0--15 ms | -17.9 dBFS | -16.3 dBFS | 279 Hz | 275 Hz |
-| 15--120 ms | -26.5 dBFS | -29.4 dBFS | 1,791 Hz | 1,005 Hz |
-| 120--600 ms | -50.1 dBFS | -49.1 dBFS | 679 Hz | 733 Hz |
-| 600--1,500 ms | -69.7 dBFS | -68.9 dBFS | 676 Hz | 675 Hz |
+| 0--15 ms | -17.9 dBFS | -17.0 dBFS | 279 Hz | 347 Hz |
+| 15--120 ms | -26.5 dBFS | -27.6 dBFS | 1,791 Hz | 1,787 Hz |
+| 120--600 ms | -50.1 dBFS | -52.4 dBFS | 679 Hz | 678 Hz |
+| 600--1,500 ms | -69.7 dBFS | -71.0 dBFS | 676 Hz | 675 Hz |
 
-The required energy-match gain is `1.011`, so the default is already within a
-small level correction of this cell. Remaining visible differences are useful
-workbench targets: the synthetic first 15 ms retains too much very-high-band
-energy, while the 15--120 ms wire/body mixture has a lower centroid and about
-3 dB less energy. These should be judged by listening before another numerical
-adjustment.
+The table applies a whole-file energy match of `-3.54 dB`; the workbench does
+this shared reference-level match automatically while preserving the visible
+`-20 dB` model-level starting control. The revised wire response now reaches
+the right broad spectral region without a literal delayed burst: a causal
+45 ms contact follower and squared contact law suppress the first milliseconds
+and let membrane motion build wire energy. The remaining level and first-15 ms
+centroid differences are explicit ear-fitting targets, not an acceptance
+claim.
+
+The separate direct and body velocity curves fix an earlier calibration bug:
+the generic modal safety ceiling was active on every velocity layer and made
+soft, medium, and hard hits nearly identical. The snare raises that ceiling so
+it is once again a safety bound, then uses exposed velocity exponents and a
+bounded saturation law to fit the event response. The neighbouring soft and
+hard layers are diagnostics only; this pass intentionally calibrates just the
+medium standard cell.
 
 The reproducible development commands are:
 
@@ -67,7 +80,7 @@ The reproducible development commands are:
 & $env:EMSDK_NODE tools/render_percussion_recipe.mjs `
   build/workbench-wasm/triggerfish-percussion.mjs drum.snare.v1 `
   build/snare-initial-fit.wav sampleRate=44100 seconds=1.734 `
-  strength=.65 location=.3 hardness=.65 implement=1 contactSpread=.2 seed=101
+  strength=.65 location=.3 hardness=.65 implement=1 contactSpread=.2 seed=1575
 .\.venv\Scripts\python.exe tools/inspect_audio_pair.py REFERENCE.wav `
   build/snare-initial-fit.wav
 ```

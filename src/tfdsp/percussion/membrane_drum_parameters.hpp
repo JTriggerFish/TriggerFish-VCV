@@ -1,11 +1,11 @@
 #pragma once
 
-#include "strike_energy_envelope.hpp"
 #include "contact_exciter.hpp"
 #include "correlated_fm_burst.hpp"
 #include "membrane_resonator.hpp"
 #include "observation_equalizer.hpp"
 #include "observation_model.hpp"
+#include "strike_energy_envelope.hpp"
 
 #include <array>
 #include <cstddef>
@@ -66,6 +66,9 @@ struct MembraneDrumParameters {
   ObservationEqualizerParameters equalizer{};
   MembraneDrumRouting routing{};
   float contactLevel{.7f};
+  float directVelocityExponent{.72f};
+  float bodyVelocityExponent{.72f};
+  float velocitySaturation{};
   float fmLevel{.18f};
   float outputGain{.32f};
   float maximumModalEnergy{1.f};
@@ -79,7 +82,8 @@ struct MembraneDrumPreparedParameters {
 
 MembraneDrumParameters DefaultMembraneDrumParameters(
     const MembraneDrumControls &controls = {}) noexcept;
-MembraneDrumPreparedParameters PrepareMembraneDrumParameters(
-    float sampleRate, const MembraneDrumParameters &parameters);
+MembraneDrumPreparedParameters
+PrepareMembraneDrumParameters(float sampleRate,
+                              const MembraneDrumParameters &parameters);
 
 } // namespace tfdsp::percussion

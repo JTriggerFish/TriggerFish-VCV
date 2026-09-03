@@ -86,6 +86,11 @@ export class ReferenceBrowser {
     return true;
   }
 
+  calibrationPresets() {
+    return this.corpora.flatMap(corpus => corpus.calibration
+      ? [{ ...corpus.calibration, corpusId: corpus.id }] : []);
+  }
+
   configureLayers(preferredVelocity, preferredRepeat) {
     const cells = this.current.cells.filter(
       cell => cell.articulation === this.elements.articulation.value,

@@ -44,7 +44,9 @@ public:
 
 private:
   struct EventVoice {
-    struct Sample { float contactDirect{}, contactBody{}, fm{}; };
+    struct Sample {
+      float contactDirect{}, contactBody{}, fm{};
+    };
     void Prepare(float sampleRate);
     void Reset() noexcept;
     void Trigger(const MembraneDrumParameters &parameters,
@@ -56,7 +58,8 @@ private:
     ContactExciter contact{};
     CorrelatedFmBurst fm{};
     float location{.5f};
-    float amplitude{};
+    float directAmplitude{};
+    float bodyAmplitude{};
     float contactLevel{};
     float fmLevel{};
     float activity{};

@@ -51,6 +51,29 @@ def test_curated_reference_catalog_is_small_and_allow_listed(tmp_path: Path) -> 
         "gong-dresden": 5,
         "ride-21-reference": 9,
     }
+    calibrations = {
+        corpus["calibration"]["id"]: corpus["calibration"]
+        for corpus in corpora
+        if corpus.get("calibration")
+    }
+    assert set(calibrations) == {
+        "snare-standard",
+        "kick-standard",
+        "gong-standard",
+        "ride-standard",
+    }
+    assert calibrations["snare-standard"] == {
+        "id": "snare-standard",
+        "name": "Snare — medium centre",
+        "recipe": "drum.snare.v1",
+        "parameter_preset": "snare-default",
+        "articulation": "main",
+        "velocity": 82,
+        "repeat": 1,
+    }
+    gong = next(corpus for corpus in corpora if corpus["id"] == "gong-dresden")
+    assert all(cell["implement"] == 0.5 for cell in gong["cells"])
+    assert all(cell["contactSpread"] == 0.3 for cell in gong["cells"])
     for corpus in corpora:
         for cell in corpus["cells"]:
             assert reference_path(paths, cell["url"]).is_file()

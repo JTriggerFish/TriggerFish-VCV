@@ -375,6 +375,15 @@ if (testControls) {
               Boolean(document.querySelector(
                 '[data-module-id="body"][style*="--module-colour"]')),
             master: master.value === "-12",
+            calibrationPicker: (() => {
+              const picker = document.getElementById("instrument-calibration");
+              const labels = [...picker.options].map(option => option.textContent);
+              return picker.closest(".calibration-picker") &&
+                labels.includes("Snare — medium centre") &&
+                labels.includes("Kick — medium centre") &&
+                labels.includes("Gong — representative mallet") &&
+                labels.includes("Ride — medium bow");
+            })(),
             settingsMenu: settingsOpened && settingsClosed && directWorklet &&
               midiSettingsPresent,
             hardness: hardness.value === initial.hardness,
@@ -605,7 +614,7 @@ if (testControls) {
             selector: select.options.length === 4 && select.value === "2",
             controls: document.querySelectorAll(
               '[data-membrane-key] input[type="range"]',
-            ).length === 30,
+            ).length === 33,
             presets: Boolean(preset) && document.querySelector(
               '[data-membrane-key="fundamental_hz"] output',
             )?.textContent.startsWith("52.0"),
@@ -660,7 +669,7 @@ if (testControls) {
             selector: select.options.length === 4 && select.value === "3",
             wireControls: document.querySelectorAll(
               "#snare-wire-response-controls input, #snare-wire-spectrum-controls input",
-            ).length === 13,
+            ).length === 15,
             ringControls: document.querySelectorAll(
               "#snare-ring-controls input",
             ).length === 3,
@@ -682,6 +691,41 @@ if (testControls) {
   });
   result.controls.snareRecipe = snareRecipe.result.value;
   result.controls.checks.snareRecipe = result.controls.snareRecipe.passed;
+  const calibrationPreset = await call("Runtime.evaluate", {
+    expression: `new Promise(resolve => {
+      const picker = document.getElementById("instrument-calibration");
+      picker.value = "snare-standard";
+      picker.dispatchEvent(new Event("change"));
+      const deadline = performance.now() + 12000;
+      const poll = () => {
+        const ready = document.getElementById("status").textContent === "Ready";
+        const loaded = picker.value === "snare-standard" &&
+          document.getElementById("instrument-recipe").value === "3" &&
+          document.getElementById("reference-corpus").value ===
+            "acoustic-snare-maple" &&
+          document.getElementById("reference-articulation").value === "main" &&
+          document.getElementById("reference-velocity").nextElementSibling
+            .textContent === "v082";
+        if (ready && loaded || performance.now() >= deadline) {
+          resolve({
+            passed: ready && loaded &&
+              document.querySelector(
+                '[data-membrane-key="fundamental_hz"] output',
+              )?.textContent.startsWith("185.0") &&
+              document.querySelector(
+                'input[name="membrane-implement"][value="1"]',
+              )?.checked,
+            ready, loaded,
+          });
+        } else setTimeout(poll, 50);
+      };
+      poll();
+    })`,
+    awaitPromise: true, returnByValue: true,
+  });
+  result.controls.calibrationPreset = calibrationPreset.result.value;
+  result.controls.checks.calibrationPreset =
+    result.controls.calibrationPreset.passed;
   result.controls.passed = Object.values(result.controls.checks).every(Boolean);
 }
 if (screenshot) {

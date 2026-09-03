@@ -117,6 +117,10 @@ if(EMSCRIPTEN)
       COMMAND ${NODE_EXECUTABLE}
         ${CMAKE_CURRENT_LIST_DIR}/tests/size_meta_tests.mjs
     )
+    add_test(NAME triggerfish_workbench_instrument_calibration_tests
+      COMMAND ${NODE_EXECUTABLE}
+        ${CMAKE_CURRENT_LIST_DIR}/tests/instrument_calibration_tests.mjs
+    )
     add_test(NAME triggerfish_workbench_state_tests
       COMMAND ${NODE_EXECUTABLE}
         ${CMAKE_CURRENT_LIST_DIR}/tests/state_tests.mjs

@@ -31,8 +31,8 @@ const Groups = new Map([
     "ring_frequency_hz", "ring_decay_seconds", "ring_level",
   ]],
   ["snare-wire-response-controls", [
-    "wire_level", "wire_sensitivity", "wire_threshold",
-    "wire_attack_seconds", "wire_release_seconds",
+    "wire_level", "wire_delay_ms", "wire_sensitivity", "wire_threshold",
+    "wire_motion_highpass_hz", "wire_attack_seconds", "wire_release_seconds",
   ]],
   ["snare-wire-spectrum-controls", [
     "wire_minimum_hz", "wire_maximum_hz", "wire_decay_seconds",

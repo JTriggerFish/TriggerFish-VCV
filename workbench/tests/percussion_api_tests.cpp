@@ -13,13 +13,13 @@ namespace {
 int failures{};
 
 void Check(const bool condition, const char *message) {
-  if (condition) return;
+  if (condition)
+    return;
   std::cerr << "FAIL: " << message << '\n';
   ++failures;
 }
 
-std::vector<float> Render(const std::uint32_t handle,
-                          const std::uint32_t seed,
+std::vector<float> Render(const std::uint32_t handle, const std::uint32_t seed,
                           const std::size_t blockSize) {
   std::vector<float> result(24000);
   Check(tf_percussion_reset(handle), "recipe reset succeeds");
@@ -36,7 +36,8 @@ std::vector<float> Render(const std::uint32_t handle,
 
 double Energy(const std::vector<float> &audio) {
   double result = 0.0;
-  for (const float sample : audio) result += sample * sample;
+  for (const float sample : audio)
+    result += sample * sample;
   return result;
 }
 
@@ -53,7 +54,8 @@ double Difference(const std::vector<float> &left,
 std::vector<std::uint8_t> ExportPrepared(const std::uint32_t handle) {
   std::vector<std::uint8_t> result(tf_percussion_prepared_size(handle));
   Check(!result.empty() && tf_percussion_export_prepared(
-            handle, result.data(), static_cast<std::uint32_t>(result.size())),
+                               handle, result.data(),
+                               static_cast<std::uint32_t>(result.size())),
         "prepared recipe exports");
   return result;
 }
@@ -64,17 +66,18 @@ void CheckPreparedRoundTrip(const std::uint32_t preparedHandle,
   const auto blob = ExportPrepared(preparedHandle);
   const auto restored = tf_percussion_create_unprepared(recipe, 48000.f);
   Check(restored != 0, "unprepared recipe session can be created");
-  Check(tf_percussion_apply_prepared(
-            restored, blob.data(), static_cast<std::uint32_t>(blob.size())),
+  Check(tf_percussion_apply_prepared(restored, blob.data(),
+                                     static_cast<std::uint32_t>(blob.size())),
         "prepared recipe installs");
   Check(Render(preparedHandle, 37, 128) == Render(restored, 37, 128),
         description);
 
   auto corrupt = blob;
   corrupt.front() ^= 0xff;
-  Check(!tf_percussion_apply_prepared(
-            restored, corrupt.data(), static_cast<std::uint32_t>(corrupt.size())),
-        "corrupt prepared recipe is rejected");
+  Check(
+      !tf_percussion_apply_prepared(restored, corrupt.data(),
+                                    static_cast<std::uint32_t>(corrupt.size())),
+      "corrupt prepared recipe is rejected");
   Check(!tf_percussion_apply_prepared(
             restored, blob.data(), static_cast<std::uint32_t>(blob.size() - 1)),
         "truncated prepared recipe is rejected");
@@ -83,9 +86,10 @@ void CheckPreparedRoundTrip(const std::uint32_t preparedHandle,
 
 std::uint32_t ParameterIndex(const std::uint32_t handle,
                              const std::string_view key) {
-  for (std::uint32_t index = 0;
-       index < tf_percussion_parameter_count(handle); ++index) {
-    if (key == tf_percussion_parameter_key(handle, index)) return index;
+  for (std::uint32_t index = 0; index < tf_percussion_parameter_count(handle);
+       ++index) {
+    if (key == tf_percussion_parameter_key(handle, index))
+      return index;
   }
   return UINT32_MAX;
 }
@@ -97,11 +101,12 @@ int main() {
         "unreleased percussion API remains version one");
   Check(tf_percussion_recipe_count() == 4,
         "four compiled percussion recipes are registered");
-  Check(std::string_view(tf_percussion_recipe_key(0)) == "metal.cymbal.v1" &&
-            std::string_view(tf_percussion_recipe_key(1)) == "drum.kick-fm.v1" &&
-            std::string_view(tf_percussion_recipe_key(2)) == "drum.membrane.v1" &&
-            std::string_view(tf_percussion_recipe_key(3)) == "drum.snare.v1",
-        "recipe keys are stable");
+  Check(
+      std::string_view(tf_percussion_recipe_key(0)) == "metal.cymbal.v1" &&
+          std::string_view(tf_percussion_recipe_key(1)) == "drum.kick-fm.v1" &&
+          std::string_view(tf_percussion_recipe_key(2)) == "drum.membrane.v1" &&
+          std::string_view(tf_percussion_recipe_key(3)) == "drum.snare.v1",
+      "recipe keys are stable");
   Check(tf_percussion_recipe_key(4) == nullptr &&
             tf_percussion_create(4, 48000.f) == 0,
         "unknown recipes are rejected");
@@ -112,8 +117,8 @@ int main() {
   Check(ParameterIndex(metallic, "body_tone_wash") == UINT32_MAX &&
             ParameterIndex(metallic, "dense_mode_density") == UINT32_MAX,
         "legacy no-op metallic controls are absent from the recipe API");
-  CheckPreparedRoundTrip(
-      metallic, 0, "prepared metallic recipe is sample-identical");
+  CheckPreparedRoundTrip(metallic, 0,
+                         "prepared metallic recipe is sample-identical");
   tf_percussion_destroy(metallic);
 
   const auto kick = tf_percussion_create(1, 48000.f);
@@ -138,9 +143,9 @@ int main() {
   Check(first == whole, "compact kick API is host-block independent");
   Check(Difference(first, variation) > 1.e-7,
         "compact kick API forwards event seeds");
-  Check(std::all_of(first.begin(), first.end(), [](const float sample) {
-    return std::isfinite(sample);
-  }) && Energy(first) > 1.e-5,
+  Check(std::all_of(first.begin(), first.end(),
+                    [](const float sample) { return std::isfinite(sample); }) &&
+            Energy(first) > 1.e-5,
         "compact kick API renders finite audible output");
   CheckPreparedRoundTrip(kick, 1, "prepared compact kick is sample-identical");
 
@@ -170,12 +175,12 @@ int main() {
   const auto membrane = tf_percussion_create(2, 48000.f);
   Check(membrane != 0 && tf_percussion_recipe(membrane) == 2,
         "membrane session can be created");
-  Check(tf_percussion_parameter_count(membrane) == 31 &&
+  Check(tf_percussion_parameter_count(membrane) == 34 &&
             tf_percussion_route_count(membrane) == 5,
         "membrane exposes its bounded controls and routing");
   const auto membranePitch = ParameterIndex(membrane, "fundamental_hz");
   const auto eqMode = ParameterIndex(membrane, "equalizer_mode");
-  Check(membranePitch < 31 && eqMode < 31,
+  Check(membranePitch < 34 && eqMode < 34,
         "membrane parameters have stable identifiers");
   Check(tf_percussion_parameter_scale(membrane, eqMode) == 3,
         "membrane output EQ declares a discrete choice control");
@@ -187,31 +192,29 @@ int main() {
   Check(Energy(membraneFirst) > 1.e-5 &&
             membraneFirst == Render(membrane, 71, 37),
         "membrane API is audible, deterministic, and block independent");
-  CheckPreparedRoundTrip(
-      membrane, 2, "prepared membrane recipe is sample-identical");
+  CheckPreparedRoundTrip(membrane, 2,
+                         "prepared membrane recipe is sample-identical");
   tf_percussion_destroy(membrane);
 
   const auto snare = tf_percussion_create(3, 48000.f);
   Check(snare != 0 && tf_percussion_recipe(snare) == 3,
         "snare session can be created");
-  Check(tf_percussion_parameter_count(snare) == 47 &&
+  Check(tf_percussion_parameter_count(snare) == 52 &&
             tf_percussion_route_count(snare) == 7,
         "snare exposes membrane, wire, and routing controls");
   const auto wireLevel = ParameterIndex(snare, "wire_level");
   const auto wireDensity = ParameterIndex(snare, "wire_density");
   const auto snarePitch = ParameterIndex(snare, "fundamental_hz");
-  Check(wireLevel < 47 && wireDensity < 47,
+  Check(wireLevel < 52 && wireDensity < 52,
         "snare wire parameters have stable identifiers");
   Check(tf_percussion_parameter_default(snare, snarePitch) == 185.f &&
             tf_percussion_parameter_get(snare, snarePitch) == 185.f,
         "snare metadata and initialized state share fitted defaults");
   const auto snareFirst = Render(snare, 81, 128);
-  Check(Energy(snareFirst) > 1.e-5 &&
-            snareFirst == Render(snare, 81, 37),
+  Check(Energy(snareFirst) > 1.e-5 && snareFirst == Render(snare, 81, 37),
         "snare API is audible, deterministic, and block independent");
   CheckPreparedRoundTrip(snare, 3, "prepared snare is sample-identical");
-  Check(tf_percussion_route_set(snare, 5, 0.f) &&
-            tf_percussion_commit(snare),
+  Check(tf_percussion_route_set(snare, 5, 0.f) && tf_percussion_commit(snare),
         "snare body-to-wire route can be disabled");
   const auto withoutWires = Render(snare, 81, 128);
   Check(Difference(snareFirst, withoutWires) > 1.e-6,
@@ -219,16 +222,18 @@ int main() {
   tf_percussion_destroy(snare);
 
   std::array<std::uint32_t, 4> pool{};
-  for (auto &pooled : pool) pooled = tf_percussion_create(0, 48000.f);
-  Check(std::all_of(pool.begin(), pool.end(), [](const auto pooled) {
-          return pooled != 0;
-        }) && tf_percussion_create(0, 48000.f) == 0,
+  for (auto &pooled : pool)
+    pooled = tf_percussion_create(0, 48000.f);
+  Check(std::all_of(pool.begin(), pool.end(),
+                    [](const auto pooled) { return pooled != 0; }) &&
+            tf_percussion_create(0, 48000.f) == 0,
         "recipe sessions have a bounded four-instance pool");
   tf_percussion_destroy(pool[1]);
   pool[1] = tf_percussion_create(1, 48000.f);
   Check(pool[1] != 0 && tf_percussion_recipe(pool[1]) == 1,
         "destroyed recipe sessions are immediately reusable");
-  for (const auto pooled : pool) tf_percussion_destroy(pooled);
+  for (const auto pooled : pool)
+    tf_percussion_destroy(pooled);
 
   return failures == 0 ? 0 : 1;
 }

@@ -19,6 +19,16 @@ std::vector<float> Render(const std::uint32_t seed) {
   return result;
 }
 
+std::vector<float> RenderStrength(const float strength) {
+  tfdsp::percussion::SnareDrum drum;
+  drum.Prepare(48000.f, tfdsp::percussion::DefaultSnareDrumParameters());
+  drum.Trigger({strength, .3f, .65f, 1.f, .2f, 1575});
+  std::vector<float> result(5760);
+  for (auto &sample : result)
+    sample = drum.Process();
+  return result;
+}
+
 double Energy(const std::vector<float> &audio) {
   double result = 0.;
   for (const float sample : audio) result += sample * sample;
@@ -45,6 +55,14 @@ void TestDeterminismAndSources() {
   }
   Check(bodyEnergy > 1.e-5 && wireEnergy > 1.e-5,
         "one hit excites both membrane and body-driven wires");
+}
+
+void TestVelocityResponse() {
+  const double soft = Energy(RenderStrength(.32f));
+  const double medium = Energy(RenderStrength(.65f));
+  const double hard = Energy(RenderStrength(.92f));
+  Check(soft < .2 * medium && hard > .8 * medium,
+        "snare velocity layers retain useful soft-to-medium dynamics");
 }
 
 void TestRoutingAndPreparedState() {
@@ -99,6 +117,7 @@ void TestRatesAndRepeatedHits() {
 
 int main() {
   TestDeterminismAndSources();
+  TestVelocityResponse();
   TestRoutingAndPreparedState();
   TestRatesAndRepeatedHits();
   return percussion_test::failures == 0 ? 0 : 1;

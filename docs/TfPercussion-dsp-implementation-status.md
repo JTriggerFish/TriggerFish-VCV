@@ -239,7 +239,12 @@ body-to-wire drive, and wire observation. Its browser panels and live
 AudioWorklet use the same C++ recipe and prepared-state handoff. The local
 reference browser also discovers small allow-listed grids for one acoustic
 snare, one kick, a gong, and a 21-inch ride when those development samples are
-installed; no sample audio or machine path is copied into the repository.
+installed; no sample audio or machine path is copied into the repository. The
+toolbar exposes one obvious middle-velocity calibration entry for the crash,
+snare, kick, gong, and ride, rather than requiring the user to reconstruct a
+reference/recipe pairing from separate selectors. The exact pairings and load
+semantics are recorded in
+[reference calibration starting points](TfPercussion-reference-calibrations.md).
 
 The Python numerical-analysis implementation and its remaining real-data gates
 are recorded in `TfPercussion-analysis-toolkit.md`. The static Plotly report is

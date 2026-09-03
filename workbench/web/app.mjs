@@ -2,6 +2,7 @@ import { SafeAudition } from "./audio.mjs";
 import { bindAnalysisControls } from "./analysis_controls.mjs";
 import { PercussionEngine } from "./engine.mjs";
 import { FitControls } from "./fit_controls.mjs";
+import { calibrationParameterValues } from "./instrument_calibrations.mjs";
 import { KickControls } from "./kick_controls.mjs";
 import { MembraneControls } from "./membrane_controls.mjs";
 import { SnareControls } from "./snare_controls.mjs";
@@ -407,6 +408,7 @@ async function initialize() {
     repeat: byId("reference-repeat"),
   }, setReference, setStatus);
   await referenceBrowser.initialize();
+  bindCalibrationPresets();
   byId("reference-files").onchange = async event => {
     try {
       const loaded = await readReferences(event.target.files);
@@ -465,6 +467,44 @@ async function initialize() {
         : "Live DSP idle";
     settings.paintAudioStatus();
   }, 100);
+}
+
+function bindCalibrationPresets() {
+  const select = byId("instrument-calibration");
+  const calibrations = referenceBrowser.calibrationPresets();
+  select.replaceChildren(
+    new Option("Choose a reference fit…", ""),
+    ...calibrations.map(item => new Option(item.name, item.id)),
+  );
+  select.onchange = async () => {
+    const calibration = calibrations.find(item => item.id === select.value);
+    if (!calibration) return;
+    try {
+      const recipe = engine.recipes.find(
+        item => item.key === calibration.recipe);
+      if (!recipe) throw new Error(`recipe is unavailable: ${calibration.recipe}`);
+      recipeController.remember();
+      recipeController.activate(recipe.index);
+      state.macros.splice(0, state.macros.length,
+        ...calibrationParameterValues(calibration, engine.parameters));
+      state.patch = recipeAdapter(state.recipeKey).withValues(
+        state.patch, engine.parameters, state.macros);
+      state.modelLevelTouched = false;
+      routingController.setPatch(state.patch);
+      routingController.refreshPresentation();
+      buildPageValues();
+      audition.setRecipe(
+        state.recipeIndex, state.macros,
+        recipeAdapter(state.recipeKey).routing(state.patch),
+      );
+      const loaded = await referenceBrowser.selectSavedReference({
+        corpus: { id: calibration.corpusId }, cell: calibration,
+      });
+      if (!loaded) throw new Error(`reference is unavailable: ${calibration.name}`);
+    } catch (error) {
+      setStatus(String(error));
+    }
+  };
 }
 
 function bindSnapshotControls() {

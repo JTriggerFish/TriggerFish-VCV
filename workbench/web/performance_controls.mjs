@@ -38,7 +38,8 @@ export class PerformanceControls {
 
   paint() {
     if (this.state.recipeKey === "metal.cymbal.v1") this.#paintMetallic();
-    else if (this.state.recipeKey === "drum.membrane.v1")
+    else if (this.state.recipeKey === "drum.membrane.v1" ||
+             this.state.recipeKey === "drum.snare.v1")
       this.#paintMembrane();
     else this.#paintKick();
   }
