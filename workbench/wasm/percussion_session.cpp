@@ -24,9 +24,11 @@ void Initialize(Session &session, const Recipe recipe,
   session.crashValues = DefaultCrashMacros();
   session.kickValues = DefaultKickParameters();
   session.membraneValues = DefaultMembraneParameters();
+  session.snareValues = DefaultSnareParameters();
   session.cymbalRouting = {};
   session.kickRouting = {};
   session.membraneRouting = {};
+  session.snareRouting = {};
 }
 
 } // namespace
@@ -62,6 +64,9 @@ const ParameterDescriptor *Description(
   case Recipe::MembraneDrum:
     return index < session.membraneValues.size()
         ? &MembraneParameterDescription(index) : nullptr;
+  case Recipe::SnareDrum:
+    return index < session.snareValues.size()
+        ? &SnareParameterDescription(index) : nullptr;
   default: return nullptr;
   }
 }
@@ -71,6 +76,7 @@ std::size_t ParameterCount(const Session &session) noexcept {
   case Recipe::MetallicPlate: return ActiveCrashMacroCount;
   case Recipe::CompactKick: return session.kickValues.size();
   case Recipe::MembraneDrum: return session.membraneValues.size();
+  case Recipe::SnareDrum: return session.snareValues.size();
   default: return 0;
   }
 }
@@ -90,9 +96,15 @@ void Prepare(Session &session) {
     session.kick.Prepare(session.sampleRate, parameters);
     return;
   }
-  auto parameters = ApplyMembraneParameters(session.membraneValues);
-  parameters.routing = session.membraneRouting;
-  session.membrane.Prepare(session.sampleRate, parameters);
+  if (session.recipe == Recipe::MembraneDrum) {
+    auto parameters = ApplyMembraneParameters(session.membraneValues);
+    parameters.routing = session.membraneRouting;
+    session.membrane.Prepare(session.sampleRate, parameters);
+    return;
+  }
+  auto parameters = ApplySnareParameters(session.snareValues);
+  parameters.routing = session.snareRouting;
+  session.snare.Prepare(session.sampleRate, parameters);
 }
 
 float Process(Session &session) noexcept {
@@ -100,6 +112,7 @@ float Process(Session &session) noexcept {
   case Recipe::MetallicPlate: return session.cymbal.Process();
   case Recipe::CompactKick: return session.kick.Process();
   case Recipe::MembraneDrum: return session.membrane.Process();
+  case Recipe::SnareDrum: return session.snare.Process();
   default: return 0.f;
   }
 }

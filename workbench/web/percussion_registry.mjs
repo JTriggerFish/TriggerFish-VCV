@@ -92,6 +92,21 @@ const types = [
     inputs: [{ name: "audio", type: "audio" }],
     outputs: [{ name: "audio", type: "audio" }],
   },
+  {
+    type: "interaction.wire-rack", version: 1,
+    name: "Snare wires", role: "interaction",
+    inputs: [{ name: "motion", type: "audio" }],
+    outputs: [{ name: "audio", type: "audio" }],
+  },
+  {
+    type: "observation.three-source", version: 1,
+    name: "Observation", role: "observation",
+    inputs: [
+      { name: "direct", type: "audio" }, { name: "body", type: "audio" },
+      { name: "wires", type: "audio" },
+    ],
+    outputs: [{ name: "audio", type: "audio" }],
+  },
 ];
 
 export const ModuleTypes = new Map(types.map(item => [item.type, item]));
@@ -100,7 +115,7 @@ export const RecipeTypes = new Map([
   ["metal.cymbal.v1", { name: "Metallic plate", available: true }],
   ["metal.pair.v1", { name: "Interacting metallic plates", available: false }],
   ["drum.membrane.v1", { name: "Membrane", available: true }],
-  ["drum.snare.v1", { name: "Membrane with wires", available: false }],
+  ["drum.snare.v1", { name: "Membrane with wires", available: true }],
   ["drum.kick-fm.v1", { name: "Compact FM kick", available: true }],
   ["drum.kick-acoustic.v1", {
     name: "Exciter with resonant body", available: false,

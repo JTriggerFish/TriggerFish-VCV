@@ -10,6 +10,10 @@ import {
   createMembranePatch, membraneRoutingValues, membraneValuesFromPatch,
   patchWithMembraneValues, validateMembranePatch,
 } from "./membrane_patch.mjs";
+import {
+  createSnarePatch, patchWithSnareValues, snareRoutingValues,
+  snareValuesFromPatch, validateSnarePatch,
+} from "./snare_patch.mjs";
 
 const adapters = new Map([
   ["metal.cymbal.v1", {
@@ -32,6 +36,13 @@ const adapters = new Map([
     values: membraneValuesFromPatch,
     routing: membraneRoutingValues,
     validate: validateMembranePatch,
+  }],
+  ["drum.snare.v1", {
+    create: createSnarePatch,
+    withValues: patchWithSnareValues,
+    values: snareValuesFromPatch,
+    routing: snareRoutingValues,
+    validate: validateSnarePatch,
   }],
 ]);
 

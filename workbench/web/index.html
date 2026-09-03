@@ -78,8 +78,9 @@
           <section data-module-id="membrane-body"><h2>Starting patches</h2><div id="membrane-preset-controls" class="button-row" data-membrane-controls></div></section>
           <details open data-module-id="membrane-contact"><summary data-tooltip="Finite contact force, chirp, noise, and fused micro-contact cluster.">Contact exciter</summary><div id="membrane-contact-controls" data-membrane-controls></div></details>
           <details open data-module-id="membrane-fm"><summary data-tooltip="An optional correlated-FM transient which can drive the membrane or radiate directly.">FM supplement</summary><div id="membrane-fm-controls" data-membrane-controls></div></details>
-          <details open data-module-id="membrane-body"><summary data-tooltip="One persistent modal membrane shared by all overlapping strikes.">Modal membrane</summary><div id="membrane-body-controls" data-membrane-controls></div></details>
+          <details open data-module-id="membrane-body"><summary data-tooltip="One persistent modal membrane shared by all overlapping strikes.">Modal membrane</summary><div id="membrane-body-controls" data-membrane-controls></div><div id="snare-ring-controls" data-snare-controls></div></details>
           <details open data-module-id="membrane-tension"><summary data-tooltip="A bounded strike-history envelope briefly raises effective tension; it is not a measurement of modal energy.">Strike energy and tension</summary><div id="membrane-tension-controls" data-membrane-controls></div></details>
+          <details open data-module-id="snare-wires"><summary data-tooltip="A motion-driven wire contact: static displacement is silent, while membrane motion excites correlated noise and a dense bank of short wire modes.">Snare-wire response</summary><div id="snare-wire-response-controls" data-snare-controls></div></details>
           <section data-module-id="kick-output"><h2>Output</h2><div id="kick-output-controls" data-kick-controls></div></section>
           <details open data-module-id="kick-primary"><summary data-tooltip="The main pitch-dropping, FM-broadened kick body.">Primary FM body</summary><div id="kick-primary-controls" data-kick-controls></div></details>
           <details open data-module-id="kick-secondary"><summary data-tooltip="A correlated second body branch that adds membrane complexity without a resonator network.">Secondary FM body</summary><div id="kick-secondary-controls" data-kick-controls></div></details>
@@ -102,6 +103,7 @@
         </div>
         <div class="control-column">
           <details open data-module-id="membrane-observation"><summary data-tooltip="Balances direct contact and persistent body without changing their stored energy.">Membrane observation</summary><div id="membrane-observation-controls" data-membrane-controls></div></details>
+          <details open data-module-id="snare-wires"><summary data-tooltip="Shapes the bandwidth, density, and decay of the wire rack without adding an independent trigger.">Snare-wire spectrum</summary><div id="snare-wire-spectrum-controls" data-snare-controls></div></details>
           <details open data-module-id="membrane-eq"><summary data-tooltip="Swappable output-only equalizers: bypass, compact radiation, or four-band parametric.">Output equalizer</summary>
             <div id="membrane-eq-mode-controls" data-membrane-controls></div>
             <div id="membrane-radiation-panel"><div id="membrane-radiation-controls" data-membrane-controls></div></div>

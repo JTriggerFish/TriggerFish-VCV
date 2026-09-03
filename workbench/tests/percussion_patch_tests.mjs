@@ -13,6 +13,9 @@ import {
   membraneRoutingValues,
   validateMembranePatch,
 } from "../web/membrane_patch.mjs";
+import {
+  createSnarePatch, snareRoutingValues, validateSnarePatch,
+} from "../web/snare_patch.mjs";
 
 const descriptors = [
   {
@@ -94,7 +97,7 @@ assert.throws(
 );
 
 const unavailableRecipe = structuredClone(patch);
-unavailableRecipe.recipe = "drum.snare.v1";
+unavailableRecipe.recipe = "metal.pair.v1";
 assert.throws(() => validatePatch(unavailableRecipe, descriptors), /unsupported/);
 
 const unsupported = structuredClone(patch);
@@ -250,5 +253,34 @@ for (let mask = 0; mask < 32; ++mask) {
     () => validateMembranePatch(candidate), /no audible route/,
   );
 }
+
+const snareDescriptors = [
+  ...membraneDescriptors,
+  { index: 9, key: "wire_level", minimum: 0, maximum: 3, defaultValue: 1 },
+  { index: 10, key: "wire_sensitivity", minimum: 0, maximum: 32, defaultValue: 9 },
+  { index: 11, key: "wire_density", minimum: 0, maximum: 1, defaultValue: .9 },
+];
+const snare = createSnarePatch(
+  snareDescriptors, [-10, 185, .08, .78, .08, .24, 1, 3200, 1.5, 1, 9, .9],
+);
+assert.equal(validatePatch(snare, snareDescriptors), snare);
+assert.equal(validateSnarePatch(snare), snare);
+assert.deepEqual(snareRoutingValues(snare), [.35, 1, .05, .32, 1, 1, 1]);
+for (let mask = 0; mask < 128; ++mask) {
+  const candidate = structuredClone(snare);
+  for (let index = 0; index < 7; ++index)
+    candidate.connections[index].enabled = Boolean(mask & (1 << index));
+  validatePatch(candidate, snareDescriptors);
+  const direct = Boolean(mask & 1) || Boolean(mask & 4);
+  const bodyDrive = Boolean(mask & 2) || Boolean(mask & 8);
+  const body = bodyDrive && Boolean(mask & 16);
+  const wires = bodyDrive && Boolean(mask & 32) && Boolean(mask & 64);
+  if (direct || body || wires)
+    assert.equal(validateSnarePatch(candidate), candidate);
+  else assert.throws(() => validateSnarePatch(candidate), /no audible route/);
+}
+const brokenSnare = structuredClone(snare);
+brokenSnare.connections.find(route => route.required).gain = .5;
+assert.throws(() => validateSnarePatch(brokenSnare), /required/);
 
 console.log("percussion patch tests passed");

@@ -55,19 +55,21 @@ const Groups = new Map([
 ]);
 
 export class MembraneControls {
-  constructor({ descriptors, state, onChange, onLevelReset }) {
+  constructor({ descriptors, state, onChange, onLevelReset,
+                showPresets = true }) {
     this.descriptors = descriptors;
     this.byKey = new Map(descriptors.map(item => [item.key, item]));
     this.state = state;
     this.onChange = onChange;
     this.onLevelReset = onLevelReset;
+    this.showPresets = showPresets;
   }
 
   build() {
     document.querySelectorAll("[data-membrane-controls]").forEach(
       element => element.replaceChildren(),
     );
-    this.#presets();
+    if (this.showPresets) this.#presets();
     this.#mode();
     for (const [parentId, keys] of Groups)
       for (const key of keys) this.#slider(parentId, key);

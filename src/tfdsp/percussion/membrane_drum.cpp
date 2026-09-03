@@ -167,7 +167,7 @@ void MembraneDrum::Trigger(const MembraneDrumHit &hit) noexcept {
   NextVoice().Trigger(parameters_, hit, ++generation_);
 }
 
-MembraneDrumFrame MembraneDrum::ProcessFrame() noexcept {
+MembraneDrumSources MembraneDrum::ProcessSources() noexcept {
   MembraneResonator<MembraneModeCount>::Drive membraneDrive{};
   float direct = 0.f;
   for (auto &voice : voices_) {
@@ -182,10 +182,15 @@ MembraneDrumFrame MembraneDrum::ProcessFrame() noexcept {
   const float body = parameters_.routing.Get(
       MembraneDrumRoute::BodyToObservation) *
       membrane_.Process(membraneDrive, strikeEnergy_.TensionScale());
-  const float observed = observation_.Process({direct, body});
+  return {direct, body};
+}
+
+MembraneDrumFrame MembraneDrum::ProcessFrame() noexcept {
+  const auto sources = ProcessSources();
+  const float observed = observation_.Process({sources.direct, sources.body});
   const float output = tfdsp::FiniteNormalOrZero(
       parameters_.outputGain * equalizer_.Process(observed));
-  return {direct, body, output};
+  return {sources.direct, sources.body, output};
 }
 
 float MembraneDrum::Process() noexcept { return ProcessFrame().output; }

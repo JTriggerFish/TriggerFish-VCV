@@ -95,14 +95,15 @@ std::uint32_t ParameterIndex(const std::uint32_t handle,
 int main() {
   Check(tf_percussion_api_version() == 1,
         "unreleased percussion API remains version one");
-  Check(tf_percussion_recipe_count() == 3,
-        "three compiled percussion recipes are registered");
+  Check(tf_percussion_recipe_count() == 4,
+        "four compiled percussion recipes are registered");
   Check(std::string_view(tf_percussion_recipe_key(0)) == "metal.cymbal.v1" &&
             std::string_view(tf_percussion_recipe_key(1)) == "drum.kick-fm.v1" &&
-            std::string_view(tf_percussion_recipe_key(2)) == "drum.membrane.v1",
+            std::string_view(tf_percussion_recipe_key(2)) == "drum.membrane.v1" &&
+            std::string_view(tf_percussion_recipe_key(3)) == "drum.snare.v1",
         "recipe keys are stable");
-  Check(tf_percussion_recipe_key(3) == nullptr &&
-            tf_percussion_create(3, 48000.f) == 0,
+  Check(tf_percussion_recipe_key(4) == nullptr &&
+            tf_percussion_create(4, 48000.f) == 0,
         "unknown recipes are rejected");
 
   const auto metallic = tf_percussion_create(0, 48000.f);
@@ -189,6 +190,33 @@ int main() {
   CheckPreparedRoundTrip(
       membrane, 2, "prepared membrane recipe is sample-identical");
   tf_percussion_destroy(membrane);
+
+  const auto snare = tf_percussion_create(3, 48000.f);
+  Check(snare != 0 && tf_percussion_recipe(snare) == 3,
+        "snare session can be created");
+  Check(tf_percussion_parameter_count(snare) == 47 &&
+            tf_percussion_route_count(snare) == 7,
+        "snare exposes membrane, wire, and routing controls");
+  const auto wireLevel = ParameterIndex(snare, "wire_level");
+  const auto wireDensity = ParameterIndex(snare, "wire_density");
+  const auto snarePitch = ParameterIndex(snare, "fundamental_hz");
+  Check(wireLevel < 47 && wireDensity < 47,
+        "snare wire parameters have stable identifiers");
+  Check(tf_percussion_parameter_default(snare, snarePitch) == 185.f &&
+            tf_percussion_parameter_get(snare, snarePitch) == 185.f,
+        "snare metadata and initialized state share fitted defaults");
+  const auto snareFirst = Render(snare, 81, 128);
+  Check(Energy(snareFirst) > 1.e-5 &&
+            snareFirst == Render(snare, 81, 37),
+        "snare API is audible, deterministic, and block independent");
+  CheckPreparedRoundTrip(snare, 3, "prepared snare is sample-identical");
+  Check(tf_percussion_route_set(snare, 5, 0.f) &&
+            tf_percussion_commit(snare),
+        "snare body-to-wire route can be disabled");
+  const auto withoutWires = Render(snare, 81, 128);
+  Check(Difference(snareFirst, withoutWires) > 1.e-6,
+        "body-driven wire route changes snare output");
+  tf_percussion_destroy(snare);
 
   std::array<std::uint32_t, 4> pool{};
   for (auto &pooled : pool) pooled = tf_percussion_create(0, 48000.f);

@@ -16,10 +16,13 @@ set(TRIGGERFISH_PERCUSSION_SOURCES
   ${TRIGGERFISH_ROOT}/src/tfdsp/percussion/crash_cymbal_parameters.cpp
   ${TRIGGERFISH_ROOT}/src/tfdsp/percussion/membrane_drum.cpp
   ${TRIGGERFISH_ROOT}/src/tfdsp/percussion/membrane_drum_parameters.cpp
+  ${TRIGGERFISH_ROOT}/src/tfdsp/percussion/wire_rack.cpp
+  ${TRIGGERFISH_ROOT}/src/tfdsp/percussion/snare_drum.cpp
   ${CMAKE_CURRENT_LIST_DIR}/wasm/crash_api.cpp
   ${CMAKE_CURRENT_LIST_DIR}/wasm/crash_macros.cpp
   ${CMAKE_CURRENT_LIST_DIR}/wasm/kick_macros.cpp
   ${CMAKE_CURRENT_LIST_DIR}/wasm/membrane_macros.cpp
+  ${CMAKE_CURRENT_LIST_DIR}/wasm/snare_macros.cpp
   ${CMAKE_CURRENT_LIST_DIR}/wasm/percussion_api.cpp
   ${CMAKE_CURRENT_LIST_DIR}/wasm/percussion_prepared_api.cpp
   ${CMAKE_CURRENT_LIST_DIR}/wasm/percussion_session.cpp

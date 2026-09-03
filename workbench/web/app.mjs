@@ -4,6 +4,7 @@ import { PercussionEngine } from "./engine.mjs";
 import { FitControls } from "./fit_controls.mjs";
 import { KickControls } from "./kick_controls.mjs";
 import { MembraneControls } from "./membrane_controls.mjs";
+import { SnareControls } from "./snare_controls.mjs";
 import { matchedModelLevelDb } from "./level_match.mjs";
 import { PerformanceControls } from "./performance_controls.mjs";
 import { recipeAdapter } from "./recipe_adapter.mjs";
@@ -110,7 +111,8 @@ function buildControls(resetValues = true) {
     state.macros = engine.parameters.map(item => item.defaultValue);
   const ControlType = state.recipeKey === "metal.cymbal.v1"
     ? FitControls : state.recipeKey === "drum.membrane.v1"
-      ? MembraneControls : KickControls;
+      ? MembraneControls : state.recipeKey === "drum.snare.v1"
+        ? SnareControls : KickControls;
   fitControls = new ControlType({
     descriptors: engine.parameters, state,
     onChange: key => {

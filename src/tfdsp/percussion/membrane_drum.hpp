@@ -23,6 +23,11 @@ struct MembraneDrumFrame {
   float output{};
 };
 
+struct MembraneDrumSources {
+  float direct{};
+  float body{};
+};
+
 class MembraneDrum {
 public:
   static constexpr std::size_t VoiceCount = 8;
@@ -31,6 +36,7 @@ public:
   void Prepare(const MembraneDrumPreparedParameters &prepared);
   void Reset() noexcept;
   void Trigger(const MembraneDrumHit &hit) noexcept;
+  MembraneDrumSources ProcessSources() noexcept;
   MembraneDrumFrame ProcessFrame() noexcept;
   float Process() noexcept;
   float StrikeEnergy() const noexcept { return strikeEnergy_.Value(); }

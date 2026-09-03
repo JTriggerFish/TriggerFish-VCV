@@ -9,23 +9,29 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from percussion_reference_corpus import load_corpus, reference_path
+from percussion_reference_corpus import build_catalog, reference_path
 
 
 class WorkbenchHandler(SimpleHTTPRequestHandler):
-    def __init__(self, *args, corpus_root: Path, **kwargs) -> None:
-        self.corpus_root = corpus_root
+    def __init__(
+        self,
+        *args,
+        corpora: list[dict[str, object]],
+        reference_paths: dict[str, Path],
+        **kwargs,
+    ) -> None:
+        self.corpora = corpora
+        self.reference_paths = reference_paths
         super().__init__(*args, **kwargs)
 
     def do_GET(self) -> None:
         if urlsplit(self.path).path == "/api/reference-corpora":
-            corpus = load_corpus(self.corpus_root)
-            self._send_json({"corpora": [corpus] if corpus else []})
+            self._send_json({"corpora": self.corpora})
             return
         super().do_GET()
 
     def translate_path(self, path: str) -> str:
-        reference = reference_path(self.corpus_root, urlsplit(path).path)
+        reference = reference_path(self.reference_paths, urlsplit(path).path)
         return str(reference) if reference else super().translate_path(path)
 
     def _send_json(self, value: object) -> None:
@@ -55,13 +61,21 @@ def main() -> None:
             "private-corpus-a-crash-v1/cells-oh-dyn-v2"
         ),
     )
+    parser.add_argument("--library-root", type=Path)
+    parser.add_argument("--reference-root", type=Path)
     arguments = parser.parse_args()
     directory = arguments.directory.resolve()
     if not directory.is_dir():
         parser.error(f"not a directory: {directory}")
     corpus_root = arguments.corpus_root.resolve()
+    corpora, reference_paths = build_catalog(
+        corpus_root, arguments.library_root, arguments.reference_root
+    )
     handler = partial(
-        WorkbenchHandler, directory=str(directory), corpus_root=corpus_root
+        WorkbenchHandler,
+        directory=str(directory),
+        corpora=corpora,
+        reference_paths=reference_paths,
     )
     server = ThreadingHTTPServer(("0.0.0.0", arguments.port), handler)
     print(f"serving {directory} at http://0.0.0.0:{arguments.port}/", flush=True)

@@ -21,6 +21,7 @@ std::uint32_t tf_percussion_prepared_size(
   case Recipe::CompactKick: return sizeof(tfworkbench::PreparedKickRecipe);
   case Recipe::MembraneDrum:
     return sizeof(tfworkbench::PreparedMembraneRecipe);
+  case Recipe::SnareDrum: return sizeof(tfworkbench::PreparedSnareRecipe);
   default: return 0;
   }
 }
@@ -53,7 +54,7 @@ int tf_percussion_export_prepared(
           session->kickValues);
       prepared.parameters.routing = session->kickRouting;
       std::memcpy(destination, &prepared, sizeof(prepared));
-    } else {
+    } else if (session->recipe == Recipe::MembraneDrum) {
       tfworkbench::PreparedMembraneRecipe prepared;
       prepared.header.recipe = static_cast<std::uint32_t>(session->recipe);
       prepared.header.byteSize = sizeof(prepared);
@@ -62,6 +63,17 @@ int tf_percussion_export_prepared(
           session->membraneValues);
       parameters.routing = session->membraneRouting;
       prepared.parameters = tfdsp::percussion::PrepareMembraneDrumParameters(
+          session->sampleRate, parameters);
+      std::memcpy(destination, &prepared, sizeof(prepared));
+    } else {
+      tfworkbench::PreparedSnareRecipe prepared;
+      prepared.header.recipe = static_cast<std::uint32_t>(session->recipe);
+      prepared.header.byteSize = sizeof(prepared);
+      prepared.header.sampleRate = session->sampleRate;
+      auto parameters = tfworkbench::ApplySnareParameters(
+          session->snareValues);
+      parameters.routing = session->snareRouting;
+      prepared.parameters = tfdsp::percussion::PrepareSnareDrumParameters(
           session->sampleRate, parameters);
       std::memcpy(destination, &prepared, sizeof(prepared));
     }
@@ -117,6 +129,21 @@ int tf_percussion_apply_prepared(
           std::abs(prepared.parameters.membrane.sampleRate -
                    session->sampleRate) > .01f) return 0;
       session->membrane.Prepare(prepared.parameters);
+      return 1;
+    }
+    if (session->recipe == Recipe::SnareDrum &&
+        byteSize == sizeof(tfworkbench::PreparedSnareRecipe)) {
+      tfworkbench::PreparedSnareRecipe prepared;
+      std::memcpy(&prepared, source, sizeof(prepared));
+      if (!std::isfinite(prepared.parameters.sampleRate) ||
+          !std::isfinite(prepared.parameters.membrane.sampleRate) ||
+          !std::isfinite(prepared.parameters.wires.sampleRate) ||
+          std::abs(prepared.parameters.sampleRate - session->sampleRate) > .01f ||
+          std::abs(prepared.parameters.membrane.sampleRate -
+                   session->sampleRate) > .01f ||
+          std::abs(prepared.parameters.wires.sampleRate -
+                   session->sampleRate) > .01f) return 0;
+      session->snare.Prepare(prepared.parameters);
       return 1;
     }
   } catch (...) {

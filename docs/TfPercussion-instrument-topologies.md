@@ -163,6 +163,17 @@ body, contact nonlinearity, radiation, and bottom microphone scale differently.
 A static touching state must not generate energy, and a slow change of contact
 gap must approach passive behaviour.
 
+**Implemented compact candidate.** `WireRack` high-passes the membrane tap so
+static displacement is silent, derives a bounded attack/release contact amount
+from the remaining motion, and uses that amount to excite both correlated
+tilted noise and a normalized bank of short wire modes. The compiled
+`drum.snare.v1` recipe routes one shared `MembraneDrum` into this rack and keeps
+direct contact, membrane, and wire taps separate until observation. This is the
+constructive counterpart to the tutorial's independent bright snare branch. A
+second membrane, cavity, and distributed one-sided collisions remain later
+alternatives if reference fits expose behavior the compact rack cannot
+reproduce.
+
 #### Observation and microphone model
 
 The synthesizer needs explicit source-state outputs before any room effect:

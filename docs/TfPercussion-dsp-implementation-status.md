@@ -155,6 +155,19 @@ and click energy. Its three optional source routes are prepared gains at fixed
 call sites. The defaults are a constructive starting voice, not a fitted claim
 about a particular acoustic kick.
 
+`SnareDrum` is the fourth compiled recipe, after the general membrane recipe.
+It reuses the membrane's direct and body taps and drives `WireRack` only from
+high-passed membrane motion. The rack adds a bounded contact envelope,
+correlated tilted noise, and 8--48 normalized short wire modes. Static
+membrane displacement therefore cannot sustain wire sound, while a rapid
+strike can. Direct contact, membrane, and wires remain separate until a
+three-source observation stage. The workbench exposes wire engagement,
+release, threshold, bandwidth, density, colour, and decay, plus a prominent
+body-ring frequency, decay, and level; these are visible fitted starting
+controls rather than hidden constants.
+Its first single-cell calibration and remaining audible/visual gaps are
+recorded in [the initial compact-snare fit](TfPercussion-snare-initial-fit.md).
+
 An earlier coupled-comb/frequency-shift graph was rejected during calibration:
 its controls could not place persistent ridges independently. The implemented
 replacement originally sent direct body drive to a small arbitrary modal bank
@@ -219,6 +232,14 @@ native membrane graph measured about 216 ns/sample at 48 kHz on the development
 machine (about 1.0% of one core at nominal rate). Module replacement and
 arbitrary new connection endpoints wait
 for another registered, statically ordered recipe.
+
+The fourth patch is the statically scheduled membrane-plus-wires snare. Seven
+prepared route gains cover its four exciter mixes, body observation,
+body-to-wire drive, and wire observation. Its browser panels and live
+AudioWorklet use the same C++ recipe and prepared-state handoff. The local
+reference browser also discovers small allow-listed grids for one acoustic
+snare, one kick, a gong, and a 21-inch ride when those development samples are
+installed; no sample audio or machine path is copied into the repository.
 
 The Python numerical-analysis implementation and its remaining real-data gates
 are recorded in `TfPercussion-analysis-toolkit.md`. The static Plotly report is

@@ -222,6 +222,11 @@ if (testAudio) {
 if (testControls) {
   const controls = await call("Runtime.evaluate", {
     expression: `new Promise(resolve => {
+      const recipe = document.getElementById("instrument-recipe");
+      if (recipe.value !== "0") {
+        recipe.value = "0";
+        recipe.dispatchEvent(new Event("change"));
+      }
       const master = document.getElementById("master");
       const hardness = document.getElementById("hardness");
       const contactSpread = document.getElementById("contact-spread");
@@ -486,6 +491,11 @@ if (testControls) {
     })`,
     awaitPromise: true, returnByValue: true,
   });
+  if (!controls.result.value?.checks) {
+    throw new Error(`metallic control probe failed: ${
+      controls.exceptionDetails?.exception?.description ??
+      controls.exceptionDetails?.text ?? JSON.stringify(controls)}`);
+  }
   result.controls = controls.result.value;
   const kickRecipe = await call("Runtime.evaluate", {
     expression: `new Promise(resolve => {
@@ -529,7 +539,7 @@ if (testControls) {
           const hitsAfter = Number(document.getElementById("limiter").textContent
             .match(/hits (\\d+)/)?.[1] ?? 0);
           const checks = {
-            selector: select.options.length === 3 && select.value === "1",
+            selector: select.options.length === 4 && select.value === "1",
             controls: document.querySelectorAll(
               '[data-kick-key] input[type="range"]',
             ).length === 15,
@@ -592,7 +602,7 @@ if (testControls) {
           const hitsAfter = Number(document.getElementById("limiter").textContent
             .match(/hits (\\d+)/)?.[1] ?? 0);
           const checks = {
-            selector: select.options.length === 3 && select.value === "2",
+            selector: select.options.length === 4 && select.value === "2",
             controls: document.querySelectorAll(
               '[data-membrane-key] input[type="range"]',
             ).length === 30,
@@ -626,6 +636,52 @@ if (testControls) {
   result.controls.membraneRecipe = membraneRecipe.result.value;
   result.controls.checks.membraneRecipe =
     result.controls.membraneRecipe.passed;
+  const snareRecipe = await call("Runtime.evaluate", {
+    expression: `new Promise(resolve => {
+      const select = document.getElementById("instrument-recipe");
+      select.value = "3";
+      select.dispatchEvent(new Event("change"));
+      const deadline = performance.now() + 12000;
+      const poll = () => {
+        const ready = document.getElementById("status").textContent === "Ready" &&
+          document.getElementById("live-commit").textContent
+            .startsWith("Live DSP ready");
+        if (!ready && performance.now() < deadline) {
+          setTimeout(poll, 50);
+          return;
+        }
+        const hitsBefore = Number(document.getElementById("limiter").textContent
+          .match(/hits (\\d+)/)?.[1] ?? 0);
+        document.getElementById("play-synthesis").click();
+        setTimeout(() => {
+          const hitsAfter = Number(document.getElementById("limiter").textContent
+            .match(/hits (\\d+)/)?.[1] ?? 0);
+          const checks = {
+            selector: select.options.length === 4 && select.value === "3",
+            wireControls: document.querySelectorAll(
+              "#snare-wire-response-controls input, #snare-wire-spectrum-controls input",
+            ).length === 13,
+            ringControls: document.querySelectorAll(
+              "#snare-ring-controls input",
+            ).length === 3,
+            routing: document.querySelectorAll(
+              "#routing-compact .routing-node",
+            ).length === 10 && document.querySelectorAll(
+              "#routing-compact .routing-edge",
+            ).length === 13,
+            label: document.getElementById("routing-recipe-label")
+              .textContent === "Snare drum",
+            liveAudio: hitsAfter > hitsBefore,
+          };
+          resolve({ checks, passed: Object.values(checks).every(Boolean) });
+        }, 500);
+      };
+      poll();
+    })`,
+    awaitPromise: true, returnByValue: true,
+  });
+  result.controls.snareRecipe = snareRecipe.result.value;
+  result.controls.checks.snareRecipe = result.controls.snareRecipe.passed;
   result.controls.passed = Object.values(result.controls.checks).every(Boolean);
 }
 if (screenshot) {
