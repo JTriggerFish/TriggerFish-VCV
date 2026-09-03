@@ -4,14 +4,7 @@ const clamp = (value, minimum, maximum) =>
 const gongPreset = {
   impact_tone_noise: .35, impact_width: 1.8,
   bloom_level: 1.15, bloom_nonlinearity: .65, bloom_development: .8,
-  body_tone_wash: .48, body_brightness: -2.5,
-  dense_minimum_frequency: 120, dense_maximum_frequency: 14000,
-  dense_mode_density: 1,
-  dense_spacing_jitter: .72, dense_gain_spread: 3,
-  dense_decay_spread: .25,
-  turbulence_amount: .15, turbulence_persistence: 1.3,
-  turbulence_frequency_0: 120, turbulence_frequency_1: 800,
-  turbulence_frequency_2: 5000,
+  body_brightness: -2.5,
   body_decay_frequency_1: 240, body_decay_frequency_2: 700,
   body_decay_frequency_3: 2400, body_decay_frequency_4: 8000,
   body_decay_seconds_0: 12, body_decay_seconds_1: 10,
@@ -22,19 +15,10 @@ const gongPreset = {
 };
 
 const gongLevels = [5, 6, 8, 9, 8, 7, 5, 3, 1, -1, -3, -5];
-const gongWashLevels = [7, 8, 6, 3, 0, -2, -4, -6];
-
 const chinaPreset = {
   impact_tone_noise: .62, impact_width: .65,
   bloom_level: .85, bloom_nonlinearity: .5, bloom_development: .3,
-  body_tone_wash: .7, body_brightness: 1.5,
-  dense_minimum_frequency: 350, dense_maximum_frequency: 22000,
-  dense_mode_density: .65,
-  dense_spacing_jitter: .92, dense_gain_spread: 5,
-  dense_decay_spread: .1,
-  turbulence_amount: .12, turbulence_persistence: .65,
-  turbulence_frequency_0: 900, turbulence_frequency_1: 5000,
-  turbulence_frequency_2: 16000,
+  body_brightness: 1.5,
   body_decay_frequency_1: 1100, body_decay_frequency_2: 3000,
   body_decay_frequency_3: 8000, body_decay_frequency_4: 17000,
   body_decay_seconds_0: 2.8, body_decay_seconds_1: 2.2,
@@ -45,22 +29,25 @@ const chinaPreset = {
 };
 
 const chinaLevels = [-7, -5, -3, 0, 4, 7, 6, 5, 3, 2, 0, -2];
-const chinaWashLevels = [-7, -4, 0, 5, 6, 3, 0, -2];
-
 function presetWithSpectralControls(
-  preset, defaults, scale, resolvedLevels, washLevels,
+  preset, defaults, scale, resolvedLevels,
 ) {
   const result = { ...preset };
-  for (let index = 0; index < 12; ++index) {
+  const indices = Object.keys(defaults).flatMap(key => {
+    const match = /^resolved_frequency_(\d+)$/.exec(key);
+    return match ? [Number(match[1])] : [];
+  }).sort((left, right) => left - right);
+  indices.forEach((index, position) => {
+    const curvePosition = indices.length > 1
+      ? position * (resolvedLevels.length - 1) / (indices.length - 1) : 0;
+    const left = Math.floor(curvePosition);
+    const right = Math.min(resolvedLevels.length - 1, left + 1);
+    const amount = curvePosition - left;
     result[`resolved_frequency_${index}`] =
       defaults[`resolved_frequency_${index}`] * scale;
-    result[`resolved_level_${index}`] = resolvedLevels[index];
-  }
-  for (let index = 0; index < 8; ++index) {
-    result[`dense_wash_frequency_${index}`] =
-      defaults[`dense_wash_frequency_${index}`] * scale;
-    result[`dense_wash_level_${index}`] = washLevels[index];
-  }
+    result[`resolved_level_${index}`] = resolvedLevels[left] + amount *
+      (resolvedLevels[right] - resolvedLevels[left]);
+  });
   return result;
 }
 
@@ -70,10 +57,10 @@ export function expandedSizeMeta(descriptors, position) {
     descriptors.map(item => [item.key, item.defaultValue]),
   );
   const gong = presetWithSpectralControls(
-    gongPreset, defaults, .42, gongLevels, gongWashLevels,
+    gongPreset, defaults, .42, gongLevels,
   );
   const china = presetWithSpectralControls(
-    chinaPreset, defaults, 1.45, chinaLevels, chinaWashLevels,
+    chinaPreset, defaults, 1.45, chinaLevels,
   );
   const target = amount < .5 ? gong : china;
   const blend = amount < .5 ? amount * 2 : (amount - .5) * 2;

@@ -1,0 +1,130 @@
+# Modular percussion patches
+
+## Purpose
+
+A TriggerFish percussion instrument is a versioned JSON patch that connects
+reusable contact, body, interaction, observation, and output modules. The JSON
+is the durable design format shared by the browser workbench, fitting tools,
+factory instruments, and Rack serialization. It is not the audio-thread
+execution representation.
+
+The first two production recipes are the metallic plate and compact FM kick.
+Both expose named patch parameters through one recipe-aware C/WebAssembly API;
+the earlier crash-only API remains only as a compatibility wrapper.
+
+## Signal-flow boundary
+
+The visible instrument graph is a directed acyclic graph:
+
+```text
+events -> exciters -> transformations -> bodies -> interactions
+                \-----------------------------> observation -> output
+```
+
+Feedback is owned by a component with a tested recurrence. A dispersion loop,
+feedback-delay body, or locally coupled modal field is therefore one node, not
+a cycle in the patch graph. This keeps scheduling deterministic and prevents a
+patch editor from creating an unqualified zero-delay feedback loop.
+
+Modules have typed, named input and output ports. The initial patch contains
+audio ports; event, scalar-control, body-motion, and energy ports will be added
+as their first consumers are implemented. Port types, component versions,
+parameter descriptors, and presentation metadata belong to one module
+registry rather than being repeated in every patch.
+
+## JSON contract
+
+The initial schema identifier is `triggerfish.percussion.patch/v1`. A patch
+contains:
+
+- a stable patch ID and display name;
+- a minimum compatible engine version;
+- a registered production recipe;
+- versioned module instances with stable IDs and named parameters;
+- typed connections and named outputs;
+- reduced performance controls and their mappings; and
+- optional editor layout metadata ignored by DSP.
+
+Parameter names include units where ambiguity is possible. Positional arrays
+are transport details and must not become the durable patch format. Unknown
+module versions, parameter names, ports, cycles, duplicate IDs, non-finite
+values, and out-of-range values are rejected before a voice is prepared.
+
+Fitting snapshots embed this patch alongside their reference identity, event,
+and analysis settings. The patch is therefore reproducible without relying on
+the current value of a factory preset or an external file.
+
+## Workbench execution
+
+The browser first validates the patch, then matches it to one of a bounded set
+of registered recipes. A recipe owns a statically ordered schedule of typed C++
+calls; it is not a general graph interpreter. The metallic-plate recipe
+compiles five optional audio connections to prepared gains at those call sites.
+The compact-kick recipe similarly compiles three source-to-mixer routes around
+two correlated-FM sources and one noise click. This makes every routing state
+explicit while keeping the sample loop free of JSON parsing, allocation,
+virtual dispatch, and topology discovery.
+
+The workbench may change each recipe's optional source connections live. It
+rejects a routing state with no complete path to the output, and required
+mix/observation/output connections are locked. Module replacement and arbitrary
+new connections remain unavailable until another registered recipe declares
+and implements them. A structural edit prepares a replacement voice away from
+the audio callback and
+swaps it at a safe boundary. Parameters declare whether they are structural,
+sampled at the next hit, or continuously smoothed.
+
+The compact routing overview remains visible above the complete parameter
+panel. Double-clicking it opens the larger design view. Module role colours are
+shared by routing nodes and parameter-section markers, but text labels remain
+the primary identifier. All modules present in the patch keep their controls
+visible; graph selection only locates or highlights a section.
+
+## Rack execution
+
+Factory Rack instruments use registered, statically compiled topology recipes
+with the JSON patch embedded as prepared parameter data. The
+sample loop remains direct function calls: it performs no JSON parsing,
+topology discovery, allocation, or general graph traversal.
+
+A Rack module exposes only the patch's `performanceControls`. One performance
+control may map through bounded curves to several module parameters—for
+example, decay can scale body T60 and wire persistence by different amounts.
+Persistent knobs may be overridden by CV, while hit strength remains an event
+input. Rack project serialization embeds the resolved instrument RTTI-free
+patch data so later factory-preset changes do not alter an existing project.
+
+The development-only WebAssembly, JavaScript UI, reference corpus, and analysis
+tools remain separate build targets and are not dependencies of normal Rack or
+official plugin builds.
+
+## Recipe family
+
+The intended initial recipes are:
+
+| Recipe | Construction |
+| --- | --- |
+| Metallic plate | contact, optional dispersion, stochastic modal field, observation |
+| Membrane | contact, modal or feedback body, optional tension state, observation |
+| Snare | membrane plus body-driven wire interaction |
+| Compact kick | two overlap-safe correlated-FM burst branches |
+| Acoustic kick | reduced FM/contact source feeding an optional head/cavity body |
+| Hi-hat | metallic body with pedal-controlled passive loss and driven plate contacts |
+
+These are convenient starting structures, not hard instrument categories. The
+same components may form gongs, toms, rattles, prepared drums, or synthetic
+hybrids as long as their port contracts and energy invariants remain valid.
+
+## Implementation sequence
+
+1. **Complete:** qualify the patch schema, validator, migration, compact routing
+   overview, and executable metallic-plate routing variants.
+2. **Complete:** move shared module descriptors and recipe matching behind the
+   Wasm boundary, retain statically ordered schedules, and prove the boundary
+   with a second complete compact-kick recipe.
+3. Add reusable mixers, output selection, transient voice pooling, and
+   selectable observation EQ.
+4. Implement the membrane recipe.
+5. Add body-energy tension and the snare-wire interaction.
+6. Generate reduced Rack controls from performance mappings and embed factory
+   patches in the instrument modules.

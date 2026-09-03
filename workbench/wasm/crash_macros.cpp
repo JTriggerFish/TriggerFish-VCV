@@ -382,6 +382,13 @@ const CrashMacroDescriptor &CrashMacroDescription(
   return Descriptors[std::min(index, Descriptors.size() - 1)];
 }
 
+const CrashMacroDescriptor &ActiveCrashMacroDescription(
+    const std::size_t index) noexcept {
+  const std::size_t bounded = std::min(
+      index, ActiveCrashMacroIndices.size() - 1);
+  return Descriptors[ActiveCrashMacroIndices[bounded]];
+}
+
 CrashMacroValues DefaultCrashMacros() noexcept {
   CrashMacroValues result{};
   for (std::size_t index = 0; index < result.size(); ++index)

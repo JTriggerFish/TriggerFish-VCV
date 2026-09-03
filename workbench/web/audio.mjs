@@ -1,20 +1,23 @@
 import { limiterLookaheadSeconds } from "./limiter_config.mjs";
+import { ConfigurationPreparer } from "./configuration_preparer.mjs";
+import { StandbyRenderer } from "./standby_renderer.mjs";
 
 export class SafeAudition {
   constructor(onStatus = () => {}) {
     this.onStatus = onStatus;
-    this.context = null;
-    this.source = null;
     this.masterDb = -12;
     this.trimDb = 0;
     this.reductionDb = 0;
     this.triggerCount = 0;
-    this.rendererReady = false;
     this.pendingMacros = [];
-    this.macroGeneration = 0;
-    this.appliedMacroGeneration = 0;
+    this.pendingRouting = [];
+    this.pendingRecipeIndex = 0;
+    this.configurationGeneration = 0;
+    this.appliedConfigurationGeneration = -1;
     this.macroCommitStarted = 0;
     this.macroCommitMs = 0;
+    this.preparationMs = 0;
+    this.installationMs = 0;
   }
 
   async #prepare() {
@@ -31,19 +34,11 @@ export class SafeAudition {
     this.context = new AudioContext({ latencyHint: "interactive" });
     if (this.context.state === "running") await this.context.suspend();
     await Promise.all([
-      this.context.audioWorklet.addModule("crash_audio_worklet_processor.mjs"),
+      this.context.audioWorklet.addModule(
+        "percussion_audio_worklet_processor.mjs",
+      ),
       this.context.audioWorklet.addModule("lookahead_limiter_processor.mjs"),
     ]);
-
-    const initialGeneration = this.macroGeneration;
-    this.live = new AudioWorkletNode(
-      this.context, "triggerfish-crash-renderer", {
-        numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [1],
-        processorOptions: { macros: [...this.pendingMacros] },
-      },
-    );
-    const ready = this.#bindRenderer(initialGeneration);
-    this.liveGain = new GainNode(this.context);
     this.trim = new GainNode(this.context);
     this.limiter = new AudioWorkletNode(
       this.context, "triggerfish-lookahead-limiter",
@@ -57,50 +52,52 @@ export class SafeAudition {
       fftSize: 256, smoothingTimeConstant: 0,
     });
     this.meterSamples = new Float32Array(this.meter.fftSize);
-    this.live.connect(this.liveGain).connect(this.trim).connect(this.limiter);
+    this.trim.connect(this.limiter);
     this.limiter.connect(this.master).connect(this.meter).connect(
       this.context.destination,
     );
+    this.renderer = new StandbyRenderer({
+      context: this.context,
+      destination: this.trim,
+      onApplied: configuration => this.#configurationApplied(configuration),
+      onTriggered: () => { ++this.triggerCount; },
+      onError: error => this.onStatus(String(error)),
+    });
+    this.preparer = new ConfigurationPreparer({
+      onPrepared: configuration => this.renderer.configure(configuration),
+      onError: error => this.onStatus(String(error)),
+    });
     this.setMaster(this.masterDb);
     this.setTrim(this.trimDb);
-    await ready;
+    this.#configureRenderer();
+    await this.preparer.ready();
+    await this.renderer.ready();
   }
 
-  #bindRenderer(initialGeneration) {
-    return new Promise((resolve, reject) => {
-      let starting = true;
-      this.live.onprocessorerror = () => {
-        const error = new Error("crash AudioWorklet processor failed");
-        this.onStatus(error.message);
-        if (starting) reject(error);
-      };
-      this.live.port.onmessage = ({ data }) => {
-        if (data.kind === "ready") {
-          this.rendererReady = true;
-          this.appliedMacroGeneration = initialGeneration;
-          this.macroCommitMs = data.elapsedMs;
-          starting = false;
-          if (this.macroGeneration > initialGeneration) {
-            this.live.port.postMessage({
-              kind: "macros", values: this.pendingMacros,
-              generation: this.macroGeneration,
-            });
-          }
-          resolve();
-        } else if (data.kind === "macros-applied") {
-          if (data.generation >= this.appliedMacroGeneration) {
-            this.appliedMacroGeneration = data.generation;
-            this.macroCommitMs = data.elapsedMs;
-          }
-        } else if (data.kind === "triggered") {
-          ++this.triggerCount;
-        } else if (data.kind === "error") {
-          const error = new Error(data.message);
-          this.onStatus(error.message);
-          if (starting) reject(error);
-        }
-      };
+  #configurationApplied(configuration) {
+    this.appliedConfigurationGeneration = Math.max(
+      this.appliedConfigurationGeneration, configuration.generation,
+    );
+    this.macroCommitMs = configuration.elapsedMs;
+    this.preparationMs = configuration.preparationMs;
+    this.installationMs = configuration.installationMs;
+  }
+
+  #configureRenderer() {
+    if (!this.renderer) return;
+    this.preparer.configure({
+      recipeIndex: this.pendingRecipeIndex,
+      values: this.pendingMacros,
+      routing: this.pendingRouting,
+      sampleRate: this.context.sampleRate,
+      generation: this.configurationGeneration,
     });
+  }
+
+  #configurationChanged() {
+    ++this.configurationGeneration;
+    this.macroCommitStarted = performance.now();
+    this.#configureRenderer();
   }
 
   setMaster(db) {
@@ -115,18 +112,26 @@ export class SafeAudition {
 
   setMacros(values) {
     this.pendingMacros = [...values];
-    const generation = ++this.macroGeneration;
-    this.macroCommitStarted = performance.now();
-    if (this.rendererReady) {
-      this.live.port.postMessage({ kind: "macros", values, generation });
-    }
+    this.#configurationChanged();
+  }
+
+  setRouting(values) {
+    this.pendingRouting = [...values];
+    this.#configurationChanged();
+  }
+
+  setRecipe(recipeIndex, values, routing) {
+    this.pendingRecipeIndex = recipeIndex;
+    this.pendingMacros = [...values];
+    this.pendingRouting = [...routing];
+    this.#configurationChanged();
   }
 
   async trigger(event) {
     await this.#prepare();
     this.#stopSource();
-    this.liveGain.gain.value = 1;
-    this.live.port.postMessage({ kind: "trigger", event });
+    await this.preparer.ready();
+    await this.renderer.trigger(event);
   }
 
   async activate() { await this.#prepare(); }
@@ -134,7 +139,7 @@ export class SafeAudition {
   async play(samples, sampleRate) {
     await this.#prepare();
     this.#stopSource();
-    this.liveGain.gain.value = 0;
+    this.renderer.setMuted(true);
     const buffer = new AudioBuffer({
       length: samples.length, numberOfChannels: 1, sampleRate,
     });
@@ -143,15 +148,15 @@ export class SafeAudition {
     this.source.connect(this.trim);
     this.source.onended = () => {
       this.source = null;
-      this.liveGain.gain.value = 1;
+      this.renderer.setMuted(false);
     };
     this.source.start();
   }
 
   stop() {
     this.#stopSource();
-    if (this.liveGain) this.liveGain.gain.value = 1;
-    this.live?.port.postMessage({ kind: "reset" });
+    this.renderer?.setMuted(false);
+    this.renderer?.reset();
   }
 
   #stopSource() {
@@ -169,7 +174,8 @@ export class SafeAudition {
     if (!this.meter) return -Infinity;
     this.meter.getFloatTimeDomainData(this.meterSamples);
     let peak = 0;
-    for (const sample of this.meterSamples) peak = Math.max(peak, Math.abs(sample));
+    for (const sample of this.meterSamples)
+      peak = Math.max(peak, Math.abs(sample));
     return 20 * Math.log10(Math.max(peak, 1e-9));
   }
   get latencyMs() { return this.latencyBreakdown.totalMs; }
@@ -193,7 +199,7 @@ export class SafeAudition {
   }
   get sampleRate() { return this.context?.sampleRate ?? 0; }
   get macroCommitPending() {
-    return this.appliedMacroGeneration < this.macroGeneration;
+    return this.appliedConfigurationGeneration < this.configurationGeneration;
   }
   get macroCommitElapsedMs() {
     return this.macroCommitPending

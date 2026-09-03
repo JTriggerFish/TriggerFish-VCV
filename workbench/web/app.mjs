@@ -1,19 +1,29 @@
 import { SafeAudition } from "./audio.mjs";
-import { CrashEngine } from "./engine.mjs";
+import { bindAnalysisControls } from "./analysis_controls.mjs";
+import { PercussionEngine } from "./engine.mjs";
 import { FitControls } from "./fit_controls.mjs";
+import { KickControls } from "./kick_controls.mjs";
 import { matchedModelLevelDb } from "./level_match.mjs";
+import { PerformanceControls } from "./performance_controls.mjs";
+import { recipeAdapter } from "./recipe_adapter.mjs";
+import { RecipeController } from "./recipe_controller.mjs";
 import { readReferences } from "./references.mjs";
 import { ReferenceBrowser } from "./reference_browser.mjs";
+import { RoutingController } from "./routing_controller.mjs";
 import { SettingsController } from "./settings.mjs";
 import { SpectrogramView } from "./spectrogram.mjs";
-import { downloadFit, readFit, snapshotState } from "./state.mjs";
+import {
+  downloadFit, fitMacroValues, readFit, snapshotState,
+} from "./state.mjs";
 import { Tooltips } from "./tooltips.mjs";
+import { drawWaveform } from "./waveform_view.mjs";
 
 const byId = id => document.getElementById(id);
 new Tooltips();
 const state = {
   reference: null, references: [], synthesis: null, snapshots: [],
-  macros: [], activeSnapshotId: null,
+  macros: [], patch: null, recipeIndex: 0, recipeKey: "metal.cymbal.v1",
+  activeSnapshotId: null,
   event: {
     strength: 0.8, location: 0.8, hardness: 0.65, implement: 1,
     contactSpread: 0.2, seed: 17,
@@ -61,46 +71,10 @@ let queuedRender = null;
 let pendingLevelMatch = null;
 let fitControls;
 let referenceBrowser;
+let performanceControls;
+let recipeController;
+let routingController;
 let restoringReference = false;
-
-const implementFamilies = [
-  {
-    value: 0, label: "Bristle stiffness",
-    endpoints: ["soft / fine", "stiff / coarse"],
-  },
-  {
-    value: .5, label: "Mallet firmness",
-    endpoints: ["soft", "hard"],
-  },
-  {
-    value: 1, label: "Tip hardness",
-    endpoints: ["soft / round", "hard / sharp"],
-  },
-];
-
-function selectedImplement(value) {
-  return implementFamilies.reduce((best, item) =>
-    Math.abs(item.value - value) < Math.abs(best.value - value) ? item : best,
-  );
-}
-
-function paintPerformanceControls() {
-  const family = selectedImplement(state.event.implement);
-  state.event.implement = family.value;
-  document.querySelectorAll('input[name="implement"]').forEach(input => {
-    input.checked = Number(input.value) === family.value;
-  });
-  byId("character-label").textContent = family.label;
-  const endpoints = byId("character-endpoints").querySelectorAll("i");
-  endpoints[0].textContent = family.endpoints[0];
-  endpoints[1].textContent = family.endpoints[1];
-  byId("hardness").value = state.event.hardness;
-  byId("hardness").nextElementSibling.textContent =
-    state.event.hardness.toFixed(2);
-  byId("contact-spread").value = state.event.contactSpread;
-  byId("contact-spread").nextElementSibling.textContent =
-    state.event.contactSpread.toFixed(2);
-}
 
 function setStatus(message) { byId("status").textContent = message; }
 function setReadyIfIdle() {
@@ -130,10 +104,13 @@ function requestLevelMatch(resetToFactory = false) {
   renderSynthesis();
 }
 
-function buildControls() {
-  state.macros = engine.macros.map(item => item.defaultValue);
-  fitControls = new FitControls({
-    descriptors: engine.macros, state,
+function buildControls(resetValues = true) {
+  if (resetValues)
+    state.macros = engine.parameters.map(item => item.defaultValue);
+  const ControlType = state.recipeKey === "metal.cymbal.v1"
+    ? FitControls : KickControls;
+  fitControls = new ControlType({
+    descriptors: engine.parameters, state,
     onChange: key => {
       if (key === "model_level_db") {
         state.modelLevelTouched = true;
@@ -202,9 +179,9 @@ worker.onmessage = ({ data }) => {
   setReadyIfIdle();
 };
 
-function scheduleRender() {
+function scheduleRender(updateLive = true) {
   clearTimeout(renderTimer);
-  audition.setMacros(state.macros);
+  if (updateLive) audition.setMacros(state.macros);
   setStatus("Rendering…");
   renderTimer = setTimeout(() => {
     renderTimer = undefined;
@@ -220,8 +197,10 @@ function renderSynthesis() {
   const seconds = duration === "reference"
     ? (state.reference?.duration ?? 6) : Number(duration);
   const request = {
-    generation: ++renderGeneration, sampleRate, seconds,
-    macros: [...state.macros], event: { ...state.event },
+    generation: ++renderGeneration, recipeIndex: state.recipeIndex,
+    sampleRate, seconds, parameters: [...state.macros],
+    routing: recipeAdapter(state.recipeKey).routing(state.patch),
+    event: { ...state.event },
   };
   if (renderInFlight) queuedRender = request;
   else dispatchRender(request);
@@ -266,7 +245,7 @@ renderWorker.onmessage = ({ data }) => {
       }
       state.synthesis = data.samples;
       analyze("synthesis", state.synthesis, data.sampleRate);
-      drawWaveform();
+      drawWaveform(state);
       byId("render-time").textContent = `${data.elapsedMs.toFixed(0)} ms DSP`;
     }
   }
@@ -282,44 +261,6 @@ renderWorker.onerror = event => {
   pendingLevelMatch = null;
   setStatus(event.message);
 };
-
-function decimate(samples, sampleRate, limit = 5000) {
-  const step = Math.max(1, Math.floor(samples.length / limit));
-  const x = []; const y = [];
-  for (let index = 0; index < samples.length; index += step) {
-    x.push(index / sampleRate); y.push(samples[index]);
-  }
-  return { x, y };
-}
-
-function drawWaveform() {
-  const traces = [];
-  if (state.reference) traces.push({
-    ...decimate(state.reference.samples, state.reference.sampleRate),
-    name: "Reference", mode: "lines", line: { color: "#e8b45a", width: 1 },
-  });
-  if (state.synthesis) traces.push({
-    ...decimate(state.synthesis, state.reference?.sampleRate ?? 48000),
-    name: "Synthesis", mode: "lines", line: { color: "#68a7d8", width: 1 },
-  });
-  Plotly.react("waveform", traces, {
-    margin: { l: 44, r: 12, t: 8, b: 28 }, paper_bgcolor: "#0d1015",
-    plot_bgcolor: "#0d1015", font: { color: "#94a0af", size: 10 },
-    xaxis: {
-      title: "seconds", gridcolor: "#252d38", zeroline: false,
-      fixedrange: true,
-    },
-    yaxis: {
-      title: "amplitude", gridcolor: "#252d38",
-      zerolinecolor: "#46515e", fixedrange: true,
-    },
-    dragmode: false,
-    legend: { orientation: "h", x: 0.75, y: 1 }, uirevision: "waveform-v1",
-  }, {
-    responsive: true, displaylogo: false, displayModeBar: false,
-    scrollZoom: false,
-  });
-}
 
 function setReference(reference) {
   const firstReference = !state.reference;
@@ -340,14 +281,14 @@ function setReference(reference) {
       ...state.eventDefaults,
       seed: reference.cell.seed,
     });
-    paintPerformanceControls();
+    performanceControls.paint();
   }
   if (firstReference) {
     byId("view-mode").value = "mirror";
     view.setSettings({ mode: "mirror" });
   }
   analyzeReference();
-  drawWaveform(); view.reset();
+  drawWaveform(state); view.reset();
   if (!restoringReference) {
     if (state.modelLevelTouched) scheduleRender();
     else requestLevelMatch(true);
@@ -382,12 +323,22 @@ async function restore(item) {
       restoringReference = false;
     }
   }
-  state.macros.splice(0, state.macros.length, ...fit.controls.macros);
+  const recipe = engine.recipes.find(entry =>
+    entry.key === fit.instrument.recipe);
+  if (!recipe) throw new Error(`recipe is unavailable: ${fit.instrument.recipe}`);
+  if (recipe.index !== state.recipeIndex) {
+    recipeController.remember();
+    recipeController.activate(recipe.index);
+  }
+  state.patch = structuredClone(fit.instrument);
+  state.macros.splice(0, state.macros.length,
+    ...fitMacroValues(fit, engine.parameters));
   state.modelLevelTouched = true;
   pendingLevelMatch = null;
   Object.assign(state.event, fit.controls.event);
   Object.assign(state.analysis, fit.controls.analysis);
   state.activeSnapshotId = fit.id;
+  routingController.setPatch(state.patch);
   if (item.audio) {
     state.synthesis = item.audio.slice();
     analyze(
@@ -396,15 +347,18 @@ async function restore(item) {
     );
   }
   buildPageValues();
-  audition.setMacros(state.macros);
-  drawWaveform();
+  audition.setRecipe(
+    state.recipeIndex, state.macros,
+    recipeAdapter(state.recipeKey).routing(state.patch),
+  );
+  drawWaveform(state);
   renderSnapshotList();
   if (!item.audio) scheduleRender();
 }
 
 function buildPageValues() {
   fitControls.build();
-  paintPerformanceControls();
+  performanceControls.paint();
   byId("colour-range").value = state.analysis.dynamicRangeDb;
   byId("colour-range").nextElementSibling.textContent =
     `${state.analysis.dynamicRangeDb} dB`;
@@ -412,9 +366,34 @@ function buildPageValues() {
 }
 
 async function initialize() {
-  engine = await CrashEngine.create();
+  engine = await PercussionEngine.create();
+  recipeController = new RecipeController({
+    engine, state, audition,
+    getRoutingController: () => routingController,
+    buildControls, buildPageValues,
+    onChanged: () => {
+      state.modelLevelTouched = false;
+      pendingLevelMatch = null;
+      renderSynthesis();
+    },
+  });
+  recipeController.populate();
   buildControls();
-  audition.setMacros(state.macros);
+  state.patch = recipeAdapter(state.recipeKey).create(
+    engine.parameters, state.macros,
+  );
+  routingController = new RoutingController({
+    state, engine, audition, scheduleRender, setStatus,
+  });
+  routingController.bind();
+  performanceControls = new PerformanceControls({
+    state, audition, scheduleRender, setStatus,
+  });
+  performanceControls.bind();
+  audition.setRecipe(
+    state.recipeIndex, state.macros,
+    recipeAdapter(state.recipeKey).routing(state.patch),
+  );
   settings.bind();
   audition.initialize().catch(error => setStatus(String(error)));
   referenceBrowser = new ReferenceBrowser({
@@ -456,44 +435,13 @@ async function initialize() {
     event.currentTarget.value = .5;
     event.currentTarget.dispatchEvent(new Event("input"));
   };
-  byId("hardness").oninput = event => {
-    state.event.hardness = Number(event.target.value);
-    event.target.nextElementSibling.textContent = state.event.hardness.toFixed(2);
-    scheduleRender();
-  };
-  byId("hardness").ondblclick = event => {
-    event.preventDefault();
-    event.currentTarget.value = state.eventDefaults.hardness;
-    event.currentTarget.dispatchEvent(new Event("input"));
-  };
-  byId("contact-spread").oninput = event => {
-    state.event.contactSpread = Number(event.currentTarget.value);
-    event.currentTarget.nextElementSibling.textContent =
-      state.event.contactSpread.toFixed(2);
-    scheduleRender();
-  };
-  byId("contact-spread").ondblclick = event => {
-    event.preventDefault();
-    event.currentTarget.value = state.eventDefaults.contactSpread;
-    event.currentTarget.dispatchEvent(new Event("input"));
-  };
-  document.querySelectorAll('input[name="implement"]').forEach(input => {
-    input.onchange = event => {
-      state.event.implement = Number(event.currentTarget.value);
-      paintPerformanceControls();
-      scheduleRender();
-    };
+  bindAnalysisControls({
+    state, view, analyzeReference,
+    analyzeSynthesis: () => analyze(
+      "synthesis", state.synthesis, state.reference?.sampleRate ?? 48000),
+    scheduleRender,
   });
-  byId("strike-pad").onpointerdown = event => {
-    const bounds = event.currentTarget.getBoundingClientRect();
-    state.event.location = Math.max(0, Math.min(1,
-      (event.clientX - bounds.left) / bounds.width));
-    state.event.strength = Math.max(0.02, Math.min(1,
-      1 - (event.clientY - bounds.top) / bounds.height));
-    state.event.seed += 1;
-    audition.trigger({ ...state.event }).catch(error => setStatus(String(error)));
-  };
-  bindAnalysisControls(); bindAnalysisDivider(); bindSnapshotControls();
+  bindSnapshotControls();
   renderSynthesis();
   setInterval(() => {
     const latency = audition.latencyMs ? ` · ${audition.latencyMs.toFixed(0)} ms` : "";
@@ -508,111 +456,34 @@ async function initialize() {
     byId("live-commit").textContent = audition.macroCommitPending
       ? `Preparing live DSP… ${audition.macroCommitElapsedMs.toFixed(0)} ms`
       : audition.macroCommitMs > 0
-        ? `Live DSP ready · ${audition.macroCommitMs.toFixed(0)} ms`
+        ? `Live DSP ready · ${audition.macroCommitMs.toFixed(0)} ms` +
+          ` · install ${audition.installationMs.toFixed(2)} ms`
         : "Live DSP idle";
     settings.paintAudioStatus();
   }, 100);
 }
 
-function bindAnalysisDivider() {
-  const divider = byId("analysis-divider");
-  const analysis = document.querySelector(".analysis");
-  const storageKey = "tf-spectrogram-height-v2";
-  const apply = height => {
-    const maximum = Math.min(620, Math.max(220, .65 * window.innerHeight));
-    const value = Math.round(Math.max(110, Math.min(maximum, height)));
-    analysis.style.setProperty("--spectrogram-height", `${value}px`);
-    divider.setAttribute("aria-valuenow", value);
-    return value;
-  };
-  let height = apply(Number(localStorage.getItem(storageKey)) || 300);
-  let drag = null;
-  divider.onpointerdown = event => {
-    if (event.button !== 0) return;
-    event.preventDefault();
-    drag = { pointerId: event.pointerId, y: event.clientY, height };
-    divider.setPointerCapture(event.pointerId);
-  };
-  divider.onpointermove = event => {
-    if (!drag || event.pointerId !== drag.pointerId) return;
-    height = apply(drag.height + event.clientY - drag.y);
-  };
-  const finish = event => {
-    if (!drag || event.pointerId !== drag.pointerId) return;
-    drag = null;
-    localStorage.setItem(storageKey, height);
-    if (divider.hasPointerCapture(event.pointerId)) {
-      divider.releasePointerCapture(event.pointerId);
-    }
-  };
-  divider.onpointerup = finish;
-  divider.onpointercancel = finish;
-  divider.ondblclick = event => {
-    event.preventDefault();
-    height = apply(300);
-    localStorage.setItem(storageKey, height);
-  };
-  divider.onkeydown = event => {
-    if (!["ArrowUp", "ArrowDown", "Home"].includes(event.key)) return;
-    event.preventDefault();
-    height = apply(event.key === "Home" ? 300 :
-      height + (event.key === "ArrowDown" ? 12 : -12));
-    localStorage.setItem(storageKey, height);
-  };
-}
-
-function bindAnalysisControls() {
-  byId("view-mode").onchange = event => view.setSettings({ mode: event.target.value });
-  const update = () => {
-    state.analysis.size = Number(byId("fft-size").value);
-    state.analysis.hop = Math.round(state.analysis.size *
-      (1 - Number(byId("overlap").value)));
-    state.analysis.window = byId("window").value;
-    analyzeReference();
-    if (state.synthesis) analyze("synthesis", state.synthesis,
-      state.reference?.sampleRate ?? 48000);
-  };
-  byId("fft-size").onchange = update; byId("overlap").onchange = update;
-  byId("window").onchange = update;
-  byId("render-seconds").onchange = scheduleRender;
-  byId("colour-range").oninput = event => {
-    state.analysis.dynamicRangeDb = Number(event.target.value);
-    event.target.nextElementSibling.textContent = `${event.target.value} dB`;
-    view.setSettings({ dynamicRangeDb: state.analysis.dynamicRangeDb });
-  };
-  byId("reset-view").onclick = () => view.reset();
-  const resetSelect = (id, value, eventName = "change") => {
-    byId(id).ondblclick = event => {
-      event.preventDefault();
-      event.currentTarget.value = value;
-      event.currentTarget.dispatchEvent(new Event(eventName));
-    };
-  };
-  resetSelect("view-mode", "mirror");
-  resetSelect("window", "hann");
-  resetSelect("fft-size", "2048");
-  resetSelect("overlap", "0.75");
-  resetSelect("render-seconds", "reference");
-  byId("colour-range").ondblclick = event => {
-    event.preventDefault();
-    event.currentTarget.value = 90;
-    event.currentTarget.dispatchEvent(new Event("input"));
-  };
-}
-
 function bindSnapshotControls() {
   byId("snapshot").onclick = () => {
-    const fit = snapshotState(state, byId("snapshot-name").value || "Candidate");
+    const fit = snapshotState(
+      state, byId("snapshot-name").value || "Candidate", engine.macros,
+    );
     state.snapshots.push({ fit, audio: state.synthesis?.slice() });
     state.activeSnapshotId = fit.id; renderSnapshotList();
   };
   byId("save-fit").onclick = () => {
     const active = state.snapshots.find(item => item.fit.id === state.activeSnapshotId);
-    downloadFit(active?.fit ?? snapshotState(state, byId("snapshot-name").value));
+    downloadFit(active?.fit ?? snapshotState(
+      state, byId("snapshot-name").value, engine.macros,
+    ));
   };
   byId("load-fit").onchange = async event => {
     try {
-      const fit = await readFit(event.target.files[0], engine.macros);
+      const fit = await readFit(event.target.files[0], recipeKey => {
+        const recipe = engine.recipes.find(item => item.key === recipeKey);
+        if (!recipe) throw new Error(`recipe is unavailable: ${recipeKey}`);
+        return engine.descriptorsForRecipe(recipe.index);
+      });
       const item = { fit }; state.snapshots.push(item); await restore(item);
     } catch (error) { setStatus(String(error)); }
   };

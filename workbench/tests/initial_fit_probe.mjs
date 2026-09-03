@@ -7,14 +7,16 @@ globalThis.crypto ??= webcrypto;
 
 const site = resolve(process.argv[2] ?? "build/workbench-wasm/site");
 const referencePath = resolve(process.argv[3]);
-const { CrashEngine } = await import(pathToFileURL(resolve(site, "engine.mjs")));
+const { PercussionEngine } = await import(
+  pathToFileURL(resolve(site, "engine.mjs")),
+);
 const { decodeWav } = await import(pathToFileURL(resolve(site, "references.mjs")));
 const { stft } = await import(pathToFileURL(resolve(site, "analysis.mjs")));
 
 const file = await readFile(referencePath);
 const buffer = file.buffer.slice(file.byteOffset, file.byteOffset + file.byteLength);
 const reference = await decodeWav(buffer, referencePath);
-const engine = await CrashEngine.create(reference.sampleRate);
+const engine = await PercussionEngine.create(reference.sampleRate);
 const descriptors = new Map(engine.macros.map(item => [item.key, item]));
 const defaults = engine.macros.map(item => item.defaultValue);
 const event = {

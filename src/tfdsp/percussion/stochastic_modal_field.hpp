@@ -2,6 +2,7 @@
 
 #include "deterministic_random.hpp"
 #include "modal_constraint.hpp"
+#include "stochastic_modal_field_parameters.hpp"
 #include "tfdsp/finite_audio.hpp"
 
 #include <algorithm>
@@ -13,22 +14,6 @@
 
 namespace tfdsp::percussion {
 
-struct StochasticModalModeParameters {
-  float frequencyHz{1000.f};
-  float decaySeconds{1.f};
-  float inputGain{1.f};
-  float outputGain{1.f};
-  float inputPhaseRadians{};
-  float phaseBandwidthHz{};
-  std::uint16_t packet{};
-  float exchangeAmount{1.f};
-};
-
-struct StochasticModalFieldControls {
-  float exchangeAngleRadians{};
-  std::uint32_t seed{0x4649454cu};
-};
-
 // One bank spans coherent ridges, overlapping modal packets and stochastic
 // wash. Random phase kicks and local Givens rotations preserve modal energy;
 // only the declared pole radii and external constraints remove it.
@@ -37,86 +22,57 @@ public:
   static_assert(ModeCount > 0, "a modal field needs at least one mode");
   using Parameters = std::array<StochasticModalModeParameters, ModeCount>;
   using Projection = std::array<float, ModeCount>;
+  using PreparedParameters = PreparedStochasticModalField<ModeCount>;
 
   void Prepare(const float sampleRate, const Parameters &parameters,
                const StochasticModalFieldControls controls,
                const float lowCrossoverHz, const float highCrossoverHz) {
-    if (!std::isfinite(sampleRate) || sampleRate < 1.f)
-      throw std::invalid_argument("modal-field sample rate must be positive");
-    if (!(lowCrossoverHz > 0.f && highCrossoverHz > lowCrossoverHz))
-      throw std::invalid_argument("modal-field crossovers must be ordered");
-    sampleRate_ = sampleRate;
-    lowCrossoverHz_ = lowCrossoverHz;
-    highCrossoverHz_ = highCrossoverHz;
-    seed_ = controls.seed;
-    SetExchangeAngle(controls.exchangeAngleRadians);
-    excitationProjection_.fill(1.f);
-    secondaryExcitationProjection_.fill(1.f);
-    SetStaticParameters(parameters);
+    LoadPrepared(PrepareStochasticModalField(
+        sampleRate, parameters, controls, lowCrossoverHz, highCrossoverHz));
   }
 
-  void SetStaticParameters(const Parameters &parameters) noexcept {
-    constexpr float TwoPi = 6.28318530717958647692f;
-    activeModeCount_ = 0;
-    for (std::size_t source = 0; source < ModeCount; ++source) {
-      const float inputGain = SafeInputGain(parameters[source].inputGain);
-      const float outputGain = SafeOutputGain(parameters[source].outputGain);
-      if (inputGain == 0.f || outputGain == 0.f)
-        continue;
-      const std::size_t mode = activeModeCount_++;
-      sourceIndex_[mode] = source;
-      const float frequency = std::clamp(
-          tfdsp::FiniteNormalOrZero(parameters[source].frequencyHz), 1.f,
-          .49f * sampleRate_);
-      const float decay = std::clamp(
-          tfdsp::FiniteNormalOrZero(parameters[source].decaySeconds), .001f,
-          60.f);
-      const float angle = TwoPi * frequency / sampleRate_;
-      const float oscillatorCosine = std::cos(angle);
-      const float oscillatorSine = std::sin(angle);
-      radius_[mode] = std::exp(std::log(.001f) / (decay * sampleRate_));
-      inputGain_[mode] = inputGain;
-      outputGain_[mode] = outputGain;
-      const float phase = std::clamp(
-          tfdsp::FiniteNormalOrZero(parameters[source].inputPhaseRadians),
-          -3.14159265358979323846f, 3.14159265358979323846f);
-      inputPhaseCosine_[mode] = std::cos(phase);
-      inputPhaseSine_[mode] = std::sin(phase);
-      const float bandwidth = std::clamp(
-          tfdsp::FiniteNormalOrZero(parameters[source].phaseBandwidthHz),
-          0.f, .45f * sampleRate_);
-      const float phaseCosine = std::exp(
-          -3.14159265358979323846f * bandwidth / sampleRate_);
-      const float phaseSine = std::sqrt(
-          std::max(0.f, 1.f - phaseCosine * phaseCosine));
-      // A stochastic phase kick follows the ordinary modal rotation. Compose
-      // the two rotations here so the audio loop needs only one complex
-      // multiply for either random sign.
-      float positiveCosine = phaseCosine * oscillatorCosine -
-          phaseSine * oscillatorSine;
-      float positiveSine = phaseSine * oscillatorCosine +
-          phaseCosine * oscillatorSine;
-      float negativeCosine = phaseCosine * oscillatorCosine +
-          phaseSine * oscillatorSine;
-      float negativeSine = phaseCosine * oscillatorSine -
-          phaseSine * oscillatorCosine;
-      NormalizeRotation(positiveCosine, positiveSine);
-      NormalizeRotation(negativeCosine, negativeSine);
-      cosineCentre_[mode] = .5f * (positiveCosine + negativeCosine);
-      cosineSpread_[mode] = .5f * (positiveCosine - negativeCosine);
-      sineCentre_[mode] = .5f * (positiveSine + negativeSine);
-      sineSpread_[mode] = .5f * (positiveSine - negativeSine);
-      packet_[mode] = parameters[source].packet;
-      exchangeAmount_[mode] = Unit(parameters[source].exchangeAmount);
-      band_[mode] = frequency < lowCrossoverHz_
-          ? 0
-          : static_cast<std::uint8_t>(frequency < highCrossoverHz_ ? 1 : 2);
+  void SetStaticParameters(const Parameters &parameters) {
+    const auto primaryProjection = excitationProjection_;
+    const auto secondaryProjection = secondaryExcitationProjection_;
+    LoadPrepared(PrepareStochasticModalField(
+        sampleRate_, parameters,
+        {maximumExchangeAngle_, seed_}, lowCrossoverHz_, highCrossoverHz_));
+    SetProjection(
+        primaryProjection, excitationProjection_, primaryDriveGain_);
+    SetProjection(secondaryProjection, secondaryExcitationProjection_,
+                  secondaryDriveGain_);
+  }
+
+  void LoadPrepared(const PreparedParameters &prepared) noexcept {
+    sampleRate_ = prepared.sampleRate;
+    lowCrossoverHz_ = prepared.lowCrossoverHz;
+    highCrossoverHz_ = prepared.highCrossoverHz;
+    maximumExchangeAngle_ = prepared.maximumExchangeAngle;
+    seed_ = prepared.seed;
+    activeModeCount_ = std::min<std::size_t>(
+        prepared.activeModeCount, ModeCount);
+    cosineCentre_ = prepared.cosineCentre;
+    cosineSpread_ = prepared.cosineSpread;
+    sineCentre_ = prepared.sineCentre;
+    sineSpread_ = prepared.sineSpread;
+    radius_ = prepared.radius;
+    inputGain_ = prepared.inputGain;
+    outputGain_ = prepared.outputGain;
+    inputPhaseCosine_ = prepared.inputPhaseCosine;
+    inputPhaseSine_ = prepared.inputPhaseSine;
+    exchangeCosine_ = prepared.exchangeCosine;
+    exchangeSine_ = prepared.exchangeSine;
+    exchangeAmount_ = prepared.exchangeAmount;
+    sourceIndex_ = prepared.sourceIndex;
+    packet_ = prepared.packet;
+    band_ = prepared.band;
+    excitationProjection_.fill(1.f);
+    secondaryExcitationProjection_.fill(1.f);
+    for (std::size_t mode = 0; mode < activeModeCount_; ++mode) {
       effectiveRadius_[mode] = radius_[mode];
-      primaryDriveGain_[mode] = inputGain * excitationProjection_[mode];
-      secondaryDriveGain_[mode] =
-          inputGain * secondaryExcitationProjection_[mode];
+      primaryDriveGain_[mode] = inputGain_[mode];
+      secondaryDriveGain_[mode] = inputGain_[mode];
     }
-    PrepareExchange();
     damping_ = {};
     Reset();
   }
@@ -159,55 +115,12 @@ public:
   }
 
 private:
-  static float SafeInputGain(const float gain) noexcept {
-    return std::clamp(tfdsp::FiniteNormalOrZero(gain), -256.f, 256.f);
-  }
-
-  static float SafeOutputGain(const float gain) noexcept {
-    return std::clamp(tfdsp::FiniteNormalOrZero(gain), -16.f, 16.f);
-  }
-
   static float SafeProjection(const float value) noexcept {
     return std::clamp(tfdsp::FiniteNormalOrZero(value), -4.f, 4.f);
   }
 
   static float Unit(const float value) noexcept {
     return std::clamp(tfdsp::FiniteNormalOrZero(value), 0.f, 1.f);
-  }
-
-  static void NormalizeRotation(float &cosine, float &sine) noexcept {
-    const float inverseLength = 1.f / std::sqrt(cosine * cosine + sine * sine);
-    cosine *= inverseLength;
-    sine *= inverseLength;
-    if (std::abs(cosine) >= std::abs(sine)) {
-      sine = std::copysign(
-          std::sqrt(std::max(0.f, 1.f - cosine * cosine)), sine);
-    } else {
-      cosine = std::copysign(
-          std::sqrt(std::max(0.f, 1.f - sine * sine)), cosine);
-    }
-  }
-
-  void SetExchangeAngle(float angle) noexcept {
-    angle = std::clamp(tfdsp::FiniteNormalOrZero(angle), 0.f, .05f);
-    maximumExchangeAngle_ = angle;
-  }
-
-  void PrepareExchange() noexcept {
-    exchangeCosine_.fill(1.f);
-    exchangeSine_.fill(0.f);
-    for (std::size_t first = 0; first + 1 < activeModeCount_; ++first) {
-      const auto packetDistance = packet_[first] > packet_[first + 1]
-          ? packet_[first] - packet_[first + 1]
-          : packet_[first + 1] - packet_[first];
-      if (packetDistance > 1)
-        continue;
-      const float amount = std::sqrt(
-          exchangeAmount_[first] * exchangeAmount_[first + 1]);
-      const float angle = maximumExchangeAngle_ * amount;
-      exchangeCosine_[first] = std::cos(angle);
-      exchangeSine_[first] = std::sin(angle);
-    }
   }
 
   void SetProjection(const Projection &source, Projection &destination,
@@ -339,7 +252,7 @@ private:
   std::array<float, ModeCount> exchangeAmount_{};
   std::array<float, ModeCount> exchangeCosine_{};
   std::array<float, ModeCount> exchangeSine_{};
-  std::array<std::size_t, ModeCount> sourceIndex_{};
+  std::array<std::uint32_t, ModeCount> sourceIndex_{};
   Projection excitationProjection_{};
   Projection secondaryExcitationProjection_{};
   DeterministicRandom random_{};

@@ -1,105 +1,43 @@
 #include "crash_api.hpp"
+
 #include "crash_macros.hpp"
-
-#include "tfdsp/percussion/crash_cymbal.hpp"
-
-#include <algorithm>
-#include <array>
-#include <cmath>
-#include <cstddef>
-
-namespace {
-
-constexpr std::size_t MaximumSessions = 4;
-
-struct Session {
-  tfdsp::percussion::CrashCymbal cymbal{};
-  tfdsp::percussion::CrashCymbalFitParameters baseFit{};
-  tfworkbench::CrashMacroValues macros{};
-  float sampleRate{48000.f};
-  bool active{};
-};
-
-std::array<Session, MaximumSessions> sessions{};
-
-Session *Find(const std::uint32_t handle) noexcept {
-  if (handle == 0 || handle > sessions.size())
-    return nullptr;
-  auto &session = sessions[handle - 1];
-  return session.active ? &session : nullptr;
-}
-
-} // namespace
+#include "percussion_api.hpp"
+#include "tfdsp/percussion/metallic_plate_routing.hpp"
 
 extern "C" {
 
 std::uint32_t tf_crash_api_version() noexcept {
-  return 12;
+  return tf_percussion_api_version();
 }
 
 std::uint32_t tf_crash_create(const float sampleRate) noexcept {
-  if (!std::isfinite(sampleRate) || sampleRate < 8000.f || sampleRate > 384000.f)
-    return 0;
-  for (std::size_t index = 0; index < sessions.size(); ++index) {
-    auto &session = sessions[index];
-    if (session.active)
-      continue;
-    session.baseFit = tfworkbench::CrashWorkbenchBaseFit();
-    session.macros = tfworkbench::DefaultCrashMacros();
-    session.sampleRate = sampleRate;
-    session.cymbal.Prepare(
-        sampleRate, tfdsp::percussion::DefaultCrashCymbalParameters(
-            sampleRate, tfworkbench::ApplyCrashMacros(
-                session.baseFit, session.macros)));
-    session.active = true;
-    return static_cast<std::uint32_t>(index + 1);
-  }
-  return 0;
+  return tf_percussion_create(0, sampleRate);
 }
 
 void tf_crash_destroy(const std::uint32_t handle) noexcept {
-  if (auto *session = Find(handle)) {
-    session->cymbal.Reset();
-    session->active = false;
-  }
+  tf_percussion_destroy(handle);
 }
 
 int tf_crash_reset(const std::uint32_t handle) noexcept {
-  auto *session = Find(handle);
-  if (!session)
-    return 0;
-  session->cymbal.Reset();
-  return 1;
+  return tf_percussion_reset(handle);
 }
 
-int tf_crash_trigger(const std::uint32_t handle, const float strength,
-                     const float location, const float hardness,
-                     const float implement, const float contactSpread,
-                     const std::uint32_t seed) noexcept {
-  auto *session = Find(handle);
-  if (!session)
-    return 0;
-  session->cymbal.Trigger(
-      {strength, location, hardness, seed, implement, contactSpread});
-  return 1;
+int tf_crash_trigger(
+    const std::uint32_t handle, const float strength, const float location,
+    const float hardness, const float implement, const float contactSpread,
+    const std::uint32_t seed) noexcept {
+  return tf_percussion_trigger(handle, strength, location, hardness, implement,
+                               contactSpread, seed);
 }
 
-int tf_crash_set_mute(const std::uint32_t handle, const float amount) noexcept {
-  auto *session = Find(handle);
-  if (!session)
-    return 0;
-  session->cymbal.SetMute(amount);
-  return 1;
+int tf_crash_set_mute(const std::uint32_t handle,
+                      const float amount) noexcept {
+  return tf_percussion_set_mute(handle, amount);
 }
 
 int tf_crash_process(const std::uint32_t handle, float *output,
                      const std::uint32_t frames) noexcept {
-  auto *session = Find(handle);
-  if (!session || (!output && frames != 0))
-    return 0;
-  for (std::uint32_t frame = 0; frame < frames; ++frame)
-    output[frame] = session->cymbal.Process();
-  return 1;
+  return tf_percussion_process(handle, output, frames);
 }
 
 std::uint32_t tf_crash_macro_count() noexcept {
@@ -143,32 +81,31 @@ float tf_crash_macro_default(const std::uint32_t index) noexcept {
 
 float tf_crash_macro_get(const std::uint32_t handle,
                          const std::uint32_t index) noexcept {
-  auto *session = Find(handle);
-  return session && index < session->macros.size()
-      ? session->macros[index] : 0.f;
+  return tfworkbench::detail::LegacyCrashParameterGet(handle, index);
 }
 
 int tf_crash_macro_set(const std::uint32_t handle, const std::uint32_t index,
                        const float value) noexcept {
-  auto *session = Find(handle);
-  if (!session || index >= session->macros.size() || !std::isfinite(value))
-    return 0;
-  const auto &descriptor = tfworkbench::CrashMacroDescription(index);
-  session->macros[index] = std::clamp(value, descriptor.minimum,
-                                     descriptor.maximum);
-  return 1;
+  return tfworkbench::detail::LegacyCrashParameterSet(handle, index, value);
 }
 
 int tf_crash_macro_commit(const std::uint32_t handle) noexcept {
-  auto *session = Find(handle);
-  if (!session)
-    return 0;
-  const auto fit = tfworkbench::ApplyCrashMacros(
-      session->baseFit, session->macros);
-  session->cymbal.Prepare(
-      session->sampleRate,
-      tfdsp::percussion::DefaultCrashCymbalParameters(session->sampleRate, fit));
-  return 1;
+  return tf_percussion_commit(handle);
+}
+
+std::uint32_t tf_crash_route_count() noexcept {
+  return static_cast<std::uint32_t>(
+      tfdsp::percussion::MetallicPlateRouting::Count);
+}
+
+float tf_crash_route_get(const std::uint32_t handle,
+                         const std::uint32_t index) noexcept {
+  return tf_percussion_route_get(handle, index);
+}
+
+int tf_crash_route_set(const std::uint32_t handle, const std::uint32_t index,
+                       const float gain) noexcept {
+  return tf_percussion_route_set(handle, index, gain);
 }
 
 } // extern "C"

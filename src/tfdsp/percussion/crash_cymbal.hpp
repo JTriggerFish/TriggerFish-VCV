@@ -33,6 +33,7 @@ struct CrashCymbalFrame {
 class CrashCymbal {
 public:
   void Prepare(float sampleRate, const CrashCymbalParameters &parameters);
+  void Prepare(const CrashCymbalPreparedParameters &parameters);
   void Reset() noexcept;
   void Trigger(const CrashCymbalHit &hit) noexcept;
   CrashCymbalFrame ProcessFrame() noexcept;
@@ -42,6 +43,8 @@ public:
   float MinimumBodyDelaySamples() const noexcept;
 
 private:
+  void PrepareComponents(float sampleRate,
+                         const CrashCymbalParameters &parameters);
   ContactExciterParameters ContactParameters(
       const CrashCymbalHit &hit) const noexcept;
   void SetExcitationProjection(float location, float strength) noexcept;
@@ -57,6 +60,7 @@ private:
   float bodyDriveScale_{1.f};
   float bloomDriveScale_{1.f};
   float bloomBodyGain_{1.f};
+  MetallicPlateRouting routing_{};
   float sampleRate_{48000.f};
 };
 

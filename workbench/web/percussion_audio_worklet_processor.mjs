@@ -1,32 +1,29 @@
 import createModule from "./triggerfish-percussion-audio.mjs";
-import { WasmCrashEngine } from "./wasm_engine_core.mjs";
+import { WasmPercussionEngine } from "./wasm_engine_core.mjs";
 
-// MODULARIZE consistently exposes a promise even when Wasm compilation itself is
-// synchronous. Register the processor immediately, then attach each node to the
-// shared module as soon as that promise settles.
 const modulePromise = Promise.resolve(createModule());
 
 function nowMs() {
-  return globalThis.performance?.now() ?? currentTime * 1000;
+  return globalThis.performance?.now() ?? Date.now();
 }
 
-class CrashAudioProcessor extends AudioWorkletProcessor {
+class PercussionAudioProcessor extends AudioWorkletProcessor {
   constructor(options) {
     super();
     this.failed = false;
     this.engine = null;
     this.pendingMessages = [];
-    this.port.onmessage = event => {
-      if (this.engine) this.#onMessage(event.data);
-      else this.pendingMessages.push(event.data);
-    };
+    this.port.onmessage = event => this.#onMessage(event.data);
 
-    const initialMacros = options.processorOptions?.macros ?? [];
+    const prepared = options.processorOptions?.prepared;
+    const recipeIndex = options.processorOptions?.recipeIndex ?? 0;
     modulePromise.then(module => {
       if (this.failed) return;
       const started = nowMs();
-      this.engine = new WasmCrashEngine(module, sampleRate, false);
-      this.engine.setMacros(initialMacros);
+      this.engine = new WasmPercussionEngine(
+        module, sampleRate, recipeIndex, false, true,
+      );
+      this.engine.applyPrepared(prepared);
       this.port.postMessage({
         kind: "ready", elapsedMs: nowMs() - started,
       });
@@ -38,19 +35,21 @@ class CrashAudioProcessor extends AudioWorkletProcessor {
 
   #onMessage(data) {
     if (this.failed) return;
+    if (!this.engine) {
+      this.pendingMessages.push(data);
+      return;
+    }
     try {
-      if (data.kind === "macros") {
-        const started = nowMs();
-        this.engine.setMacros(data.values);
-        this.port.postMessage({
-          kind: "macros-applied", generation: data.generation,
-          elapsedMs: nowMs() - started,
-        });
-      } else if (data.kind === "trigger") {
+      if (data.kind === "trigger") {
         this.engine.trigger(data.event);
         this.port.postMessage({ kind: "triggered" });
       } else if (data.kind === "reset") {
         this.engine.reset();
+      } else if (data.kind === "dispose") {
+        this.engine.destroy();
+        this.engine = null;
+        this.disposed = true;
+        this.port.postMessage({ kind: "disposed" });
       }
     } catch (error) {
       this.#fail(error);
@@ -58,7 +57,12 @@ class CrashAudioProcessor extends AudioWorkletProcessor {
   }
 
   #fail(error) {
+    if (this.failed) return;
     this.failed = true;
+    this.engine?.destroy();
+    this.engine = null;
+    this.pendingMessages = [];
+    this.disposed = true;
     this.port.postMessage({ kind: "error", message: String(error) });
   }
 
@@ -67,7 +71,7 @@ class CrashAudioProcessor extends AudioWorkletProcessor {
     if (!output) return true;
     if (this.failed || !this.engine) {
       output.fill(0);
-      return true;
+      return !this.disposed;
     }
     try {
       this.engine.processQuantum(output);
@@ -75,8 +79,8 @@ class CrashAudioProcessor extends AudioWorkletProcessor {
       output.fill(0);
       this.#fail(error);
     }
-    return true;
+    return !this.disposed;
   }
 }
 
-registerProcessor("triggerfish-crash-renderer", CrashAudioProcessor);
+registerProcessor("triggerfish-percussion-renderer", PercussionAudioProcessor);

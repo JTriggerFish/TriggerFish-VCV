@@ -2,9 +2,11 @@
 #include "crash_macros.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <iostream>
+#include <limits>
 #include <vector>
 
 namespace {
@@ -78,10 +80,22 @@ double CrestFactor(const std::vector<float> &audio) {
   return std::abs(peak) / std::max(rms, 1.e-30);
 }
 
+bool SetRoutes(const std::uint32_t handle,
+               const std::array<float, 5> &gains) {
+  bool accepted = true;
+  for (std::size_t index = 0; index < gains.size(); ++index) {
+    accepted &= tf_crash_route_set(handle, static_cast<std::uint32_t>(index),
+                                   gains[index]) == 1;
+  }
+  return accepted && tf_crash_macro_commit(handle) == 1;
+}
+
 } // namespace
 
 int main() {
-  Check(tf_crash_api_version() == 12, "API version is explicit");
+  Check(tf_crash_api_version() == 1, "unreleased API remains version one");
+  Check(tf_crash_route_count() == 5,
+        "the metallic recipe exposes five optional routes");
   Check(tf_crash_macro_count() == 167, "the fitting surface is versioned");
   Check(std::abs(tf_crash_macro_default(0) + 20.f) < 1.e-6f,
         "the crash workbench starts at -20 dB model level");
@@ -171,6 +185,10 @@ int main() {
   Check(tf_crash_create(0.f) == 0, "invalid sample rates are rejected");
   const auto handle = tf_crash_create(48000.f);
   Check(handle != 0, "a renderer session can be created");
+  for (std::uint32_t index = 0; index < tf_crash_route_count(); ++index) {
+    Check(std::abs(tf_crash_route_get(handle, index) - 1.f) < 1.e-6f,
+          "metallic recipe routes default to unity");
+  }
 
   const auto first = Render(handle, 17, .8f, 256);
   const auto repeated = Render(handle, 17, .8f, 256);
@@ -183,6 +201,42 @@ int main() {
   Check(std::all_of(first.begin(), first.end(), [](const float sample) {
     return std::isfinite(sample);
   }), "rendered samples remain finite");
+
+  Check(SetRoutes(handle, {0.f, 0.f, 0.f, 1.f, 0.f}),
+        "the direct-contact-only route is accepted");
+  const auto directOnly = Render(handle, 17, .8f, 256);
+  Check(Energy(directOnly) > 1.e-12,
+        "the direct-contact-only route remains audible");
+  Check(Difference(first, directOnly) > 1.e-8,
+        "the direct route is distinct from the complete recipe");
+
+  Check(SetRoutes(handle, {0.f, 1.f, 0.f, 0.f, 1.f}),
+        "the immediate-body-only route is accepted");
+  const auto immediateBody = Render(handle, 17, .8f, 256);
+  Check(Energy(immediateBody) > 1.e-12,
+        "the immediate body path remains audible");
+
+  Check(SetRoutes(handle, {1.f, 0.f, 1.f, 0.f, 1.f}),
+        "the bloomed-body-only route is accepted");
+  const auto bloomedBody = Render(handle, 17, .8f, 256);
+  Check(Energy(bloomedBody) > 1.e-12,
+        "the bloomed body path remains audible");
+  Check(Difference(immediateBody, bloomedBody) > 1.e-8,
+        "immediate and bloomed body paths are distinct");
+
+  Check(SetRoutes(handle, {1.f, 1.f, 1.f, 0.f, 0.f}),
+        "a silent observation ablation is accepted by the low-level API");
+  const auto silent = Render(handle, 17, .8f, 256);
+  Check(Energy(silent) < 1.e-20,
+        "disabling both observation feeds produces silence");
+  Check(tf_crash_route_set(handle, tf_crash_route_count(), 1.f) == 0,
+        "invalid route indices are rejected");
+  Check(tf_crash_route_set(handle, 0,
+                           std::numeric_limits<float>::quiet_NaN()) == 0,
+        "non-finite route gains are rejected");
+  Check(SetRoutes(handle, {1.f, 1.f, 1.f, 1.f, 1.f}),
+        "factory routing can be restored after ablation");
+
   const auto brush = Render(handle, 17, .8f, 256, 0.f, 48000);
   const auto softBrush = Render(handle, 17, .8f, 256, 0.f, 48000, 0.f);
   const auto stiffBrush = Render(handle, 17, .8f, 256, 0.f, 48000, 1.f);

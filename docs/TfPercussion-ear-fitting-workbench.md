@@ -188,19 +188,26 @@ JSON export is the durable source of truth.
 The C++/WebAssembly renderer runs directly inside an `AudioWorkletProcessor`.
 Each process callback advances the persistent cymbal state for the browser's
 render quantum, currently 128 frames in supported browsers, and writes those
-samples straight to the worklet output. There is no ordinary Worker producer,
+samples straight to the worklet output. There is no Worker audio producer,
 shared ring, timer polling, or extra TriggerFish render lead. Repeated strikes
 therefore address the same state at the next message/worklet boundary rather
 than after a pre-rendered queue.
 
 Emscripten emits a dedicated single-file `worklet` build of the same C++ source
-as the offline renderer. The processor is registered immediately and attaches
-to the shared Wasm module when its initialization promise settles; it outputs
-silence during that short startup interval. Structural macro commits still
-rebuild coefficients synchronously in the audio thread. The header shows an
-elapsed “Preparing live DSP” timer while that rebuild is pending. A later
-prepared-state handoff can eliminate this bounded real-time-thread operation if
-profiling shows it is necessary.
+as the offline renderer. Initial startup outputs silence until its Wasm module
+is ready. A later parameter or routing edit never re-prepares the active DSP
+instance. An ordinary Worker expands the high-level controls and compiles the
+modal recurrence coefficients into an immutable, version-one prepared blob.
+The AudioWorklet then performs only bounded component installation and state
+initialization in a muted standby processor; it does not evaluate 408 modes'
+trigonometric or exponential coefficient formulas. The old processor keeps
+sounding and crossfades to the ready candidate over 3 ms. Rapid edits are
+coalesced, stale candidates are destroyed, and retirement is serialized so
+each AudioWorklet module's fixed session pool contains at most the active and
+one candidate. Prepared blobs are internal same-build messages, not portable
+fit files. The unreleased C/WebAssembly ABI remains version one until the first
+release. The header reports “Preparing live DSP” until the requested
+generation becomes active.
 
 The top-right settings dialog owns workstation concerns rather than instrument
 parameters. Its MIDI panel requests Web MIDI access only after an explicit user

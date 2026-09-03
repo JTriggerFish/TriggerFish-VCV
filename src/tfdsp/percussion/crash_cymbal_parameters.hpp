@@ -2,6 +2,7 @@
 
 #include "contact_exciter.hpp"
 #include "dispersion_loop.hpp"
+#include "metallic_plate_routing.hpp"
 #include "observation_model.hpp"
 #include "statistical_modal_cloud.hpp"
 #include "stochastic_modal_field.hpp"
@@ -139,10 +140,19 @@ struct CrashCymbalParameters {
   StochasticModalFieldControls modalFieldControls{};
   DispersionLoopParameters dispersion{};
   ObservationModel<2>::Parameters observation{};
+  MetallicPlateRouting routing{};
   CrashCymbalFitParameters fit{};
+};
+
+struct CrashCymbalPreparedParameters {
+  CrashCymbalParameters parameters{};
+  CrashModalField::PreparedParameters modalField{};
+  float sampleRate{48000.f};
 };
 
 CrashCymbalParameters DefaultCrashCymbalParameters(
     float sampleRate, const CrashCymbalFitParameters &fit = {});
+CrashCymbalPreparedParameters PrepareCrashCymbalParameters(
+    float sampleRate, const CrashCymbalParameters &parameters);
 
 } // namespace tfdsp::percussion

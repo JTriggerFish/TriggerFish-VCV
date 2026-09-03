@@ -237,6 +237,28 @@ if (testControls) {
       const fieldTurbulence = document.querySelector(
         '[data-fit-key="field_turbulence"] input');
       const settingsDialog = document.getElementById("settings-dialog");
+      const routingCompact = document.getElementById("routing-compact");
+      const routingDialog = document.getElementById("routing-dialog");
+      routingCompact.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+      const routingOpened = routingDialog.open;
+      const routingNodeCount = document.querySelectorAll(
+        "#routing-expanded .routing-node").length;
+      const routingEdgeCount = document.querySelectorAll(
+        "#routing-expanded .routing-edge").length;
+      document.querySelector(
+        '#routing-expanded [data-connection-id="route-1"]',
+      ).dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      const routingDisabled = document.querySelector(
+        '#routing-expanded [data-connection-id="route-1"]',
+      ).classList.contains("disabled");
+      document.querySelector(
+        '#routing-expanded [data-connection-id="route-1"]',
+      ).dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      const routingRestored = !document.querySelector(
+        '#routing-expanded [data-connection-id="route-1"]',
+      ).classList.contains("disabled");
+      document.getElementById("routing-close").click();
+      const routingClosed = !routingDialog.open;
       document.getElementById("settings-open").click();
       const settingsOpened = settingsDialog.open;
       const directWorklet = document.getElementById("audio-buffer-status")
@@ -341,6 +363,12 @@ if (testControls) {
         if (document.getElementById("status").textContent === "Ready" ||
             performance.now() >= deadline) {
           const checks = {
+            modularRouting: routingOpened && routingClosed &&
+              routingNodeCount === 5 && routingEdgeCount === 6 &&
+              routingDisabled && routingRestored &&
+              document.querySelectorAll("[data-module-id]").length >= 8 &&
+              Boolean(document.querySelector(
+                '[data-module-id="body"][style*="--module-colour"]')),
             master: master.value === "-12",
             settingsMenu: settingsOpened && settingsClosed && directWorklet &&
               midiSettingsPresent,
@@ -441,6 +469,7 @@ if (testControls) {
           };
           resolve({
             checks, passed: Object.values(checks).every(Boolean),
+            liveStatus: document.getElementById("live-commit").textContent,
             layout: {
               modalWidth: modalBounds.width,
               designWidth: modalDesignBounds.width,
@@ -458,8 +487,88 @@ if (testControls) {
     awaitPromise: true, returnByValue: true,
   });
   result.controls = controls.result.value;
+  const kickRecipe = await call("Runtime.evaluate", {
+    expression: `new Promise(resolve => {
+      const select = document.getElementById("instrument-recipe");
+      select.value = "1";
+      select.dispatchEvent(new Event("change"));
+      const deadline = performance.now() + 12000;
+      const poll = () => {
+        const ready = document.getElementById("status").textContent === "Ready" &&
+          document.getElementById("live-commit").textContent
+            .startsWith("Live DSP ready");
+        if (!ready && performance.now() < deadline) {
+          setTimeout(poll, 50);
+          return;
+        }
+        document.getElementById("routing-compact").dispatchEvent(
+          new MouseEvent("dblclick", { bubbles: true }),
+        );
+        const firstRoute = document.querySelector(
+          '#routing-expanded [data-connection-id="kick-route-1"]',
+        );
+        firstRoute?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        const routeDisabled = document.querySelector(
+          '#routing-expanded [data-connection-id="kick-route-1"]',
+        )?.classList.contains("disabled");
+        document.querySelector(
+          '#routing-expanded [data-connection-id="kick-route-1"]',
+        )?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        document.getElementById("routing-close").click();
+        const hitsBefore = Number(document.getElementById("limiter").textContent
+          .match(/hits (\\d+)/)?.[1] ?? 0);
+        document.getElementById("play-synthesis").click();
+        let loudestDb = -Infinity;
+        const sampleMeter = setInterval(() => {
+          const match = document.getElementById("limiter").textContent
+            .match(/out (-?\\d+) dBFS/);
+          if (match) loudestDb = Math.max(loudestDb, Number(match[1]));
+        }, 25);
+        setTimeout(() => {
+          clearInterval(sampleMeter);
+          const hitsAfter = Number(document.getElementById("limiter").textContent
+            .match(/hits (\\d+)/)?.[1] ?? 0);
+          const checks = {
+            selector: select.options.length === 2 && select.value === "1",
+            controls: document.querySelectorAll(
+              '[data-kick-key] input[type="range"]',
+            ).length === 15,
+            contextualPanels:
+              getComputedStyle(document.querySelector(
+                '[data-module-id="kick-primary"]')).display !== "none" &&
+              [...document.querySelectorAll('[data-module-id="body"]')]
+                .every(element => getComputedStyle(element).display === "none"),
+            routing: document.querySelectorAll(
+              "#routing-compact .routing-node",
+            ).length === 6 && document.querySelectorAll(
+              "#routing-compact .routing-edge",
+            ).length === 5 && routeDisabled,
+            label: document.getElementById("routing-recipe-label")
+              .textContent === "Compact FM kick",
+            liveAudio: hitsAfter > hitsBefore && loudestDb > -80,
+          };
+          resolve({
+            checks, passed: Object.values(checks).every(Boolean),
+            liveStatus: document.getElementById("live-commit").textContent,
+            loudestDb,
+          });
+        }, 500);
+      };
+      poll();
+    })`,
+    awaitPromise: true, returnByValue: true,
+  });
+  result.controls.kickRecipe = kickRecipe.result.value;
+  result.controls.checks.kickRecipe = result.controls.kickRecipe.passed;
+  result.controls.passed = Object.values(result.controls.checks).every(Boolean);
 }
 if (screenshot) {
+  await call("Runtime.evaluate", {
+    expression: `(() => {
+      document.querySelector("aside").scrollTop = 0;
+      document.querySelector(".analysis").scrollTop = 0;
+    })()`,
+  });
   const capture = await call("Page.captureScreenshot", { format: "png" });
   await writeFile(screenshot, Buffer.from(capture.data, "base64"));
 }

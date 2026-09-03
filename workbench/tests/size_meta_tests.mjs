@@ -7,21 +7,13 @@ const descriptors = [
     scale: "logarithmic", index: 0 },
   { key: "bloom_nonlinearity", defaultValue: .35, minimum: 0, maximum: 1,
     scale: "linear", index: 1 },
-  ...Array.from({ length: 12 }, (_, index) => ({
+  ...Array.from({ length: 24 }, (_, index) => ({
     key: `resolved_frequency_${index}`, defaultValue: 100 * (index + 1),
     minimum: 40, maximum: 22000, scale: "logarithmic", index: index + 2,
   })),
-  ...Array.from({ length: 12 }, (_, index) => ({
+  ...Array.from({ length: 24 }, (_, index) => ({
     key: `resolved_level_${index}`, defaultValue: 0,
-    minimum: -24, maximum: 24, scale: "linear", index: index + 14,
-  })),
-  ...Array.from({ length: 8 }, (_, index) => ({
-    key: `dense_wash_frequency_${index}`, defaultValue: 200 * (index + 1),
-    minimum: 40, maximum: 22000, scale: "logarithmic", index: index + 26,
-  })),
-  ...Array.from({ length: 8 }, (_, index) => ({
-    key: `dense_wash_level_${index}`, defaultValue: 0,
-    minimum: -24, maximum: 24, scale: "linear", index: index + 34,
+    minimum: -24, maximum: 24, scale: "linear", index: index + 26,
   })),
 ];
 
@@ -37,10 +29,12 @@ assert.equal(values(0).impact_width, 1.8);
 assert.equal(values(1).impact_width, .65);
 assert.equal(values(0).resolved_frequency_5, 600 * .42);
 assert.equal(values(1).resolved_frequency_5, 600 * 1.45);
+assert.equal(values(0).resolved_frequency_23, 2400 * .42);
+assert.equal(values(1).resolved_frequency_23, 2400 * 1.45);
 assert.equal(values(0).resolved_level_0, 5);
-assert.equal(values(1).resolved_level_5, 7);
-assert.equal(values(0).dense_wash_frequency_3, 800 * .42);
-assert.equal(values(1).dense_wash_level_3, 5);
+assert.equal(values(1).resolved_level_23, -2);
+assert.equal(values(0).dense_wash_frequency_3, undefined);
+assert.equal(values(1).dense_wash_level_3, undefined);
 assert.ok(Math.abs(values(.25).impact_width - Math.sqrt(1.8)) < 1.e-12);
 
 console.log("size meta tests passed");

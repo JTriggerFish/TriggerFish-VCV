@@ -278,4 +278,15 @@ CrashCymbalParameters DefaultCrashCymbalParameters(
   return result;
 }
 
+CrashCymbalPreparedParameters PrepareCrashCymbalParameters(
+    const float sampleRate, const CrashCymbalParameters &parameters) {
+  CrashCymbalPreparedParameters result;
+  result.parameters = parameters;
+  result.modalField = PrepareStochasticModalField(
+      sampleRate, parameters.modalField, parameters.modalFieldControls,
+      700.f, 6500.f);
+  result.sampleRate = sampleRate;
+  return result;
+}
+
 } // namespace tfdsp::percussion

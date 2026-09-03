@@ -16,13 +16,19 @@ const output = resolve(options.output);
 await mkdir(output, { recursive: true });
 for (const name of [
   "index.html", "styles.css", "app.mjs", "fit_controls.mjs", "point_editor.mjs",
+  "percussion_patch.mjs", "percussion_registry.mjs",
+  "metallic_plate_patch.mjs", "compact_kick_patch.mjs",
+  "recipe_adapter.mjs", "routing_view.mjs", "kick_controls.mjs",
+  "routing_controller.mjs", "performance_controls.mjs",
+  "analysis_controls.mjs", "recipe_controller.mjs", "waveform_view.mjs",
   "modal_editor.mjs", "decay_curve_editor.mjs", "tooltips.mjs",
   "size_meta.mjs", "engine.mjs", "wasm_engine_core.mjs", "audio.mjs",
+  "standby_renderer.mjs", "configuration_preparer.mjs",
   "limiter_config.mjs", "midi_input.mjs", "settings.mjs",
   "references.mjs", "analysis.mjs", "analysis_worker.mjs",
-  "render_worker.mjs",
+  "render_worker.mjs", "preparation_worker.mjs",
   "spectrogram.mjs", "state.mjs", "lookahead_limiter_processor.mjs",
-  "reference_browser.mjs", "crash_audio_worklet_processor.mjs",
+  "reference_browser.mjs", "percussion_audio_worklet_processor.mjs",
   "level_match.mjs",
 ]) {
   await copyFile(join(source, name), join(output, name));

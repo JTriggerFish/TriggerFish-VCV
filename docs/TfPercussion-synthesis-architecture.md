@@ -136,6 +136,8 @@ The remaining design is split by responsibility:
   manual fitting baseline and its reproducibility requirements.
 - [Percussion ear-fitting workbench](TfPercussion-ear-fitting-workbench.md):
   manual fitting controls, browser architecture, snapshots, and safety.
+- [Modular percussion patches](TfPercussion-patch-architecture.md): versioned
+  JSON graphs, module ports, workbench lowering, and reduced Rack controls.
 - [Percussion analysis toolkit](TfPercussion-analysis-toolkit.md): canonical
   analysis contracts, dataset policy, validation diagnostics, and the
   Plotly/WebAssembly reporting boundary.

@@ -1,4 +1,5 @@
 #include "tfdsp/percussion/contact_exciter.hpp"
+#include "tfdsp/percussion/compact_kick.hpp"
 #include "tfdsp/percussion/correlated_fm_burst.hpp"
 #include "tfdsp/percussion/coupled_resonator_network.hpp"
 #include "tfdsp/percussion/crash_cymbal.hpp"
@@ -206,6 +207,17 @@ void BenchmarkCrashCymbal() {
   BenchmarkCrashVariant("408-mode crash", fit);
 }
 
+void BenchmarkCompactKick() {
+  tfdsp::percussion::CompactKick kick;
+  kick.Prepare(48000.f, tfdsp::percussion::DefaultCompactKickParameters());
+  const tfdsp::percussion::CompactKickHit hit{};
+  Measure("compact FM kick", [&](const std::size_t sample) {
+    if (sample % 24000 == 0)
+      kick.Trigger(hit);
+    return kick.Process();
+  });
+}
+
 void BenchmarkCrashDeadlines() {
   using Clock = std::chrono::steady_clock;
   tfdsp::percussion::CrashCymbalFitParameters fit;
@@ -253,5 +265,6 @@ int main() {
   BenchmarkDispersion();
   BenchmarkObservation();
   BenchmarkCrashCymbal();
+  BenchmarkCompactKick();
   BenchmarkCrashDeadlines();
 }

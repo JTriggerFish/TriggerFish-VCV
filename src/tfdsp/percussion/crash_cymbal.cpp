@@ -48,6 +48,21 @@ void ApplyVelocityColour(std::array<float, Count> &projection,
 
 void CrashCymbal::Prepare(const float sampleRate,
                           const CrashCymbalParameters &parameters) {
+  PrepareComponents(sampleRate, parameters);
+  modalField_.Prepare(sampleRate, parameters.modalField,
+                      parameters.modalFieldControls, 700.f, 6500.f);
+  Reset();
+}
+
+void CrashCymbal::Prepare(
+    const CrashCymbalPreparedParameters &prepared) {
+  PrepareComponents(prepared.sampleRate, prepared.parameters);
+  modalField_.LoadPrepared(prepared.modalField);
+  Reset();
+}
+
+void CrashCymbal::PrepareComponents(
+    const float sampleRate, const CrashCymbalParameters &parameters) {
   if (!std::isfinite(sampleRate) || sampleRate < 1.f)
     throw std::invalid_argument("crash sample rate must be positive");
   sampleRate_ = sampleRate;
@@ -55,14 +70,12 @@ void CrashCymbal::Prepare(const float sampleRate,
   contact_.Prepare(sampleRate);
   const float maximumDelay = std::max(512.f, .025f * sampleRate);
   dispersion_.Prepare(sampleRate, maximumDelay, parameters.dispersion);
-  modalField_.Prepare(sampleRate, parameters.modalField,
-                      parameters.modalFieldControls, 700.f, 6500.f);
   observation_.Prepare(sampleRate, .01f, parameters.observation);
   bloomBodyGain_ = std::clamp(
       tfdsp::FiniteNormalOrZero(parameters.fit.bloomBodyGain), 0.f, 2.f);
+  routing_ = parameters.routing;
   delayConstraint_.Prepare(sampleRate, .003f, .08f);
   modalConstraint_.Prepare(sampleRate, .001f, .003f, .08f);
-  Reset();
 }
 
 void CrashCymbal::Reset() noexcept {
@@ -101,12 +114,19 @@ CrashCymbalFrame CrashCymbal::ProcessFrame() noexcept {
   const auto contact = contact_.Process();
   const float bodyDrive = bodyDriveScale_ * contact.bodyDrive;
   const float bloom = dispersion_.Process(
-      bloomDriveScale_ * bodyDrive, delayLoss);
-  const float bodyBloom = bloomBodyGain_ * bloom;
+      routing_.Get(MetallicPlateRoute::ContactToDispersion) *
+          bloomDriveScale_ * bodyDrive,
+      delayLoss);
+  const float bodyBloom =
+      routing_.Get(MetallicPlateRoute::DispersionToBody) *
+      bloomBodyGain_ * bloom;
   const float body = modalField_.ProcessExcitedPair(
-      bodyDrive, bodyBloom, modalLoss);
+      routing_.Get(MetallicPlateRoute::ContactToBody) * bodyDrive,
+      bodyBloom, modalLoss);
   const ObservationModel<2>::SourceFrame sources{
-      contact.directRadiation, body};
+      routing_.Get(MetallicPlateRoute::ContactToObservation) *
+          contact.directRadiation,
+      routing_.Get(MetallicPlateRoute::BodyToObservation) * body};
   return {
       contact.directRadiation,
       bloom,

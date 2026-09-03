@@ -80,10 +80,11 @@ STFT analysis.
 
 | Path | Current |
 | --- | ---: |
-| Unified 408-mode crash | 1,133 ns/sample |
-| Isolated unified field, phase and exchange | 845 ns/sample |
-| Isolated dispersion loop | 141 ns/sample |
-| Isolated 512-mode cloud | 524 ns/sample |
+| Unified 408-mode crash | 1,150 ns/sample |
+| Compact FM kick | 275 ns/sample |
+| Isolated unified field, phase and exchange | 789 ns/sample |
+| Isolated dispersion loop | 143 ns/sample |
+| Isolated 512-mode cloud | 529 ns/sample |
 
 The unified crash uses about 5.4% of one core at 48 kHz. Its measured 128-frame
 p99, including a hit in the sampled tail, is 167 microseconds inside a
@@ -117,8 +118,9 @@ The remaining optimization order is:
 2. Profile the smaller dispersion and observation paths only if the assembled
    Rack module misses its production CPU budget.
 
-For the browser workbench, the optimized Wasm graph renders ten seconds in
-about 642 ms (6.4% of real time). A ten-second 2048-point, 75%-overlap STFT
+For the browser workbench, the optimized Wasm crash graph renders ten seconds
+in about 646 ms (6.5% of real time), while the compact kick takes about 57 ms
+(0.6% of real time). A ten-second 2048-point, 75%-overlap STFT
 takes about 73 ms and stores 3.67 MiB. A 1,089 x 506 heatmap redraw takes about
 22 ms. Rendering and analysis remain asynchronous; Canvas replacement remains
 lower priority. Reference spectra use an eight-entry LRU cache (about 29 MiB at
@@ -143,6 +145,15 @@ finiteness, and five sample rates.
 The complete implemented signal flow and the unified field's equations are in
 the self-contained
 [nonlinear resonator architecture](TfPercussion-nonlinear-resonator-architecture.md).
+
+`CompactKick` is the second assembled recipe. It uses two independently
+parameterized, overlap-safe correlated-FM bursts plus a short tilted-noise
+click, a fixed three-source mixer, and the shared observation/radiation stage.
+Eight event voices preserve decaying hits during retriggering. Strength scales
+level, initial pitch, and FM deviation; hardness increases secondary-branch FM
+and click energy. Its three optional source routes are prepared gains at fixed
+call sites. The defaults are a constructive starting voice, not a fitted claim
+about a particular acoustic kick.
 
 An earlier coupled-comb/frequency-shift graph was rejected during calibration:
 its controls could not place persistent ridges independently. The implemented
@@ -185,6 +196,18 @@ Automated optimization is now experimental diagnostic tooling; the active path
 is a versioned, browser-based ear-fitting workbench using the native C++ graph.
 Numerical views explain differences and protect regressions, but do not approve
 a fit.
+
+The modular-patch layer serializes that graph as named contact,
+dispersion, modal-body, observation, and mono-output modules with validated
+ports and an acyclic routing schedule. The workbench displays the same routing
+and links module-role colours to the complete parameter panel. Five optional
+metallic-recipe connections are executable as prepared gains at fixed C++ call
+sites and can be toggled in the expanded view. The adapter rejects silent or
+unsupported structures. A second compact-kick patch exercises the same schema,
+shared C/WebAssembly API, snapshots, routing view, contextual controls, live
+AudioWorklet path, and fixed-schedule execution with a structurally different
+six-node graph. Module replacement and arbitrary new connection endpoints wait
+for another registered, statically ordered recipe.
 
 The Python numerical-analysis implementation and its remaining real-data gates
 are recorded in `TfPercussion-analysis-toolkit.md`. The static Plotly report is
