@@ -169,7 +169,6 @@ class CrashFit:
     dispersion_high_decay_seconds: float = 0.42
     dispersion_diffusion: float = 1.0
     bloom_body_gain: float = 1.0
-    unified_body_enabled: bool = True
     field_gain: float = 0.73824115
     field_turbulence: float = 0.65
     field_packet_spread_erb: float = 6.0

@@ -125,13 +125,17 @@ def test_dense_mode_seed_is_repeatable_and_object_specific():
 
 def test_crash_binding_exposes_implement_and_brush_contact_spread():
     fit = CrashFit()
-    brush_tap = render_crash(fit, 0.3, implement=0.0, contact_spread=0.0, seed=19)
-    brush_sweep = render_crash(fit, 0.3, implement=0.0, contact_spread=1.0, seed=19)
+    brush_tap = render_crash_components(
+        fit, 0.3, implement=0.0, contact_spread=0.0, seed=19
+    )
+    brush_sweep = render_crash_components(
+        fit, 0.3, implement=0.0, contact_spread=1.0, seed=19
+    )
     stick = render_crash(fit, 0.3, implement=1.0, contact_spread=1.0, seed=19)
     assert not np.array_equal(brush_tap, brush_sweep)
-    assert not np.array_equal(brush_sweep, stick)
+    assert not np.array_equal(brush_sweep[:, -1], stick)
     late = slice(round(0.1 * 48_000), round(0.25 * 48_000))
-    assert np.linalg.norm(brush_sweep[late]) > np.linalg.norm(brush_tap[late])
+    assert np.linalg.norm(brush_sweep[late, 0]) > np.linalg.norm(brush_tap[late, 0])
 
 
 def test_indexed_fit_parameter_updates_one_dense_envelope_node():
@@ -452,8 +456,8 @@ def test_native_crash_component_taps_preserve_output():
     fit = CrashFit()
     taps = render_crash_components(fit, 0.1, strength=0.7, seed=12)
     output = render_crash(fit, 0.1, strength=0.7, seed=12)
-    assert taps.shape == (4800, 5)
-    assert np.array_equal(taps[:, 4], output)
+    assert taps.shape == (4800, 4)
+    assert np.array_equal(taps[:, 3], output)
 
 
 def test_crash_features_retain_within_region_decay_trajectory():

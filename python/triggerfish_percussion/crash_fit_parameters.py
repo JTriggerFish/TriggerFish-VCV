@@ -189,7 +189,7 @@ CAUSAL_STAGES = (
 
 # Current one-field graph. The older CAUSAL_STAGES remain loadable for legacy
 # diagnostic artifacts, but new fits must not spend evaluations on controls
-# that are disconnected when unified_body_enabled is true.
+# that are disconnected from the renderer.
 UNIFIED_CAUSAL_STAGES = (
     CAUSAL_STAGES[0],
     CausalStage(
