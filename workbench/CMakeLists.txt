@@ -93,7 +93,7 @@ if(EMSCRIPTEN)
     "-sINITIAL_MEMORY=33554432"
     "-sSTACK_SIZE=2097152"
     "-sASSERTIONS=1"
-    "-sEXPORTED_FUNCTIONS=['_tf_percussion_create_unprepared','_tf_percussion_destroy','_tf_percussion_reset','_tf_percussion_trigger','_tf_percussion_process','_tf_percussion_apply_prepared','_malloc','_free']"
+    "-sEXPORTED_FUNCTIONS=['_tf_percussion_create_unprepared','_tf_percussion_destroy','_tf_percussion_reset','_tf_percussion_trigger','_tf_percussion_set_mute','_tf_percussion_process','_tf_percussion_apply_prepared','_malloc','_free']"
     "-sEXPORTED_RUNTIME_METHODS=['HEAPF32','HEAPU8']"
   )
 

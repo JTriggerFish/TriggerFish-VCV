@@ -9,7 +9,7 @@ namespace {
 using Scale = ParameterScale;
 
 const std::array<ParameterDescriptor, KickParameterCount> Descriptors{{
-    {"model_level_db", "Model level", "dB", -60.f, 12.f, -12.f},
+    {"model_level_db", "Model level", "dB", -60.f, 0.f, -12.f},
     {"fundamental_hz", "Fundamental", "Hz", 25.f, 120.f, 52.f,
      Scale::Logarithmic},
     {"pitch_drop_octaves", "Pitch drop", "oct", 0.f, 4.f, 1.8f},

@@ -212,7 +212,7 @@ assert.deepEqual(membraneRoutingValues(membrane), [.35, 1, .08, .45, 1]);
 const acousticKick = membranePresetValues(
   "acousticKick", membraneDescriptors,
 );
-assert.equal(acousticKick[1], 52);
+assert.equal(acousticKick[1], 35);
 assert.equal(acousticKick[4], .5);
 const acousticKickPatch = createAcousticKickPatch(
   membraneDescriptors,
@@ -221,7 +221,7 @@ assert.equal(acousticKickPatch.id, "factory.membrane.acoustic-kick-01");
 assert.equal(acousticKickPatch.name, "Acoustic kick");
 assert.equal(validateMembranePatch(acousticKickPatch), acousticKickPatch);
 const tomAfterKick = membranePresetValues("tom", membraneDescriptors);
-assert.deepEqual(acousticKick.slice(7), [105, 2.5]);
+assert.deepEqual(acousticKick.slice(7), [600, 10]);
 assert.deepEqual(tomAfterKick.slice(7), [2800, 0],
   "factory presets restore their own defaults instead of prior values");
 const fractionalChoice = structuredClone(membrane);

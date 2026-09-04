@@ -9,6 +9,7 @@ const testAudio = arguments_.includes("--trigger");
 const profileUi = arguments_.includes("--profile");
 const testControls = arguments_.includes("--controls");
 const reloadPage = arguments_.includes("--reload");
+const captureStart = process.env.TF_WORKBENCH_CAPTURE_START;
 
 async function pageTarget() {
   const targets = await (await fetch(`${endpoint}/json`)).json();
@@ -272,6 +273,9 @@ if (testControls) {
         document.getElementById("midi-enable") instanceof HTMLButtonElement &&
         document.getElementById("midi-input") instanceof HTMLSelectElement &&
         document.getElementById("midi-channel") instanceof HTMLSelectElement;
+      const midiEnabledByDefault =
+        document.getElementById("midi-status").textContent !==
+          "MIDI access has not been requested.";
       document.getElementById("settings-close").click();
       const settingsClosed = !settingsDialog.open;
       const sidebar = document.querySelector("aside");
@@ -379,13 +383,13 @@ if (testControls) {
               const picker = document.getElementById("instrument-calibration");
               const labels = [...picker.options].map(option => option.textContent);
               return picker.closest(".calibration-picker") &&
-                labels.includes("Snare — medium centre") &&
-                labels.includes("Kick — medium centre") &&
-                labels.includes("Gong — representative mallet") &&
-                labels.includes("Ride — medium bow");
+                labels.some(label => label.startsWith("Snare — medium standard hit")) &&
+                labels.some(label => label.startsWith("Acoustic kick — medium centre")) &&
+                labels.some(label => label.startsWith("Gong — representative mallet")) &&
+                labels.some(label => label.startsWith("Ride — medium bow"));
             })(),
             settingsMenu: settingsOpened && settingsClosed && directWorklet &&
-              midiSettingsPresent,
+              midiSettingsPresent && midiEnabledByDefault,
             hardness: hardness.value === initial.hardness,
             contactSpread: contactSpread.value === initial.contactSpread,
             implement: implementChoices.find(input => input.checked)?.value ===
@@ -614,10 +618,10 @@ if (testControls) {
             selector: select.options.length === 4 && select.value === "2",
             controls: document.querySelectorAll(
               '[data-membrane-key] input[type="range"]',
-            ).length === 33,
+            ).length === 32,
             presets: Boolean(preset) && document.querySelector(
               '[data-membrane-key="fundamental_hz"] output',
-            )?.textContent.startsWith("52.0"),
+            )?.textContent.startsWith("35.0"),
             equalizerModes: document.querySelectorAll(
               "#membrane-eq-mode-controls option",
             ).length === 3,
@@ -669,7 +673,7 @@ if (testControls) {
             selector: select.options.length === 4 && select.value === "3",
             wireControls: document.querySelectorAll(
               "#snare-wire-response-controls input, #snare-wire-spectrum-controls input",
-            ).length === 15,
+            ).length === 14,
             ringControls: document.querySelectorAll(
               "#snare-ring-controls input",
             ).length === 3,
@@ -713,6 +717,9 @@ if (testControls) {
                 '[data-membrane-key="fundamental_hz"] output',
               )?.textContent.startsWith("185.0") &&
               document.querySelector(
+                '[data-membrane-key="model_level_db"] output',
+              )?.textContent.startsWith("-10.00") &&
+              document.querySelector(
                 'input[name="membrane-implement"][value="1"]',
               )?.checked,
             ready, loaded,
@@ -729,6 +736,24 @@ if (testControls) {
   result.controls.passed = Object.values(result.controls.checks).every(Boolean);
 }
 if (screenshot) {
+  if (captureStart) {
+    const selected = await call("Runtime.evaluate", {
+      expression: `new Promise(resolve => {
+        const picker = document.getElementById("instrument-calibration");
+        picker.value = ${JSON.stringify(captureStart)};
+        picker.dispatchEvent(new Event("change"));
+        const deadline = performance.now() + 15000;
+        const poll = () => {
+          const ready = document.getElementById("status").textContent === "Ready";
+          if (ready || performance.now() >= deadline) resolve({ ready });
+          else setTimeout(poll, 50);
+        };
+        poll();
+      })`,
+      awaitPromise: true, returnByValue: true,
+    });
+    result.captureStart = { id: captureStart, ...selected.result.value };
+  }
   await call("Runtime.evaluate", {
     expression: `(() => {
       document.querySelector("aside").scrollTop = 0;

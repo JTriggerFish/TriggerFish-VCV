@@ -7,31 +7,56 @@ import json
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from threading import Lock
 from urllib.parse import urlsplit
 
 from percussion_reference_corpus import build_catalog, reference_path
+
+
+class ReferenceCatalog:
+    """Atomically refresh the development-only reference allow-list."""
+
+    def __init__(
+        self,
+        private_root: Path,
+        library_root: Path | None,
+        reference_root: Path | None,
+    ) -> None:
+        self._roots = (private_root, library_root, reference_root)
+        self._lock = Lock()
+        self._corpora: list[dict[str, object]] = []
+        self._paths: dict[str, Path] = {}
+        self.refresh()
+
+    def refresh(self) -> list[dict[str, object]]:
+        corpora, paths = build_catalog(*self._roots)
+        with self._lock:
+            self._corpora, self._paths = corpora, paths
+            return self._corpora
+
+    def resolve(self, request_path: str) -> Path | None:
+        with self._lock:
+            return reference_path(self._paths, request_path)
 
 
 class WorkbenchHandler(SimpleHTTPRequestHandler):
     def __init__(
         self,
         *args,
-        corpora: list[dict[str, object]],
-        reference_paths: dict[str, Path],
+        catalog: ReferenceCatalog,
         **kwargs,
     ) -> None:
-        self.corpora = corpora
-        self.reference_paths = reference_paths
+        self.catalog = catalog
         super().__init__(*args, **kwargs)
 
     def do_GET(self) -> None:
         if urlsplit(self.path).path == "/api/reference-corpora":
-            self._send_json({"corpora": self.corpora})
+            self._send_json({"corpora": self.catalog.refresh()})
             return
         super().do_GET()
 
     def translate_path(self, path: str) -> str:
-        reference = reference_path(self.reference_paths, urlsplit(path).path)
+        reference = self.catalog.resolve(urlsplit(path).path)
         return str(reference) if reference else super().translate_path(path)
 
     def _send_json(self, value: object) -> None:
@@ -68,14 +93,13 @@ def main() -> None:
     if not directory.is_dir():
         parser.error(f"not a directory: {directory}")
     corpus_root = arguments.corpus_root.resolve()
-    corpora, reference_paths = build_catalog(
+    catalog = ReferenceCatalog(
         corpus_root, arguments.library_root, arguments.reference_root
     )
     handler = partial(
         WorkbenchHandler,
         directory=str(directory),
-        corpora=corpora,
-        reference_paths=reference_paths,
+        catalog=catalog,
     )
     server = ThreadingHTTPServer(("0.0.0.0", arguments.port), handler)
     print(f"serving {directory} at http://0.0.0.0:{arguments.port}/", flush=True)

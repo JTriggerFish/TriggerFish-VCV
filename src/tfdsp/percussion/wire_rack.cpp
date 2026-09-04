@@ -72,7 +72,7 @@ PrepareWireRackParameters(const float sampleRate,
   result.noiseMix = Safe(source.noiseMix, .6f, 0.f, 2.f);
   result.modalMix = Safe(source.modalMix, .75f, 0.f, 2.f);
   result.outputLevel = Safe(source.outputGain, .42f, 0.f, 4.f);
-  result.maximumModalEnergy = Safe(source.maximumModalEnergy, 1.f, .001f, 16.f);
+  result.maximumModalEnergy = Safe(source.maximumModalEnergy, 16.f, .001f, 64.f);
   result.seed = source.seed;
   return result;
 }
@@ -113,8 +113,10 @@ float WireRack::Process(float bodyMotion) noexcept {
                                (1.f - parameters_.attackCoefficient) * target
                          : parameters_.releaseCoefficient * contactEnvelope_;
   contactEnvelope_ = tfdsp::FiniteNormalOrZero(contactEnvelope_);
-  const float linearContact =
-      std::clamp(parameters_.sensitivity * contactEnvelope_, 0.f, 1.f);
+  // Sensitivity is calibrated in useful UI units. The fixed scale keeps
+  // ordinary membrane motion below the emergency state-energy guard without
+  // flattening it through a clip.
+  const float linearContact = .125f * parameters_.sensitivity * contactEnvelope_;
   // Wire contact grows with both the number of touching strands and their
   // individual force. Squaring the normalized follower gives a smooth onset
   // without introducing a second trigger or a delayed noise burst.

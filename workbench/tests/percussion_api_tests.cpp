@@ -175,13 +175,22 @@ int main() {
   const auto membrane = tf_percussion_create(2, 48000.f);
   Check(membrane != 0 && tf_percussion_recipe(membrane) == 2,
         "membrane session can be created");
-  Check(tf_percussion_parameter_count(membrane) == 34 &&
+  Check(tf_percussion_parameter_count(membrane) == 33 &&
             tf_percussion_route_count(membrane) == 5,
         "membrane exposes its bounded controls and routing");
   const auto membranePitch = ParameterIndex(membrane, "fundamental_hz");
   const auto eqMode = ParameterIndex(membrane, "equalizer_mode");
-  Check(membranePitch < 34 && eqMode < 34,
+  const auto directVelocity =
+      ParameterIndex(membrane, "direct_velocity_exponent");
+  const auto bodyVelocity =
+      ParameterIndex(membrane, "body_velocity_exponent");
+  Check(membranePitch < 33 && eqMode < 33,
         "membrane parameters have stable identifiers");
+  Check(tf_percussion_parameter_minimum(membrane, directVelocity) == 1.f &&
+            tf_percussion_parameter_minimum(membrane, bodyVelocity) == 1.f &&
+            tf_percussion_parameter_default(membrane, directVelocity) == 1.f &&
+            tf_percussion_parameter_default(membrane, bodyVelocity) == 1.f,
+        "membrane velocity controls cannot compress the input curve");
   Check(tf_percussion_parameter_scale(membrane, eqMode) == 3,
         "membrane output EQ declares a discrete choice control");
   Check(!tf_percussion_parameter_set(membrane, eqMode, 1.5f) &&
@@ -199,13 +208,13 @@ int main() {
   const auto snare = tf_percussion_create(3, 48000.f);
   Check(snare != 0 && tf_percussion_recipe(snare) == 3,
         "snare session can be created");
-  Check(tf_percussion_parameter_count(snare) == 52 &&
+  Check(tf_percussion_parameter_count(snare) == 50 &&
             tf_percussion_route_count(snare) == 7,
         "snare exposes membrane, wire, and routing controls");
   const auto wireLevel = ParameterIndex(snare, "wire_level");
   const auto wireDensity = ParameterIndex(snare, "wire_density");
   const auto snarePitch = ParameterIndex(snare, "fundamental_hz");
-  Check(wireLevel < 52 && wireDensity < 52,
+  Check(wireLevel < 50 && wireDensity < 50,
         "snare wire parameters have stable identifiers");
   Check(tf_percussion_parameter_default(snare, snarePitch) == 185.f &&
             tf_percussion_parameter_get(snare, snarePitch) == 185.f,

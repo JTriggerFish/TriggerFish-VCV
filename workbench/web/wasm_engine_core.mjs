@@ -151,11 +151,18 @@ export class WasmPercussionEngine {
 
   trigger({
     strength = .8, location = 1, hardness = .65, implement = .75,
-    contactSpread = .2, seed = 1,
+    contactSpread = .2, constraint = 0, seed = 1,
   }) {
+    if (!this.module._tf_percussion_set_mute(this.handle, constraint))
+      throw new Error("could not set percussion constraint");
     if (!this.module._tf_percussion_trigger(
       this.handle, strength, location, hardness, implement, contactSpread, seed,
     )) throw new Error("could not trigger percussion DSP");
+  }
+
+  setConstraint(amount) {
+    if (!this.module._tf_percussion_set_mute(this.handle, amount))
+      throw new Error("could not set percussion constraint");
   }
 
   reset() {

@@ -20,6 +20,7 @@ export class StandbyRenderer {
     this.active = null;
     this.appliedGeneration = -1;
     this.muted = false;
+    this.constraint = 0;
     this.building = null;
     this.retirement = Promise.resolve();
   }
@@ -49,7 +50,16 @@ export class StandbyRenderer {
   }
 
   reset() {
-    this.active?.node.port.postMessage({ kind: "reset" });
+    this.active?.node.port.postMessage({
+      kind: "reset", constraint: this.constraint,
+    });
+  }
+
+  setConstraint(amount) {
+    this.constraint = Math.max(0, Math.min(1, Number(amount)));
+    this.active?.node.port.postMessage({
+      kind: "constraint", amount: this.constraint,
+    });
   }
 
   setMuted(muted) {
@@ -124,6 +134,9 @@ export class StandbyRenderer {
     const previous = this.active;
     this.active = candidate;
     this.appliedGeneration = configuration.generation;
+    candidate.node.port.postMessage({
+      kind: "reset", constraint: this.constraint,
+    });
     const now = this.context.currentTime;
     const target = this.muted ? 0 : 1;
     candidate.gain.gain.setValueAtTime(0, now);

@@ -140,7 +140,7 @@ if (!kickAudio.every(Number.isFinite) ||
 wasm._tf_percussion_destroy(kick);
 
 const membrane = wasm._tf_percussion_create(2, 48000);
-if (!membrane || wasm._tf_percussion_parameter_count(membrane) !== 34 ||
+if (!membrane || wasm._tf_percussion_parameter_count(membrane) !== 33 ||
     wasm._tf_percussion_route_count(membrane) !== 5) {
   throw new Error("membrane recipe allocation failed");
 }
@@ -156,7 +156,7 @@ if (!membraneAudio.every(Number.isFinite) ||
 wasm._tf_percussion_destroy(membrane);
 
 const snare = wasm._tf_percussion_create(3, 48000);
-if (!snare || wasm._tf_percussion_parameter_count(snare) !== 52 ||
+if (!snare || wasm._tf_percussion_parameter_count(snare) !== 50 ||
     wasm._tf_percussion_route_count(snare) !== 7) {
   throw new Error("snare recipe allocation failed");
 }

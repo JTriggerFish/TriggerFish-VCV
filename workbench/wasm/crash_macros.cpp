@@ -17,6 +17,10 @@ constexpr float DefaultImpact = .9f;
 constexpr float DefaultImpactWidth = .65f;
 constexpr float DefaultBloomNonlinearity = .75652893f;
 constexpr float DefaultBloomDevelopment = .49285325f;
+// The modal field is energy-normalized internally. This fixed calibration maps
+// those units to the workbench's attenuation-only output scale, where the
+// nominal crash fit lives near -36 dB rather than requiring positive gain.
+constexpr float WorkbenchOutputCalibration = 174.f;
 constexpr std::array<float, DenseWashCurvePointCount>
     StartingDenseWashFrequencyHz{
         120.f, 500.f, 1500.f, 3000.f, 6000.f, 10000.f, 16000.f, 21000.f};
@@ -61,7 +65,7 @@ std::array<CrashMacroDescriptor, CrashMacroCount> BuildDescriptors() {
     result[Index(macro)] = std::move(descriptor);
   };
   set(CrashMacro::ModelLevelDb,
-      Linear("model_level_db", "Model level", "dB", -60.f, 12.f, -20.f));
+      Linear("model_level_db", "Model level", "dB", -60.f, 0.f, -36.f));
   set(CrashMacro::ImpactToneNoise,
       Linear("impact_tone_noise", "Impact: ping to noise", "", 0.f, 1.f, .9f));
   set(CrashMacro::ImpactWidth,
@@ -428,7 +432,11 @@ CrashCymbalFitParameters CrashWorkbenchBaseFit() noexcept {
   fit.bodyDecaySeconds = StartingDecaySeconds;
   fit.bodyDecayActive = StartingDecayActive;
   fit.denseTiltDbPerOctave = -.668371f;
-  fit.fieldGain = .0376872f;
+  fit.outputGain = WorkbenchOutputCalibration;
+  // Keep the calibrated workbench output scale from changing the relative
+  // direct/body topology: both observation paths use the same -20 dB base
+  // remap. Instrument presets may then rebalance them explicitly.
+  fit.fieldGain = .00376872f;
   fit.fieldTurbulence = .698536f;
   fit.fieldPacketSpreadErb = 4.41885f;
   fit.fieldPhaseBandwidthErb = .345710f;
@@ -452,7 +460,12 @@ CrashCymbalFitParameters CrashWorkbenchBaseFit() noexcept {
   fit.contactMicroGain = 2.069553f;
   fit.contactMicroDurationScale = 1.622369f;
   fit.contactMicroDensityScale = .451570f;
-  fit.directGain = .227942f;
+  // The reference grid spans five unchanged velocity layers. These exponents
+  // match its useful dynamic range; level is calibrated once across the grid,
+  // never independently per hit.
+  fit.strengthGamma = 2.3f;
+  fit.bodyStrengthGamma = 1.95f;
+  fit.directGain = .0227942f;
 
   fit.directLowCutHz = 40.f;
   fit.directColourFrequencyHz = 5606.363f;

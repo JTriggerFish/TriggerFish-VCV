@@ -11,27 +11,26 @@ using Scale = ParameterScale;
 const std::array<ParameterDescriptor,
                  SnareParameterCount - MembraneParameterCount>
     WireDescriptors{{
-        {"wire_level", "Wire level", "x", 0.f, 6.f, 4.f},
-        {"wire_delay_ms", "Wire arrival", "ms", 0.f, 40.f, 0.f},
-        {"wire_sensitivity", "Wire sensitivity", "x", 0.f, 32.f, 4.f},
-        {"wire_threshold", "Wire threshold", "", 0.f, .08f, .05f},
+        {"wire_level", "Wire level", "x", 0.f, 6.f, 1.f},
+        {"wire_sensitivity", "Wire sensitivity", "x", 0.f, 32.f, 12.f},
+        {"wire_threshold", "Wire threshold", "", 0.f, .08f, .0015f},
         {"wire_motion_highpass_hz", "Wire motion high-pass", "Hz", 20.f, 4000.f,
-         1000.f, Scale::Logarithmic},
-        {"wire_attack_seconds", "Wire engagement", "s", .0001f, .08f, .045f,
+         140.f, Scale::Logarithmic},
+        {"wire_attack_seconds", "Wire engagement", "s", .0001f, .08f, .0015f,
          Scale::Logarithmic},
-        {"wire_release_seconds", "Contact release", "s", .0005f, .2f, .03f,
+        {"wire_release_seconds", "Contact release", "s", .0005f, .2f, .08f,
          Scale::Logarithmic},
-        {"wire_minimum_hz", "Wire low edge", "Hz", 80.f, 6000.f, 520.f,
+        {"wire_minimum_hz", "Wire low edge", "Hz", 80.f, 6000.f, 250.f,
          Scale::Logarithmic},
-        {"wire_maximum_hz", "Wire high edge", "Hz", 2000.f, 22000.f, 9000.f,
+        {"wire_maximum_hz", "Wire high edge", "Hz", 2000.f, 22000.f, 14000.f,
          Scale::Logarithmic},
-        {"wire_decay_seconds", "Wire decay", "s", .008f, 2.f, .025f,
+        {"wire_decay_seconds", "Wire decay", "s", .008f, 2.f, .35f,
          Scale::Logarithmic},
-        {"wire_decay_tilt", "Wire decay tilt", "", -1.f, 1.f, .78f},
+        {"wire_decay_tilt", "Wire decay tilt", "", -1.f, 1.f, .8f},
         {"wire_density", "Wire density", "", 0.f, 1.f, .9f},
-        {"wire_brightness", "Wire brightness", "", 0.f, 1.f, .05f},
-        {"wire_noise_mix", "Wire noise", "x", 0.f, 2.f, .42f},
-        {"wire_modal_mix", "Wire modes", "x", 0.f, 2.f, .7f},
+        {"wire_brightness", "Wire brightness", "", 0.f, 1.f, 0.f},
+        {"wire_noise_mix", "Wire noise", "x", 0.f, 2.f, .6f},
+        {"wire_modal_mix", "Wire modes", "x", 0.f, 2.f, .45f},
         {"ring_frequency_hz", "Persistent ring", "Hz", 100.f, 2000.f, 675.f,
          Scale::Logarithmic},
         {"ring_decay_seconds", "Ring decay", "s", .05f, 3.f, 1.8f,
@@ -57,7 +56,7 @@ SnareParameterValues MakeDefaultValues() noexcept {
     result[index] =
         WireDescriptors[index - MembraneParameterCount].defaultValue;
   using P = MembraneParameter;
-  Set(result, P::ModelLevelDb, -20.f);
+  Set(result, P::ModelLevelDb, -10.f);
   Set(result, P::FundamentalHz, 185.f);
   Set(result, P::DecaySeconds, .12f);
   Set(result, P::DecayTilt, .45f);
@@ -67,18 +66,17 @@ SnareParameterValues MakeDefaultValues() noexcept {
   Set(result, P::TensionDecaySeconds, .09f);
   Set(result, P::ContactLevel, .78f);
   Set(result, P::ContactDurationSeconds, .0022f);
-  Set(result, P::ContactBrightness, .38f);
+  Set(result, P::ContactBrightness, .25f);
   Set(result, P::DirectVelocityExponent, 2.59f);
   Set(result, P::BodyVelocityExponent, 2.23f);
-  Set(result, P::VelocitySaturation, 3.64f);
   Set(result, P::FmLevel, .08f);
   Set(result, P::FmDepthHz, 180.f);
   Set(result, P::FmDecaySeconds, .035f);
   Set(result, P::PitchDropOctaves, .12f);
-  Set(result, P::DirectLevel, .06f);
+  Set(result, P::DirectLevel, .08f);
   Set(result, P::BodyLevel, .95f);
   Set(result, P::LowCutHz, 38.f);
-  Set(result, P::HighCutHz, 10000.f);
+  Set(result, P::HighCutHz, 8000.f);
   Set(result, P::ColourFrequencyHz, 210.f);
   Set(result, P::ColourGainDb, 0.f);
   return result;
@@ -118,12 +116,11 @@ ApplySnareParameters(const SnareParameterValues &values) noexcept {
   auto membrane = ApplyMembraneParameters(membraneValues);
   auto result = tfdsp::percussion::DefaultSnareDrumParameters();
   result.membrane = membrane;
-  result.membrane.maximumModalEnergy = 16.f;
+  result.membrane.maximumModalEnergy = 64.f;
   result.observation[0] = membrane.observation[0];
   result.observation[1] = membrane.observation[1];
   result.observation[2].gain = values[Index(SnareParameter::WireLevel)];
-  result.observation[2].delaySeconds =
-      .001f * values[Index(SnareParameter::WireDelayMs)];
+  result.observation[2].delaySeconds = 0.f;
   result.observation[2].radiationEnabled = false;
   result.equalizer = membrane.equalizer;
   result.outputGain = membrane.outputGain;

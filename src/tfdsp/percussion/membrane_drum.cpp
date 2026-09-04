@@ -10,12 +10,10 @@ float Unit(const float value, const float fallback = 0.f) noexcept {
   return std::clamp(std::isfinite(value) ? value : fallback, 0.f, 1.f);
 }
 
-float VelocityAmplitude(const float strength, const float exponent,
-                        const float saturation) noexcept {
-  const float power = std::pow(strength, std::clamp(exponent, .25f, 3.f));
-  const float drive =
-      std::clamp(std::isfinite(saturation) ? saturation : 0.f, 0.f, 8.f);
-  return drive > 1.e-4f ? std::tanh(drive * power) / std::tanh(drive) : power;
+float VelocityAmplitude(const float strength, const float exponent) noexcept {
+  // Velocity is deliberately never compressed. Exponents above one may
+  // expand the dynamic response; one is exactly linear.
+  return std::pow(strength, std::clamp(exponent, 1.f, 3.f));
 }
 
 ContactExciterParameters ContactForHit(ContactExciterParameters result,
@@ -33,9 +31,16 @@ ContactExciterParameters ContactForHit(ContactExciterParameters result,
   result.pulseAmplitude *= .95f * stick + .65f * mallet + .08f * brush;
   result.chirp.durationSeconds *= .7f + .8f * (1.f - hardness);
   result.chirp.amplitude *=
-      stick * (.25f + 1.2f * hardness) + .18f * mallet + .015f * brush;
-  result.chirp.startFrequencyHz *= .65f + .75f * hardness;
-  result.chirp.endFrequencyHz *= .72f + .5f * hardness;
+      stick * (.25f + 1.2f * hardness) + .3f * mallet + .015f * brush;
+  // A broad, compliant mallet contact does not produce the same high chirp as
+  // a stick tip. Move that component into the beater-presence band instead of
+  // trying to repair a cymbal-like click with output EQ.
+  const float chirpStartScale = .22f * brush + .42f * mallet + stick;
+  const float chirpEndScale = .2f * brush + .32f * mallet + stick;
+  result.chirp.startFrequencyHz *=
+      chirpStartScale * (.65f + .75f * hardness);
+  result.chirp.endFrequencyHz *=
+      chirpEndScale * (.72f + .5f * hardness);
   result.noise.decaySeconds *= .65f + .9f * spread + 1.7f * brush;
   result.noise.amplitude *=
       .3f * stick + .45f * mallet + (1.1f + .7f * spread) * brush;
@@ -91,10 +96,8 @@ void MembraneDrum::EventVoice::Trigger(
   fm.Trigger(fmParameters);
   location = Unit(hit.location, .5f);
   directAmplitude =
-      VelocityAmplitude(strength, parameters.directVelocityExponent,
-                        parameters.velocitySaturation);
-  bodyAmplitude = VelocityAmplitude(strength, parameters.bodyVelocityExponent,
-                                    parameters.velocitySaturation);
+      VelocityAmplitude(strength, parameters.directVelocityExponent);
+  bodyAmplitude = VelocityAmplitude(strength, parameters.bodyVelocityExponent);
   contactLevel = parameters.contactLevel;
   fmLevel = parameters.fmLevel * (.25f + .75f * strength);
   generation = eventGeneration;

@@ -22,7 +22,6 @@ enum class MembraneParameter : std::size_t {
   ContactBrightness,
   DirectVelocityExponent,
   BodyVelocityExponent,
-  VelocitySaturation,
   FmLevel,
   FmDepthHz,
   FmDecaySeconds,

@@ -11,7 +11,6 @@ namespace tfworkbench {
 
 enum class SnareParameter : std::size_t {
   WireLevel = MembraneParameterCount,
-  WireDelayMs,
   WireSensitivity,
   WireThreshold,
   WireMotionHighpassHz,

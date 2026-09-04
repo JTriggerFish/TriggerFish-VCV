@@ -106,8 +106,8 @@ CAUSAL_STAGES = (
             parameter("sparse_gain", 0.0, 2.0),
             parameter("dense_gain", 0.0, 2.0),
             parameter("body_bypass_gain", 0.0, 0.5),
-            parameter("strength_gamma", 0.35, 3.0),
-            parameter("body_strength_gamma", 0.2, 2.5),
+            parameter("strength_gamma", 1.0, 3.0),
+            parameter("body_strength_gamma", 1.0, 2.5),
             parameter("dense_frequency_warp", 0.5, 2.0),
             parameter("dense_tilt_db_per_octave", -8.0, 5.0),
             parameter("high_cut_hz", 6000.0, 22000.0),
@@ -201,10 +201,9 @@ UNIFIED_CAUSAL_STAGES = (
             parameter("direct_colour_frequency_hz", 1000.0, 16000.0),
             parameter("direct_colour_gain_db", -12.0, 12.0),
             parameter("direct_high_cut_hz", 8000.0, 22000.0),
-            parameter("strength_gamma", 0.35, 3.0),
-            parameter("body_strength_gamma", 0.2, 2.5),
+            parameter("strength_gamma", 1.0, 3.0),
+            parameter("body_strength_gamma", 1.0, 2.5),
         ),
-        requires_quality=False,
     ),
     CausalStage(
         "unified-initial-body",
@@ -229,8 +228,6 @@ UNIFIED_CAUSAL_STAGES = (
             parameter("dense_colour_gain_db", -12.0, 12.0),
             parameter("dense_high_cut_hz", 8000.0, 22000.0),
         ),
-        requires_quality=False,
-        requires_acceptance_gate=False,
     ),
     CausalStage(
         "unified-bloom",
@@ -250,15 +247,11 @@ UNIFIED_CAUSAL_STAGES = (
             parameter("dispersion_high_decay_seconds", 0.05, 1.0),
             *BODY_DECAY_PARAMETERS,
         ),
-        requires_quality=False,
-        requires_acceptance_gate=False,
     ),
     CausalStage(
         "unified-tail",
         4.000,
         BODY_DECAY_PARAMETERS,
-        requires_quality=False,
-        requires_acceptance_gate=False,
     ),
 )
 

@@ -214,8 +214,8 @@ class CrashFit:
     dense_colour_q: float = 0.8
     dense_high_cut_hz: float = 19000.0
     dense_high_cut_q: float = 0.707
-    strength_gamma: float = 1.15
-    body_strength_gamma: float = 0.8
+    strength_gamma: float = 1.0
+    body_strength_gamma: float = 1.0
 
     def __post_init__(self):
         object.__setattr__(

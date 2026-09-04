@@ -46,14 +46,21 @@ export class SettingsController {
         "Web MIDI is unavailable in this browser.";
     }
     enable.onclick = () => this.enableMidi(enable);
+    if (this.midi.supported) {
+      // MIDI device discovery is useful by default and does not need to start
+      // the audio graph. Browsers that require an explicit permission gesture
+      // leave the button available so the same request can be retried there.
+      void this.enableMidi(enable, false);
+    }
     this.paintAudioStatus();
   }
 
-  async enableMidi(button) {
+  async enableMidi(button, activateAudio = true) {
     button.disabled = true;
     document.getElementById("midi-status").textContent = "Requesting access…";
     try {
-      await Promise.all([this.midi.enable(), this.audition.activate()]);
+      await this.midi.enable();
+      if (activateAudio) await this.audition.activate();
       button.textContent = "MIDI enabled";
     } catch (error) {
       button.disabled = false;

@@ -1,7 +1,8 @@
-# Initial compact-snare fit
+# Rejected compact-snare numerical start
 
-This note records the first calibration of `drum.snare.v1`. It is a starting
-point for ear fitting, not an acceptance claim. The synthesis topology is:
+This note records a failed numerical start for `drum.snare.v1`; it is retained
+as a methodology warning, not as a calibration or current preset. The synthesis
+topology is:
 
 ```text
 contact + correlated FM -> shared modal membrane -> motion-driven wire rack
@@ -26,7 +27,7 @@ with the public event mapping strength `0.65`, location `0.30`, hardness
 initial parameter values. The neighbouring velocity layers remain audition
 references rather than fitted evidence.
 
-The main fitted choices are:
+The rejected search chose:
 
 | Control | Initial value |
 | --- | ---: |
@@ -34,7 +35,6 @@ The main fitted choices are:
 | General membrane T60 | 0.12 s |
 | Persistent ring | 675 Hz, 1.8 s, 0.30x |
 | Direct/body velocity exponents | 2.59 / 2.23 |
-| Velocity compression | 3.64x |
 | Wire engagement / release | 45 ms / 30 ms |
 | Wire motion threshold | 0.050 |
 | Wire motion high-pass | 1,000 Hz |
@@ -55,22 +55,22 @@ It deliberately keeps contact, initial decay, body, and tail separate.
 | 120--600 ms | -50.1 dBFS | -52.4 dBFS | 679 Hz | 678 Hz |
 | 600--1,500 ms | -69.7 dBFS | -71.0 dBFS | 676 Hz | 675 Hz |
 
-The table applies a whole-file energy match of `-3.54 dB`; the workbench does
-this shared reference-level match automatically while preserving the visible
-`-20 dB` model-level starting control. The revised wire response now reaches
-the right broad spectral region without a literal delayed burst: a causal
-45 ms contact follower and squared contact law suppress the first milliseconds
-and let membrane motion build wire energy. The remaining level and first-15 ms
-centroid differences are explicit ear-fitting targets, not an acceptance
-claim.
+The table applies a whole-file energy match of `-3.54 dB`. Despite apparently
+close RMS and centroid values, listening exposed an incoherent result: a 45 ms
+wire follower delayed the defining snare response, extreme wire gain was then
+hidden by a low global output, and the few aggregate descriptors did not test
+the wire texture or its causal attachment to the membrane. This state was
+therefore removed from the workbench defaults.
 
-The separate direct and body velocity curves fix an earlier calibration bug:
-the generic modal safety ceiling was active on every velocity layer and made
-soft, medium, and hard hits nearly identical. The snare raises that ceiling so
-it is once again a safety bound, then uses exposed velocity exponents and a
-bounded saturation law to fit the event response. The neighbouring soft and
-hard layers are diagnostics only; this pass intentionally calibrates just the
-medium standard cell.
+The current unverified starting point removes the wire-path delay entirely.
+The bottom-head motion drives the wire contact follower directly; its 1.5 ms
+engagement is the only onset smoothing. The wider 250--14,000 Hz wire response,
+80 ms contact release, and 350 ms wire-mode T60 retain energy after the prompt
+broadband component. The isolated 675 Hz ring remains a subordinate, separately
+controllable colour rather than a delayed event.
+The former saturating velocity stage has also been removed; the current
+exponents may expand but cannot compress dynamics. Velocity response must be
+fitted later from all three layers rather than inferred from one medium hit.
 
 The reproducible development commands are:
 

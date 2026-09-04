@@ -9,7 +9,7 @@ namespace {
 using Scale = ParameterScale;
 
 const std::array<ParameterDescriptor, MembraneParameterCount> Descriptors{{
-    {"model_level_db", "Model level", "dB", -60.f, 12.f, -10.f},
+    {"model_level_db", "Model level", "dB", -60.f, 0.f, -22.f},
     {"fundamental_hz", "Fundamental", "Hz", 25.f, 500.f, 105.f,
      Scale::Logarithmic},
     {"decay_seconds", "Body decay", "s", .03f, 8.f, 1.15f, Scale::Logarithmic},
@@ -23,10 +23,9 @@ const std::array<ParameterDescriptor, MembraneParameterCount> Descriptors{{
     {"contact_duration_seconds", "Contact width", "s", .0002f, .08f, .004f,
      Scale::Logarithmic},
     {"contact_brightness", "Contact brightness", "", 0.f, 1.f, .58f},
-    {"direct_velocity_exponent", "Direct velocity curve", "exp", .25f, 3.f,
-     .72f},
-    {"body_velocity_exponent", "Body velocity curve", "exp", .25f, 3.f, .72f},
-    {"velocity_saturation", "Velocity compression", "x", 0.f, 8.f, 0.f},
+    {"direct_velocity_exponent", "Direct velocity curve", "exp", 1.f, 3.f,
+     1.f},
+    {"body_velocity_exponent", "Body velocity curve", "exp", 1.f, 3.f, 1.f},
     {"fm_level", "FM supplement", "x", 0.f, 2.f, .18f},
     {"fm_depth_hz", "FM depth", "Hz", 0.f, 8000.f, 260.f},
     {"fm_decay_seconds", "FM decay", "s", .003f, 1.f, .07f, Scale::Logarithmic},
@@ -105,7 +104,6 @@ ApplyMembraneParameters(const MembraneParameterValues &values) noexcept {
   auto result = tfdsp::percussion::DefaultMembraneDrumParameters(controls);
   result.directVelocityExponent = values[Index(P::DirectVelocityExponent)];
   result.bodyVelocityExponent = values[Index(P::BodyVelocityExponent)];
-  result.velocitySaturation = values[Index(P::VelocitySaturation)];
   constexpr std::array<P, 4> frequencies{
       P::Band1FrequencyHz, P::Band2FrequencyHz, P::Band3FrequencyHz,
       P::Band4FrequencyHz};

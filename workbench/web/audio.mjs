@@ -12,6 +12,7 @@ export class SafeAudition {
     this.pendingMacros = [];
     this.pendingRouting = [];
     this.pendingRecipeIndex = 0;
+    this.constraint = 0;
     this.configurationGeneration = 0;
     this.appliedConfigurationGeneration = -1;
     this.macroCommitStarted = 0;
@@ -106,7 +107,7 @@ export class SafeAudition {
   }
 
   setTrim(db) {
-    this.trimDb = Math.min(36, Math.max(-36, Number(db)));
+    this.trimDb = Math.min(48, Math.max(-48, Number(db)));
     if (this.trim) this.trim.gain.value = 10 ** (this.trimDb / 20);
   }
 
@@ -125,6 +126,11 @@ export class SafeAudition {
     this.pendingMacros = [...values];
     this.pendingRouting = [...routing];
     this.#configurationChanged();
+  }
+
+  setConstraint(amount) {
+    this.constraint = Math.max(0, Math.min(1, Number(amount)));
+    this.renderer?.setConstraint(this.constraint);
   }
 
   async trigger(event) {

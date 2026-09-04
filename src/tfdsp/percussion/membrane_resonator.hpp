@@ -75,7 +75,7 @@ public:
     }
     // Keep loudness and stored energy independent of mode count. The two
     // constants define the bank's calibrated force and observation units.
-    const float driveScale = .5f / std::sqrt(std::max(1.e-12f,
+    const float driveScale = .25f / std::sqrt(std::max(1.e-12f,
                                                        driveNormSquared));
     const float outputScale = 2.f / std::sqrt(std::max(1.e-12f,
                                                         outputNormSquared));

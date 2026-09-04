@@ -68,14 +68,15 @@ const Presets = Object.freeze({
     id: "factory.membrane.acoustic-kick-01",
     name: "Acoustic kick",
     values: {
-      fundamental_hz: 52, decay_seconds: .72, decay_tilt: .7,
-      inharmonicity: .18, body_brightness: .28, tension_octaves: .2,
-      tension_decay_seconds: .085, contact_level: .82,
-      contact_duration_seconds: .0065, contact_brightness: .38,
-      fm_level: .5, fm_depth_hz: 520, fm_decay_seconds: .095,
-      pitch_drop_octaves: 1.15, direct_level: .42, body_level: 1.15,
-      low_cut_hz: 16, high_cut_hz: 12500,
-      colour_frequency_hz: 105, colour_gain_db: 2.5,
+      model_level_db: -12,
+      fundamental_hz: 35, decay_seconds: .25, decay_tilt: 0,
+      inharmonicity: .18, body_brightness: 1, tension_octaves: .1,
+      tension_decay_seconds: .05, contact_level: .82,
+      contact_duration_seconds: .01, contact_brightness: 0,
+      fm_level: .5, fm_depth_hz: 520, fm_decay_seconds: .07,
+      pitch_drop_octaves: 1, direct_level: 2, body_level: 1.15,
+      low_cut_hz: 16, high_cut_hz: 3500,
+      colour_frequency_hz: 600, colour_gain_db: 10,
     },
   },
 });
@@ -113,7 +114,15 @@ export function createTomPatch(descriptors, values) {
 
 export function createAcousticKickPatch(descriptors) {
   const values = membranePresetValues("acousticKick", descriptors);
-  return createPatch(descriptors, values, Presets.acousticKick);
+  const patch = createPatch(descriptors, values, Presets.acousticKick);
+  const gains = {
+    "membrane-route-contact-direct": 2,
+    "membrane-route-contact-body": .25,
+    "membrane-route-fm-body": .1125,
+  };
+  for (const [id, gain] of Object.entries(gains))
+    patch.connections.find(route => route.id === id).gain = gain;
+  return patch;
 }
 
 export function patchWithMembraneValues(patch, descriptors, values) {

@@ -334,6 +334,7 @@ def main() -> None:
         )
     if not reuse_diagnostics or "acceptance" not in diagnostics:
         diagnostics["acceptance"] = acceptance_diagnostics(cells, fitted)
+    numerical_gates_passed = bool(diagnostics["acceptance"].get("passed", False))
     arguments.output.mkdir(parents=True, exist_ok=True)
     fit_path = arguments.output / "fit.json"
     fit_path.write_text(
@@ -348,6 +349,12 @@ def main() -> None:
                     if arguments.cells_manifest
                     else "single-hit preliminary Bitwig parameter-grid cell"
                 ),
+                "promotion_status": (
+                    "numerical-candidate-passed-gates"
+                    if numerical_gates_passed
+                    else "rejected-numerical-candidate"
+                ),
+                "listening_approval": False,
                 "cell_count": len(cells),
                 "fit_cell": {
                     "label": source_cell.label,
@@ -389,7 +396,7 @@ def main() -> None:
     report = write_comparison_report(
         tuple(pairs),
         arguments.output / "report.html",
-        f"Crash cymbal calibration — {source_cell.label}",
+        f"Crash cymbal numerical candidate — {source_cell.label}",
         _control_sweeps(fitted),
         diagnostics["acceptance"],
         diagnostics.get("causal_fit"),

@@ -77,12 +77,15 @@ def _private_crash(root: Path) -> tuple[dict[str, object], dict[str, Path]] | No
         {
             "id": PRIVATE_CRASH_ID,
             "name": "Private crash A",
-            "audition_trim_db": 25.5,
+            # One fixed gain preserves the reference velocity curve. It places
+            # the mean peak of the five exposed layers near -6 dBFS before the
+            # user's master control; individual cells are never normalized.
+            "audition_trim_db": 42.0,
             "calibration": {
                 "id": "crash-standard",
-                "name": "Crash — medium edge",
+                "name": "Crash — medium edge (unverified start)",
                 "recipe": "metal.cymbal.v1",
-                "parameter_preset": "metallic-default",
+                "parameter_preset": "crash-start",
                 "articulation": "edge",
                 "velocity": 72,
                 "repeat": 1,
@@ -102,6 +105,7 @@ def _curated(
     hardness: float = 0.65,
     implement: float = 1.0,
     contact_spread: float = 0.2,
+    onset_seconds: dict[str, float] | None = None,
 ) -> tuple[dict[str, object], dict[str, Path]] | None:
     cells = []
     paths = {}
@@ -129,6 +133,7 @@ def _curated(
             implement,
             contact_spread,
         )
+        cell["onset_seconds"] = (onset_seconds or {}).get(path.name, 0.0)
         cells.append(cell)
         paths[unquote(cell["url"])] = path.resolve()
     if not cells:
@@ -181,12 +186,17 @@ def _snare(library: Path):
         5.0,
         {
             "id": "snare-standard",
-            "name": "Snare — medium centre",
+            "name": "Snare — medium standard hit (unverified start)",
             "recipe": "drum.snare.v1",
             "parameter_preset": "snare-default",
             "articulation": "main",
             "velocity": 82,
             "repeat": 1,
+        },
+        onset_seconds={
+            "Snare YMCA 1 A 01.wav": 0.001451,
+            "Snare YMCA 1 B 01.wav": 0.000975,
+            "Snare YMCA 1 C 01.wav": 0.000499,
         },
     )
 
@@ -215,15 +225,21 @@ def _kick(library: Path):
         2.0,
         {
             "id": "kick-standard",
-            "name": "Kick — medium centre",
-            "recipe": "drum.kick-fm.v1",
-            "parameter_preset": "kick-default",
+            "name": "Acoustic kick — medium centre (unverified start)",
+            "recipe": "drum.membrane.v1",
+            "parameter_preset": "acoustic-kick",
             "articulation": "centre",
             "velocity": 64,
             "repeat": 1,
         },
         hardness=0.5,
         implement=0.5,
+        onset_seconds={
+            "Kick Yamaha Oak Custom 1 01.wav": 0.001678,
+            "Kick Yamaha Oak Custom 4 01.wav": 0.001315,
+            "Kick Yamaha Oak Custom 7 01.wav": 0.009433,
+            "Kick Yamaha Oak Custom 10 01.wav": 0.007415,
+        },
     )
 
 
@@ -250,7 +266,7 @@ def _gong(library: Path):
         -6.0,
         {
             "id": "gong-standard",
-            "name": "Gong — representative mallet",
+            "name": "Gong — representative mallet (unverified start)",
             "recipe": "metal.cymbal.v1",
             "parameter_preset": "gong-start",
             "articulation": "mallet",
@@ -260,6 +276,13 @@ def _gong(library: Path):
         hardness=0.35,
         implement=0.5,
         contact_spread=0.3,
+        onset_seconds={
+            "Gong Dresden 01.wav": 0.0,
+            "Gong Dresden 02.wav": 0.0,
+            "Gong Dresden 03.wav": 0.0,
+            "Gong Dresden 05.wav": 0.001905,
+            "Gong Dresden 07.wav": 0.0,
+        },
     )
 
 
@@ -289,17 +312,100 @@ def _ride(reference_root: Path):
         "ride-21-reference",
         "21-inch ride reference",
         specs,
-        -3.0,
+        18.0,
         {
             "id": "ride-standard",
-            "name": "Ride — medium bow",
+            "name": "Ride — medium bow (unverified start)",
             "recipe": "metal.cymbal.v1",
             "parameter_preset": "ride-start",
             "articulation": "bow",
             "velocity": 82,
             "repeat": 1,
         },
+        onset_seconds={
+            "21ride.stick.bell.pp.stereo.wav": 0.0,
+            "21ride.stick.bell.mf.stereo.wav": 0.000479,
+            "21ride.stick.bell.ff.stereo.wav": 0.033063,
+            "21ride.stick.normal.pp.stereo.wav": 0.0,
+            "21ride.stick.normal.mf.stereo.wav": 0.070104,
+            "21ride.stick.normal.ff.stereo.wav": 0.026437,
+            "21ride.stick.shoulder.pp.stereo.wav": 0.0,
+            "21ride.stick.shoulder.mf.stereo.wav": 0.041146,
+            "21ride.stick.shoulder.ff.stereo.wav": 0.185079,
+        },
     )
+
+
+def _hihat(library: Path):
+    root = library / "Acoustic Drums/Cymbals/HiHats/14 K Custom Hi-Def"
+    layers = [(1, 32, 0.25), (2, 64, 0.5), (3, 96, 0.76), (4, 122, 0.97)]
+    articulations = [
+        ("Cl", "closed", 1.0, 0.72),
+        ("H-Cl", "half-closed", 0.72, 0.72),
+        ("H-Op", "half-open", 0.38, 0.72),
+        ("Op", "open", 0.0, 0.72),
+        ("RidCrsh", "edge", 0.0, 0.92),
+    ]
+    specs = []
+    constraint_by_articulation = {}
+    for token, articulation, constraint, location in articulations:
+        constraint_by_articulation[articulation] = constraint
+        for layer, velocity, strength in layers:
+            filename = f"Hi-Hat 14 K Custom {token} {layer:02d}.wav"
+            specs.append(
+                (
+                    root / filename,
+                    filename.removesuffix(".wav"),
+                    articulation,
+                    velocity,
+                    strength,
+                    location,
+                    1,
+                )
+            )
+    onsets = {
+        "Hi-Hat 14 K Custom Cl 01.wav": 0.000680,
+        "Hi-Hat 14 K Custom Cl 02.wav": 0.0,
+        "Hi-Hat 14 K Custom Cl 03.wav": 0.002449,
+        "Hi-Hat 14 K Custom Cl 04.wav": 0.000975,
+        "Hi-Hat 14 K Custom H-Cl 01.wav": 0.0,
+        "Hi-Hat 14 K Custom H-Cl 02.wav": 0.0,
+        "Hi-Hat 14 K Custom H-Cl 03.wav": 0.000907,
+        "Hi-Hat 14 K Custom H-Cl 04.wav": 0.001610,
+        "Hi-Hat 14 K Custom H-Op 01.wav": 0.0,
+        "Hi-Hat 14 K Custom H-Op 02.wav": 0.0,
+        "Hi-Hat 14 K Custom H-Op 03.wav": 0.000431,
+        "Hi-Hat 14 K Custom H-Op 04.wav": 0.000726,
+        "Hi-Hat 14 K Custom Op 01.wav": 0.0,
+        "Hi-Hat 14 K Custom Op 02.wav": 0.0,
+        "Hi-Hat 14 K Custom Op 03.wav": 0.0,
+        "Hi-Hat 14 K Custom Op 04.wav": 0.000522,
+        "Hi-Hat 14 K Custom RidCrsh 01.wav": 0.000499,
+        "Hi-Hat 14 K Custom RidCrsh 02.wav": 0.0,
+        "Hi-Hat 14 K Custom RidCrsh 03.wav": 0.0,
+        "Hi-Hat 14 K Custom RidCrsh 04.wav": 0.000408,
+    }
+    result = _curated(
+        "hihat-14-reference",
+        "14-inch hi-hat reference",
+        specs,
+        8.0,
+        {
+            "id": "hihat-standard",
+            "name": "Hi-hat — medium half-open (unverified start)",
+            "recipe": "metal.cymbal.v1",
+            "parameter_preset": "hihat-start",
+            "articulation": "half-open",
+            "velocity": 96,
+            "repeat": 1,
+        },
+        onset_seconds=onsets,
+    )
+    if result is not None:
+        corpus, _ = result
+        for cell in corpus["cells"]:
+            cell["constraint"] = constraint_by_articulation[cell["articulation"]]
+    return result
 
 
 def build_catalog(
@@ -316,6 +422,7 @@ def build_catalog(
         _kick(library),
         _gong(library),
         _ride(references),
+        _hihat(library),
     ]
     corpora = []
     paths: dict[str, Path] = {}

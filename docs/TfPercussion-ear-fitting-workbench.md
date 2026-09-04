@@ -210,11 +210,12 @@ release. The header reports “Preparing live DSP” until the requested
 generation becomes active.
 
 The top-right settings dialog owns workstation concerns rather than instrument
-parameters. Its MIDI panel requests Web MIDI access only after an explicit user
-gesture, enumerates and hot-plugs connected inputs, and permits either all
-inputs/channels or one device/channel. Every note-on triggers the current
-location and implement; MIDI velocity replaces strike strength. Note number is
-deliberately unassigned until the later pitch-following design is specified.
+parameters. Its MIDI panel requests Web MIDI access on startup, enumerates and
+hot-plugs connected inputs, and permits either all inputs/channels or one
+device/channel. Browsers that require a permission gesture retain the Enable
+MIDI button as a retry. Every note-on triggers the current location and
+implement; MIDI velocity replaces strike strength. Note number is deliberately
+unassigned until the later pitch-following design is specified.
 The same dialog reports the worklet quantum, limiter lookahead, and browser's
 best available device-latency estimate. MIDI preferences are local browser
 settings and are not part of a fitted instrument snapshot.
@@ -222,9 +223,9 @@ settings and are not part of a fitted instrument snapshot.
 The current corpus browser exposes a deliberately small 25-cell view of the
 qualified private crash grid: five articulations, five representative
 velocities and one repeat. Only the selected WAV is fetched. Its fixed
-+25.5 dB audition trim comes from the preserved-level middle velocity range
++42 dB audition trim comes from the preserved-level velocity grid
 and is applied equally to reference and synthesis; individual cells are never
-peak-normalized. Small allow-listed snare, kick, gong, and ride corpora provide
+peak-normalized. Small allow-listed snare, kick, gong, ride, and hi-hat corpora provide
 one standard calibration cell each. A highlighted **Calibrations** chooser in
 the persistent toolbar loads the recipe, starting parameters, reference cell,
 strike controls, and shared level match together.

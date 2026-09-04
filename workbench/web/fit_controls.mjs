@@ -37,7 +37,7 @@ const erb = frequency => 21.4 * Math.log10(1 + .00437 * frequency);
 const inverseErb = rate => (10 ** (rate / 21.4) - 1) / .00437;
 
 const ControlHelp = {
-  model_level_db: "Pre-limiter synthesis level. Double-click to restore automatic reference matching.",
+  model_level_db: "Attenuation-only pre-limiter synthesis level. Zero is the ceiling; double-click to match the current reference when that is possible without gain.",
   direct_gain: "Amount of near-field contact heard directly before the cymbal body develops.",
   impact_tone_noise: "Balances pitched stick ping against broadband contact noise.",
   impact_width: "Scales contact duration. Short contacts are sharper; broad contacts suit softer implements.",

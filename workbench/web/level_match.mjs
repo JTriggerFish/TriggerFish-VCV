@@ -23,7 +23,7 @@ export function comparisonLevelDb(
   )));
 }
 
-export function matchedModelLevelDb({
+export function modelLevelMatch({
   currentDb, reference, referenceSampleRate, synthesis, synthesisSampleRate,
   minimumDb, maximumDb, seconds = .3,
   referenceStartSeconds = 0, synthesisStartSeconds = 0,
@@ -34,7 +34,14 @@ export function matchedModelLevelDb({
   const synthesisDb = comparisonLevelDb(
     synthesis, synthesisSampleRate, seconds, synthesisStartSeconds,
   );
-  return Math.max(minimumDb, Math.min(
-    maximumDb, currentDb + referenceDb - synthesisDb,
-  ));
+  const requestedDb = currentDb + referenceDb - synthesisDb;
+  const appliedDb = Math.max(minimumDb, Math.min(maximumDb, requestedDb));
+  return {
+    appliedDb, requestedDb, referenceDb, synthesisDb,
+    clipped: Math.abs(appliedDb - requestedDb) > 1e-6,
+  };
+}
+
+export function matchedModelLevelDb(options) {
+  return modelLevelMatch(options).appliedDb;
 }

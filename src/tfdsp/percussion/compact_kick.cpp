@@ -69,7 +69,7 @@ void CompactKick::EventVoice::Trigger(
   primary.Trigger(primaryParameters);
   secondary.Trigger(secondaryParameters);
   click.Trigger(clickParameters);
-  amplitude = std::pow(strength, .72f);
+  amplitude = strength;
   primaryLevel = parameters.primaryLevel;
   secondaryLevel = parameters.secondaryLevel;
   clickLevel = parameters.clickLevel * amplitude * (.2f + .8f * strength) *

@@ -18,6 +18,54 @@ an overall level-invariant region/ERB RMSE of about 5.85 dB and a contact-region
 RMSE of about 7.19 dB; it is therefore explicitly an editable starting point,
 not a calibrated result.
 
+## Failure review and corrected fit contract
+
+An earlier automated pass accepted several stages on relative improvement
+alone. The unified initial-body, bloom, and tail stages had their absolute
+quality and acceptance gates disabled, so a candidate could be less wrong than
+an already-wrong seed while remaining audibly unrelated to the reference.
+Automatic level matching then rewrote the model-level parameter, sometimes
+above 0 dB, and concealed the underlying output-calibration error. Those were
+methodological bugs, not evidence that the synthesis graph was calibrated.
+
+The corrected contract is:
+
+1. align the physical onset before measuring, while retaining pre-onset audio;
+2. estimate level offset separately and never include it in shape fitting;
+3. divide the response into contact (`0..15 ms`), initial body (`15..120 ms`),
+   bloom (`120..600 ms`), and tail (`600 ms..end`) regions;
+4. optimize only controls whose finite differences materially affect the active
+   region, while protecting every earlier region from regression;
+5. require absolute regional quality gates at every promotable unified stage;
+6. preserve the complete vector of failures—envelope, ERB trajectory,
+   fine-spectrum, centroid/rolloff, flatness, crest, and ridge/noise balance;
+7. audition the candidate and relevant branch solos before it may be named a
+   calibration.
+
+The 4 ms contact-only stage remains diagnostic because individual stochastic
+waveforms are not phase-comparable. Every later stage that can alter a saved
+render now requires both relative improvement and absolute-quality acceptance.
+Failed searches may be stored as experiments, but factory or reference starts
+must never import them silently.
+The offline fitter therefore writes `promotion_status` and an explicit
+`listening_approval: false`; even a candidate that passes numerical gates is
+not labelled a calibration or promoted by the tool.
+
+Multi-resolution STFT spectral convergence and log-magnitude terms are useful
+search objectives because different windows expose contact and sustained
+structure at different time scales. Perceptually spaced ERB-band trajectories
+then expose broad colour and decay without pretending that unrelated stochastic
+phase should match. Neither family is a perceptual approval metric: direct,
+level-controlled listening is the final gate. PEAQ is not used as the primary
+loss because it was standardized for audible impairment of a reference signal,
+not for judging whether two independently generated stochastic percussion
+events describe the same instrument.
+
+Relevant methodological references are the multi-resolution STFT loss in
+[Parallel WaveGAN](https://arxiv.org/abs/1910.11480), its perceptually weighted
+extension in [Yamamoto et al.](https://arxiv.org/abs/2101.07412), and the scope
+of [ITU-R BS.1387 (PEAQ)](https://www.itu.int/rec/R-REC-BS.1387/).
+
 A fresh search after limiting editable anchor centres to 15 kHz was also kept
 as a rejected experiment rather than promoted automatically. It improved the
 search's final causal-prefix objective, but failed the independent acceptance

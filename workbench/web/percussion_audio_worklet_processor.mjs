@@ -43,8 +43,11 @@ class PercussionAudioProcessor extends AudioWorkletProcessor {
       if (data.kind === "trigger") {
         this.engine.trigger(data.event);
         this.port.postMessage({ kind: "triggered" });
+      } else if (data.kind === "constraint") {
+        this.engine.setConstraint(data.amount);
       } else if (data.kind === "reset") {
         this.engine.reset();
+        this.engine.setConstraint(data.constraint ?? 0);
       } else if (data.kind === "dispose") {
         this.engine.destroy();
         this.engine = null;

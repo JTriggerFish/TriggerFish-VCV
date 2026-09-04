@@ -33,7 +33,10 @@ public:
     Reset();
   }
 
-  void Reset() noexcept { current_ = target_ = {}; }
+  void Reset(const PassiveConstraintGains gains = {}) noexcept {
+    SetTarget(gains);
+    current_ = target_;
+  }
 
   void SetTarget(const PassiveConstraintGains gains) noexcept {
     const auto safe = SanitizePassiveConstraint(gains);

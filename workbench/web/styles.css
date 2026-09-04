@@ -108,7 +108,7 @@ legend { color:var(--muted); font-size:11px; padding:0 4px; }
 .strike-pad i { font-style:normal; }
 .strike-x { left:10px; right:8px; bottom:4px; justify-content:space-between; }
 .strike-y { left:7px; top:7px; bottom:18px; flex-direction:column; justify-content:space-between; }
-.analysis { --spectrogram-height:300px; display:flex; flex-direction:column; min-width:0; min-height:0; gap:7px; padding:10px; margin:0; overflow:auto; scrollbar-gutter:stable; } #waveform { flex:0 0 60px; height:60px; }
+.analysis { --spectrogram-height:300px; display:flex; flex-direction:column; min-width:0; min-height:0; gap:7px; padding:10px; margin:0; overflow:auto; scrollbar-gutter:stable; } #waveform { flex:0 0 104px; height:104px; }
 .spectrogram-wrap { position:relative; flex:1 0 var(--spectrogram-height); min-height:240px; border:1px solid var(--line); background:#000; }
 #spectrogram { width:100%; height:100%; display:block; image-rendering:auto; cursor:default; touch-action:none; user-select:none; -webkit-user-drag:none; }
 .analysis-divider { flex:0 0 8px; position:relative; margin:-3px 0; cursor:row-resize; touch-action:none; }
@@ -122,6 +122,9 @@ legend { color:var(--muted); font-size:11px; padding:0 4px; }
 .performance-controls .strike-pad { margin:0; }
 .performance-controls>label { align-self:center; }
 .implement-controls { display:grid; gap:10px; }
+.metal-implement-controls { grid-template-columns:repeat(2,minmax(0,1fr)); }
+.metal-implement-controls .implement-family { grid-column:1 / -1; }
+.metal-implement-controls .character-control { grid-template-columns:125px minmax(90px,1fr) 42px; }
 .implement-family { display:flex; gap:7px; padding:6px; }
 .implement-family legend { color:var(--muted); font-size:11px; }
 .implement-family label { display:flex; flex:1; justify-content:center; gap:6px; padding:7px 10px; border:1px solid var(--line); border-radius:5px; cursor:pointer; }

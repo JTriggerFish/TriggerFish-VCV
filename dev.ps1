@@ -25,7 +25,7 @@ param(
         "test-workbench-api",
         "test-workbench-wasm",
         "test-workbench-browser",
-        "analyze-workbench-start",
+        "audit-workbench-starts",
         "fit-crash-start",
         "build-workbench",
         "serve-workbench",
@@ -348,6 +348,10 @@ switch ($Command) {
         }
     }
     "test-workbench-browser" {
+        & $PSCommandPath -Command build-workbench -Jobs $Jobs
+        if ($LASTEXITCODE -ne 0) {
+            throw "Workbench site build failed with exit code $LASTEXITCODE."
+        }
         $emsdkEnvironment = Join-Path $emsdkRoot "emsdk_env.ps1"
         Assert-Path $emsdkEnvironment "Emscripten SDK environment script"
         . $emsdkEnvironment
@@ -364,17 +368,21 @@ switch ($Command) {
             Pop-Location
         }
     }
-    "analyze-workbench-start" {
+    "audit-workbench-starts" {
+        & $PSCommandPath -Command build-workbench -Jobs $Jobs
+        if ($LASTEXITCODE -ne 0) {
+            throw "Workbench site build failed with exit code $LASTEXITCODE."
+        }
         $emsdkEnvironment = Join-Path $emsdkRoot "emsdk_env.ps1"
         Assert-Path $emsdkEnvironment "Emscripten SDK environment script"
+        Assert-Path (Join-Path $repoRoot "build\workbench-wasm\site") "Built percussion workbench"
         . $emsdkEnvironment
         Push-Location $repoRoot
         try {
-            & $env:EMSDK_NODE workbench/tests/initial_fit_probe.mjs `
-                build/workbench-wasm/site `
-                build/cymbal-calibration/references/private-corpus-a-crash-v1/cells-oh-dyn-v2/044-edge-v096-r01.wav
+            & $env:EMSDK_NODE tools/audit_percussion_starts.mjs `
+                build/workbench-wasm/site http://127.0.0.1:8765
             if ($LASTEXITCODE -ne 0) {
-                throw "Workbench starting-point analysis failed with exit code $LASTEXITCODE."
+                throw "Percussion reference-start audit failed with exit code $LASTEXITCODE."
             }
         }
         finally {

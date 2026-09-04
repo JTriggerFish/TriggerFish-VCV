@@ -1,5 +1,5 @@
 import {
-  membranePresetId, membranePresetName, membranePresetValues,
+  membranePresetName,
 } from "./membrane_patch.mjs";
 
 const clamp = (value, minimum, maximum) =>
@@ -32,7 +32,7 @@ const Groups = new Map([
   ["membrane-output-controls", ["model_level_db"]],
   ["membrane-body-controls", [
     "fundamental_hz", "decay_seconds", "decay_tilt", "inharmonicity",
-    "body_brightness", "body_velocity_exponent", "velocity_saturation",
+    "body_brightness", "body_velocity_exponent",
   ]],
   ["membrane-tension-controls", ["tension_octaves", "tension_decay_seconds"]],
   ["membrane-contact-controls", [
@@ -57,12 +57,13 @@ const Groups = new Map([
 
 export class MembraneControls {
   constructor({ descriptors, state, onChange, onLevelReset,
-                showPresets = true }) {
+                onPreset, showPresets = true }) {
     this.descriptors = descriptors;
     this.byKey = new Map(descriptors.map(item => [item.key, item]));
     this.state = state;
     this.onChange = onChange;
     this.onLevelReset = onLevelReset;
+    this.onPreset = onPreset;
     this.showPresets = showPresets;
   }
 
@@ -93,14 +94,7 @@ export class MembraneControls {
       button.type = "button";
       button.textContent = membranePresetName(key);
       button.dataset.tooltip = `Load the ${button.textContent} starting point; routing remains editable.`;
-      button.onclick = () => {
-        const values = membranePresetValues(key, this.descriptors);
-        this.state.macros.splice(0, this.state.macros.length, ...values);
-        this.state.patch.id = membranePresetId(key);
-        this.state.patch.name = membranePresetName(key);
-        this.build();
-        this.onChange("preset");
-      };
+      button.onclick = () => this.onPreset(key);
       parent.append(button);
     }
   }

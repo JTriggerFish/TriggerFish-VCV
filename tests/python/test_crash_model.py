@@ -97,6 +97,8 @@ def test_python_modal_grid_matches_the_native_constructive_defaults():
         "body_decay_frequency_hz",
         "body_decay_seconds",
         "body_decay_active",
+        "strength_gamma",
+        "body_strength_gamma",
     ):
         np.testing.assert_allclose(getattr(fit, field), getattr(parameters, field))
 
@@ -170,6 +172,28 @@ def test_unified_fit_can_identify_bloom_routing_separately_from_body_level():
         parameters = {item.name for item in stages[name].parameters}
         assert "bloom_body_gain" in parameters
         assert "field_gain" in parameters or name == "unified-bloom"
+
+
+def test_fitter_velocity_domains_match_the_noncompressive_renderer():
+    velocity_names = {"strength_gamma", "body_strength_gamma"}
+    parameters = [
+        parameter
+        for stage in UNIFIED_CAUSAL_STAGES
+        for parameter in stage.parameters
+        if parameter.name in velocity_names
+    ]
+    assert {parameter.name for parameter in parameters} == velocity_names
+    assert all(parameter.lower == 1.0 for parameter in parameters)
+
+
+def test_unified_fit_never_promotes_relative_improvement_without_absolute_quality():
+    # The 4 ms contact probe is diagnostic only. Every stage that can be
+    # promoted into a rendered starting point must pass the absolute regional
+    # gates as well as improve the relative objective.
+    assert not UNIFIED_CAUSAL_STAGES[0].requires_quality
+    for stage in UNIFIED_CAUSAL_STAGES[1:]:
+        assert stage.requires_quality
+        assert stage.requires_acceptance_gate
 
 
 def test_screened_initial_decay_keeps_earlier_gates_and_one_final_gate():

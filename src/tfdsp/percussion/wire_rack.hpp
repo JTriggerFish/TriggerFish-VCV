@@ -27,7 +27,7 @@ struct WireRackParameters {
   float noiseMix{.6f};
   float modalMix{.75f};
   float outputGain{.42f};
-  float maximumModalEnergy{1.f};
+  float maximumModalEnergy{16.f};
   std::uint32_t seed{0x57495245u};
 };
 
@@ -48,7 +48,7 @@ struct WireRackPreparedParameters {
   float noiseMix{.6f};
   float modalMix{.75f};
   float outputLevel{.42f};
-  float maximumModalEnergy{1.f};
+  float maximumModalEnergy{16.f};
   std::size_t activeModeCount{WireRackModeCount};
   std::uint32_t seed{0x57495245u};
 };
@@ -57,7 +57,7 @@ WireRackPreparedParameters PrepareWireRackParameters(
     float sampleRate, const WireRackParameters &parameters);
 
 // A compact snare-wire interaction driven continuously by body motion. A
-// motion high-pass rejects static displacement, while a bounded contact
+// motion high-pass rejects static displacement, while a contact
 // envelope drives correlated noise and a dense, normalized wire-mode bank.
 class WireRack {
 public:

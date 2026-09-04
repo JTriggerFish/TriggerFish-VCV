@@ -2,11 +2,16 @@ import { SafeAudition } from "./audio.mjs";
 import { bindAnalysisControls } from "./analysis_controls.mjs";
 import { PercussionEngine } from "./engine.mjs";
 import { FitControls } from "./fit_controls.mjs";
-import { calibrationParameterValues } from "./instrument_calibrations.mjs";
+import {
+  calibrationParameterValues, calibrationPatch,
+} from "./instrument_calibrations.mjs";
 import { KickControls } from "./kick_controls.mjs";
 import { MembraneControls } from "./membrane_controls.mjs";
+import {
+  createAcousticKickPatch, createTomPatch, membranePresetValues,
+} from "./membrane_patch.mjs";
 import { SnareControls } from "./snare_controls.mjs";
-import { matchedModelLevelDb } from "./level_match.mjs";
+import { modelLevelMatch } from "./level_match.mjs";
 import { PerformanceControls } from "./performance_controls.mjs";
 import { recipeAdapter } from "./recipe_adapter.mjs";
 import { RecipeController } from "./recipe_controller.mjs";
@@ -14,7 +19,9 @@ import { readReferences } from "./references.mjs";
 import { ReferenceBrowser } from "./reference_browser.mjs";
 import { RoutingController } from "./routing_controller.mjs";
 import { SettingsController } from "./settings.mjs";
-import { SpectrogramView } from "./spectrogram.mjs";
+import {
+  alignedReferenceWindow, SpectrogramView,
+} from "./spectrogram.mjs";
 import {
   downloadFit, fitMacroValues, readFit, snapshotState,
 } from "./state.mjs";
@@ -29,11 +36,11 @@ const state = {
   activeSnapshotId: null,
   event: {
     strength: 0.8, location: 0.8, hardness: 0.65, implement: 1,
-    contactSpread: 0.2, seed: 17,
+    contactSpread: 0.2, constraint: 0, seed: 17,
   },
   eventDefaults: {
     strength: 0.8, location: 0.8, hardness: 0.65, implement: 1,
-    contactSpread: 0.2,
+    contactSpread: 0.2, constraint: 0,
   },
   modelLevelTouched: false,
   analysis: {
@@ -78,12 +85,13 @@ let performanceControls;
 let recipeController;
 let routingController;
 let restoringReference = false;
+let levelMatchWarning = "";
 
 function setStatus(message) { byId("status").textContent = message; }
 function setReadyIfIdle() {
   if (!pendingAnalysis.size && !renderInFlight && !renderTimer &&
       !pendingLevelMatch) {
-    setStatus("Ready");
+    setStatus(levelMatchWarning || "Ready");
   }
 }
 function updateColourCeiling() {
@@ -100,6 +108,7 @@ function requestLevelMatch(resetToFactory = false) {
   if (!engine || !state.reference) return;
   if (resetToFactory) state.macros[0] = engine.macros[0].defaultValue;
   state.modelLevelTouched = false;
+  levelMatchWarning = "";
   pendingLevelMatch = { referenceId: state.reference.id };
   refreshModelLevelControl();
   audition.setMacros(state.macros);
@@ -117,6 +126,7 @@ function buildControls(resetValues = true) {
   fitControls = new ControlType({
     descriptors: engine.parameters, state,
     onChange: key => {
+      levelMatchWarning = "";
       if (key === "model_level_db") {
         state.modelLevelTouched = true;
         pendingLevelMatch = null;
@@ -124,8 +134,27 @@ function buildControls(resetValues = true) {
       scheduleRender();
     },
     onLevelReset: () => requestLevelMatch(),
+    onPreset: key => applyMembranePreset(key),
   });
   fitControls.build();
+}
+
+function applyMembranePreset(key) {
+  const values = membranePresetValues(key, engine.parameters);
+  state.macros.splice(0, state.macros.length, ...values);
+  state.patch = key === "acousticKick"
+    ? createAcousticKickPatch(engine.parameters)
+    : createTomPatch(engine.parameters, values);
+  state.modelLevelTouched = true;
+  pendingLevelMatch = null;
+  routingController?.setPatch(state.patch);
+  routingController?.refreshPresentation();
+  buildPageValues();
+  audition.setRecipe(
+    state.recipeIndex, state.macros,
+    recipeAdapter(state.recipeKey).routing(state.patch),
+  );
+  scheduleRender(false);
 }
 
 function analyze(kind, samples, sampleRate, cacheKey) {
@@ -227,7 +256,7 @@ renderWorker.onmessage = ({ data }) => {
       if (pendingLevelMatch &&
           pendingLevelMatch.referenceId === state.reference?.id) {
         const descriptor = engine.macros[0];
-        const matched = matchedModelLevelDb({
+        const match = modelLevelMatch({
           currentDb: state.macros[0],
           reference: state.reference.samples,
           referenceSampleRate: state.reference.sampleRate,
@@ -237,7 +266,14 @@ renderWorker.onmessage = ({ data }) => {
           maximumDb: descriptor.maximum,
           referenceStartSeconds: state.reference.cell?.onset_seconds ?? 0,
         });
+        const matched = match.appliedDb;
         pendingLevelMatch = null;
+        if (match.clipped) {
+          const shortfall = Math.max(0, match.requestedDb - match.appliedDb);
+          levelMatchWarning = shortfall > .05
+            ? `Model is ${shortfall.toFixed(1)} dB too quiet at its 0 dB ceiling — preset is not calibrated`
+            : "Reference level is outside the attenuation-only model range";
+        }
         if (Math.abs(matched - state.macros[0]) > 0.01) {
           state.macros[0] = matched;
           refreshModelLevelControl();
@@ -273,7 +309,7 @@ function setReference(reference) {
   fitControls?.decayEditor?.refresh();
   audition.setTrim(reference.corpus?.auditionTrimDb ?? 0);
   byId("calibration-trim").textContent =
-    `Corpus trim ${audition.trimDb >= 0 ? "+" : ""}${audition.trimDb.toFixed(1)} dB`;
+    `Corpus monitor gain ${audition.trimDb >= 0 ? "+" : ""}${audition.trimDb.toFixed(1)} dB`;
   if (reference.cell) {
     Object.assign(state.eventDefaults, {
       strength: reference.cell.strength,
@@ -281,6 +317,7 @@ function setReference(reference) {
       hardness: reference.cell.hardness,
       implement: reference.cell.implement ?? 1,
       contactSpread: reference.cell.contactSpread ?? .2,
+      constraint: reference.cell.constraint ?? 0,
     });
     Object.assign(state.event, {
       ...state.eventDefaults,
@@ -293,7 +330,11 @@ function setReference(reference) {
     view.setSettings({ mode: "mirror" });
   }
   analyzeReference();
-  drawWaveform(state); view.reset();
+  const referenceWindow = alignedReferenceWindow(
+    reference.duration, reference.cell?.onset_seconds ?? 0,
+  );
+  drawWaveform(state);
+  view.reset(referenceWindow.duration, referenceWindow.offset);
   if (!restoringReference) {
     if (state.modelLevelTouched) scheduleRender();
     else requestLevelMatch(true);
@@ -377,7 +418,10 @@ async function initialize() {
     getRoutingController: () => routingController,
     buildControls, buildPageValues,
     onChanged: () => {
-      state.modelLevelTouched = false;
+      // Reference starts carry a collection-level output calibration. Keep it
+      // fixed when neighbouring velocity cells are selected; per-cell matching
+      // would erase the source velocity curve.
+      state.modelLevelTouched = true;
       pendingLevelMatch = null;
       renderSynthesis();
     },
@@ -473,7 +517,7 @@ function bindCalibrationPresets() {
   const select = byId("instrument-calibration");
   const calibrations = referenceBrowser.calibrationPresets();
   select.replaceChildren(
-    new Option("Choose a reference fit…", ""),
+    new Option("Choose an unverified start…", ""),
     ...calibrations.map(item => new Option(item.name, item.id)),
   );
   select.onchange = async () => {
@@ -487,9 +531,16 @@ function bindCalibrationPresets() {
       recipeController.activate(recipe.index);
       state.macros.splice(0, state.macros.length,
         ...calibrationParameterValues(calibration, engine.parameters));
+      state.patch = calibrationPatch(
+        calibration, engine.parameters, state.macros, state.patch,
+      );
       state.patch = recipeAdapter(state.recipeKey).withValues(
-        state.patch, engine.parameters, state.macros);
-      state.modelLevelTouched = false;
+        state.patch, engine.parameters, state.macros,
+      );
+      // A named reference start owns one fixed collection-level trim. Loading
+      // its reference must not silently replace that value with a per-cell
+      // match.
+      state.modelLevelTouched = true;
       routingController.setPatch(state.patch);
       routingController.refreshPresentation();
       buildPageValues();

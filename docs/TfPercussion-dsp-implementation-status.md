@@ -165,8 +165,8 @@ three-source observation stage. The workbench exposes wire engagement,
 release, threshold, bandwidth, density, colour, and decay, plus a prominent
 body-ring frequency, decay, and level; these are visible fitted starting
 controls rather than hidden constants.
-Its first single-cell calibration and remaining audible/visual gaps are
-recorded in [the initial compact-snare fit](TfPercussion-snare-initial-fit.md).
+Its rejected first numerical start and the lesson from that failure are
+recorded in [the compact-snare fit note](TfPercussion-snare-initial-fit.md).
 
 An earlier coupled-comb/frequency-shift graph was rejected during calibration:
 its controls could not place persistent ridges independently. The implemented
@@ -238,10 +238,10 @@ prepared route gains cover its four exciter mixes, body observation,
 body-to-wire drive, and wire observation. Its browser panels and live
 AudioWorklet use the same C++ recipe and prepared-state handoff. The local
 reference browser also discovers small allow-listed grids for one acoustic
-snare, one kick, a gong, and a 21-inch ride when those development samples are
+snare, one kick, a gong, a 21-inch ride, and a 14-inch hi-hat when those development samples are
 installed; no sample audio or machine path is copied into the repository. The
 toolbar exposes one obvious middle-velocity calibration entry for the crash,
-snare, kick, gong, and ride, rather than requiring the user to reconstruct a
+snare, kick, gong, ride, and hi-hat, rather than requiring the user to reconstruct a
 reference/recipe pairing from separate selectors. The exact pairings and load
 semantics are recorded in
 [reference calibration starting points](TfPercussion-reference-calibrations.md).
@@ -258,5 +258,5 @@ documented future components rather than prerequisites for the compact
 video-derived instruments. Existing orthogonal mixing covers passive exchange
 inside one resonator bank. Cross-body energy coupling waits for a selected
 membrane/body model with energy-normalized ports; distributed collision waits
-until compact hi-hat or snare fits demonstrate a state-dependent interaction
+until the shared metallic hi-hat fit demonstrates a state-dependent interaction
 that passive loss and driven stochastic contact cannot reproduce.

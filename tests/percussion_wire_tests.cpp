@@ -68,6 +68,25 @@ void TestStaticAndSlowMotionArePassive() {
         "fast membrane motion drives wires far more than a slow closure");
 }
 
+void TestOrdinaryMotionDoesNotReachSafetyCeiling() {
+  using namespace tfdsp::percussion;
+  const auto prepared = PrepareWireRackParameters(48000.f, {});
+  WireRack rack;
+  rack.Prepare(prepared);
+  float maximumEnergy = 0.f;
+  for (std::size_t sample = 0; sample < 24000; ++sample) {
+    const float drive = sample < 6000
+        ? .2f * percussion_test::Sine(sample, 190.f, 48000.f) : 0.f;
+    rack.Process(drive);
+    maximumEnergy = std::max(maximumEnergy, rack.StoredEnergy());
+  }
+  if (!(maximumEnergy < .25f * prepared.maximumModalEnergy))
+    std::cerr << "wire ordinary-motion energy/capacity: " << maximumEnergy
+              << '/' << prepared.maximumModalEnergy << '\n';
+  Check(maximumEnergy < .25f * prepared.maximumModalEnergy,
+        "ordinary wire motion stays clear of the safety ceiling");
+}
+
 void TestRatesAndBounds() {
   using namespace tfdsp::percussion;
   for (const float sampleRate : {44100.f, 48000.f, 96000.f, 192000.f}) {
@@ -83,6 +102,9 @@ void TestRatesAndBounds() {
       peak = std::max(peak, std::abs(rack.Process(drive)));
       maximumEnergy = std::max(maximumEnergy, rack.StoredEnergy());
     }
+    if (!(std::isfinite(peak) && peak > .01f && peak < 2.f))
+      std::cerr << "wire peak/energy at " << sampleRate << ": " << peak
+                << '/' << maximumEnergy << '\n';
     Check(std::isfinite(peak) && peak > .01f && peak < 2.f,
           "wire rack remains finite and calibrated across sample rates");
     Check(maximumEnergy <= prepared.maximumModalEnergy + 1.e-4f,
@@ -95,6 +117,7 @@ void TestRatesAndBounds() {
 int main() {
   TestBodyDrivenResponse();
   TestStaticAndSlowMotionArePassive();
+  TestOrdinaryMotionDoesNotReachSafetyCeiling();
   TestRatesAndBounds();
   return percussion_test::failures == 0 ? 0 : 1;
 }

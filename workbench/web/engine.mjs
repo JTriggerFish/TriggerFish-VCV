@@ -17,11 +17,12 @@ export class PercussionEngine extends WasmPercussionEngine {
 
   render({
     seconds, strength, location, hardness, implement, contactSpread, seed,
-    parameters, macros, routing,
+    constraint, parameters, macros, routing,
   }) {
     this.setConfiguration(parameters ?? macros, routing);
     this.trigger({
       strength, location, hardness, implement, contactSpread, seed,
+      constraint,
     });
     const frames = Math.max(1, Math.round(seconds * this.sampleRate));
     const result = new Float32Array(frames);

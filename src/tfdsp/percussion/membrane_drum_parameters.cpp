@@ -136,8 +136,10 @@ MembraneDrumParameters DefaultMembraneDrumParameters(
       source.colourGainDb, 0.f, -24.f, 24.f);
   result.equalizer.radiation.colourQ = .7f;
   result.equalizer.outputGain = 1.f;
-  result.outputGain = Safe(source.outputGain, .32f, 0.f, 4.f);
-  result.maximumModalEnergy = 1.f;
+  result.outputGain = Safe(source.outputGain, .08f, 0.f, 4.f);
+  // A finite-state guard, not a musical compressor: ordinary single hits
+  // must remain well below this ceiling.
+  result.maximumModalEnergy = 64.f;
   return result;
 }
 

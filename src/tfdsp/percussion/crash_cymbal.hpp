@@ -62,6 +62,7 @@ private:
   float bloomBodyGain_{1.f};
   MetallicPlateRouting routing_{};
   float sampleRate_{48000.f};
+  bool hasProcessedSinceReset_{};
 };
 
 } // namespace tfdsp::percussion

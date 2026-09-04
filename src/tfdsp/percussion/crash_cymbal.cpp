@@ -89,6 +89,7 @@ void CrashCymbal::Reset() noexcept {
   modalField_.SetSecondaryExcitationProjection(parameters_.fieldBowProjection);
   bloomDriveScale_ = 1.f;
   bodyDriveScale_ = 1.f;
+  hasProcessedSinceReset_ = false;
 }
 
 void CrashCymbal::Trigger(const CrashCymbalHit &hit) noexcept {
@@ -102,13 +103,14 @@ void CrashCymbal::Trigger(const CrashCymbalHit &hit) noexcept {
   const float stick = Unit(2.f * implement - 1.f);
   const float mallet = 1.f - brush - stick;
   bloomDriveScale_ = .075f * brush + .55f * mallet + stick;
-  const float directGamma = std::clamp(parameters_.fit.strengthGamma, .25f, 4.f);
+  const float directGamma = std::clamp(parameters_.fit.strengthGamma, 1.f, 4.f);
   const float bodyGamma =
-      std::clamp(parameters_.fit.bodyStrengthGamma, .1f, 4.f);
+      std::clamp(parameters_.fit.bodyStrengthGamma, 1.f, 4.f);
   bodyDriveScale_ = std::pow(strength, bodyGamma - directGamma);
 }
 
 CrashCymbalFrame CrashCymbal::ProcessFrame() noexcept {
+  hasProcessedSinceReset_ = true;
   const auto delayLoss = delayConstraint_.Process();
   const auto modalLoss = modalConstraint_.Process();
   const auto contact = contact_.Process();
@@ -141,12 +143,24 @@ float CrashCymbal::Process() noexcept {
 
 void CrashCymbal::SetMute(const float amount) noexcept {
   const float mute = Unit(amount);
-  const float broadband = std::exp(-3.2f * mute);
+  // Constraint position is geometrical; dissipation appears only once the
+  // contacting surfaces begin to bear force. A cubic onset gives a useful
+  // open/half-open region while still making the final pedal travel decisive.
+  const float loss = .005f * mute * mute * mute;
+  const float broadband = std::exp(-3.2f * loss);
   const PassiveConstraintGains target{
-      broadband, std::exp(-2.2f * mute),
-      std::exp(-4.2f * mute), std::exp(-7.5f * mute)};
-  delayConstraint_.SetTarget(target);
-  modalConstraint_.SetTarget(target);
+      broadband, std::exp(-2.2f * loss),
+      std::exp(-4.2f * loss), std::exp(-7.5f * loss)};
+  // A constraint already in place before the first sample is an initial
+  // condition, not a closing gesture. Once audio is running, transitions stay
+  // smoothed so changing a mute or pedal cannot click or inject energy.
+  if (!hasProcessedSinceReset_) {
+    delayConstraint_.Reset(target);
+    modalConstraint_.Reset(target);
+  } else {
+    delayConstraint_.SetTarget(target);
+    modalConstraint_.SetTarget(target);
+  }
 }
 
 float CrashCymbal::MinimumBodyDelaySamples() const noexcept {
@@ -169,7 +183,7 @@ ContactExciterParameters CrashCymbal::ContactParameters(
     return brush * brushValue + mallet * malletValue + stick * stickValue;
   };
   const float amplitude = std::pow(
-      strength, std::clamp(parameters_.fit.strengthGamma, .25f, 4.f));
+      strength, std::clamp(parameters_.fit.strengthGamma, 1.f, 4.f));
   const float bell = Unit(1.f - 2.f * location);
   const float edge = Unit(2.f * location - 1.f);
   const auto &fit = parameters_.fit;
@@ -276,10 +290,10 @@ ContactExciterParameters CrashCymbal::ContactParameters(
       implementMix(0.f, .12f, .28f),
       // A brush contains many more contacts than a stick. Its routing is
       // energy-normalized here while its long stochastic gesture is retained.
-      implementMix(.035f * brushLevel, .24f, .32f),
-      implementMix(.14f * brushLevel, .5f, .72f),
-      implementMix(.07f * brushLevel, .22f, .25f),
-      implementMix(.28f * brushLevel, .42f, .85f)};
+      implementMix(.0245f * brushLevel, .24f, .32f),
+      implementMix(.098f * brushLevel, .5f, .72f),
+      implementMix(.049f * brushLevel, .22f, .25f),
+      implementMix(.196f * brushLevel, .42f, .85f)};
   return result;
 }
 

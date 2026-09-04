@@ -141,6 +141,79 @@ void TestMembraneRecipe() {
         "membrane state respects its passive energy capacity");
 }
 
+void TestVelocityCannotCompress() {
+  using namespace tfdsp::percussion;
+  auto parameters = DefaultMembraneDrumParameters();
+  parameters.directVelocityExponent = .25f;
+  parameters.bodyVelocityExponent = .25f;
+  parameters.routing.gains = {1.f, 0.f, 0.f, 0.f, 0.f};
+  parameters.observation[0].gain = 1.f;
+  parameters.observation[1].gain = 0.f;
+  parameters.equalizer.mode = ObservationEqualizerMode::Bypass;
+  parameters.outputGain = 1.f;
+  const auto hard = Render(
+      48000.f, {1.f, .5f, .5f, 1.f, .25f, 29}, parameters);
+  const auto half = Render(
+      48000.f, {.5f, .5f, .5f, 1.f, .25f, 29}, parameters);
+  CheckNear(Energy(half) / Energy(hard), .25, 1.e-5,
+            "sub-linear membrane velocity requests clamp to linear");
+}
+
+void TestSingleHitDoesNotReachSafetyCeiling() {
+  using namespace tfdsp::percussion;
+  const auto parameters = DefaultMembraneDrumParameters();
+  MembraneDrum drum;
+  drum.Prepare(48000.f, parameters);
+  drum.Trigger({1.f, .5f, .8f, 1.f, .2f, 31});
+  float maximumEnergy = 0.f;
+  for (std::size_t sample = 0; sample < 48000; ++sample) {
+    drum.Process();
+    maximumEnergy = std::max(maximumEnergy, drum.ModalEnergy());
+  }
+  if (!(maximumEnergy < .25f * parameters.maximumModalEnergy))
+    std::cerr << "membrane single-hit modal energy/capacity: "
+              << maximumEnergy << '/' << parameters.maximumModalEnergy << '\n';
+  Check(maximumEnergy < .25f * parameters.maximumModalEnergy,
+        "ordinary membrane hits stay clear of the safety ceiling");
+}
+
+void TestAcousticKickDoesNotReachSafetyCeiling() {
+  using namespace tfdsp::percussion;
+  MembraneDrumControls controls;
+  controls.fundamentalHz = 35.f;
+  controls.decaySeconds = .25f;
+  controls.decayTilt = .7f;
+  controls.inharmonicity = .18f;
+  controls.bodyBrightness = .28f;
+  controls.tensionOctaves = .1f;
+  controls.tensionDecaySeconds = .05f;
+  controls.contactLevel = .82f;
+  controls.contactDurationSeconds = .0065f;
+  controls.contactBrightness = .38f;
+  controls.fmLevel = .5f;
+  controls.fmDepthHz = 520.f;
+  controls.fmDecaySeconds = .07f;
+  controls.pitchDropOctaves = 1.f;
+  auto parameters = DefaultMembraneDrumParameters(controls);
+  parameters.routing.gains[static_cast<std::size_t>(
+      MembraneDrumRoute::ContactToBody)] *= .25f;
+  parameters.routing.gains[static_cast<std::size_t>(
+      MembraneDrumRoute::FmToBody)] *= .25f;
+  MembraneDrum drum;
+  drum.Prepare(48000.f, parameters);
+  drum.Trigger({1.f, .5f, .5f, .5f, .2f, 37});
+  float maximumEnergy = 0.f;
+  for (std::size_t sample = 0; sample < 48000; ++sample) {
+    drum.Process();
+    maximumEnergy = std::max(maximumEnergy, drum.ModalEnergy());
+  }
+  if (!(maximumEnergy < .25f * parameters.maximumModalEnergy))
+    std::cerr << "acoustic-kick modal energy/capacity: " << maximumEnergy
+              << '/' << parameters.maximumModalEnergy << '\n';
+  Check(maximumEnergy < .25f * parameters.maximumModalEnergy,
+        "ordinary acoustic-kick hits stay clear of the safety ceiling");
+}
+
 void TestDefaultHeadroom() {
   using namespace tfdsp::percussion;
   const auto parameters = DefaultMembraneDrumParameters();
@@ -155,6 +228,10 @@ void TestDefaultHeadroom() {
                                            const float right) {
               return std::abs(left) < std::abs(right);
             });
+        if (!(std::abs(peak) < 1.f))
+          std::cerr << "membrane single-hit peak " << strength << '/'
+                    << location << '/' << implement << ": "
+                    << std::abs(peak) << '\n';
         Check(std::abs(peak) < 1.f,
               "default single hits retain normalized-output headroom");
       }
@@ -174,6 +251,9 @@ void TestDefaultHeadroom() {
       peak = std::max(peak, std::abs(drum.Process()));
       maximumEnergy = std::max(maximumEnergy, drum.ModalEnergy());
     }
+    if (!(peak > .05f && peak < 1.f))
+      std::cerr << "membrane retrigger peak/energy at " << sampleRate << ": "
+                << peak << '/' << maximumEnergy << '\n';
     Check(maximumEnergy <= parameters.maximumModalEnergy + 1.e-4f,
           "retriggered membrane state remains energy bounded");
     Check(peak > .05f && peak < 1.f,
@@ -208,6 +288,9 @@ int main() {
   TestEqualizerModes();
   TestDynamicTension();
   TestMembraneRecipe();
+  TestVelocityCannotCompress();
+  TestSingleHitDoesNotReachSafetyCeiling();
+  TestAcousticKickDoesNotReachSafetyCeiling();
   TestDefaultHeadroom();
   TestRatesAndRoutes();
   if (percussion_test::failures == 0)

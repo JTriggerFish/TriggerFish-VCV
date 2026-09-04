@@ -105,3 +105,12 @@ export function stft(samples, sampleRate, options = {}) {
   }
   return { values, frames, bins, size, hop, sampleRate, floorDb, peakDb };
 }
+
+export function centeredErrorStatistics(values) {
+  if (!values.length) return { mean: 0, rmse: 0 };
+  const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
+  const rmse = Math.sqrt(values.reduce(
+    (sum, value) => sum + (value - mean) ** 2, 0,
+  ) / values.length);
+  return { mean, rmse };
+}

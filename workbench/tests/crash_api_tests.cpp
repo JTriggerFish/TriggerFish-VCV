@@ -97,8 +97,9 @@ int main() {
   Check(tf_crash_route_count() == 5,
         "the metallic recipe exposes five optional routes");
   Check(tf_crash_macro_count() == 167, "the fitting surface is versioned");
-  Check(std::abs(tf_crash_macro_default(0) + 20.f) < 1.e-6f,
-        "the crash workbench starts at -20 dB model level");
+  Check(std::abs(tf_crash_macro_default(0) + 36.f) < 1.e-6f &&
+            tf_crash_macro_maximum(0) == 0.f,
+        "the crash workbench uses an attenuation-only -36 dB level");
   Check(tf_crash_macro_key(0) != nullptr &&
             tf_crash_macro_name(0) != nullptr &&
             tf_crash_macro_unit(0) != nullptr,
@@ -143,6 +144,9 @@ int main() {
   painted[secondLevel] = -12.f;
   painted[firstModeTurbulence] = 0.f;
   const auto baseFit = tfworkbench::CrashWorkbenchBaseFit();
+  Check(std::abs(baseFit.fieldGain / baseFit.directGain -
+                 .0376872f / .227942f) < 1.e-5f,
+        "workbench level calibration preserves the fitted body/contact ratio");
   const auto paintedFit = tfworkbench::ApplyCrashMacros(baseFit, painted);
   const auto defaultFit = tfworkbench::ApplyCrashMacros(
       baseFit, tfworkbench::DefaultCrashMacros());

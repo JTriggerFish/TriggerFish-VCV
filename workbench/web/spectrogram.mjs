@@ -54,6 +54,14 @@ export function normalizationCeilingDb(reference, synthesis) {
   return 0;
 }
 
+export function alignedReferenceWindow(durationSeconds, onsetSeconds = 0) {
+  const duration = Number.isFinite(durationSeconds)
+    ? Math.max(0.002, durationSeconds) : 1;
+  const onset = Number.isFinite(onsetSeconds)
+    ? Math.max(0, Math.min(onsetSeconds, duration - 0.002)) : 0;
+  return { duration: Math.max(0.002, duration - onset), offset: onset };
+}
+
 export class SpectrogramView {
   constructor(canvas) {
     this.canvas = canvas;
@@ -86,14 +94,19 @@ export class SpectrogramView {
   }
 
   setSettings(settings) { Object.assign(this.settings, settings); this.draw(); }
-  reset() {
+  reset(durationSeconds = null, referenceOffsetSeconds = 0) {
     const data = this.reference ?? this.synthesis;
-    if (!data) return;
+    const dataDuration = data
+      ? data.frames * data.hop / data.sampleRate : null;
+    const duration = Number.isFinite(durationSeconds) && durationSeconds > 0
+      ? durationSeconds : dataDuration;
+    if (!Number.isFinite(duration) || duration <= 0) return;
     this.viewport = {
-      start: 0, end: data.frames * data.hop / data.sampleRate,
-      lowHz: 40, highHz: data.sampleRate / 2,
+      start: 0, end: duration,
+      lowHz: 40, highHz: data?.sampleRate / 2 || this.viewport.highHz,
     };
-    this.timeOffsets.reference = 0;
+    this.timeOffsets.reference = Number.isFinite(referenceOffsetSeconds)
+      ? Math.max(0, referenceOffsetSeconds) : 0;
     this.timeOffsets.synthesis = 0;
     this.draw();
     this.onViewport?.(this.viewport);

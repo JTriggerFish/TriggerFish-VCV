@@ -49,6 +49,11 @@ export class PerformanceControls {
       this.state.eventDefaults.hardness);
     this.#bindSlider("contact-spread", "contactSpread", () =>
       this.state.eventDefaults.contactSpread);
+    this.#bindSlider(
+      "metal-constraint", "constraint",
+      () => this.state.eventDefaults.constraint,
+      amount => this.audition.setConstraint(amount),
+    );
     document.querySelectorAll('input[name="implement"]').forEach(input => {
       input.onchange = event => {
         this.state.event.implement = Number(event.currentTarget.value);
@@ -111,11 +116,12 @@ export class PerformanceControls {
     };
   }
 
-  #bindSlider(id, key, defaultValue) {
+  #bindSlider(id, key, defaultValue, onInput = () => {}) {
     byId(id).oninput = event => {
       this.state.event[key] = Number(event.currentTarget.value);
       event.currentTarget.nextElementSibling.textContent =
         this.state.event[key].toFixed(2);
+      onInput(this.state.event[key]);
       this.scheduleRender();
     };
     byId(id).ondblclick = event => {
@@ -136,6 +142,8 @@ export class PerformanceControls {
     [endpoints[0].textContent, endpoints[1].textContent] = family.endpoints;
     this.#paintSlider("hardness", this.state.event.hardness);
     this.#paintSlider("contact-spread", this.state.event.contactSpread);
+    this.#paintSlider("metal-constraint", this.state.event.constraint);
+    this.audition.setConstraint(this.state.event.constraint);
   }
 
   #paintKick() {

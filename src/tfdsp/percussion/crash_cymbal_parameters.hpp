@@ -127,8 +127,8 @@ struct CrashCymbalFitParameters {
   float denseColourQ{.8f};
   float denseHighCutHz{19000.f};
   float denseHighCutQ{.707f};
-  float strengthGamma{1.15f};
-  float bodyStrengthGamma{.8f};
+  float strengthGamma{1.f};
+  float bodyStrengthGamma{1.f};
   float velocityBrightnessDbPerOctave{4.f};
 };
 

@@ -85,10 +85,12 @@ export function validateFit(value, descriptors = []) {
       !event || !analysis || !validReference) {
     throw new Error("unsupported or incomplete percussion fit");
   }
+  event.constraint ??= 0;
   validatePatch(value.instrument, descriptors);
   recipeAdapter(value.instrument.recipe).validate(value.instrument);
   for (const key of [
     "strength", "location", "hardness", "implement", "contactSpread",
+    "constraint",
   ]) {
     if (!Number.isFinite(event[key]) || event[key] < 0 || event[key] > 1) {
       throw new Error(`invalid event ${key}`);

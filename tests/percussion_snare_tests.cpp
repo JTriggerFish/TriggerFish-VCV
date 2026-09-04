@@ -65,6 +65,24 @@ void TestVelocityResponse() {
         "snare velocity layers retain useful soft-to-medium dynamics");
 }
 
+void TestWireResponseIsNotDelayed() {
+  using namespace tfdsp::percussion;
+  SnareDrum drum;
+  drum.Prepare(48000.f, DefaultSnareDrumParameters());
+  drum.Trigger({.8f, .3f, .65f, 1.f, .2f, 1575});
+  std::size_t firstWireSample = 512;
+  for (std::size_t sample = 0; sample < firstWireSample; ++sample) {
+    if (std::abs(drum.ProcessFrame().wires) > 1.e-8f) {
+      firstWireSample = sample;
+      break;
+    }
+  }
+  if (firstWireSample > 2)
+    std::cerr << "first snare-wire response sample: " << firstWireSample << '\n';
+  Check(firstWireSample <= 2,
+        "body-driven snare wires respond in the first three samples without a delay line");
+}
+
 void TestRoutingAndPreparedState() {
   using namespace tfdsp::percussion;
   auto parameters = DefaultSnareDrumParameters();
@@ -108,6 +126,9 @@ void TestRatesAndRepeatedHits() {
                       static_cast<std::uint32_t>(sample + 1)});
       peak = std::max(peak, std::abs(drum.Process()));
     }
+    if (!(std::isfinite(peak) && peak > .01f && peak < 4.f))
+      std::cerr << "snare retrigger peak at " << sampleRate << ": " << peak
+                << '\n';
     Check(std::isfinite(peak) && peak > .01f && peak < 4.f,
           "repeated snare hits remain finite across sample rates");
   }
@@ -118,6 +139,7 @@ void TestRatesAndRepeatedHits() {
 int main() {
   TestDeterminismAndSources();
   TestVelocityResponse();
+  TestWireResponseIsNotDelayed();
   TestRoutingAndPreparedState();
   TestRatesAndRepeatedHits();
   return percussion_test::failures == 0 ? 0 : 1;

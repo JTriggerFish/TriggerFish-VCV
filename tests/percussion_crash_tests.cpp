@@ -377,6 +377,26 @@ void TestMuteIsPassive() {
     silentEnergy += static_cast<double>(output) * output;
   }
   Check(silentEnergy == 0.0, "changing crash mute does not inject energy");
+
+  CrashCymbal openHit;
+  CrashCymbal constrainedHit;
+  openHit.Prepare(sampleRate, parameters);
+  constrainedHit.Prepare(sampleRate, parameters);
+  constrainedHit.SetMute(1.f);
+  openHit.Trigger({.9f, 1.f, .65f, 19});
+  constrainedHit.Trigger({.9f, 1.f, .65f, 19});
+  double openHitTail = 0.0;
+  double constrainedHitTail = 0.0;
+  for (std::size_t sample = 0; sample < 48000; ++sample) {
+    const float open = openHit.Process();
+    const float constrained = constrainedHit.Process();
+    if (sample > 4800) {
+      openHitTail += static_cast<double>(open) * open;
+      constrainedHitTail += static_cast<double>(constrained) * constrained;
+    }
+  }
+  Check(constrainedHitTail < .25 * openHitTail,
+        "a pre-existing constraint damps the hit from its first body response");
 }
 
 void TestFiniteAtSupportedRates() {

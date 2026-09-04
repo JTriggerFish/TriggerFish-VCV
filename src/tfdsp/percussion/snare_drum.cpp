@@ -28,7 +28,7 @@ SnareDrumParameters DefaultSnareDrumParameters() noexcept {
   body.tensionDecaySeconds = .09f;
   body.contactLevel = .78f;
   body.contactDurationSeconds = .0022f;
-  body.contactBrightness = .38f;
+  body.contactBrightness = .25f;
   body.fmLevel = .08f;
   body.fmDepthHz = 180.f;
   body.fmDecaySeconds = .035f;
@@ -36,11 +36,9 @@ SnareDrumParameters DefaultSnareDrumParameters() noexcept {
   result.membrane = DefaultMembraneDrumParameters(body);
   result.membrane.directVelocityExponent = 2.59f;
   result.membrane.bodyVelocityExponent = 2.23f;
-  result.membrane.velocitySaturation = 3.64f;
-  // Keep the safety ceiling inactive for normal hits. The generic ceiling is
-  // intentionally conservative, but it compressed all snare velocities to
-  // nearly the same stored body energy.
-  result.membrane.maximumModalEnergy = 16.f;
+  // Keep the safety ceiling inactive for normal hits so velocity remains an
+  // amplitude/energy control instead of collapsing into hard limiting.
+  result.membrane.maximumModalEnergy = 64.f;
   result.membrane.membrane[5].frequencyHz = 675.f;
   result.membrane.membrane[5].decaySeconds = 1.8f;
   result.membrane.membrane[5].outputGain = .3f;
@@ -50,34 +48,35 @@ SnareDrumParameters DefaultSnareDrumParameters() noexcept {
   result.membrane.outputGain = 1.f;
   result.membrane.routing.gains = {.35f, 1.f, .05f, .32f, 1.f};
 
-  result.wires.sensitivity = 4.f;
-  result.wires.attackSeconds = .045f;
-  result.wires.releaseSeconds = .03f;
-  result.wires.threshold = .05f;
-  result.wires.motionHighpassHz = 1000.f;
-  result.wires.minimumFrequencyHz = 520.f;
-  result.wires.maximumFrequencyHz = 9000.f;
-  result.wires.decaySeconds = .025f;
-  result.wires.decayTilt = .78f;
+  result.wires.sensitivity = 12.f;
+  result.wires.attackSeconds = .0015f;
+  result.wires.releaseSeconds = .08f;
+  result.wires.threshold = .0015f;
+  result.wires.motionHighpassHz = 140.f;
+  result.wires.minimumFrequencyHz = 250.f;
+  result.wires.maximumFrequencyHz = 14000.f;
+  result.wires.decaySeconds = .35f;
+  result.wires.decayTilt = .8f;
   result.wires.density = .9f;
-  result.wires.brightness = .05f;
-  result.wires.noiseMix = .42f;
-  result.wires.modalMix = .7f;
-  result.wires.outputGain = 2.5f;
+  result.wires.brightness = 0.f;
+  result.wires.noiseMix = .6f;
+  result.wires.modalMix = .45f;
+  result.wires.outputGain = .46f;
+  result.wires.maximumModalEnergy = 16.f;
 
-  result.observation[0].gain = .06f;
+  result.observation[0].gain = .08f;
   result.observation[1].gain = .95f;
-  result.observation[2].gain = 4.f;
+  result.observation[2].gain = 1.f;
   for (auto &path : result.observation)
     path.radiationEnabled = false;
   result.equalizer.mode = ObservationEqualizerMode::Radiation;
   result.equalizer.radiation.lowCutHz = 38.f;
-  result.equalizer.radiation.highCutHz = 10000.f;
+  result.equalizer.radiation.highCutHz = 8000.f;
   result.equalizer.radiation.colourFrequencyHz = 210.f;
   result.equalizer.radiation.colourGainDb = 0.f;
   result.equalizer.radiation.colourQ = .7f;
   result.equalizer.outputGain = 1.f;
-  result.outputGain = .1f;
+  result.outputGain = .32f;
   return result;
 }
 
