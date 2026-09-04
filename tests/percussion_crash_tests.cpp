@@ -115,9 +115,12 @@ void TestVelocityChangesCymbalRegime() {
         "each stronger crash strike excites a brighter spectrum");
 
   struct BranchEnergy { double direct{}; double bloom{}; double dense{}; };
-  const auto measure = [](const float strength) {
+  const auto measure = [](const float strength,
+                          const float energyDependence = .7f) {
     CrashCymbal cymbal;
-    cymbal.Prepare(sampleRate, DefaultCrashCymbalParameters(sampleRate));
+    CrashCymbalFitParameters fit;
+    fit.bloomEnergyDependence = energyDependence;
+    cymbal.Prepare(sampleRate, DefaultCrashCymbalParameters(sampleRate, fit));
     cymbal.Trigger({strength, 1.f, .65f, 81});
     BranchEnergy result;
     for (int sample = 0; sample < 24000; ++sample) {
@@ -134,13 +137,20 @@ void TestVelocityChangesCymbalRegime() {
   const double directGrowth = loudBranches.direct / quietBranches.direct;
   const double bloomGrowth = loudBranches.bloom / quietBranches.bloom;
   const double denseGrowth = loudBranches.dense / quietBranches.dense;
-  if (!(bloomGrowth > directGrowth && denseGrowth > 1.0)) {
+  const auto quietIndependent = measure(.25f, 0.f);
+  const auto loudIndependent = measure(1.f, 0.f);
+  const double independentBloomGrowth =
+      loudIndependent.bloom / quietIndependent.bloom;
+  constexpr double QuadraticInputGrowth = 16.0;
+  if (!(bloomGrowth > QuadraticInputGrowth &&
+        bloomGrowth > independentBloomGrowth && denseGrowth > 1.0)) {
     std::cerr << "crash velocity direct/bloom/dense growth: "
               << directGrowth << '/' << bloomGrowth << '/' << denseGrowth
-              << '\n';
+              << "; independent bloom " << independentBloomGrowth << '\n';
   }
-  Check(bloomGrowth > directGrowth && denseGrowth > 1.0,
-        "strong strikes increase modal transfer faster than direct contact");
+  Check(bloomGrowth > QuadraticInputGrowth &&
+        bloomGrowth > independentBloomGrowth && denseGrowth > 1.0,
+        "strong strikes increase energy-dependent modal transfer");
 }
 
 void TestSparseModesArePlacedDirectly() {

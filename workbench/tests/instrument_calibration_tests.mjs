@@ -29,6 +29,12 @@ assert.deepEqual(defaults, descriptors.map(item => item.defaultValue));
 assert.throws(() => calibrationParameterValues(
   { parameter_preset: "crash-start" }, descriptors), /Unknown/);
 
+const gong = calibrationParameterValues(
+  { parameter_preset: "gong-v1" }, descriptors);
+assert.deepEqual(gong, [
+  2.2, 1, -10, .72, 12, 0, 0, 128.9, -23, -35, .15, 1.7, 25, 2,
+]);
+
 const membraneDescriptors = [
   { key: "model_level_db", defaultValue: -10, index: 0 },
   { key: "fundamental_hz", defaultValue: 105, index: 1 },

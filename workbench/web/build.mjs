@@ -19,7 +19,7 @@ for (const name of [
   "percussion_patch.mjs", "percussion_registry.mjs",
   "metallic_plate_patch.mjs", "compact_kick_patch.mjs", "membrane_patch.mjs",
   "snare_patch.mjs",
-  "instrument_calibrations.mjs",
+  "instrument_calibrations.mjs", "metallic_calibrations.mjs",
   "recipe_adapter.mjs", "routing_view.mjs", "kick_controls.mjs",
   "membrane_controls.mjs", "snare_controls.mjs",
   "routing_controller.mjs", "performance_controls.mjs",

@@ -266,6 +266,7 @@ def _gong(library: Path):
             "id": "gong-standard",
             "name": "Gong — representative mallet",
             "recipe": "metal.cymbal.v1",
+            "parameter_preset": "gong-v1",
             "articulation": "mallet",
             "velocity": 96,
             "repeat": 3,

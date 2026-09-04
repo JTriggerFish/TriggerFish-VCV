@@ -17,8 +17,10 @@ const descriptors = [
   })),
   ...Array.from({ length: 24 }, (_, index) => ({
     key: `resolved_level_${index}`, defaultValue: 0,
-    minimum: -24, maximum: 24, scale: "linear", index: index + 32,
+    minimum: -72, maximum: 6, scale: "linear", index: index + 32,
   })),
+  { key: "body_excitation", defaultValue: .05, minimum: .001, maximum: 4,
+    scale: "logarithmic", index: 56 },
 ];
 
 const values = position => Object.fromEntries(
@@ -29,13 +31,16 @@ const values = position => Object.fromEntries(
 
 assert.equal(values(.5).impact_width, 1);
 assert.equal(values(.5).bloom_energy_dependence, .35);
-assert.equal(values(0).impact_width, 1.8);
+assert.equal(values(0).impact_width, 2.2);
+assert.equal(values(0).body_excitation, 1);
+assert.equal(values(.5).body_excitation, .05);
+assert.equal(values(1).body_excitation, .05);
 assert.equal(values(1).impact_width, .65);
-assert.equal(values(0).resolved_frequency_5, 600 * .42);
+assert.equal(values(0).resolved_frequency_5, 550.8);
 assert.equal(values(1).resolved_frequency_5, 600 * 1.45);
-assert.equal(values(0).resolved_frequency_23, 2400 * .42);
+assert.equal(values(0).resolved_frequency_23, 15000);
 assert.equal(values(1).resolved_frequency_23, 2400 * 1.45);
-assert.equal(values(0).resolved_level_0, 5);
+assert.equal(values(0).resolved_level_0, -23);
 assert.equal(values(1).resolved_level_23, -2);
 for (let index = 1; index <= 6; ++index) {
   assert.equal(values(0)[`body_decay_active_${index}`], 0);
@@ -43,6 +48,6 @@ for (let index = 1; index <= 6; ++index) {
 }
 assert.equal(values(0).dense_wash_frequency_3, undefined);
 assert.equal(values(1).dense_wash_level_3, undefined);
-assert.ok(Math.abs(values(.25).impact_width - Math.sqrt(1.8)) < 1.e-12);
+assert.ok(Math.abs(values(.25).impact_width - Math.sqrt(2.2)) < 1.e-12);
 
 console.log("size meta tests passed");

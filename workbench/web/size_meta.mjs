@@ -1,19 +1,8 @@
+import { metallicCalibrationOverrides } from "./metallic_calibrations.mjs";
+
 const clamp = (value, minimum, maximum) =>
   Math.max(minimum, Math.min(maximum, value));
 
-const gongPreset = {
-  impact_tone_noise: .35, impact_width: 1.8,
-  bloom_rate: 1.2, bloom_energy_dependence: .8,
-  bloom_phase_diffusion: .7, body_brightness: -2.5,
-  body_tilt_centre: 1200, field_turbulence_slope: .3,
-  field_turbulence_centre: 1600,
-  body_decay_seconds_0: 12, body_decay_seconds_7: 2.5,
-  body_decay_active_1: 0, body_decay_active_2: 0,
-  body_decay_active_3: 0, body_decay_active_4: 0,
-  body_decay_active_5: 0, body_decay_active_6: 0,
-};
-
-const gongLevels = [5, 6, 8, 9, 8, 7, 5, 3, 1, -1, -3, -5];
 const chinaPreset = {
   impact_tone_noise: .62, impact_width: .65,
   bloom_rate: 5, bloom_energy_dependence: .55,
@@ -54,18 +43,18 @@ export function expandedSizeMeta(descriptors, position) {
   const defaults = Object.fromEntries(
     descriptors.map(item => [item.key, item.defaultValue]),
   );
-  const gong = presetWithSpectralControls(
-    gongPreset, defaults, .42, gongLevels,
-  );
+  const gong = metallicCalibrationOverrides("gong-v1");
   const china = presetWithSpectralControls(
     chinaPreset, defaults, 1.45, chinaLevels,
   );
   const target = amount < .5 ? gong : china;
   const blend = amount < .5 ? amount * 2 : (amount - .5) * 2;
-  return Object.entries(target).flatMap(([key, endpoint]) => {
+  const keys = new Set([...Object.keys(gong), ...Object.keys(china)]);
+  return [...keys].flatMap(key => {
     const descriptor = descriptors.find(item => item.key === key);
     if (!descriptor) return [];
     const neutral = defaults[key];
+    const endpoint = Object.hasOwn(target, key) ? target[key] : neutral;
     const left = amount < .5 ? endpoint : neutral;
     const right = amount < .5 ? neutral : endpoint;
     const value = descriptor.scale === "logarithmic"

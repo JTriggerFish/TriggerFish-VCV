@@ -155,7 +155,7 @@ std::array<CrashMacroDescriptor, CrashMacroCount> BuildDescriptors() {
         std::max(fit.sparseAmplitude[point], 1.e-8f));
     result[Index(CrashMacro::ResolvedLevelFirst) + point] = Linear(
         "resolved_level_" + std::to_string(point),
-        "Mode energy " + std::to_string(point + 1), "dB", -72.f, 6.f,
+        "Mode level " + std::to_string(point + 1), "dB", -72.f, 6.f,
         std::max(levelDb, -72.f));
     result[Index(CrashMacro::ResolvedTurbulenceFirst) + point] = Linear(
         "resolved_turbulence_" + std::to_string(point),

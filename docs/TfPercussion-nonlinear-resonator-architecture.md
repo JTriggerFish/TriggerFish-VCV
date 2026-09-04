@@ -85,13 +85,17 @@ public architecture.
 For mode $m$, before cross-mode processing, the recurrence is
 
 $$
-z_m[n+1] = r_m e^{j\omega_m[n]}z_m[n] + g_m x[n],
+z_m[n+1] = r_m e^{j\omega_m[n]}z_m[n]
+           + \sqrt{a_m}\,q_m x[n],
 $$
 
-where $r_m$ comes from the shared T60 curve, $g_m$ contains the painted level
-and current strike projection, and $\omega_m[n]$ may contain a small stochastic
-phase perturbation. With no drive or constraint, the pole radius is the only
-loss in this recurrence.
+where $r_m$ comes from the shared T60 curve, $a_m$ is the painted linear modal
+level, $q_m$ contains the normalized excitation tilt and current strike
+projection, and $\omega_m[n]$ may contain a small stochastic phase perturbation.
+Observation uses $\sqrt{a_m}\,\operatorname{Re}(z_m)$, so an ordinary directly
+excited mode follows $a_m$ while energy arriving through the cascade still
+approaches silence continuously as its painted level approaches zero. With no
+drive or constraint, the pole radius is the only loss in this recurrence.
 
 Global turbulence and its per-anchor multiplier control a normalized
 centre-to-satellite trajectory. Increasing turbulence:
@@ -225,10 +229,13 @@ constraint movement injects no energy.
 
 ## Constructive colour controls
 
-`Body energy tilt` is a coarse tilt of painted modal excitation levels around
-the visible `Body tilt centre`. It is convenient for broad matching while the
-painted levels retain local control. Its range is deliberately wide enough to
-move from low-dominated gong starts to bright cymbal starts.
+`Initial excitation tilt` shapes where a strike deposits energy around the
+visible `Excitation tilt centre`. Painted modal levels control what is audible;
+the tilt controls what is initially driven. Splitting each painted level evenly
+between drive and observation keeps direct modal level intuitive while making
+cascade arrivals continuous at the editor's silence boundary. The tilt range is
+deliberately wide enough to move from low-dominated gong starts to bright
+cymbal starts.
 
 `Body excitation` is the explicit gain between the contact body port and this
 modal field. It changes stored energy and therefore the operating point of the

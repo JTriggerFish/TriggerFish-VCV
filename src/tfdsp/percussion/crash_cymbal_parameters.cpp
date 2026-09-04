@@ -100,15 +100,19 @@ CrashModalField::Parameters ModalField(
   const float bodyTiltCentre = std::clamp(
       Positive(fit.bodyTiltCentreHz, 4000.f), 20.f, .48f * sampleRate);
   std::array<float, CrashSparseModeCount> anchorGains{};
+  std::array<float, CrashSparseModeCount> anchorOutputGains{};
   float anchorSquaredGain = 0.f;
   for (std::size_t anchor = 0; anchor < anchorGains.size(); ++anchor) {
     const float frequency = Positive(anchors[anchor].frequencyHz, 1000.f);
     const float tilt = std::pow(
         10.f, std::clamp(fit.bodyTiltDbPerOctave, -24.f, 24.f) *
             std::log2(frequency / bodyTiltCentre) / 20.f);
-    const float gain = std::clamp(
-        Positive(anchors[anchor].amplitude, 0.f) * tilt, 0.f, 8.f);
+    const float level = std::clamp(
+        Positive(anchors[anchor].amplitude, 0.f), 0.f, 8.f);
+    const float observationGain = std::sqrt(level);
+    const float gain = observationGain * tilt;
     anchorGains[anchor] = gain;
+    anchorOutputGains[anchor] = observationGain;
     anchorSquaredGain += gain * gain;
   }
   const float anchorNormalization =
@@ -136,6 +140,7 @@ CrashModalField::Parameters ModalField(
             std::clamp(Positive(fit.sparseTune, 1.f), .5f, 2.f),
         20.f, .48f * sampleRate);
     const float anchorGain = anchorNormalization * anchorGains[anchor];
+    const float anchorOutputGain = anchorOutputGains[anchor];
     const auto makeMode = [&](const std::size_t slot, const float frequency,
                               const float weight, const float phase) {
       const std::size_t index = anchor * CrashPacketModeCount + slot;
@@ -145,7 +150,7 @@ CrashModalField::Parameters ModalField(
           safeFrequency,
           std::clamp(decay.At(safeFrequency), .01f, 30.f),
           anchorGain * weight,
-          1.f,
+          anchorOutputGain,
           phase,
           bandwidthErb * ErbBandwidth(safeFrequency) *
               (slot == 0 ? .35f : 1.f),

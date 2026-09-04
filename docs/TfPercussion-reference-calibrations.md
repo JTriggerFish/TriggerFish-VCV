@@ -1,8 +1,8 @@
 # Reference listening targets
 
 The development workbench exposes one deliberately simple reference pairing
-per instrument. Each entry selects a compiled recipe, its current factory
-defaults, one standard articulation at a middle velocity, and the exact local
+per instrument. Each entry selects a compiled recipe, one documented starting
+state, one standard articulation at a middle velocity, and the exact local
 reference cell. Obsolete fitted metallic presets are deliberately not migrated
 or retained.
 
@@ -11,7 +11,7 @@ or retained.
 | Crash — medium edge | `metal.cymbal.v1` | edge, velocity 72, take 1 | current factory defaults |
 | Snare — medium standard hit | `drum.snare.v1` | main, velocity 82, take 1 | current factory defaults |
 | Acoustic kick — medium centre | `drum.membrane.v1` | centre, velocity 64, take 1 | -12 dB; explicit beater, FM/body, membrane, and observation routes |
-| Gong — representative mallet | `metal.cymbal.v1` | mallet, velocity 96, take 3 | current factory defaults |
+| Gong — representative mallet | `metal.cymbal.v1` | mallet, velocity 96, take 3 | measured `gong-v1` start |
 | Ride — medium bow | `metal.cymbal.v1` | bow, velocity 82, take 1 | current factory defaults |
 | Hi-hat — medium half-open | `metal.cymbal.v1` | half-open, velocity 96, take 1 | current factory defaults plus passive pedal constraint |
 
@@ -19,7 +19,7 @@ The highlighted **Reference targets** chooser is kept in the persistent top tool
 next to the recipe selector. Loading an entry performs one atomic user action:
 
 1. activate the required compiled recipe;
-2. restore its current factory state;
+2. restore its documented current starting state;
 3. select and load the named reference cell;
 4. copy the cell's strength, location, implement, hardness, spread, passive
    constraint/pedal position, and seed to
