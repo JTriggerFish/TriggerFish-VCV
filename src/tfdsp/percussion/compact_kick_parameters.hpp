@@ -19,12 +19,13 @@ enum class CompactKickRoute : std::size_t {
 struct CompactKickRouting {
   static constexpr std::size_t Count =
       static_cast<std::size_t>(CompactKickRoute::Count);
-  float Get(CompactKickRoute route) const noexcept;
-  void Set(std::size_t index, float gain) noexcept;
-  std::array<float, Count> gains{1.f, 1.f, 1.f};
+  bool Enabled(CompactKickRoute route) const noexcept;
+  void SetEnabled(std::size_t index, bool value) noexcept;
+  std::array<bool, Count> enabled{true, true, true};
 };
 
 struct CompactKickControls {
+  float primaryLevel{1.f};
   float fundamentalHz{52.f};
   float pitchDropOctaves{1.8f};
   float pitchDecaySeconds{.055f};

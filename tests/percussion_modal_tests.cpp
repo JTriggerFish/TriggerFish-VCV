@@ -2,6 +2,7 @@
 
 #include "tfdsp/percussion/modal_bank.hpp"
 #include "tfdsp/percussion/modal_constraint.hpp"
+#include "tfdsp/percussion/modal_energy_cascade.hpp"
 #include "tfdsp/percussion/statistical_modal_cloud.hpp"
 #include "tfdsp/percussion/stochastic_modal_field.hpp"
 #include "tfdsp/percussion/turbulent_residual.hpp"
@@ -341,6 +342,78 @@ void TestLocalModalExchangeIsPassive() {
         "local exchange never creates unforced modal energy");
 }
 
+void TestModalCascadeIsPassiveAndLocallyProgressive() {
+  using Cascade = tfdsp::percussion::ModalEnergyCascade<3>;
+  const std::array<float, 3> frequencies{500.f, 2000.f, 8000.f};
+  const std::array<float, 3> gains{1.f, 1.f, 1.f};
+  const std::array<std::uint16_t, 3> packets{0, 1, 2};
+  std::array<float, 3> real{1.f, 0.f, 0.f};
+  std::array<float, 3> imaginary{};
+  Cascade cascade;
+  cascade.Prepare(100.f, frequencies, gains, packets, 3,
+                  {12.f, 0.f, 1.f, 91});
+  const auto energy = [&] {
+    double result = 0.0;
+    for (std::size_t index = 0; index < real.size(); ++index)
+      result += static_cast<double>(real[index]) * real[index] +
+          static_cast<double>(imaginary[index]) * imaginary[index];
+    return result;
+  };
+  const double initialEnergy = energy();
+  cascade.Process(real, imaginary);
+  CheckNear(energy(), initialEnergy, 2.e-7,
+            "modal cascade redistributes rather than creates energy");
+  Check(real[1] != 0.f && real[2] == 0.f && imaginary[2] == 0.f,
+        "modal cascade crosses at most one packet boundary per sample");
+  cascade.Process(real, imaginary);
+  Check(real[2] != 0.f || imaginary[2] != 0.f,
+        "modal cascade reaches successive bands progressively");
+  CheckNear(energy(), initialEnergy, 3.e-7,
+            "successive modal transfers remain energy preserving");
+}
+
+void TestModalFieldRejectsSplitPacketRuns() {
+  using namespace tfdsp::percussion;
+  using Field = StochasticModalField<3>;
+  Field::Parameters parameters{{
+      {500.f, 1.f, 1.f, 1.f, 0.f, 0.f, 7, 1.f},
+      {1000.f, 1.f, 1.f, 1.f, 0.f, 0.f, 8, 1.f},
+      {2000.f, 1.f, 1.f, 1.f, 0.f, 0.f, 7, 1.f},
+  }};
+  bool rejected = false;
+  try {
+    (void)PrepareStochasticModalField(
+        48000.f, parameters, {}, 700.f, 6500.f);
+  } catch (const std::invalid_argument &) {
+    rejected = true;
+  }
+  Check(rejected, "modal field rejects non-contiguous packet membership");
+}
+
+void TestModalCascadeRateIncludesVerySlowTravel() {
+  using Cascade = tfdsp::percussion::ModalEnergyCascade<2>;
+  constexpr std::array<float, 2> frequencies{500.f, 1000.f};
+  constexpr std::array<float, 2> gains{1.f, 1.f};
+  constexpr std::array<std::uint16_t, 2> packets{0, 1};
+  const auto upperEnergy = [&](const float rate) {
+    std::array<float, 2> real{1.f, 0.f};
+    std::array<float, 2> imaginary{};
+    Cascade cascade;
+    cascade.Prepare(1000.f, frequencies, gains, packets, 2,
+                    {rate, 0.f, 0.f, 71});
+    for (int sample = 0; sample < 100; ++sample)
+      cascade.Process(real, imaginary);
+    return real[1] * real[1] + imaginary[1] * imaginary[1];
+  };
+  const float stopped = upperEnergy(0.f);
+  const float verySlow = upperEnergy(.1f);
+  const float medium = upperEnergy(1.f);
+  const float fast = upperEnergy(4.f);
+  Check(stopped == 0.f && verySlow > 0.f && verySlow < .02f &&
+            verySlow < medium && medium < fast,
+        "modal cascade rate spans off, very slow, medium, and fast travel");
+}
+
 } // namespace
 
 int main() {
@@ -358,6 +431,9 @@ int main() {
   TestTurbulentResidualIsRepeatable();
   TestStochasticPhaseBroadeningPreservesEnergy();
   TestLocalModalExchangeIsPassive();
+  TestModalCascadeIsPassiveAndLocallyProgressive();
+  TestModalFieldRejectsSplitPacketRuns();
+  TestModalCascadeRateIncludesVerySlowTravel();
   if (percussion_test::failures == 0)
     std::cout << "All percussion modal tests passed\n";
   return percussion_test::failures == 0 ? 0 : 1;

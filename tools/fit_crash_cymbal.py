@@ -232,7 +232,7 @@ def main() -> None:
         _require_loadable_schema(
             loaded, arguments.load_fit, parser, arguments.recompute_diagnostics
         )
-        fitted = CrashFit(**loaded["parameters"])
+        fitted = CrashFit.from_mapping(loaded["parameters"])
         legacy_schema = loaded.get("schema") != FIT_SCHEMA
         diagnostics = (
             {}
@@ -250,7 +250,7 @@ def main() -> None:
         if arguments.initial_fit:
             seed_fit = json.loads(arguments.initial_fit.read_text(encoding="utf-8"))
             _require_current_schema(seed_fit, arguments.initial_fit, parser)
-            initial_parameters = CrashFit(**seed_fit["parameters"])
+            initial_parameters = CrashFit.from_mapping(seed_fit["parameters"])
             if arguments.initial_candidate_stage:
                 candidate_fit = seed_fit
                 if arguments.initial_candidate_fit:

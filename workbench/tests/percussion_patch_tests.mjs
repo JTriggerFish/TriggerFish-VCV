@@ -23,8 +23,8 @@ const descriptors = [
     defaultValue: .65,
   },
   {
-    index: 1, key: "bloom_level", minimum: 0, maximum: 2,
-    defaultValue: 1,
+    index: 1, key: "bloom_rate", minimum: 0, maximum: 16,
+    defaultValue: 2,
   },
   {
     index: 2, key: "field_turbulence", minimum: 0, maximum: 1,
@@ -44,14 +44,14 @@ assert.deepEqual(patch.performanceControls,
   ["strength", "location", "hardness", "implement", "contactSpread"]);
 assert.deepEqual(macroValuesFromPatch(patch, descriptors), [.8, 1.2, .7, -18]);
 assert.ok(patch.nodes.every(node => !Array.isArray(node.parameters)));
-assert.deepEqual(routingValuesFromPatch(patch), [1, 1, 1, 1, 1]);
+assert.deepEqual(routingValuesFromPatch(patch), [true, true, true]);
 const withoutLayout = structuredClone(patch);
 delete withoutLayout.nodes[0].editor;
 assert.equal(validatePatch(withoutLayout, descriptors), withoutLayout);
 
 const cyclic = structuredClone(patch);
 cyclic.connections.push({
-  id: "cycle", from: "output.audio", to: "bloom.drive",
+  id: "cycle", from: "output.audio", to: "body.primary", enabled: true,
 });
 assert.throws(() => validatePatch(cyclic, descriptors), /cycle/);
 
@@ -104,18 +104,15 @@ const unsupported = structuredClone(patch);
 unsupported.connections.pop();
 assert.throws(() => validateCrashAdapterPatch(unsupported), /metallic-plate/);
 
-for (let mask = 0; mask < 32; ++mask) {
+for (let mask = 0; mask < 8; ++mask) {
   const candidate = structuredClone(patch);
-  for (let index = 0; index < 5; ++index) {
+  for (let index = 0; index < 3; ++index) {
     candidate.connections[index].enabled = Boolean(mask & (1 << index));
   }
-  const direct = Boolean(mask & (1 << 3));
-  const immediateBody = Boolean(mask & (1 << 1)) &&
-    Boolean(mask & (1 << 4));
-  const bloomedBody = Boolean(mask & (1 << 0)) &&
-    Boolean(mask & (1 << 2)) && Boolean(mask & (1 << 4));
+  const direct = Boolean(mask & (1 << 1));
+  const body = Boolean(mask & (1 << 0)) && Boolean(mask & (1 << 2));
   validatePatch(candidate, descriptors);
-  if (direct || immediateBody || bloomedBody) {
+  if (direct || body) {
     assert.equal(validateCrashAdapterPatch(candidate), candidate);
   } else {
     assert.throws(
@@ -125,24 +122,18 @@ for (let mask = 0; mask < 32; ++mask) {
   }
   assert.deepEqual(
     routingValuesFromPatch(candidate),
-    Array.from({ length: 5 }, (_, index) => mask & (1 << index) ? 1 : 0),
+    Array.from({ length: 3 }, (_, index) => Boolean(mask & (1 << index))),
   );
 }
 
-const gained = structuredClone(patch);
-gained.connections[2].gain = .375;
-assert.equal(validatePatch(gained, descriptors), gained);
-assert.equal(validateCrashAdapterPatch(gained), gained);
-assert.equal(routingValuesFromPatch(gained)[2], .375);
-
 const invalidGain = structuredClone(patch);
-invalidGain.connections[0].gain = 2.1;
+invalidGain.connections[0].gain = 1;
 assert.throws(() => validatePatch(invalidGain, descriptors), /connection/);
 
 const disabledCycle = structuredClone(patch);
 disabledCycle.connections.push({
-  id: "disabled-cycle", from: "output.audio", to: "bloom.drive",
-  enabled: false, gain: 1,
+  id: "disabled-cycle", from: "output.audio", to: "body.primary",
+  enabled: false,
 });
 assert.equal(validatePatch(disabledCycle, descriptors), disabledCycle);
 
@@ -171,7 +162,7 @@ const kickDescriptors = [
 const kick = createKickPatch(kickDescriptors, [-10, 55, 1.6, .2, 20]);
 assert.equal(validatePatch(kick, kickDescriptors), kick);
 assert.equal(validateKickPatch(kick), kick);
-assert.deepEqual(kickRoutingValues(kick), [1, 1, 1]);
+assert.deepEqual(kickRoutingValues(kick), [true, true, true]);
 for (let mask = 0; mask < 8; ++mask) {
   const candidate = structuredClone(kick);
   for (let index = 0; index < 3; ++index)
@@ -181,7 +172,7 @@ for (let mask = 0; mask < 8; ++mask) {
   else assert.throws(() => validateKickPatch(candidate), /no audible route/);
   assert.deepEqual(
     kickRoutingValues(candidate),
-    Array.from({ length: 3 }, (_, index) => mask & (1 << index) ? 1 : 0),
+    Array.from({ length: 3 }, (_, index) => Boolean(mask & (1 << index))),
   );
 }
 
@@ -193,27 +184,32 @@ const membraneDescriptors = [
   { index: 0, key: "model_level_db", minimum: -60, maximum: 12, defaultValue: -10 },
   { index: 1, key: "fundamental_hz", minimum: 25, maximum: 500, defaultValue: 105 },
   { index: 2, key: "tension_octaves", minimum: -.25, maximum: .6, defaultValue: .11 },
-  { index: 3, key: "contact_level", minimum: 0, maximum: 3, defaultValue: .7 },
-  { index: 4, key: "fm_level", minimum: 0, maximum: 2, defaultValue: .18 },
-  { index: 5, key: "direct_level", minimum: 0, maximum: 3, defaultValue: .3 },
-  { index: 6, key: "equalizer_mode", minimum: 0, maximum: 2, defaultValue: 1,
+  { index: 3, key: "contact_direct_level", minimum: 0, maximum: 4, defaultValue: .245 },
+  { index: 4, key: "contact_body_level", minimum: 0, maximum: 4, defaultValue: .7 },
+  { index: 5, key: "fm_direct_level", minimum: 0, maximum: 3, defaultValue: .0144 },
+  { index: 6, key: "fm_body_level", minimum: 0, maximum: 3, defaultValue: .081 },
+  { index: 7, key: "direct_level", minimum: 0, maximum: 3, defaultValue: .3 },
+  { index: 8, key: "equalizer_mode", minimum: 0, maximum: 2, defaultValue: 1,
     scale: "choice" },
-  { index: 7, key: "colour_frequency_hz", minimum: 40, maximum: 20000,
+  { index: 9, key: "colour_frequency_hz", minimum: 40, maximum: 20000,
     defaultValue: 2800, scale: "logarithmic" },
-  { index: 8, key: "colour_gain_db", minimum: -24, maximum: 24,
+  { index: 10, key: "colour_gain_db", minimum: -24, maximum: 24,
     defaultValue: 0 },
 ];
 const membrane = createMembranePatch(
-  membraneDescriptors, [-10, 105, .11, .7, .18, .3, 1, 2800, 0],
+  membraneDescriptors,
+  [-10, 105, .11, .245, .7, .0144, .081, .3, 1, 2800, 0],
 );
 assert.equal(validatePatch(membrane, membraneDescriptors), membrane);
 assert.equal(validateMembranePatch(membrane), membrane);
-assert.deepEqual(membraneRoutingValues(membrane), [.35, 1, .08, .45, 1]);
+assert.deepEqual(membraneRoutingValues(membrane),
+  [true, true, true, true, true]);
 const acousticKick = membranePresetValues(
   "acousticKick", membraneDescriptors,
 );
 assert.equal(acousticKick[1], 35);
-assert.equal(acousticKick[4], .5);
+assert.equal(acousticKick[3], 1.64);
+assert.equal(acousticKick[6], .05625);
 const acousticKickPatch = createAcousticKickPatch(
   membraneDescriptors,
 );
@@ -221,8 +217,8 @@ assert.equal(acousticKickPatch.id, "factory.membrane.acoustic-kick-01");
 assert.equal(acousticKickPatch.name, "Acoustic kick");
 assert.equal(validateMembranePatch(acousticKickPatch), acousticKickPatch);
 const tomAfterKick = membranePresetValues("tom", membraneDescriptors);
-assert.deepEqual(acousticKick.slice(7), [600, 10]);
-assert.deepEqual(tomAfterKick.slice(7), [2800, 0],
+assert.deepEqual(acousticKick.slice(9), [600, 10]);
+assert.deepEqual(tomAfterKick.slice(9), [2800, 0],
   "factory presets restore their own defaults instead of prior values");
 const fractionalChoice = structuredClone(membrane);
 fractionalChoice.nodes.find(node => node.id === "membrane-eq")
@@ -234,9 +230,10 @@ const renamedRoutes = structuredClone(membrane);
 renamedRoutes.connections.slice(0, 5).forEach((route, index) => {
   route.id = `arbitrary-${index}`;
 });
-renamedRoutes.connections[0].gain = 0;
+renamedRoutes.connections[0].enabled = false;
 assert.equal(validateMembranePatch(renamedRoutes), renamedRoutes);
-assert.deepEqual(membraneRoutingValues(renamedRoutes), [0, 1, .08, .45, 1]);
+assert.deepEqual(membraneRoutingValues(renamedRoutes),
+  [false, true, true, true, true]);
 const brokenMembrane = structuredClone(membrane);
 brokenMembrane.connections.find(route => route.required).enabled = false;
 assert.throws(() => validateMembranePatch(brokenMembrane), /required/);
@@ -256,16 +253,19 @@ for (let mask = 0; mask < 32; ++mask) {
 
 const snareDescriptors = [
   ...membraneDescriptors,
-  { index: 9, key: "wire_level", minimum: 0, maximum: 3, defaultValue: 1 },
-  { index: 10, key: "wire_sensitivity", minimum: 0, maximum: 32, defaultValue: 9 },
-  { index: 11, key: "wire_density", minimum: 0, maximum: 1, defaultValue: .9 },
+  { index: 11, key: "wire_level", minimum: 0, maximum: 3, defaultValue: .46 },
+  { index: 12, key: "wire_sensitivity", minimum: 0, maximum: 32, defaultValue: 9 },
+  { index: 13, key: "wire_density", minimum: 0, maximum: 1, defaultValue: .9 },
 ];
 const snare = createSnarePatch(
-  snareDescriptors, [-10, 185, .08, .78, .08, .24, 1, 3200, 1.5, 1, 9, .9],
+  snareDescriptors,
+  [-10, 185, .08, .273, .78, .004, .0256, .24, 1, 3200, 1.5,
+    .46, 9, .9],
 );
 assert.equal(validatePatch(snare, snareDescriptors), snare);
 assert.equal(validateSnarePatch(snare), snare);
-assert.deepEqual(snareRoutingValues(snare), [.35, 1, .05, .32, 1, 1, 1]);
+assert.deepEqual(snareRoutingValues(snare),
+  [true, true, true, true, true, true, true]);
 for (let mask = 0; mask < 128; ++mask) {
   const candidate = structuredClone(snare);
   for (let index = 0; index < 7; ++index)
@@ -280,7 +280,7 @@ for (let mask = 0; mask < 128; ++mask) {
   else assert.throws(() => validateSnarePatch(candidate), /no audible route/);
 }
 const brokenSnare = structuredClone(snare);
-brokenSnare.connections.find(route => route.required).gain = .5;
+brokenSnare.connections.find(route => route.required).enabled = false;
 assert.throws(() => validateSnarePatch(brokenSnare), /required/);
 
 console.log("percussion patch tests passed");

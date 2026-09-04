@@ -20,7 +20,7 @@ void Initialize(Session &session, const Recipe recipe,
                 const float sampleRate) noexcept {
   session.recipe = recipe;
   session.sampleRate = sampleRate;
-  session.crashBase = CrashWorkbenchBaseFit();
+  session.crashBase = MetallicWorkbenchBaseFit();
   session.crashValues = DefaultCrashMacros();
   session.kickValues = DefaultKickParameters();
   session.membraneValues = DefaultMembraneParameters();

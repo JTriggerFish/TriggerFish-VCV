@@ -35,8 +35,8 @@ public:
     const auto primaryProjection = excitationProjection_;
     const auto secondaryProjection = secondaryExcitationProjection_;
     LoadPrepared(PrepareStochasticModalField(
-        sampleRate_, parameters,
-        {maximumExchangeAngle_, seed_}, lowCrossoverHz_, highCrossoverHz_));
+        sampleRate_, parameters, CurrentControls(),
+        lowCrossoverHz_, highCrossoverHz_));
     SetProjection(
         primaryProjection, excitationProjection_, primaryDriveGain_);
     SetProjection(secondaryProjection, secondaryExcitationProjection_,
@@ -65,6 +65,7 @@ public:
     exchangeAmount_ = prepared.exchangeAmount;
     sourceIndex_ = prepared.sourceIndex;
     packet_ = prepared.packet;
+    frequencyHz_ = prepared.frequencyHz;
     band_ = prepared.band;
     excitationProjection_.fill(1.f);
     secondaryExcitationProjection_.fill(1.f);
@@ -73,6 +74,9 @@ public:
       primaryDriveGain_[mode] = inputGain_[mode];
       secondaryDriveGain_[mode] = inputGain_[mode];
     }
+    cascadeParameters_ = prepared.cascade;
+    cascade_.Prepare(sampleRate_, frequencyHz_, inputGain_, packet_,
+                     activeModeCount_, cascadeParameters_);
     damping_ = {};
     Reset();
   }
@@ -82,6 +86,7 @@ public:
     imaginary_.fill(0.f);
     random_.Seed(seed_);
     oddExchange_ = false;
+    cascade_.Reset();
   }
 
   void SetExcitationProjection(const Projection &projection) noexcept {
@@ -101,6 +106,7 @@ public:
     secondaryInput = tfdsp::FiniteNormalOrZero(secondaryInput);
     UpdateDamping(damping);
     Propagate(primaryInput, secondaryInput);
+    cascade_.Process(real_, imaginary_);
     return ExchangeNeighboursAndSum();
   }
 
@@ -114,7 +120,29 @@ public:
     return result;
   }
 
+  float StoredEnergyCentroidHz() const noexcept {
+    double energy = 0.0;
+    double weightedLogFrequency = 0.0;
+    for (std::size_t mode = 0; mode < activeModeCount_; ++mode) {
+      const double modeEnergy = static_cast<double>(real_[mode]) * real_[mode] +
+          static_cast<double>(imaginary_[mode]) * imaginary_[mode];
+      energy += modeEnergy;
+      weightedLogFrequency += modeEnergy * std::log2(
+          std::max(frequencyHz_[mode], 1.f));
+    }
+    return energy > 1.e-30
+        ? static_cast<float>(std::exp2(weightedLogFrequency / energy)) : 0.f;
+  }
+
+  float LastCascadeTransferEnergy() const noexcept {
+    return cascade_.LastTransferredEnergy();
+  }
+
 private:
+  StochasticModalFieldControls CurrentControls() const noexcept {
+    return {maximumExchangeAngle_, seed_, cascadeParameters_};
+  }
+
   static float SafeProjection(const float value) noexcept {
     return std::clamp(tfdsp::FiniteNormalOrZero(value), -4.f, 4.f);
   }
@@ -252,9 +280,12 @@ private:
   std::array<float, ModeCount> exchangeAmount_{};
   std::array<float, ModeCount> exchangeCosine_{};
   std::array<float, ModeCount> exchangeSine_{};
+  std::array<float, ModeCount> frequencyHz_{};
   std::array<std::uint32_t, ModeCount> sourceIndex_{};
   Projection excitationProjection_{};
   Projection secondaryExcitationProjection_{};
+  ModalEnergyCascade<ModeCount> cascade_{};
+  ModalEnergyCascadeParameters cascadeParameters_{};
   DeterministicRandom random_{};
   ModalDampingGains damping_{};
   float sampleRate_{48000.f};

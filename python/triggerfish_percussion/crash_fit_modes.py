@@ -5,18 +5,20 @@ from __future__ import annotations
 from dataclasses import replace
 
 import numpy as np
+from scipy.optimize import nnls
 
 from .alignment import detect_impact_onset
 from .audio_io import AudioBuffer
 from .crash_fit_common import (
     CrashFitCell,
     fixed_rate,
-    modal_fit_window,
+    modal_power_features,
     render_sparse,
 )
 from .crash_model import CrashFit
 from .modal_evidence import EspritPass, estimate_modal_evidence
 from .modes import DampedMode, refit_mode_amplitudes, resynthesize_modes
+from .t60_envelope import interpolate_t60
 
 
 def fit_sparse_modes(
@@ -30,30 +32,17 @@ def fit_sparse_modes(
     selected = tuple(sorted(ranked, key=lambda mode: mode.frequency_hz))
     count = len(initial.sparse_frequency_hz)
     frequencies = list(initial.sparse_frequency_hz)
-    decay_ratios = list(initial.sparse_decay_ratio)
     amplitudes = [0.0] * count
-    phases = [0.0] * count
     for index, mode in enumerate(selected):
         frequencies[index] = mode.frequency_hz
-        modal_t60 = np.log(1000.0) * mode.decay_seconds
-        decay_ratios[index] = float(
-            np.clip(
-                modal_t60 / _body_t60(initial, mode.frequency_hz, 48000),
-                0.5,
-                2.0,
-            )
-        )
         amplitudes[index] = mode.amplitude
-        phases[index] = mode.phase_radians
     peak = max(amplitudes, default=0.0)
     if peak > 0:
         amplitudes = [amplitude / peak for amplitude in amplitudes]
     fitted = replace(
         initial,
         sparse_frequency_hz=tuple(float(value) for value in frequencies),
-        sparse_decay_ratio=tuple(float(value) for value in decay_ratios),
         sparse_amplitude=tuple(float(value) for value in amplitudes),
-        sparse_phase_radians=tuple(float(value) for value in phases),
         sparse_tune=1.0,
     )
     return fitted, {
@@ -69,6 +58,11 @@ def fit_sparse_modes(
 def fit_sparse_projection(
     cells: tuple[CrashFitCell, ...], initial: CrashFit
 ) -> CrashFit:
+    # This is only a linear anchor-energy initializer. Disable packet
+    # turbulence and neighbour exchange while constructing basis columns:
+    # otherwise zeroing all but one anchor changes the active state topology,
+    # and those columns cannot be added to predict the full renderer.
+    projection_model = replace(initial, field_turbulence=0.0, field_exchange=0.0)
     active = [
         index
         for index, amplitude in enumerate(initial.sparse_amplitude)
@@ -78,57 +72,54 @@ def fit_sparse_projection(
         return initial
     targets = []
     for cell in cells:
-        modal, _ = reference_modal_residual(cell, initial)
+        modal, _ = reference_modal_residual(cell, projection_model)
         reference = fixed_rate(cell.reference)
         onset = detect_impact_onset(reference.samples, reference.sample_rate)
-        targets.append(modal_fit_window(modal, onset))
+        targets.append(modal_power_features(modal, onset))
 
     columns = []
     for mode in active:
-        for phase in (0.0, 0.5 * np.pi):
-            amplitudes = [0.0] * len(initial.sparse_amplitude)
-            phases = [0.0] * len(initial.sparse_phase_radians)
-            amplitudes[mode] = 1.0
-            phases[mode] = phase
-            basis_fit = replace(
-                initial,
-                sparse_amplitude=tuple(amplitudes),
-                sparse_phase_radians=tuple(phases),
-                direct_gain=0.0,
-                sparse_gain=1.0,
-                dense_gain=0.0,
-                field_gain=1.0,
-                output_gain=1.0,
-            )
-            rendered = []
-            for cell in cells:
-                candidate = render_sparse(cell, basis_fit, 2.5)
-                onset = detect_impact_onset(candidate.samples, candidate.sample_rate)
-                rendered.append(modal_fit_window(candidate, onset))
-            columns.append(np.concatenate(rendered))
+        amplitudes = [0.0] * len(initial.sparse_amplitude)
+        amplitudes[mode] = 1.0
+        basis_fit = replace(
+            projection_model,
+            sparse_amplitude=tuple(amplitudes),
+            direct_gain=0.0,
+            field_gain=1.0,
+            output_gain=1.0,
+        )
+        rendered = []
+        for cell in cells:
+            candidate = render_sparse(cell, basis_fit, 2.5)
+            onset = detect_impact_onset(candidate.samples, candidate.sample_rate)
+            rendered.append(modal_power_features(candidate, onset))
+        columns.append(np.concatenate(rendered))
 
     matrix = np.column_stack(columns)
     target = np.concatenate(targets)
-    scales = np.maximum(np.linalg.norm(matrix, axis=0), np.finfo(float).tiny)
-    normalized = matrix / scales
-    normalized_coefficients = np.linalg.lstsq(normalized, target, rcond=1.0e-5)[0]
-    coefficients = normalized_coefficients / scales
+    # Relative-energy weighting prevents the loudest band alone from owning
+    # the solution, while a 60 dB power floor avoids fitting inaudible bins.
+    floor = max(float(np.max(target)) * 1.0e-6, np.finfo(float).tiny)
+    row_weight = 1.0 / np.sqrt(np.maximum(target, floor))
+    weighted_matrix = matrix * row_weight[:, None]
+    weighted_target = target * row_weight
+    column_scale = np.maximum(
+        np.linalg.norm(weighted_matrix, axis=0), np.finfo(float).tiny
+    )
+    normalized = weighted_matrix / column_scale
+    normalized_coefficients = nnls(normalized, weighted_target)[0]
+    power_coefficients = normalized_coefficients / column_scale
 
     amplitudes = [0.0] * len(initial.sparse_amplitude)
-    phases = [0.0] * len(initial.sparse_phase_radians)
     for active_index, mode in enumerate(active):
-        cosine = coefficients[2 * active_index]
-        sine = coefficients[2 * active_index + 1]
-        amplitudes[mode] = float(np.hypot(cosine, sine))
-        phases[mode] = float(np.arctan2(sine, cosine))
+        power = max(power_coefficients[active_index], 0.0)
+        amplitudes[mode] = float(np.sqrt(power))
     gain = float(np.linalg.norm(amplitudes))
     if gain > 0.0:
         amplitudes = [amplitude / gain for amplitude in amplitudes]
     return replace(
         initial,
         sparse_amplitude=tuple(amplitudes),
-        sparse_phase_radians=tuple(phases),
-        sparse_gain=float(np.clip(gain, 0.0, 4.0)),
         field_gain=float(np.clip(gain, 0.0, 4.0)),
     )
 
@@ -142,15 +133,11 @@ def reference_modal_residual(
     end = min(reference.samples.size, start + round(4.0 * reference.sample_rate))
     modes = tuple(
         DampedMode(frequency, decay / np.log(1000.0), 1.0, 0.0)
-        for frequency, decay_ratio, amplitude in zip(
+        for frequency, amplitude in zip(
             fit.sparse_frequency_hz,
-            fit.sparse_decay_ratio,
             fit.sparse_amplitude,
         )
-        for decay in (
-            _body_t60(fit, frequency, reference.sample_rate)
-            * float(np.clip(decay_ratio, 0.5, 2.0)),
-        )
+        for decay in (_body_t60(fit, frequency, reference.sample_rate),)
         if amplitude > 0.0
     )
     modal_samples = np.zeros_like(reference.samples)
@@ -175,23 +162,13 @@ def reference_modal_residual(
 
 def _body_t60(fit: CrashFit, frequency_hz: float, sample_rate: int) -> float:
     """Match the production ERB-frequency/log-T60 interpolation."""
-    frequencies = np.asarray(fit.body_decay_frequency_hz, dtype=float)
-    seconds = np.asarray(fit.body_decay_seconds, dtype=float)
-    active = np.asarray(fit.body_decay_active, dtype=bool)
-    frequencies[0] = 0.0
-    frequencies[-1] = 0.5 * sample_rate
-    frequencies = frequencies[active]
-    seconds = seconds[active]
-    order = np.argsort(frequencies)
-    rates = 21.4 * np.log10(1.0 + 0.00437 * frequencies[order])
-    target = 21.4 * np.log10(1.0 + 0.00437 * max(frequency_hz, 0.0))
     return float(
-        np.exp(
-            np.interp(
-                target,
-                rates,
-                np.log(np.maximum(seconds[order], 1.0e-3)),
-            )
+        interpolate_t60(
+            frequency_hz,
+            (0.0, *fit.body_decay_frequency_hz, 0.5 * sample_rate),
+            fit.body_decay_seconds,
+            (True, *fit.body_decay_active, True),
+            sample_rate,
         )
     )
 

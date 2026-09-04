@@ -133,8 +133,8 @@ export class WasmPercussionEngine {
   #stageRouting(values = []) {
     const count = this.module._tf_percussion_route_count(this.handle);
     for (let index = 0; index < count; ++index) {
-      if (!this.module._tf_percussion_route_set(
-        this.handle, index, values[index] ?? 1,
+      if (!this.module._tf_percussion_route_enable(
+        this.handle, index, values[index] === false ? 0 : 1,
       )) throw new Error(`could not set percussion route ${index}`);
     }
   }

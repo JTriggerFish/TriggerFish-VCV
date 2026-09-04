@@ -32,7 +32,7 @@ def main() -> None:
     parser.add_argument("--workers", type=int, default=8)
     arguments = parser.parse_args()
     payload = json.loads(arguments.fit.read_text(encoding="utf-8"))
-    fit = CrashFit(**payload["parameters"])
+    fit = CrashFit.from_mapping(payload["parameters"])
     if arguments.candidate_stage:
         stages = [
             stage

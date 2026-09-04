@@ -1025,45 +1025,27 @@ PYBIND11_MODULE(_triggerfish_dsp, module)
 	py::class_<CrashFit>(module, "CrashCymbalFitParameters")
 		.def(py::init<>())
 		.def_readwrite("sparse_frequency_hz", &CrashFit::sparseFrequencyHz)
-		.def_readwrite("sparse_decay_ratio", &CrashFit::sparseDecayRatio)
 		.def_readwrite("sparse_amplitude", &CrashFit::sparseAmplitude)
-		.def_readwrite("sparse_phase_radians", &CrashFit::sparsePhaseRadians)
 		.def_readwrite("field_turbulence_scale", &CrashFit::fieldTurbulenceScale)
 		.def_readwrite("sparse_tune", &CrashFit::sparseTune)
 		.def_readwrite("body_decay_frequency_hz", &CrashFit::bodyDecayFrequencyHz)
 		.def_readwrite("body_decay_seconds", &CrashFit::bodyDecaySeconds)
 		.def_readwrite("body_decay_active", &CrashFit::bodyDecayActive)
-		.def_readwrite("dense_minimum_frequency_hz",
-			&CrashFit::denseMinimumFrequencyHz)
-		.def_readwrite("dense_maximum_frequency_hz",
-			&CrashFit::denseMaximumFrequencyHz)
-		.def_readwrite("dense_frequency_warp", &CrashFit::denseFrequencyWarp)
-		.def_readwrite("dense_spacing_jitter", &CrashFit::denseSpacingJitter)
-		.def_readwrite("dense_mode_density", &CrashFit::denseModeDensity)
-		.def_readwrite("dense_decay_spread_octaves",
-			&CrashFit::denseDecaySpreadOctaves)
-		.def_readwrite("dense_tilt_db_per_octave",
-			&CrashFit::denseTiltDbPerOctave)
-		.def_readwrite("dense_gain_envelope_db", &CrashFit::denseGainEnvelopeDb)
-		.def_readwrite("dense_gain_spread_db", &CrashFit::denseGainSpreadDb)
-		.def_readwrite("dense_mode_seed", &CrashFit::denseModeSeed)
-		.def_readwrite("turbulence_frequency_hz", &CrashFit::turbulenceFrequencyHz)
-		.def_readwrite("turbulence_gain", &CrashFit::turbulenceGain)
-		.def_readwrite("turbulence_persistence", &CrashFit::turbulencePersistence)
-		.def_readwrite("dispersion_feedback", &CrashFit::dispersionFeedback)
-		.def_readwrite("dispersion_drive", &CrashFit::dispersionDrive)
-		.def_readwrite("dispersion_excursion_samples",
-			&CrashFit::dispersionExcursionSamples)
-		.def_readwrite("dispersion_low_decay_seconds",
-			&CrashFit::dispersionLowDecaySeconds)
-		.def_readwrite("dispersion_middle_decay_seconds",
-			&CrashFit::dispersionMiddleDecaySeconds)
-		.def_readwrite("dispersion_high_decay_seconds",
-			&CrashFit::dispersionHighDecaySeconds)
-		.def_readwrite("dispersion_diffusion", &CrashFit::dispersionDiffusion)
-		.def_readwrite("bloom_body_gain", &CrashFit::bloomBodyGain)
+		.def_readwrite("body_tilt_db_per_octave",
+			&CrashFit::bodyTiltDbPerOctave)
+		.def_readwrite("body_tilt_centre_hz", &CrashFit::bodyTiltCentreHz)
+		.def_readwrite("bloom_rate_octaves_per_second",
+			&CrashFit::bloomRateOctavesPerSecond)
+		.def_readwrite("bloom_energy_dependence",
+			&CrashFit::bloomEnergyDependence)
+		.def_readwrite("bloom_phase_diffusion", &CrashFit::bloomPhaseDiffusion)
+		.def_readwrite("body_excitation_gain", &CrashFit::bodyExcitationGain)
 		.def_readwrite("field_gain", &CrashFit::fieldGain)
 		.def_readwrite("field_turbulence", &CrashFit::fieldTurbulence)
+		.def_readwrite("field_turbulence_slope_per_octave",
+			&CrashFit::fieldTurbulenceSlopePerOctave)
+		.def_readwrite("field_turbulence_centre_hz",
+			&CrashFit::fieldTurbulenceCentreHz)
 		.def_readwrite("field_packet_spread_erb", &CrashFit::fieldPacketSpreadErb)
 		.def_readwrite("field_phase_bandwidth_erb",
 			&CrashFit::fieldPhaseBandwidthErb)
@@ -1083,42 +1065,21 @@ PYBIND11_MODULE(_triggerfish_dsp, module)
 		.def_readwrite("contact_micro_density_scale",
 			&CrashFit::contactMicroDensityScale)
 		.def_readwrite("direct_gain", &CrashFit::directGain)
-		.def_readwrite("sparse_gain", &CrashFit::sparseGain)
-		.def_readwrite("dense_gain", &CrashFit::denseGain)
-		.def_readwrite("sparse_bloom_gain", &CrashFit::sparseBloomGain)
-		.def_readwrite("body_bypass_gain", &CrashFit::bodyBypassGain)
 		.def_readwrite("output_gain", &CrashFit::outputGain)
 		.def_readwrite("direct_radiation_enabled",
 			&CrashFit::directRadiationEnabled)
 		.def_readwrite("direct_low_cut_hz", &CrashFit::directLowCutHz)
-		.def_readwrite("direct_low_cut_q", &CrashFit::directLowCutQ)
 		.def_readwrite("direct_colour_frequency_hz",
 			&CrashFit::directColourFrequencyHz)
 		.def_readwrite("direct_colour_gain_db", &CrashFit::directColourGainDb)
-		.def_readwrite("direct_colour_q", &CrashFit::directColourQ)
 		.def_readwrite("direct_high_cut_hz", &CrashFit::directHighCutHz)
-		.def_readwrite("direct_high_cut_q", &CrashFit::directHighCutQ)
-		.def_readwrite("sparse_radiation_enabled",
-			&CrashFit::sparseRadiationEnabled)
-		.def_readwrite("sparse_low_cut_hz", &CrashFit::sparseLowCutHz)
-		.def_readwrite("sparse_low_cut_q", &CrashFit::sparseLowCutQ)
-		.def_readwrite("colour_frequency_hz", &CrashFit::colourFrequencyHz)
-		.def_readwrite("colour_gain_db", &CrashFit::colourGainDb)
-		.def_readwrite("sparse_colour_q", &CrashFit::sparseColourQ)
-		.def_readwrite("high_cut_hz", &CrashFit::highCutHz)
-		.def_readwrite("sparse_high_cut_q", &CrashFit::sparseHighCutQ)
-		.def_readwrite("dense_radiation_enabled",
-			&CrashFit::denseRadiationEnabled)
-		.def_readwrite("dense_low_cut_hz", &CrashFit::denseLowCutHz)
-		.def_readwrite("dense_low_cut_q", &CrashFit::denseLowCutQ)
-		.def_readwrite("dense_colour_frequency_hz",
-			&CrashFit::denseColourFrequencyHz)
-		.def_readwrite("dense_colour_gain_db", &CrashFit::denseColourGainDb)
-		.def_readwrite("dense_colour_q", &CrashFit::denseColourQ)
-		.def_readwrite("dense_high_cut_hz", &CrashFit::denseHighCutHz)
-		.def_readwrite("dense_high_cut_q", &CrashFit::denseHighCutQ)
-		.def_readwrite("strength_gamma", &CrashFit::strengthGamma)
-		.def_readwrite("body_strength_gamma", &CrashFit::bodyStrengthGamma)
+		.def_readwrite("body_radiation_enabled",
+			&CrashFit::bodyRadiationEnabled)
+		.def_readwrite("body_low_cut_hz", &CrashFit::bodyLowCutHz)
+		.def_readwrite("body_colour_frequency_hz",
+			&CrashFit::bodyColourFrequencyHz)
+		.def_readwrite("body_colour_gain_db", &CrashFit::bodyColourGainDb)
+		.def_readwrite("body_high_cut_hz", &CrashFit::bodyHighCutHz)
 		.def_readwrite("velocity_brightness_db_per_octave",
 			&CrashFit::velocityBrightnessDbPerOctave);
 	module.def("render_crash", [](const py::ssize_t sampleCount,
@@ -1165,7 +1126,7 @@ PYBIND11_MODULE(_triggerfish_dsp, module)
 		for (py::ssize_t sample = 0; sample < sampleCount; ++sample) {
 			const auto frame = cymbal.ProcessFrame();
 			output(sample, 0) = frame.directContact;
-			output(sample, 1) = frame.dispersion;
+			output(sample, 1) = frame.bloomTransferEnergy;
 			output(sample, 2) = frame.modalBody;
 			output(sample, 3) = frame.output;
 		}

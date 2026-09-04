@@ -97,16 +97,22 @@ void TestVelocityEnergy() {
 void TestVelocityChangesCymbalRegime() {
   using namespace tfdsp::percussion;
   constexpr float sampleRate = 48000.f;
-  const auto quiet = Render(.25f, 1.f, .65f, 81, .75f);
-  const auto loud = Render(1.f, 1.f, .65f, 81, .75f);
-  const double quietBrightness = NormalizedDifferenceEnergy(quiet);
-  const double loudBrightness = NormalizedDifferenceEnergy(loud);
-  if (!(loudBrightness > 1.05 * quietBrightness)) {
-    std::cerr << "crash velocity brightness quiet/loud: "
-              << quietBrightness << '/' << loudBrightness << '\n';
+  const std::array<float, 4> strengths{.2f, .45f, .7f, 1.f};
+  std::array<double, strengths.size()> brightness{};
+  for (std::size_t index = 0; index < strengths.size(); ++index)
+    brightness[index] = NormalizedDifferenceEnergy(
+        Render(strengths[index], 1.f, .65f, 81, .75f));
+  bool monotonicBrightness = true;
+  for (std::size_t index = 1; index < brightness.size(); ++index)
+    monotonicBrightness = monotonicBrightness &&
+        brightness[index] > brightness[index - 1];
+  if (!monotonicBrightness) {
+    std::cerr << "crash velocity brightness:";
+    for (const double value : brightness) std::cerr << ' ' << value;
+    std::cerr << '\n';
   }
-  Check(loudBrightness > 1.05 * quietBrightness,
-        "strong crash strikes excite a brighter spectrum");
+  Check(monotonicBrightness && brightness.back() > 1.05 * brightness.front(),
+        "each stronger crash strike excites a brighter spectrum");
 
   struct BranchEnergy { double direct{}; double bloom{}; double dense{}; };
   const auto measure = [](const float strength) {
@@ -118,7 +124,7 @@ void TestVelocityChangesCymbalRegime() {
       const auto frame = cymbal.ProcessFrame();
       result.direct += static_cast<double>(frame.directContact) *
           frame.directContact;
-      result.bloom += static_cast<double>(frame.dispersion) * frame.dispersion;
+      result.bloom += frame.bloomTransferEnergy;
       result.dense += static_cast<double>(frame.modalBody) * frame.modalBody;
     }
     return result;
@@ -128,13 +134,13 @@ void TestVelocityChangesCymbalRegime() {
   const double directGrowth = loudBranches.direct / quietBranches.direct;
   const double bloomGrowth = loudBranches.bloom / quietBranches.bloom;
   const double denseGrowth = loudBranches.dense / quietBranches.dense;
-  if (!(denseGrowth > 1.05 * bloomGrowth && bloomGrowth > 1.0)) {
+  if (!(bloomGrowth > directGrowth && denseGrowth > 1.0)) {
     std::cerr << "crash velocity direct/bloom/dense growth: "
               << directGrowth << '/' << bloomGrowth << '/' << denseGrowth
               << '\n';
   }
-  Check(denseGrowth > 1.05 * bloomGrowth && bloomGrowth > 1.0,
-        "strong strikes increase bloom and brighten the modal wash");
+  Check(bloomGrowth > directGrowth && denseGrowth > 1.0,
+        "strong strikes increase modal transfer faster than direct contact");
 }
 
 void TestSparseModesArePlacedDirectly() {
@@ -143,7 +149,6 @@ void TestSparseModesArePlacedDirectly() {
   fit.sparseFrequencyHz[0] = 731.f;
   fit.sparseFrequencyHz[1] = 1193.f;
   fit.bodyDecaySeconds.fill(4.25f);
-  fit.sparseDecayRatio[0] = 1.f;
   const auto parameters = DefaultCrashCymbalParameters(48000.f, fit);
   const auto find = [&](const float frequency) {
     return std::min_element(parameters.modalField.begin(),
@@ -163,15 +168,15 @@ void TestSparseModesArePlacedDirectly() {
 void TestBodyDecayCurveUsesActiveErbKnots() {
   using namespace tfdsp::percussion;
   CrashCymbalFitParameters fit;
+  Check(std::count(fit.bodyDecayActive.begin(), fit.bodyDecayActive.end(),
+                   true) == 0,
+        "crash T60 defaults to no optional interior knots");
   fit.bodyDecayActive.fill(false);
-  fit.bodyDecayActive.front() = true;
-  fit.bodyDecayActive.back() = true;
   fit.bodyDecaySeconds.fill(1.f);
-  fit.bodyDecayFrequencyHz[1] = 1000.f;
+  fit.bodyDecayFrequencyHz[0] = 1000.f;
   fit.bodyDecaySeconds[1] = 8.f;
-  fit.bodyDecayActive[1] = true;
+  fit.bodyDecayActive[0] = true;
   fit.sparseFrequencyHz[0] = 1000.f;
-  fit.sparseDecayRatio[0] = 1.f;
   const auto withKnot = DefaultCrashCymbalParameters(48000.f, fit);
   const auto nearestDecay = [](const auto &parameters) {
     const auto mode = std::min_element(
@@ -185,7 +190,7 @@ void TestBodyDecayCurveUsesActiveErbKnots() {
   Check(std::abs(nearestDecay(withKnot) - 8.f) < 1.e-4f,
         "active body T60 knots are sampled by modal preparation");
 
-  fit.bodyDecayActive[1] = false;
+  fit.bodyDecayActive[0] = false;
   const auto withoutKnot = DefaultCrashCymbalParameters(48000.f, fit);
   Check(std::abs(nearestDecay(withoutKnot) - 1.f) < 1.e-4f,
         "inactive body T60 knots do not affect modal decay");
@@ -422,56 +427,79 @@ void TestAnalysisFrameMatchesOutput() {
     Check(frame.output == plain.Process(),
           "crash analysis taps do not change production output");
     Check(std::isfinite(frame.directContact) &&
-              std::isfinite(frame.dispersion) &&
+              std::isfinite(frame.bloomTransferEnergy) &&
               std::isfinite(frame.modalBody),
           "crash analysis taps remain finite");
   }
 }
 
-void TestBloomBodyLevelIsIndependentOfLoopCharacter() {
+void TestBloomIsIntrinsicUpwardEnergyTransport() {
   using namespace tfdsp::percussion;
   constexpr float sampleRate = 48000.f;
-  CrashCymbalFitParameters silentFit;
-  silentFit.directGain = 0.f;
-  silentFit.fieldGain = 1.f;
-  silentFit.bloomBodyGain = 0.f;
-  const auto render = [](const CrashCymbalFitParameters &fit) {
-    CrashCymbal cymbal;
-    cymbal.Prepare(sampleRate, DefaultCrashCymbalParameters(sampleRate, fit));
-    cymbal.Trigger({.9f, .8f, .7f, 71});
-    double denseEnergy = 0.;
-    double bloomEnergy = 0.;
-    for (int sample = 0; sample < 24000; ++sample) {
-      const auto frame = cymbal.ProcessFrame();
-      denseEnergy += static_cast<double>(frame.modalBody) * frame.modalBody;
-      bloomEnergy += static_cast<double>(frame.dispersion) * frame.dispersion;
-    }
-    return std::pair{denseEnergy, bloomEnergy};
-  };
-  const auto silent = render(silentFit);
-  auto audibleFit = silentFit;
-  audibleFit.bloomBodyGain = 1.f;
-  const auto audible = render(audibleFit);
-  Check(silent.first > 0. && audible.first > silent.first,
-        "bloom body level adds dispersed excitation to the directly driven body");
-  Check(silent.second > 0. && audible.second == silent.second,
-        "bloom body level does not change dispersion-loop character");
+  CrashCymbalFitParameters fit;
+  fit.fieldTurbulence = 0.f;
+  fit.fieldExchange = 0.f;
+  fit.sparseAmplitude.fill(.001f);
+  fit.sparseAmplitude[0] = 1.f;
+  fit.bodyDecaySeconds.fill(20.f);
+  fit.bloomRateOctavesPerSecond = 8.f;
+  fit.bloomEnergyDependence = 0.f;
+  CrashCymbal cascade;
+  cascade.Prepare(sampleRate, DefaultCrashCymbalParameters(sampleRate, fit));
+  cascade.Trigger({.8f, .5f, .5f, 71});
+  float earlyCentroid = 0.f;
+  bool transferredImmediately = false;
+  for (int sample = 0; sample < 24000; ++sample) {
+    const auto frame = cascade.ProcessFrame();
+    if (sample < 64 && frame.bloomTransferEnergy > 0.f)
+      transferredImmediately = true;
+    if (sample == 1024)
+      earlyCentroid = cascade.StoredBodyEnergyCentroidHz();
+  }
+  const float lateCentroid = cascade.StoredBodyEnergyCentroidHz();
+  Check(transferredImmediately,
+        "modal bloom begins continuously without a delayed excitation burst");
+  Check(lateCentroid > 1.25f * earlyCentroid,
+        "stored modal energy travels progressively toward higher frequencies");
 }
 
-void TestMaximumNonlinearBloomRemainsBounded() {
+void TestStrongerStrikeAcceleratesUpwardEnergyTransport() {
   using namespace tfdsp::percussion;
-  CrashCymbalFitParameters fit;
-  fit.dispersionFeedback = .995f;
-  fit.dispersionDrive = 8.f;
-  fit.dispersionExcursionSamples = 16.f;
-  CrashCymbal cymbal;
-  cymbal.Prepare(48000.f, DefaultCrashCymbalParameters(48000.f, fit));
-  cymbal.Trigger({1.f, 1.f, 1.f, 91});
-  for (int sample = 0; sample < 96000; ++sample) {
-    const float output = cymbal.Process();
-    Check(std::isfinite(output) && std::abs(output) < 100.f,
-          "maximum crash self-phase settings remain bounded");
+  using Cascade = ModalEnergyCascade<3>;
+  constexpr std::array<float, 3> frequencies{500.f, 2000.f, 8000.f};
+  constexpr std::array<float, 3> gains{1.f, 1.f, 1.f};
+  constexpr std::array<std::uint16_t, 3> packets{0, 1, 2};
+  const std::array<float, 4> strengths{.2f, .45f, .7f, 1.f};
+  std::array<float, strengths.size()> centroids{};
+  for (std::size_t index = 0; index < strengths.size(); ++index) {
+    std::array<float, 3> real{strengths[index], 0.f, 0.f};
+    std::array<float, 3> imaginary{};
+    Cascade cascade;
+    cascade.Prepare(1000.f, frequencies, gains, packets, 3,
+                    {8.f, 1.f, 0.f, 71});
+    for (int sample = 0; sample < 40; ++sample)
+      cascade.Process(real, imaginary);
+    double energy = 0.0;
+    double weightedLogFrequency = 0.0;
+    for (std::size_t mode = 0; mode < real.size(); ++mode) {
+      const double modeEnergy = static_cast<double>(real[mode]) * real[mode] +
+          static_cast<double>(imaginary[mode]) * imaginary[mode];
+      energy += modeEnergy;
+      weightedLogFrequency += modeEnergy * std::log2(frequencies[mode]);
+    }
+    centroids[index] = static_cast<float>(
+        std::exp2(weightedLogFrequency / energy));
   }
+  bool monotonic = true;
+  for (std::size_t index = 1; index < centroids.size(); ++index)
+    monotonic = monotonic && centroids[index] > centroids[index - 1];
+  if (!monotonic) {
+    std::cerr << "crash cascade velocity centroids:";
+    for (const float centroid : centroids) std::cerr << ' ' << centroid;
+    std::cerr << '\n';
+  }
+  Check(monotonic && centroids.back() > 1.1f * centroids.front(),
+        "each higher strike energy drives modal energy farther upward");
 }
 
 void TestZeroStrengthTriggerIsANoOp() {
@@ -498,8 +526,7 @@ void TestRestrikeAddsWithoutRecolouringStoredEnergy() {
   constexpr int Onset = 4096;
   constexpr int Tail = 8192;
   CrashCymbalFitParameters fit;
-  fit.dispersionDrive = 0.f;
-  fit.dispersionExcursionSamples = 0.f;
+  fit.bloomRateOctavesPerSecond = 0.f;
   const auto parameters = DefaultCrashCymbalParameters(48000.f, fit);
   CrashCymbal combined;
   CrashCymbal original;
@@ -537,12 +564,8 @@ void TestRepeatedHitsAccumulateBodyEnergy() {
   constexpr int interval = 6000;
   constexpr int hitCount = 16;
   CrashCymbalFitParameters fit;
-  fit.dispersionDrive = 6.f;
-  fit.dispersionExcursionSamples = 12.f;
-  fit.dispersionFeedback = .998f;
-  fit.dispersionLowDecaySeconds = 2.f;
-  fit.dispersionMiddleDecaySeconds = 1.5f;
-  fit.dispersionHighDecaySeconds = .8f;
+  fit.bloomRateOctavesPerSecond = 3.f;
+  fit.bloomEnergyDependence = .7f;
   CrashCymbal cymbal;
   cymbal.Prepare(48000.f, DefaultCrashCymbalParameters(48000.f, fit));
   std::array<double, hitCount> intervalEnergy{};
@@ -572,6 +595,23 @@ void TestRepeatedHitsAccumulateBodyEnergy() {
         "repeated crash hits build an initial swell and retain late energy");
 }
 
+void TestMaximumBloomRemainsBounded() {
+  using namespace tfdsp::percussion;
+  CrashCymbalFitParameters fit;
+  fit.bloomRateOctavesPerSecond = 16.f;
+  fit.bloomEnergyDependence = 1.f;
+  fit.bloomPhaseDiffusion = 1.f;
+  CrashCymbal cymbal;
+  cymbal.Prepare(48000.f, DefaultCrashCymbalParameters(48000.f, fit));
+  cymbal.Trigger({1.f, 1.f, 1.f, 91});
+  for (int sample = 0; sample < 96000; ++sample) {
+    const auto frame = cymbal.ProcessFrame();
+    Check(std::isfinite(frame.output) && std::abs(frame.output) < 100.f &&
+              std::isfinite(cymbal.StoredBodyEnergy()),
+          "maximum modal cascade settings remain finite and bounded");
+  }
+}
+
 } // namespace
 
 int main() {
@@ -588,11 +628,12 @@ int main() {
   TestMuteIsPassive();
   TestFiniteAtSupportedRates();
   TestAnalysisFrameMatchesOutput();
-  TestBloomBodyLevelIsIndependentOfLoopCharacter();
-  TestMaximumNonlinearBloomRemainsBounded();
+  TestBloomIsIntrinsicUpwardEnergyTransport();
+  TestStrongerStrikeAcceleratesUpwardEnergyTransport();
   TestZeroStrengthTriggerIsANoOp();
   TestRestrikeAddsWithoutRecolouringStoredEnergy();
   TestRepeatedHitsAccumulateBodyEnergy();
+  TestMaximumBloomRemainsBounded();
   if (percussion_test::failures == 0)
     std::cout << "All percussion crash tests passed\n";
   return percussion_test::failures == 0 ? 0 : 1;

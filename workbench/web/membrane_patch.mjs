@@ -14,17 +14,17 @@ const Nodes = [
 ];
 
 const Connections = [
-  ["membrane-contact.direct", "membrane-direct-mix.a", "contact-direct", false, .35],
-  ["membrane-contact.body", "membrane-body-mix.a", "contact-body", false, 1],
-  ["membrane-fm.audio", "membrane-direct-mix.b", "fm-direct", false, .08],
-  ["membrane-fm.audio", "membrane-body-mix.b", "fm-body", false, .45],
-  ["membrane-body.audio", "membrane-observation.body", "body-observation", false, 1],
-  ["membrane-contact.event", "membrane-tension.strike", "strike-energy", true, 1],
-  ["membrane-body-mix.audio", "membrane-body.drive", "body-drive", true, 1],
-  ["membrane-tension.tension", "membrane-body.tension", "tension", true, 1],
-  ["membrane-direct-mix.audio", "membrane-observation.direct", "direct-observation", true, 1],
-  ["membrane-observation.audio", "membrane-eq.audio", "observation-eq", true, 1],
-  ["membrane-eq.audio", "membrane-output.audio", "eq-output", true, 1],
+  ["membrane-contact.direct", "membrane-direct-mix.a", "contact-direct", false],
+  ["membrane-contact.body", "membrane-body-mix.a", "contact-body", false],
+  ["membrane-fm.audio", "membrane-direct-mix.b", "fm-direct", false],
+  ["membrane-fm.audio", "membrane-body-mix.b", "fm-body", false],
+  ["membrane-body.audio", "membrane-observation.body", "body-observation", false],
+  ["membrane-contact.event", "membrane-tension.strike", "strike-energy", true],
+  ["membrane-body-mix.audio", "membrane-body.drive", "body-drive", true],
+  ["membrane-tension.tension", "membrane-body.tension", "tension", true],
+  ["membrane-direct-mix.audio", "membrane-observation.direct", "direct-observation", true],
+  ["membrane-observation.audio", "membrane-eq.audio", "observation-eq", true],
+  ["membrane-eq.audio", "membrane-output.audio", "eq-output", true],
 ];
 
 const RoutedEndpoints = [
@@ -37,6 +37,10 @@ const RoutedEndpoints = [
 
 function owner(key) {
   if (key === "model_level_db") return "membrane-output";
+  if (key === "contact_direct_level" || key === "fm_direct_level")
+    return "membrane-direct-mix";
+  if (key === "contact_body_level" || key === "fm_body_level")
+    return "membrane-body-mix";
   if (key.startsWith("contact_")) return "membrane-contact";
   if (key.startsWith("fm_") || key === "pitch_drop_octaves")
     return "membrane-fm";
@@ -57,9 +61,11 @@ const Presets = Object.freeze({
     values: {
       fundamental_hz: 105, decay_seconds: 1.15, decay_tilt: .55,
       inharmonicity: .35, body_brightness: .55, tension_octaves: .11,
-      tension_decay_seconds: .13, contact_level: .7,
+      tension_decay_seconds: .13,
+      contact_direct_level: .245, contact_body_level: .7,
       contact_duration_seconds: .004, contact_brightness: .58,
-      fm_level: .18, fm_depth_hz: 260, fm_decay_seconds: .07,
+      fm_direct_level: .0144, fm_body_level: .081,
+      fm_depth_hz: 260, fm_decay_seconds: .07,
       pitch_drop_octaves: .28, direct_level: .3, body_level: 1,
       low_cut_hz: 24, high_cut_hz: 18000,
     },
@@ -71,9 +77,11 @@ const Presets = Object.freeze({
       model_level_db: -12,
       fundamental_hz: 35, decay_seconds: .25, decay_tilt: 0,
       inharmonicity: .18, body_brightness: 1, tension_octaves: .1,
-      tension_decay_seconds: .05, contact_level: .82,
+      tension_decay_seconds: .05,
+      contact_direct_level: 1.64, contact_body_level: .205,
       contact_duration_seconds: .01, contact_brightness: 0,
-      fm_level: .5, fm_depth_hz: 520, fm_decay_seconds: .07,
+      fm_direct_level: .04, fm_body_level: .05625,
+      fm_depth_hz: 520, fm_decay_seconds: .07,
       pitch_drop_octaves: 1, direct_level: 2, body_level: 1.15,
       low_cut_hz: 16, high_cut_hz: 3500,
       colour_frequency_hz: 600, colour_gain_db: 10,
@@ -96,8 +104,8 @@ function createPatch(descriptors, values, preset) {
       id, type, name, version: ModuleTypes.get(type).version, parameters: {},
       editor: { x, y },
     })),
-    connections: Connections.map(([from, to, suffix, required, gain]) => ({
-      id: `membrane-route-${suffix}`, from, to, enabled: true, gain,
+    connections: Connections.map(([from, to, suffix, required]) => ({
+      id: `membrane-route-${suffix}`, from, to, enabled: true,
       required,
     })),
     outputs: { mono: "membrane-output.audio" },
@@ -114,15 +122,7 @@ export function createTomPatch(descriptors, values) {
 
 export function createAcousticKickPatch(descriptors) {
   const values = membranePresetValues("acousticKick", descriptors);
-  const patch = createPatch(descriptors, values, Presets.acousticKick);
-  const gains = {
-    "membrane-route-contact-direct": 2,
-    "membrane-route-contact-body": .25,
-    "membrane-route-fm-body": .1125,
-  };
-  for (const [id, gain] of Object.entries(gains))
-    patch.connections.find(route => route.id === id).gain = gain;
-  return patch;
+  return createPatch(descriptors, values, Presets.acousticKick);
 }
 
 export function patchWithMembraneValues(patch, descriptors, values) {
@@ -172,8 +172,7 @@ export function validateMembranePatch(patch) {
   for (const [from, to, , required] of Connections) {
     const route = routes.get(`${from}>${to}`);
     if (!route) throw new Error("patch is not supported by the membrane recipe");
-    if (required && (route.enabled === false ||
-        route.gain !== undefined && route.gain !== 1))
+    if (required && route.enabled === false)
       throw new Error("membrane structural routes are required");
   }
   for (const node of patch.nodes)
@@ -182,7 +181,7 @@ export function validateMembranePatch(patch) {
         throw new Error(`invalid membrane parameter owner: ${node.id}.${key}`);
   const active = ([from, to]) => {
     const route = routes.get(`${from}>${to}`);
-    return route?.enabled !== false && route?.gain !== 0;
+    return route?.enabled !== false;
   };
   const direct = active(RoutedEndpoints[0]) || active(RoutedEndpoints[2]);
   const body = active(RoutedEndpoints[4]) &&
@@ -196,6 +195,6 @@ export function membraneRoutingValues(patch) {
   return RoutedEndpoints.map(([from, to]) => {
     const route = patch.connections.find(item =>
       item.from === from && item.to === to);
-    return route?.enabled === false ? 0 : route?.gain ?? 1;
+    return route?.enabled !== false;
   });
 }

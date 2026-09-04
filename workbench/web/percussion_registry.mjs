@@ -24,10 +24,7 @@ const types = [
   {
     type: "body.stochastic-modal-field", version: 1,
     name: "Metallic body", role: "body",
-    inputs: [
-      { name: "primary", type: "audio" },
-      { name: "secondary", type: "audio" },
-    ],
+    inputs: [{ name: "primary", type: "audio" }],
     outputs: [{ name: "audio", type: "audio" }],
   },
   {

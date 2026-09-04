@@ -28,7 +28,7 @@ function valueText(descriptor, value) {
 const Groups = new Map([
   ["kick-output-controls", ["model_level_db"]],
   ["kick-primary-controls", [
-    "fundamental_hz", "pitch_drop_octaves", "pitch_decay_seconds",
+    "primary_level", "fundamental_hz", "pitch_drop_octaves", "pitch_decay_seconds",
     "body_decay_seconds", "fm_depth_hz", "fm_decay_seconds",
     "fm_roughness_hz",
   ]],

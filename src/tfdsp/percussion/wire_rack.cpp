@@ -71,7 +71,6 @@ PrepareWireRackParameters(const float sampleRate,
   result.noiseTiltDb = 16.f * (Safe(source.brightness, .62f, 0.f, 1.f) - .5f);
   result.noiseMix = Safe(source.noiseMix, .6f, 0.f, 2.f);
   result.modalMix = Safe(source.modalMix, .75f, 0.f, 2.f);
-  result.outputLevel = Safe(source.outputGain, .42f, 0.f, 4.f);
   result.maximumModalEnergy = Safe(source.maximumModalEnergy, 16.f, .001f, 64.f);
   result.seed = source.seed;
   return result;
@@ -158,8 +157,7 @@ float WireRack::Process(float bodyMotion) noexcept {
     modal += parameters_.modeOutputGain[mode] * real_[mode];
   }
   return tfdsp::FiniteNormalOrZero(
-      parameters_.outputLevel *
-      (parameters_.noiseMix * drive + parameters_.modalMix * modal));
+      parameters_.noiseMix * drive + parameters_.modalMix * modal);
 }
 
 float WireRack::StoredEnergy() const noexcept {

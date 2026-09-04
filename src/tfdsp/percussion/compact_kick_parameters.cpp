@@ -49,14 +49,13 @@ CorrelatedFmBurstParameters Burst(const float fundamentalHz,
 
 } // namespace
 
-float CompactKickRouting::Get(const CompactKickRoute route) const noexcept {
-  return gains[static_cast<std::size_t>(route)];
+bool CompactKickRouting::Enabled(const CompactKickRoute route) const noexcept {
+  return enabled[static_cast<std::size_t>(route)];
 }
 
-void CompactKickRouting::Set(const std::size_t index,
-                             const float gain) noexcept {
-  if (index < gains.size())
-    gains[index] = std::clamp(tfdsp::FiniteNormalOrZero(gain), 0.f, 2.f);
+void CompactKickRouting::SetEnabled(const std::size_t index,
+                                    const bool value) noexcept {
+  if (index < enabled.size()) enabled[index] = value;
 }
 
 CompactKickParameters DefaultCompactKickParameters(
@@ -108,6 +107,7 @@ CompactKickParameters DefaultCompactKickParameters(
 
   result.secondaryLevel = std::clamp(
       Finite(source.secondaryLevel, .32f), 0.f, 2.f);
+  result.primaryLevel = std::clamp(Finite(source.primaryLevel, 1.f), 0.f, 2.f);
   result.clickLevel = std::clamp(Finite(source.clickLevel, .16f), 0.f, 2.f);
   result.outputGain = std::clamp(Finite(source.outputGain, .7f), 0.f, 4.f);
   return result;

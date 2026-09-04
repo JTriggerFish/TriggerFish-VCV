@@ -11,7 +11,7 @@ using Scale = ParameterScale;
 const std::array<ParameterDescriptor,
                  SnareParameterCount - MembraneParameterCount>
     WireDescriptors{{
-        {"wire_level", "Wire level", "x", 0.f, 6.f, 1.f},
+        {"wire_level", "Wire level", "x", 0.f, 6.f, .46f},
         {"wire_sensitivity", "Wire sensitivity", "x", 0.f, 32.f, 12.f},
         {"wire_threshold", "Wire threshold", "", 0.f, .08f, .0015f},
         {"wire_motion_highpass_hz", "Wire motion high-pass", "Hz", 20.f, 4000.f,
@@ -56,7 +56,7 @@ SnareParameterValues MakeDefaultValues() noexcept {
     result[index] =
         WireDescriptors[index - MembraneParameterCount].defaultValue;
   using P = MembraneParameter;
-  Set(result, P::ModelLevelDb, -10.f);
+  Set(result, P::ModelLevelDb, -14.f);
   Set(result, P::FundamentalHz, 185.f);
   Set(result, P::DecaySeconds, .12f);
   Set(result, P::DecayTilt, .45f);
@@ -64,12 +64,12 @@ SnareParameterValues MakeDefaultValues() noexcept {
   Set(result, P::BodyBrightness, .68f);
   Set(result, P::TensionOctaves, .08f);
   Set(result, P::TensionDecaySeconds, .09f);
-  Set(result, P::ContactLevel, .78f);
+  Set(result, P::ContactDirectLevel, .273f);
+  Set(result, P::ContactBodyLevel, .78f);
   Set(result, P::ContactDurationSeconds, .0022f);
   Set(result, P::ContactBrightness, .25f);
-  Set(result, P::DirectVelocityExponent, 2.59f);
-  Set(result, P::BodyVelocityExponent, 2.23f);
-  Set(result, P::FmLevel, .08f);
+  Set(result, P::FmDirectLevel, .004f);
+  Set(result, P::FmBodyLevel, .0256f);
   Set(result, P::FmDepthHz, 180.f);
   Set(result, P::FmDecaySeconds, .035f);
   Set(result, P::PitchDropOctaves, .12f);

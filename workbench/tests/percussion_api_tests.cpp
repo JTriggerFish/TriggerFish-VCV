@@ -112,10 +112,13 @@ int main() {
         "unknown recipes are rejected");
 
   const auto metallic = tf_percussion_create(0, 48000.f);
-  Check(metallic != 0 && tf_percussion_parameter_count(metallic) == 126,
+  Check(metallic != 0 && tf_percussion_parameter_count(metallic) == 124,
         "metallic recipe exposes only active unified-model parameters");
   Check(ParameterIndex(metallic, "body_tone_wash") == UINT32_MAX &&
-            ParameterIndex(metallic, "dense_mode_density") == UINT32_MAX,
+            ParameterIndex(metallic, "dense_mode_density") == UINT32_MAX &&
+            ParameterIndex(metallic, "direct_low_cut_q") == UINT32_MAX &&
+            ParameterIndex(metallic, "direct_colour_q") == UINT32_MAX &&
+            ParameterIndex(metallic, "body_high_cut_q") == UINT32_MAX,
         "legacy no-op metallic controls are absent from the recipe API");
   CheckPreparedRoundTrip(metallic, 0,
                          "prepared metallic recipe is sample-identical");
@@ -124,13 +127,13 @@ int main() {
   const auto kick = tf_percussion_create(1, 48000.f);
   Check(kick != 0 && tf_percussion_recipe(kick) == 1,
         "compact kick session can be created");
-  Check(tf_percussion_parameter_count(kick) == 15,
+  Check(tf_percussion_parameter_count(kick) == 16,
         "compact kick exposes its bounded control surface");
   Check(tf_percussion_route_count(kick) == 3,
         "compact kick exposes three source routes");
   const auto level = ParameterIndex(kick, "model_level_db");
   const auto pitch = ParameterIndex(kick, "fundamental_hz");
-  Check(level < 15 && pitch < 15,
+  Check(level < 16 && pitch < 16,
         "compact kick parameters have stable identifiers");
   Check(tf_percussion_parameter_scale(kick, pitch) == 1,
         "compact kick pitch declares logarithmic control scaling");
@@ -150,13 +153,13 @@ int main() {
   CheckPreparedRoundTrip(kick, 1, "prepared compact kick is sample-identical");
 
   for (std::uint32_t route = 0; route < 3; ++route)
-    Check(tf_percussion_route_set(kick, route, 0.f),
+    Check(tf_percussion_route_enable(kick, route, 0),
           "compact kick route can be disabled");
   Check(tf_percussion_commit(kick), "compact kick routing commits");
   Check(Energy(Render(kick, 17, 128)) < 1.e-20,
         "disabling every compact kick source produces silence");
   for (std::uint32_t route = 0; route < 3; ++route)
-    Check(tf_percussion_route_set(kick, route, 1.f),
+    Check(tf_percussion_route_enable(kick, route, 1),
           "compact kick route can be restored");
   Check(tf_percussion_parameter_set(
             kick, level, tf_percussion_parameter_default(kick, level) - 6.f) &&
@@ -166,7 +169,7 @@ int main() {
   Check(quietRatio > .24 && quietRatio < .26,
         "compact kick model level follows its decibel law");
   Check(!tf_percussion_parameter_set(kick, 99, 0.f) &&
-            !tf_percussion_route_set(kick, 99, 1.f),
+            !tf_percussion_route_enable(kick, 99, 1),
         "out-of-range compact kick edits are rejected");
   tf_percussion_destroy(kick);
   Check(!tf_percussion_process(kick, nullptr, 0),
@@ -180,17 +183,8 @@ int main() {
         "membrane exposes its bounded controls and routing");
   const auto membranePitch = ParameterIndex(membrane, "fundamental_hz");
   const auto eqMode = ParameterIndex(membrane, "equalizer_mode");
-  const auto directVelocity =
-      ParameterIndex(membrane, "direct_velocity_exponent");
-  const auto bodyVelocity =
-      ParameterIndex(membrane, "body_velocity_exponent");
   Check(membranePitch < 33 && eqMode < 33,
         "membrane parameters have stable identifiers");
-  Check(tf_percussion_parameter_minimum(membrane, directVelocity) == 1.f &&
-            tf_percussion_parameter_minimum(membrane, bodyVelocity) == 1.f &&
-            tf_percussion_parameter_default(membrane, directVelocity) == 1.f &&
-            tf_percussion_parameter_default(membrane, bodyVelocity) == 1.f,
-        "membrane velocity controls cannot compress the input curve");
   Check(tf_percussion_parameter_scale(membrane, eqMode) == 3,
         "membrane output EQ declares a discrete choice control");
   Check(!tf_percussion_parameter_set(membrane, eqMode, 1.5f) &&
@@ -223,7 +217,7 @@ int main() {
   Check(Energy(snareFirst) > 1.e-5 && snareFirst == Render(snare, 81, 37),
         "snare API is audible, deterministic, and block independent");
   CheckPreparedRoundTrip(snare, 3, "prepared snare is sample-identical");
-  Check(tf_percussion_route_set(snare, 5, 0.f) && tf_percussion_commit(snare),
+  Check(tf_percussion_route_enable(snare, 5, 0) && tf_percussion_commit(snare),
         "snare body-to-wire route can be disabled");
   const auto withoutWires = Render(snare, 81, 128);
   Check(Difference(snareFirst, withoutWires) > 1.e-6,

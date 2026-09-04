@@ -37,6 +37,12 @@ public:
 
   float DelaySamples() const noexcept { return delay_.DelaySamples(); }
 
+  // A non-zero Schroeder coefficient creates an immediate feed-through term.
+  // The configured delay remains its nominal group-delay scale, not latency.
+  float MinimumPropagationSamples() const noexcept {
+    return feedbackGain_ == 0.f ? delay_.DelaySamples() : 0.f;
+  }
+
 private:
   StaticFractionalDelay delay_{};
   float feedbackGain_{};

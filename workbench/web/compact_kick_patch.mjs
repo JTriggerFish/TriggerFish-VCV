@@ -41,7 +41,7 @@ export function createKickPatch(descriptors, values) {
       editor: { x, y },
     })),
     connections: Connections.map(([from, to], index) => ({
-      id: `kick-route-${index + 1}`, from, to, enabled: true, gain: 1,
+      id: `kick-route-${index + 1}`, from, to, enabled: true,
       required: index >= 3,
     })),
     outputs: { mono: "kick-output.audio" },
@@ -97,12 +97,12 @@ export function validateKickPatch(patch) {
   }
   for (const [from, to] of Connections.slice(3)) {
     const route = routes.get(`${from}>${to}`);
-    if (route.enabled === false || route.gain !== undefined && route.gain !== 1)
+    if (route.enabled === false)
       throw new Error("compact kick output routes are required");
   }
   const audible = Connections.slice(0, 3).some(([from, to]) => {
     const route = routes.get(`${from}>${to}`);
-    return route.enabled !== false && route.gain !== 0;
+    return route.enabled !== false;
   });
   if (!audible) throw new Error("the compact kick patch has no audible route");
   return patch;
@@ -112,6 +112,6 @@ export function kickRoutingValues(patch) {
   return Connections.slice(0, 3).map(([from, to]) => {
     const route = patch.connections.find(item =>
       item.from === from && item.to === to);
-    return route?.enabled === false ? 0 : route?.gain ?? 1;
+    return route?.enabled !== false;
   });
 }

@@ -51,6 +51,9 @@ public:
   }
 
   float CentreDelaySamples() const noexcept { return centreDelaySamples_; }
+  float MinimumDelaySamples() const noexcept {
+    return centreDelaySamples_ - depthSamples_;
+  }
 
 private:
   ModulatedFractionalDelay delay_{};

@@ -51,7 +51,7 @@
 
   <nav class="toolbar">
     <label>Instrument <select id="instrument-recipe" aria-label="Synthesizer recipe"></select></label>
-    <label class="calibration-picker" data-tooltip="Load an explicitly unverified synthesis starting point with its reference. A starting point is not an accepted calibration."><strong>Reference starts</strong><select id="instrument-calibration" aria-label="Reference starting point"><option>Loading reference starts…</option></select></label>
+    <label class="calibration-picker" data-tooltip="Load a reference target with the current factory state for its synthesis recipe."><strong>Reference targets</strong><select id="instrument-calibration" aria-label="Reference target"><option>Loading reference targets…</option></select></label>
     <select id="reference-corpus" aria-label="Reference instrument"><option>Loading corpus…</option></select>
     <select id="reference-articulation" aria-label="Reference articulation"></select>
     <label>Velocity <input id="reference-velocity" type="range"><output></output></label>
@@ -79,6 +79,8 @@
           <section data-module-id="membrane-body"><h2>Starting patches</h2><div id="membrane-preset-controls" class="button-row" data-membrane-controls></div></section>
           <details open data-module-id="membrane-contact"><summary data-tooltip="Finite contact force, chirp, noise, and fused micro-contact cluster.">Contact exciter</summary><div id="membrane-contact-controls" data-membrane-controls></div></details>
           <details open data-module-id="membrane-fm"><summary data-tooltip="An optional correlated-FM transient which can drive the membrane or radiate directly.">FM supplement</summary><div id="membrane-fm-controls" data-membrane-controls></div></details>
+          <details open data-module-id="membrane-direct-mix"><summary data-tooltip="Visible source levels feeding the directly observed transient; graph connections themselves are switches only.">Direct-source mix</summary><div id="membrane-direct-mix-controls" data-membrane-controls></div></details>
+          <details open data-module-id="membrane-body-mix"><summary data-tooltip="Visible source levels exciting the persistent membrane; graph connections themselves are switches only.">Body-drive mix</summary><div id="membrane-body-mix-controls" data-membrane-controls></div></details>
           <details open data-module-id="membrane-body"><summary data-tooltip="One persistent modal membrane shared by all overlapping strikes.">Modal membrane</summary><div id="membrane-body-controls" data-membrane-controls></div><div id="snare-ring-controls" data-snare-controls></div></details>
           <details open data-module-id="membrane-tension"><summary data-tooltip="A bounded strike-history envelope briefly raises effective tension; it is not a measurement of modal energy.">Strike energy and tension</summary><div id="membrane-tension-controls" data-membrane-controls></div></details>
           <details open data-module-id="snare-wires"><summary data-tooltip="A motion-driven wire contact: static displacement is silent, while membrane motion excites correlated noise and a dense bank of short wire modes.">Snare-wire response</summary><div id="snare-wire-response-controls" data-snare-controls></div></details>
@@ -92,11 +94,12 @@
           <details open data-module-id="contact"><summary data-tooltip="The immediate strike before energy develops in the cymbal body.">Contact presentation</summary>
             <p class="control-help">The audible near-field strike before energy spreads into the cymbal body.</p>
             <div id="impact-controls" data-fit-controls></div>
-            <details><summary data-tooltip="Optional event controls that are not needed for an ordinary single strike.">Advanced contact</summary>
+            <details><summary data-tooltip="Detailed contact bandwidth, texture, and velocity-response controls.">Advanced contact</summary>
+              <div id="impact-advanced-controls" data-fit-controls></div>
               <label data-tooltip="Temporal distribution of one contact gesture. This is most audible for a brush sweep; ordinary taps can remain near the default.">Gesture spread <input id="contact-spread" type="range" min="0" max="1" value="0.2" step="0.01"><output>0.20</output></label>
             </details>
           </details>
-          <details open data-module-id="bloom"><summary data-tooltip="Signal-driven dispersion that turns the strike into a developing metallic excitation.">Nonlinear bloom</summary><div id="bloom-controls" data-fit-controls></div></details>
+          <details open data-module-id="body"><summary data-tooltip="Passive upward transport of energy already stored in the modal body.">Nonlinear bloom</summary><div id="bloom-controls" data-fit-controls></div></details>
           <details open data-module-id="body"><summary data-tooltip="High-level controls for the single stored stochastic modal field.">Modal body</summary>
             <div id="field-turbulence-controls" data-fit-controls></div>
             <details><summary data-tooltip="Technical controls for the trajectory from coherent ridges to diffuse packets.">Advanced trajectory</summary><div id="field-advanced-controls" data-fit-controls></div></details>
@@ -120,7 +123,7 @@
           </details>
           <details open data-module-id="observation"><summary data-tooltip="Broad output bandwidth and colour controls; these filters do not alter stored modal decay.">Output colour</summary>
             <fieldset><legend>Contact bandwidth</legend><div id="direct-radiation" data-fit-controls></div><details><summary>Advanced</summary><div id="direct-radiation-advanced" data-fit-controls></div></details></fieldset>
-            <fieldset><legend>Body bandwidth and colour</legend><div id="dense-radiation" data-fit-controls></div><details><summary>Advanced</summary><div id="dense-radiation-advanced" data-fit-controls></div></details></fieldset>
+            <fieldset><legend>Body bandwidth and colour</legend><div id="body-radiation" data-fit-controls></div><details><summary>Advanced</summary><div id="body-radiation-advanced" data-fit-controls></div></details></fieldset>
           </details>
         </div>
       </div>

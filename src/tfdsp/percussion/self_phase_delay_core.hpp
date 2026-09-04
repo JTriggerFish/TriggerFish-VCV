@@ -69,6 +69,9 @@ public:
   }
 
   float CentreDelaySamples() const noexcept { return centreDelaySamples_; }
+  float MinimumDelaySamples() const noexcept {
+    return centreDelaySamples_ - excursionSamples_;
+  }
 
 private:
   static float FiniteOr(const float value, const float fallback) noexcept {

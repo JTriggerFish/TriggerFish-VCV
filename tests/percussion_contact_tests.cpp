@@ -256,7 +256,7 @@ void TestNoiseTilt() {
         "contact tilt filter flushes subnormal input and state");
 }
 
-void TestContactRouting() {
+void TestContactProjection() {
   tfdsp::percussion::ContactExciter exciter;
   exciter.Prepare(48000.f);
   tfdsp::percussion::ContactExciterParameters parameters;
@@ -265,9 +265,9 @@ void TestContactRouting() {
   parameters.chirp.amplitude = 0.f;
   parameters.noise.amplitude = 0.f;
   parameters.microContacts.amplitude = 0.f;
-  parameters.routing = {};
-  parameters.routing.pulseDirect = 2.f;
-  parameters.routing.pulseBody = 3.f;
+  parameters.projection = {};
+  parameters.projection.pulseDirect = 2.f;
+  parameters.projection.pulseBody = 3.f;
   exciter.Trigger(parameters);
   bool separated = true;
   std::size_t activeSamples = 0;
@@ -277,7 +277,7 @@ void TestContactRouting() {
         std::abs(output.bodyDrive - 1.5f * output.directRadiation) < 1.e-6f;
     ++activeSamples;
   }
-  Check(separated, "contact exciter keeps direct and body routing explicit");
+  Check(separated, "contact exciter keeps its port projection explicit");
   Check(activeSamples >= 48,
         "contact exciter remains active until its longest primitive finishes");
   const auto silence = exciter.Process();
@@ -327,7 +327,7 @@ int main() {
   TestMicroContacts();
   TestEnvelopedWhiteNoise();
   TestNoiseTilt();
-  TestContactRouting();
+  TestContactProjection();
   TestContactSampleRatesAndBounds();
   if (percussion_test::failures == 0)
     std::cout << "All percussion contact tests passed\n";

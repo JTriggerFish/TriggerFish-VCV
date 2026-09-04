@@ -244,48 +244,48 @@ std::uint32_t tf_percussion_route_count(
   if (!session) return 0;
   switch (session->recipe) {
   case Recipe::MetallicPlate:
-    return static_cast<std::uint32_t>(session->cymbalRouting.gains.size());
+    return static_cast<std::uint32_t>(session->cymbalRouting.enabled.size());
   case Recipe::CompactKick:
-    return static_cast<std::uint32_t>(session->kickRouting.gains.size());
+    return static_cast<std::uint32_t>(session->kickRouting.enabled.size());
   case Recipe::MembraneDrum:
-    return static_cast<std::uint32_t>(session->membraneRouting.gains.size());
+    return static_cast<std::uint32_t>(session->membraneRouting.enabled.size());
   case Recipe::SnareDrum:
-    return static_cast<std::uint32_t>(session->snareRouting.gains.size());
+    return static_cast<std::uint32_t>(session->snareRouting.enabled.size());
   default: return 0;
   }
 }
 
-float tf_percussion_route_get(const std::uint32_t handle,
-                              const std::uint32_t index) noexcept {
+int tf_percussion_route_enabled(const std::uint32_t handle,
+                                const std::uint32_t index) noexcept {
   const auto *session = Find(handle);
-  if (!session || index >= tf_percussion_route_count(handle)) return 0.f;
+  if (!session || index >= tf_percussion_route_count(handle)) return 0;
   switch (session->recipe) {
-  case Recipe::MetallicPlate: return session->cymbalRouting.gains[index];
-  case Recipe::CompactKick: return session->kickRouting.gains[index];
-  case Recipe::MembraneDrum: return session->membraneRouting.gains[index];
-  case Recipe::SnareDrum: return session->snareRouting.gains[index];
-  default: return 0.f;
+  case Recipe::MetallicPlate: return session->cymbalRouting.enabled[index];
+  case Recipe::CompactKick: return session->kickRouting.enabled[index];
+  case Recipe::MembraneDrum: return session->membraneRouting.enabled[index];
+  case Recipe::SnareDrum: return session->snareRouting.enabled[index];
+  default: return 0;
   }
 }
 
-int tf_percussion_route_set(const std::uint32_t handle,
-                            const std::uint32_t index,
-                            const float gain) noexcept {
+int tf_percussion_route_enable(const std::uint32_t handle,
+                               const std::uint32_t index,
+                               const int enabled) noexcept {
   auto *session = Find(handle);
   if (!session || index >= tf_percussion_route_count(handle) ||
-      !std::isfinite(gain)) return 0;
+      (enabled != 0 && enabled != 1)) return 0;
   switch (session->recipe) {
   case Recipe::MetallicPlate:
-    session->cymbalRouting.Set(index, gain);
+    session->cymbalRouting.SetEnabled(index, enabled != 0);
     break;
   case Recipe::CompactKick:
-    session->kickRouting.Set(index, gain);
+    session->kickRouting.SetEnabled(index, enabled != 0);
     break;
   case Recipe::MembraneDrum:
-    session->membraneRouting.Set(index, gain);
+    session->membraneRouting.SetEnabled(index, enabled != 0);
     break;
   case Recipe::SnareDrum:
-    session->snareRouting.Set(index, gain);
+    session->snareRouting.SetEnabled(index, enabled != 0);
     break;
   default: return 0;
   }

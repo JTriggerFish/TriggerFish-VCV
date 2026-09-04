@@ -68,26 +68,19 @@ void CrashCymbal::PrepareComponents(
   sampleRate_ = sampleRate;
   parameters_ = parameters;
   contact_.Prepare(sampleRate);
-  const float maximumDelay = std::max(512.f, .025f * sampleRate);
-  dispersion_.Prepare(sampleRate, maximumDelay, parameters.dispersion);
   observation_.Prepare(sampleRate, .01f, parameters.observation);
-  bloomBodyGain_ = std::clamp(
-      tfdsp::FiniteNormalOrZero(parameters.fit.bloomBodyGain), 0.f, 2.f);
   routing_ = parameters.routing;
-  delayConstraint_.Prepare(sampleRate, .003f, .08f);
+  bodyExcitationGain_ = std::clamp(
+      tfdsp::FiniteNormalOrZero(parameters.fit.bodyExcitationGain), 0.f, 4.f);
   modalConstraint_.Prepare(sampleRate, .001f, .003f, .08f);
 }
 
 void CrashCymbal::Reset() noexcept {
   contact_.Reset();
-  dispersion_.Reset();
   modalField_.Reset();
   observation_.Reset();
-  delayConstraint_.Reset();
   modalConstraint_.Reset();
   SetExcitationProjection(1.f, .8f);
-  modalField_.SetSecondaryExcitationProjection(parameters_.fieldBowProjection);
-  bloomDriveScale_ = 1.f;
   bodyDriveScale_ = 1.f;
   hasProcessedSinceReset_ = false;
 }
@@ -102,36 +95,27 @@ void CrashCymbal::Trigger(const CrashCymbalHit &hit) noexcept {
   const float brush = Unit(1.f - 2.f * implement);
   const float stick = Unit(2.f * implement - 1.f);
   const float mallet = 1.f - brush - stick;
-  bloomDriveScale_ = .075f * brush + .55f * mallet + stick;
-  const float directGamma = std::clamp(parameters_.fit.strengthGamma, 1.f, 4.f);
-  const float bodyGamma =
-      std::clamp(parameters_.fit.bodyStrengthGamma, 1.f, 4.f);
-  bodyDriveScale_ = std::pow(strength, bodyGamma - directGamma);
+  bodyDriveScale_ = .5f * brush + .75f * mallet + stick;
 }
 
 CrashCymbalFrame CrashCymbal::ProcessFrame() noexcept {
   hasProcessedSinceReset_ = true;
-  const auto delayLoss = delayConstraint_.Process();
   const auto modalLoss = modalConstraint_.Process();
   const auto contact = contact_.Process();
-  const float bodyDrive = bodyDriveScale_ * contact.bodyDrive;
-  const float bloom = dispersion_.Process(
-      routing_.Get(MetallicPlateRoute::ContactToDispersion) *
-          bloomDriveScale_ * bodyDrive,
-      delayLoss);
-  const float bodyBloom =
-      routing_.Get(MetallicPlateRoute::DispersionToBody) *
-      bloomBodyGain_ * bloom;
+  const float bodyDrive =
+      bodyExcitationGain_ * bodyDriveScale_ * contact.bodyDrive;
   const float body = modalField_.ProcessExcitedPair(
-      routing_.Get(MetallicPlateRoute::ContactToBody) * bodyDrive,
-      bodyBloom, modalLoss);
+      (routing_.Enabled(MetallicPlateRoute::ContactToBody) ? 1.f : 0.f) *
+          bodyDrive,
+      0.f, modalLoss);
   const ObservationModel<2>::SourceFrame sources{
-      routing_.Get(MetallicPlateRoute::ContactToObservation) *
+      (routing_.Enabled(MetallicPlateRoute::ContactToObservation) ? 1.f : 0.f) *
           contact.directRadiation,
-      routing_.Get(MetallicPlateRoute::BodyToObservation) * body};
+      (routing_.Enabled(MetallicPlateRoute::BodyToObservation) ? 1.f : 0.f) *
+          body};
   return {
       contact.directRadiation,
-      bloom,
+      modalField_.LastCascadeTransferEnergy(),
       body,
       tfdsp::FiniteNormalOrZero(
           parameters_.fit.outputGain * observation_.Process(sources))};
@@ -155,16 +139,18 @@ void CrashCymbal::SetMute(const float amount) noexcept {
   // condition, not a closing gesture. Once audio is running, transitions stay
   // smoothed so changing a mute or pedal cannot click or inject energy.
   if (!hasProcessedSinceReset_) {
-    delayConstraint_.Reset(target);
     modalConstraint_.Reset(target);
   } else {
-    delayConstraint_.SetTarget(target);
     modalConstraint_.SetTarget(target);
   }
 }
 
-float CrashCymbal::MinimumBodyDelaySamples() const noexcept {
-  return dispersion_.MinimumPropagationSamples();
+double CrashCymbal::StoredBodyEnergy() const noexcept {
+  return modalField_.StoredEnergy();
+}
+
+float CrashCymbal::StoredBodyEnergyCentroidHz() const noexcept {
+  return modalField_.StoredEnergyCentroidHz();
 }
 
 ContactExciterParameters CrashCymbal::ContactParameters(
@@ -182,8 +168,7 @@ ContactExciterParameters CrashCymbal::ContactParameters(
                                 const float stickValue) noexcept {
     return brush * brushValue + mallet * malletValue + stick * stickValue;
   };
-  const float amplitude = std::pow(
-      strength, std::clamp(parameters_.fit.strengthGamma, 1.f, 4.f));
+  const float amplitude = strength;
   const float bell = Unit(1.f - 2.f * location);
   const float edge = Unit(2.f * location - 1.f);
   const auto &fit = parameters_.fit;
@@ -226,14 +211,14 @@ ContactExciterParameters CrashCymbal::ContactParameters(
       velocityDuration * implementWidth * durationScale *
       Mix(.006f, .0015f, hardness);
   const float chirpFrequencyScale = std::clamp(
-      tfdsp::FiniteNormalOrZero(fit.contactChirpFrequencyScale), .25f, 4.f);
+      tfdsp::FiniteNormalOrZero(fit.contactChirpFrequencyScale), .05f, 4.f);
   result.chirp.startFrequencyHz = Mix(2800.f, 9200.f, hardness) *
       velocityChirp * (1.f + .35f * bell) * chirpFrequencyScale;
   result.chirp.endFrequencyHz = Mix(1300.f, 4100.f, hardness) *
       velocityChirp * (1.f + .25f * bell) * chirpFrequencyScale;
   result.chirp.amplitude = amplitude * hardness *
       Mix(.75f, .35f, edge) * (1.f + .5f * bell) *
-      implementMix(0.f, .08f, 1.f) *
+      implementMix(0.f, .9f, 1.f) *
       std::clamp(tfdsp::FiniteNormalOrZero(fit.contactChirpGain), 0.f, 4.f);
   result.chirp.decayNepers = 2.4f;
   result.noise.attackSeconds = noiseDurationScale *
@@ -283,17 +268,17 @@ ContactExciterParameters CrashCymbal::ContactParameters(
       implementMix(1.4f, .3f, 1.f) *
       std::clamp(tfdsp::FiniteNormalOrZero(fit.contactMicroGain), 0.f, 4.f);
   result.microContacts.seed = hit.seed ^ 0x4d494352u;
-  result.routing = {
+  result.projection = {
       implementMix(0.f, .02f, .02f),
       implementMix(0.f, .95f, .95f),
       implementMix(0.f, .2f, .8f),
       implementMix(0.f, .12f, .28f),
       // A brush contains many more contacts than a stick. Its routing is
       // energy-normalized here while its long stochastic gesture is retained.
-      implementMix(.0245f * brushLevel, .24f, .32f),
-      implementMix(.098f * brushLevel, .5f, .72f),
-      implementMix(.049f * brushLevel, .22f, .25f),
-      implementMix(.196f * brushLevel, .42f, .85f)};
+      implementMix(.165375f * brushLevel, .24f, .32f),
+      implementMix(.6615f * brushLevel, .5f, .72f),
+      implementMix(.33075f * brushLevel, .22f, .25f),
+      implementMix(1.323f * brushLevel, .42f, .85f)};
   return result;
 }
 

@@ -129,7 +129,7 @@ async function audit(corpus) {
     if (!recipe) throw new Error(`missing recipe ${calibration.recipe}`);
     engine.setRecipe(recipe.index);
     const parameters = calibrationParameterValues(
-      calibration, engine.parameters,
+      calibration, engine.parameters, { strict: true },
     );
     for (const [key, value] of Object.entries(parameterOverrides)) {
       const descriptor = engine.parameters.find(item => item.key === key);
@@ -143,11 +143,12 @@ async function audit(corpus) {
     patch = recipeAdapter(recipe.key).withValues(
       patch, engine.parameters, parameters,
     );
-    for (const [id, gain] of Object.entries(routingOverrides)) {
+    for (const [id, enabled] of Object.entries(routingOverrides)) {
       const route = patch.connections.find(item => item.id === id);
       if (!route) throw new Error(`unknown routing override: ${id}`);
-      route.enabled = Number(gain) !== 0;
-      route.gain = Number(gain);
+      if (typeof enabled !== "boolean")
+        throw new Error(`routing override must be boolean: ${id}`);
+      route.enabled = enabled;
     }
     const onset = Math.max(0, Math.round(
       (cell.onset_seconds ?? 0) * reference.sampleRate,

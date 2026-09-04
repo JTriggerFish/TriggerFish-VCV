@@ -2,7 +2,7 @@
      viewBox="0 0 1500 700" role="img"
      aria-labelledby="title description">
   <title id="title">Expansion and processing of one stochastic resonator packet</title>
-  <desc id="description">A painted anchor and global turbulence create one centre oscillator and sixteen ERB-spaced satellites. During audio processing direct contact and bloom excite these complex states, which undergo modal recurrence, magnitude-preserving phase diffusion, and passive neighbour exchange before their outputs are summed.</desc>
+  <desc id="description">A painted anchor and global turbulence create one centre oscillator and sixteen ERB-spaced satellites. During audio processing contact excites these complex states, which undergo modal recurrence, passive upward packet-energy transport, magnitude-preserving phase diffusion, and passive neighbour exchange before their outputs are summed.</desc>
   <defs>
     <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3"
             orient="auto" markerUnits="strokeWidth">
@@ -37,7 +37,7 @@
   <rect class="box control" x="40" y="125" width="220" height="135"/>
   <text class="label" x="150" y="160">Painted anchor</text>
   <text class="detail" x="150" y="188">centre frequency</text>
-  <text class="detail" x="150" y="210">relative level · decay ratio</text>
+  <text class="detail" x="150" y="210">relative level · shared T60 curve</text>
   <text class="detail" x="150" y="232">local turbulence scaler</text>
 
   <rect class="box control" x="40" y="288" width="220" height="118"/>
@@ -88,9 +88,9 @@
   <text class="lane" x="40" y="482">AUDIO LOOP — THE PACKET STORES AND EXCHANGES ENERGY</text>
 
   <rect class="box control" x="40" y="515" width="220" height="115"/>
-  <text class="label" x="150" y="552">Two force inputs</text>
-  <text class="detail" x="150" y="580">direct body drive: localized</text>
-  <text class="detail" x="150" y="604">delayed bloom: body-wide</text>
+  <text class="label" x="150" y="552">Body force</text>
+  <text class="detail" x="150" y="580">location projection</text>
+  <text class="detail" x="150" y="604">velocity-dependent bandwidth</text>
 
   <path class="flow" d="M260 572 H325"/>
   <rect class="box state" x="325" y="515" width="250" height="115"/>
@@ -100,15 +100,15 @@
 
   <path class="flow" d="M575 572 H640"/>
   <rect class="box passive" x="640" y="515" width="250" height="115"/>
-  <text class="label" x="765" y="550">Phase diffusion</text>
-  <text class="formula" x="765" y="580">z ← exp(±jδ) z</text>
-  <text class="detail" x="765" y="606">widens ridges; preserves |z|²</text>
+  <text class="label" x="765" y="550">Upward cascade</text>
+  <text class="formula" x="765" y="580">E(low) → E(next)</text>
+  <text class="detail" x="765" y="606">progressive; preserves Σ|z|²</text>
 
   <path class="flow" d="M890 572 H955"/>
   <rect class="box passive" x="955" y="515" width="250" height="115"/>
-  <text class="label" x="1080" y="550">Neighbour exchange</text>
-  <text class="formula" x="1080" y="580">[za, zb] ← G(±θ)[za, zb]</text>
-  <text class="detail" x="1080" y="606">orthogonal; preserves paired energy</text>
+  <text class="label" x="1080" y="550">Diffusion + exchange</text>
+  <text class="formula" x="1080" y="580">z ← exp(±jδ)z; pair ← G(±θ)pair</text>
+  <text class="detail" x="1080" y="606">decorrelates; preserves energy</text>
 
   <path class="flow" d="M1205 572 H1270"/>
   <rect class="box state" x="1270" y="515" width="180" height="115"/>
@@ -116,5 +116,5 @@
   <text class="formula" x="1360" y="580">y = Σ gain · Re(z)</text>
   <text class="detail" x="1360" y="606">to body radiation</text>
 
-  <text class="note" x="40" y="672">Input and pole radii may change energy. Phase diffusion and Givens exchange do not.</text>
+  <text class="note" x="40" y="672">Input and pole radii may change energy. Cascade transfer, phase diffusion and Givens exchange do not.</text>
 </svg>

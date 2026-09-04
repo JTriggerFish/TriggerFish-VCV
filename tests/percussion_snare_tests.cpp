@@ -61,8 +61,8 @@ void TestVelocityResponse() {
   const double soft = Energy(RenderStrength(.32f));
   const double medium = Energy(RenderStrength(.65f));
   const double hard = Energy(RenderStrength(.92f));
-  Check(soft < .2 * medium && hard > .8 * medium,
-        "snare velocity layers retain useful soft-to-medium dynamics");
+  Check(soft > .2 * medium && soft < .3 * medium && hard > .8 * medium,
+        "snare output follows the linear hit-strength amplitude law");
 }
 
 void TestWireResponseIsNotDelayed() {
@@ -86,8 +86,8 @@ void TestWireResponseIsNotDelayed() {
 void TestRoutingAndPreparedState() {
   using namespace tfdsp::percussion;
   auto parameters = DefaultSnareDrumParameters();
-  parameters.routing.Set(static_cast<std::size_t>(
-      SnareDrumRoute::BodyToWires), 0.f);
+  parameters.routing.SetEnabled(static_cast<std::size_t>(
+      SnareDrumRoute::BodyToWires), false);
   SnareDrum dry;
   dry.Prepare(48000.f, parameters);
   dry.Trigger({.8f, .5f, .6f, 1.f, .2f, 7});

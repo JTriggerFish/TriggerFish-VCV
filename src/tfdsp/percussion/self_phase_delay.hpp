@@ -112,6 +112,10 @@ public:
     return core_.CentreDelaySamples() / OversamplingFactor;
   }
 
+  float MinimumDelaySamples() const noexcept {
+    return core_.MinimumDelaySamples() / OversamplingFactor;
+  }
+
 private:
   std::unique_ptr<ResamplerType> interpolator_;
   std::unique_ptr<ResamplerType> decimator_;

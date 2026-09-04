@@ -406,17 +406,17 @@ only when ablation shows that each branch explains a distinct measurement.
 | --- | --- | --- |
 | Very short sine with extreme FM or pitch envelope | `ContactExciter` tonal chirp | Core contact option |
 | Contact is heard directly | direct contact-radiation port | Core routing |
-| Contact also drives dispersion | body-drive port into `DispersionLoop` | Ride/crash topology |
-| Base/sample delay inside feedback | dispersion-loop base delay | Core dispersion stage |
-| Serial allpasses smear each circulation | allpass stack inside dispersion feedback | Core dispersion stage |
-| Slow vibrato creates irregular frequency spreading | slow modulated fractional delay | Candidate dispersion stage |
-| Phase distortion maps signed audio to delay | self-phase fractional-delay stage | Candidate nonlinear stage |
-| Tone filters the phase-modulation signal | modulation-path filter | Core self-PM control |
-| Normalize reduces level dependence | continuously variable modulation normalization | Optional self-PM control |
-| Drive controls velocity-sensitive bloom | incident energy plus self-PM drive | Calibration target |
-| Feedback loop contains every dispersion processor | one explicit outer-loop graph | Core routing |
-| Dispersion is not heard directly | analysis-only dispersion tap | Core routing |
-| Dispersion drives the body renderer | secondary excitation port of the unified stochastic modal field | Core routing |
+| Contact also drives dispersion | reusable `DispersionLoop` candidate | Tutorial-compatible alternative, inactive in the current cymbal |
+| Base/sample delay inside feedback | dispersion-loop base delay | Reusable alternative |
+| Serial allpasses smear each circulation | allpass stack inside dispersion feedback | Reusable alternative |
+| Slow vibrato creates irregular frequency spreading | slow modulated fractional delay | Reusable alternative |
+| Phase distortion maps signed audio to delay | self-phase fractional-delay stage | Reusable alternative |
+| Tone filters the phase-modulation signal | modulation-path filter | Reusable alternative |
+| Normalize reduces level dependence | continuously variable modulation normalization | Optional reusable control |
+| Drive controls velocity-sensitive bloom | energy-dependent transfer in the active modal cascade | Active calibration target |
+| Feedback loop contains every dispersion processor | one explicit outer-loop graph | Reusable tutorial topology, inactive by default |
+| Dispersion is not heard directly | no dispersion branch in the active observation graph | Active topology |
+| Progressive spectral bloom | passive adjacent-packet transfer within the unified modal field | Active cymbal topology |
 | Plugin dry signal is polarity-cancelled | native wet-only implementation; no dry-null hack required | Equivalent implementation |
 | Approximately twelve parallel combs | optional parallel/coupled dense-residual lines | Residual candidate |
 | A few dark lower-order groups plus messy high groups | clustered resonator parameters and group filters | Calibration structure |
@@ -430,12 +430,12 @@ only when ablation shows that each branch explains a distinct measurement.
 | Hi-hat replaces bloom with oscillator plus shaped noise | `ShapedStochasticResponse`; no `DispersionLoop` | Compact hi-hat topology |
 | Hi-hat source is both direct and sent to combs | direct/source and resonator-drive ports | Core compact-hat routing |
 | Foot chick adds attack and changes relative source decays | closure-velocity contact event and source envelopes | Compact pedal articulation |
-| Ride uses bright direct stick and low dispersion drive | ride graph macro over contact and dispersion | Instrument calibration |
-| Ride size/hammering change delay, vibrato, allpasses, and filtering | graph-level size/profile macro, not global pitch | Instrument calibration |
+| Ride uses a bright direct stick and restrained bloom | ride parameters over contact and the unified modal cascade | Instrument calibration |
+| Ride size/hammering change modal placement, transport, turbulence, decay, and filtering | graph-level size/profile macro, not global pitch | Instrument calibration |
 | Small direct stick feed may also reach resonators | optional contact-to-resonator bypass | Candidate routing |
-| Bell may use a second dispersion and resonator chain | optional region-specific subgraph with passive/shared coupling candidate | Structured ride option |
-| Crash uses stronger nonlinear dispersion and longer feedback | crash graph macro over shared components | Instrument calibration |
-| Limiting protects the nonlinear loop | bounded loop, finite guard, and optional oversampled safety limiter | Safety requirement |
+| Bell may use a region-specific projection or subgraph | optional region-specific extension with passive/shared coupling candidate | Structured ride option |
+| Crash uses faster energy transport and a broader turbulent modal field | crash parameters over shared components | Instrument calibration |
+| Nonlinear dispersion remains bounded when selected | bounded loop and finite guard | Reusable-component safety requirement |
 
 The tutorial's special-effect routings are supported without forcing them into
 the neutral acoustic graph. In particular, serial combs, Haas delay, clipping,

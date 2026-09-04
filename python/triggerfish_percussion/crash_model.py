@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, fields
 
 import numpy as np
 
-DENSE_GAIN_ENVELOPE_POINT_COUNT = 33
 BODY_DECAY_POINT_COUNT = 8
+BODY_DECAY_INTERIOR_POINT_COUNT = BODY_DECAY_POINT_COUNT - 2
 
 
 @dataclass(frozen=True)
@@ -38,32 +38,6 @@ class CrashFit:
         14600.0,
         15000.0,
     )
-    sparse_decay_ratio: tuple[float, ...] = (
-        0.7,
-        0.7,
-        0.7,
-        1.25,
-        1.0,
-        1.0,
-        0.95,
-        0.85,
-        0.8,
-        0.7,
-        0.7,
-        0.7,
-        0.68,
-        0.65,
-        0.62,
-        0.6,
-        0.58,
-        0.56,
-        0.55,
-        0.54,
-        0.53,
-        0.52,
-        0.51,
-        0.5,
-    )
     sparse_amplitude: tuple[float, ...] = (
         0.35,
         0.15,
@@ -90,87 +64,44 @@ class CrashFit:
         0.35,
         0.22,
     )
-    sparse_phase_radians: tuple[float, ...] = (0.0,) * 24
     field_turbulence_scale: tuple[float, ...] = (1.0,) * 24
     sparse_tune: float = 1.0
     body_decay_frequency_hz: tuple[float, ...] = (
-        0.0,
         500.0,
         1500.0,
         5000.0,
         8000.0,
         12000.0,
         16000.0,
-        24000.0,
     )
-    body_decay_seconds: tuple[float, ...] = (4.0, 4.0, 3.8, 2.3, 1.8, 1.5, 1.3, 1.2)
-    body_decay_active: tuple[bool, ...] = (
-        True,
-        True,
-        True,
-        True,
-        False,
-        False,
-        False,
-        True,
-    )
-    dense_minimum_frequency_hz: float = 180.0
-    dense_maximum_frequency_hz: float = 18000.0
-    dense_frequency_warp: float = 1.0
-    dense_spacing_jitter: float = 0.82
-    dense_mode_density: float = 1.0
-    dense_decay_spread_octaves: float = 0.15
-    dense_tilt_db_per_octave: float = -1.0
-    dense_gain_envelope_db: tuple[float, ...] = (
+    body_decay_seconds: tuple[float, ...] = (
         4.0,
-        1.375,
-        -1.25,
-        -3.875,
-        -6.5,
-        -7.25,
-        -5.5,
-        -3.75,
-        -2.0,
-        -0.25,
-        1.125,
-        2.4375,
-        3.75,
-        5.0625,
-        6.125,
-        6.5625,
-        7.0,
-        7.4375,
-        7.875,
-        7.6875,
-        7.25,
-        6.8125,
-        6.375,
-        5.9375,
-        5.5,
-        5.0625,
-        4.625,
-        4.1875,
-        3.75,
-        3.3125,
-        2.875,
-        2.4375,
-        2.0,
+        2.965782,
+        2.372841,
+        1.782984,
+        1.585960,
+        1.431738,
+        1.330840,
+        1.2,
     )
-    dense_gain_spread_db: float = 2.0
-    dense_mode_seed: int = 0x43524153
-    turbulence_frequency_hz: tuple[float, ...] = (350.0, 2200.0, 10000.0)
-    turbulence_gain: tuple[float, ...] = (0.14, 0.1, 0.06)
-    turbulence_persistence: float = 1.0
-    dispersion_feedback: float = 0.9965
-    dispersion_drive: float = 2.8
-    dispersion_excursion_samples: float = 2.4
-    dispersion_low_decay_seconds: float = 0.9
-    dispersion_middle_decay_seconds: float = 0.65
-    dispersion_high_decay_seconds: float = 0.42
-    dispersion_diffusion: float = 1.0
-    bloom_body_gain: float = 1.0
+    body_decay_active: tuple[bool, ...] = (
+        False,
+        False,
+        False,
+        False,
+        False,
+        False,
+    )
+    body_tilt_db_per_octave: float = -1.0
+    body_tilt_centre_hz: float = 4000.0
+    bloom_rate_octaves_per_second: float = 2.0
+    bloom_energy_dependence: float = 0.7
+    bloom_phase_diffusion: float = 0.7
+    body_excitation_gain: float = 0.05
     field_gain: float = 0.73824115
     field_turbulence: float = 0.65
+    field_turbulence_slope_per_octave: float = 0.0
+    field_turbulence_centre_hz: float = 4000.0
     field_packet_spread_erb: float = 6.0
     field_phase_bandwidth_erb: float = 1.0
     field_exchange: float = 0.35
@@ -185,51 +116,29 @@ class CrashFit:
     contact_micro_duration_scale: float = 1.0
     contact_micro_density_scale: float = 1.0
     direct_gain: float = 0.18
-    sparse_gain: float = 0.35
-    dense_gain: float = 0.65
-    sparse_bloom_gain: float = 0.0
-    body_bypass_gain: float = 0.06
     output_gain: float = 1.0
     direct_radiation_enabled: bool = True
     direct_low_cut_hz: float = 40.0
-    direct_low_cut_q: float = 0.707
     direct_colour_frequency_hz: float = 7200.0
     direct_colour_gain_db: float = 1.0
-    direct_colour_q: float = 0.8
     direct_high_cut_hz: float = 20000.0
-    direct_high_cut_q: float = 0.707
-    sparse_radiation_enabled: bool = True
-    sparse_low_cut_hz: float = 40.0
-    sparse_low_cut_q: float = 0.707
-    colour_frequency_hz: float = 5200.0
-    colour_gain_db: float = 1.5
-    sparse_colour_q: float = 0.8
-    high_cut_hz: float = 19000.0
-    sparse_high_cut_q: float = 0.707
-    dense_radiation_enabled: bool = True
-    dense_low_cut_hz: float = 40.0
-    dense_low_cut_q: float = 0.707
-    dense_colour_frequency_hz: float = 7200.0
-    dense_colour_gain_db: float = 0.5
-    dense_colour_q: float = 0.8
-    dense_high_cut_hz: float = 19000.0
-    dense_high_cut_q: float = 0.707
-    strength_gamma: float = 1.0
-    body_strength_gamma: float = 1.0
+    body_radiation_enabled: bool = True
+    body_low_cut_hz: float = 40.0
+    body_colour_frequency_hz: float = 7200.0
+    body_colour_gain_db: float = 0.5
+    body_high_cut_hz: float = 19000.0
+    velocity_brightness_db_per_octave: float = 4.0
 
     def __post_init__(self):
-        object.__setattr__(
-            self,
-            "dense_gain_envelope_db",
-            _resample_envelope(
-                self.dense_gain_envelope_db, DENSE_GAIN_ENVELOPE_POINT_COUNT
-            ),
-        )
-        frequencies, seconds, active = _upgrade_decay_curve(
-            self.body_decay_frequency_hz,
-            self.body_decay_seconds,
-            self.body_decay_active,
-        )
+        frequencies = tuple(float(value) for value in self.body_decay_frequency_hz)
+        seconds = tuple(float(value) for value in self.body_decay_seconds)
+        active = tuple(bool(value) for value in self.body_decay_active)
+        if (
+            len(frequencies) != BODY_DECAY_INTERIOR_POINT_COUNT
+            or len(active) != BODY_DECAY_INTERIOR_POINT_COUNT
+            or len(seconds) != BODY_DECAY_POINT_COUNT
+        ):
+            raise ValueError("body decay curve needs six interior and eight T60 points")
         object.__setattr__(self, "body_decay_frequency_hz", frequencies)
         object.__setattr__(self, "body_decay_seconds", seconds)
         object.__setattr__(self, "body_decay_active", active)
@@ -242,6 +151,16 @@ class CrashFit:
             setattr(parameters, name, value)
         return parameters
 
+    @classmethod
+    def from_mapping(cls, values: dict[str, object]) -> "CrashFit":
+        """Load the current fit schema without implicit legacy translation."""
+        current = dict(values)
+        known = {item.name for item in fields(cls)}
+        unknown = sorted(set(current) - known)
+        if unknown:
+            raise ValueError(f"unknown crash fit fields: {', '.join(unknown)}")
+        return cls(**current)
+
 
 @dataclass(frozen=True)
 class CrashEvent:
@@ -252,46 +171,6 @@ class CrashEvent:
     seed: int = 1
     implement: float = 0.75
     contact_spread: float = 0.2
-
-
-def _resample_envelope(values, point_count: int) -> tuple[float, ...]:
-    """Migrate older smooth-envelope grids without changing their endpoints."""
-    source = np.asarray(values, dtype=np.float64)
-    if source.ndim != 1 or source.size < 2 or not np.isfinite(source).all():
-        raise ValueError("crash envelope needs at least two finite points")
-    if source.size == point_count:
-        return tuple(float(value) for value in source)
-    positions = np.linspace(0.0, 1.0, source.size)
-    target = np.linspace(0.0, 1.0, point_count)
-    return tuple(float(value) for value in np.interp(target, positions, source))
-
-
-def _upgrade_decay_curve(frequencies, seconds, active):
-    """Upgrade the former five-knot curve to eight fixed-capacity slots."""
-    frequencies = tuple(float(value) for value in frequencies)
-    seconds = tuple(float(value) for value in seconds)
-    active = tuple(bool(value) for value in active)
-    if len(frequencies) == len(seconds) == len(active) == BODY_DECAY_POINT_COUNT:
-        return frequencies, seconds, active
-    if len(frequencies) == len(seconds) == 5:
-        return (
-            (0.0, *frequencies, 20000.0, 24000.0),
-            (seconds[0], *seconds, seconds[-1], seconds[-1]),
-            (True, True, True, True, True, True, False, True),
-        )
-    if len(frequencies) == BODY_DECAY_POINT_COUNT and len(seconds) == 5:
-        seconds = (
-            seconds[0],
-            seconds[1],
-            seconds[2],
-            seconds[3],
-            1.0,
-            1.0,
-            1.0,
-            seconds[4],
-        )
-        return frequencies, seconds, (True, True, True, True, False, False, False, True)
-    raise ValueError("body decay curve needs five legacy or eight current points")
 
 
 def render_crash(
@@ -336,7 +215,7 @@ def render_crash_components(
     implement: float = 0.75,
     contact_spread: float = 0.2,
 ) -> np.ndarray:
-    """Return direct, dispersion, sparse, dense-residual, and output taps."""
+    """Return direct contact, cascade transfer, modal body, and output taps."""
     if seconds <= 0 or sample_rate < 1:
         raise ValueError("crash render duration and sample rate must be positive")
     import _triggerfish_dsp as native

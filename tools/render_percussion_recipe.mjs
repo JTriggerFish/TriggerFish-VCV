@@ -73,8 +73,8 @@ if (options.has("preset")) {
     const { membraneRoutingValues } = await import(
       "../workbench/web/membrane_patch.mjs"
     );
-    for (const [index, gain] of membraneRoutingValues(patch).entries()) {
-      if (!wasm._tf_percussion_route_set(handle, index, gain))
+    for (const [index, enabled] of membraneRoutingValues(patch).entries()) {
+      if (!wasm._tf_percussion_route_enable(handle, index, enabled ? 1 : 0))
         throw new Error(`could not set preset route ${index}`);
     }
   }

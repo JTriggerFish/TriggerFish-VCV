@@ -12,11 +12,12 @@ instrument or Rack module.
 | Family | Components | Current analytic coverage |
 | --- | --- | --- |
 | Control | fixed-capacity linear/geometric breakpoint trajectory, asymmetric passive-loss controller | exact endpoints, continuous retrigger, sanitization, fast loss/slow release, ordered attenuation-only gains |
-| Contact and compact body | half-sine force pulse, tonal chirp, enveloped noise, finite micro-contact burst, gated/finite renewal micro-contact process, 2x correlated FM burst with 4x reference, explicit direct/body router | duration, endpoints, strength-to-energy mapping, deterministic seeds, requested stochastic event rate, coincident dense contacts, gate release, FM spectral convergence, bounds, routing |
+| Contact and compact body | half-sine force pulse, tonal chirp, enveloped noise, finite micro-contact burst, gated/finite renewal micro-contact process, 2x correlated FM burst with 4x reference, implement-derived direct/body projection | duration, endpoints, strength-to-energy mapping, deterministic seeds, requested stochastic event rate, coincident dense contacts, gate release, FM spectral convergence, bounds, routing |
 | Delay and diffusion | 12-tap/2048-phase moving sinc delay, static Thiran delay, shared cubic Lagrange delay, fractional Schroeder all-pass | tone gain, low-frequency delay, polynomial exactness, integer-boundary continuity, impulse energy, five sample rates |
 | Spectral motion | 255-tap antisymmetric FIR Hilbert transformer, phase-continuous signed SSB frequency shifter, and fourth-order translation-band guards | wanted level, image rejection, exact zero shift, through-zero automation, DC/Nyquist translated-content rejection, five sample rates |
 | Resonance and loss | arbitrary damped modal bank, deterministic statistical modal cloud, modal passive-loss adapter, complementary three-band delay loss, orthogonal Givens mixer, projected wet-only fractional-comb network, explicit output submix | analytic modal frequency/T60 recurrence, independent projections, cloud determinism/range/normalization, passive attenuation, exact zero-coupling identity, scattering energy, delay T60 recurrence, excitation isolation, group routing |
-| Cymbal bloom | slow stochastic delay, 2x oversampled bounded self-phase delay with a 4x reference implementation, serial four-all-pass dispersion loop with explicit outer feedback | 1x/2x comparison against 4x, causal onset and declared recurrence delay, zero-drive linear reduction, no hidden feedback sample, long contractive stress |
+| Reusable nonlinear dispersion | slow stochastic delay, 2x oversampled bounded self-phase delay with a 4x reference implementation, serial four-all-pass dispersion loop with explicit outer feedback; retained as an optional building block but disconnected from the active cymbal recipe | 1x/2x comparison against 4x, causal onset and declared recurrence delay, zero-drive linear reduction, no hidden feedback sample, long contractive stress |
+| Active cymbal energy transport | passive adjacent-packet upward cascade operating on the modal field's stored complex states, with energy-dependent rate and magnitude-preserving destination phase diffusion | energy conservation, one-boundary-per-sample progression, upward centroid motion, stronger-strike acceleration isolated from velocity tilt, maximum-control boundedness |
 | Radiation | guarded TDF2 biquad designs and a static high-pass/colour/low-pass chain | centre gain, pass/reject bands, sample-rate sweep, non-finite recovery |
 | Observation | zero-capable static fractional delay and per-source gain, polarity, delay, and radiation paths | exact zero and integer delay, source isolation, polarity, non-finite recovery |
 
@@ -58,11 +59,12 @@ voice. Amplitude, carrier frequency, and frequency-deviation trajectories are
 independent. The modulator continuously blends seeded band-limited irregular
 motion with a periodic oscillator, and optional perturbation is explicit.
 
-The dispersion return is stored in its base propagation delay. The signal is
+The reusable dispersion return is stored in its base propagation delay. The signal is
 read, passed serially through slow delay, four all-passes, self-phase delay and
 loss, then written back with the new body drive. This avoids an accidental
 extra sample at the outer feedback sum. The dispersion tap remains an analysis
-and body-renderer drive output, not audible dry leakage.
+and body-renderer drive output, not audible dry leakage. This component is not
+part of the active metallic-plate recipe.
 
 The coupled resonator is one superset: coupling zero gives independent combs;
 nonzero coupling applies an orthogonal matrix before line loss. It is not the
@@ -70,7 +72,7 @@ room-reverb velvet FDN or its coefficient set.
 
 ## Performance profile
 
-Measurements on 2026-09-03 used an AMD Ryzen 9 PRO 8945HS, GCC 16.2 MinGW
+Measurements on 2026-09-04 used an AMD Ryzen 9 PRO 8945HS, GCC 16.2 MinGW
 Release build, 48 kHz, and the current default crash graph. They are development
 measurements rather than cross-machine budgets.
 
@@ -80,16 +82,16 @@ STFT analysis.
 
 | Path | Current |
 | --- | ---: |
-| Unified 408-mode crash | 1,150 ns/sample |
+| Unified 408-mode crash with intrinsic cascade | 1,858 ns/sample |
 | Compact FM kick | 275 ns/sample |
-| Isolated unified field, phase and exchange | 789 ns/sample |
+| Isolated unified field, cascade, phase and exchange | 1,946 ns/sample |
 | Isolated dispersion loop | 143 ns/sample |
 | Isolated 512-mode cloud | 529 ns/sample |
 
-The unified crash uses about 5.4% of one core at 48 kHz. Its measured 128-frame
-p99, including a hit in the sampled tail, is 167 microseconds inside a
-2,667-microsecond deadline (6.3%). Even a 16-frame p99 is below 10% of its
-deadline. These figures qualify
+The unified crash uses about 8.9% of one core at 48 kHz. Its measured 128-frame
+p99, including a hit in the sampled tail, is 284 microseconds inside a
+2,667-microsecond deadline (10.6%). Its measured 16-frame p99 is 44 microseconds
+inside a 333-microsecond deadline (13.3%). These figures qualify
 one native monophonic core, not a complete Rack patch or a 96 kHz budget.
 
 The modal bank sanitizes stable hit projections once, caches safe per-mode
@@ -110,12 +112,19 @@ orthogonal transform. A unified hit no longer prepares the inactive legacy
 4,096-mode projections. Together these changes reduced the same 408-state
 topology from 4,014 to 1,149 ns/sample; they change stochastic realization but
 not the fitted modal, decay, projection, diffusion, or exchange parameters.
+The intrinsic cascade first measured 3,844 ns/sample when it recomputed octave
+gaps and transcendental transfer/rotation functions at every packet boundary.
+Frequency gaps are now prepared once; packet energy is measured once per
+sample; all adjacent transfers are solved before one combined state update per
+packet; and bounded Padé/polynomial evaluations replace the hot `expm1`, `sin`,
+and `cos` calls while retaining explicit energy normalization. This reduced the
+same crash to 1,858 ns/sample without changing its energy-flow topology.
 
 The remaining optimization order is:
 
 1. Qualify the optimized stochastic statistics and sound against retained
    snapshots before considering mode-count changes.
-2. Profile the smaller dispersion and observation paths only if the assembled
+2. Profile the cascade state-update pass and observation only if the assembled
    Rack module misses its production CPU budget.
 
 For the browser workbench, the optimized Wasm crash graph renders ten seconds
@@ -136,8 +145,8 @@ distance, humidity, and frequency when that distinction matters.
 
 ## Current experimental graph and replacement target
 
-`CrashCymbal` composes the tested contact, serial feedback-dispersion,
-passive-loss, modal, and observation primitives. The exact C++ graph is
+`CrashCymbal` composes the tested contact, intrinsic modal energy cascade,
+passive-loss, unified modal-field, and observation primitives. The exact C++ graph is
 exposed to Python and to the optional browser workbench through WebAssembly.
 Graph tests cover repeatability, strength, location, hardness, passive mute,
 finiteness, and five sample rates.
@@ -151,7 +160,7 @@ parameterized, overlap-safe correlated-FM bursts plus a short tilted-noise
 click, a fixed three-source mixer, and the shared observation/radiation stage.
 Eight event voices preserve decaying hits during retriggering. Strength scales
 level, initial pitch, and FM deviation; hardness increases secondary-branch FM
-and click energy. Its three optional source routes are prepared gains at fixed
+and click energy. Its three optional source routes are prepared switches at fixed
 call sites. The defaults are a constructive starting voice, not a fitted claim
 about a particular acoustic kick.
 
@@ -185,9 +194,11 @@ on alternating local Givens rotations, allowing passive energy exchange within
 and between neighbouring packets. A per-anchor response scaler can keep
 selected ridges clean while the global control diffuses the rest. Pole radii
 and the external mute controller
-remain the only declared loss mechanisms. The raw dispersion tap remains
-inaudible, and the field uses one body observation/radiation path. The controls
-also expose bloom all-pass diffusion without altering its nominal delay.
+remain the only declared loss mechanisms. Bloom moves actual stored energy
+upward through adjacent packets; it is not a delayed signal or output layer.
+Its rate is explicitly energy-dependent, so stronger strikes progress farther
+upward even when the separate velocity-brightness projection is disabled. The
+field uses one body observation/radiation path.
 
 ## Calibration boundary
 
@@ -210,11 +221,13 @@ is a versioned, browser-based ear-fitting workbench using the native C++ graph.
 Numerical views explain differences and protect regressions, but do not approve
 a fit.
 
-The modular-patch layer serializes that graph as named contact,
-dispersion, modal-body, observation, and mono-output modules with validated
-ports and an acyclic routing schedule. The workbench displays the same routing
-and links module-role colours to the complete parameter panel. Five optional
-metallic-recipe connections are executable as prepared gains at fixed C++ call
+The modular-patch layer serializes that graph as named contact, modal-body,
+observation, and mono-output modules with validated
+ports and an acyclic routing schedule. Connections are Boolean switches only;
+all adjustable levels are named module parameters present in the UI, JSON, and
+C++ descriptor surface. The workbench displays the same routing
+and links module-role colours to the complete parameter panel. Three optional
+metallic-recipe connections are executable as prepared switches at fixed C++ call
 sites and can be toggled in the expanded view. The adapter rejects silent or
 unsupported structures. A second compact-kick patch exercises the same schema,
 shared C/WebAssembly API, snapshots, routing view, contextual controls, live
@@ -234,8 +247,9 @@ arbitrary new connection endpoints wait
 for another registered, statically ordered recipe.
 
 The fourth patch is the statically scheduled membrane-plus-wires snare. Seven
-prepared route gains cover its four exciter mixes, body observation,
-body-to-wire drive, and wire observation. Its browser panels and live
+prepared route switches cover its four exciter paths, body observation,
+body-to-wire drive, and wire observation. The four exciter-to-bus levels are
+ordinary visible mixer parameters, not connection coefficients. Its browser panels and live
 AudioWorklet use the same C++ recipe and prepared-state handoff. The local
 reference browser also discovers small allow-listed grids for one acoustic
 snare, one kick, a gong, a 21-inch ride, and a 14-inch hi-hat when those development samples are

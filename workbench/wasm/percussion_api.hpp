@@ -50,10 +50,10 @@ int tf_percussion_apply_prepared(std::uint32_t handle, const void *source,
                                  std::uint32_t byteSize) noexcept;
 
 std::uint32_t tf_percussion_route_count(std::uint32_t handle) noexcept;
-float tf_percussion_route_get(std::uint32_t handle,
-                              std::uint32_t index) noexcept;
-int tf_percussion_route_set(std::uint32_t handle, std::uint32_t index,
-                            float gain) noexcept;
+int tf_percussion_route_enabled(std::uint32_t handle,
+                                std::uint32_t index) noexcept;
+int tf_percussion_route_enable(std::uint32_t handle, std::uint32_t index,
+                               int enabled) noexcept;
 
 }
 

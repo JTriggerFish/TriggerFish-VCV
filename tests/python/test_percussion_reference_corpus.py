@@ -78,9 +78,8 @@ def test_curated_reference_catalog_is_small_and_allow_listed(tmp_path: Path) -> 
     }
     assert calibrations["snare-standard"] == {
         "id": "snare-standard",
-        "name": "Snare — medium standard hit (unverified start)",
+        "name": "Snare — medium standard hit",
         "recipe": "drum.snare.v1",
-        "parameter_preset": "snare-default",
         "articulation": "main",
         "velocity": 82,
         "repeat": 1,

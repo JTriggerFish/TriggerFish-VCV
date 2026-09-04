@@ -10,6 +10,7 @@ namespace tfworkbench {
 
 enum class KickParameter : std::size_t {
   ModelLevelDb,
+  PrimaryLevel,
   FundamentalHz,
   PitchDropOctaves,
   PitchDecaySeconds,

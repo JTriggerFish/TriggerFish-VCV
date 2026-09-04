@@ -91,7 +91,7 @@ function setStatus(message) { byId("status").textContent = message; }
 function setReadyIfIdle() {
   if (!pendingAnalysis.size && !renderInFlight && !renderTimer &&
       !pendingLevelMatch) {
-    setStatus(levelMatchWarning || "Ready");
+    setStatus(levelMatchWarning ? `Ready · ${levelMatchWarning}` : "Ready");
   }
 }
 function updateColourCeiling() {
@@ -418,7 +418,7 @@ async function initialize() {
     getRoutingController: () => routingController,
     buildControls, buildPageValues,
     onChanged: () => {
-      // Reference starts carry a collection-level output calibration. Keep it
+      // Reference targets carry a collection-level monitoring calibration. Keep it
       // fixed when neighbouring velocity cells are selected; per-cell matching
       // would erase the source velocity curve.
       state.modelLevelTouched = true;
@@ -517,7 +517,7 @@ function bindCalibrationPresets() {
   const select = byId("instrument-calibration");
   const calibrations = referenceBrowser.calibrationPresets();
   select.replaceChildren(
-    new Option("Choose an unverified start…", ""),
+    new Option("Choose a reference target…", ""),
     ...calibrations.map(item => new Option(item.name, item.id)),
   );
   select.onchange = async () => {
@@ -530,14 +530,16 @@ function bindCalibrationPresets() {
       recipeController.remember();
       recipeController.activate(recipe.index);
       state.macros.splice(0, state.macros.length,
-        ...calibrationParameterValues(calibration, engine.parameters));
+        ...calibrationParameterValues(
+          calibration, engine.parameters, { strict: true },
+        ));
       state.patch = calibrationPatch(
         calibration, engine.parameters, state.macros, state.patch,
       );
       state.patch = recipeAdapter(state.recipeKey).withValues(
         state.patch, engine.parameters, state.macros,
       );
-      // A named reference start owns one fixed collection-level trim. Loading
+      // A named reference target owns one fixed collection-level trim. Loading
       // its reference must not silently replace that value with a per-cell
       // match.
       state.modelLevelTouched = true;

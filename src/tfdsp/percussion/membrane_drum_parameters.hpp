@@ -26,9 +26,9 @@ enum class MembraneDrumRoute : std::size_t {
 struct MembraneDrumRouting {
   static constexpr std::size_t Count =
       static_cast<std::size_t>(MembraneDrumRoute::Count);
-  float Get(MembraneDrumRoute route) const noexcept;
-  void Set(std::size_t index, float gain) noexcept;
-  std::array<float, Count> gains{.35f, 1.f, .08f, .45f, 1.f};
+  bool Enabled(MembraneDrumRoute route) const noexcept;
+  void SetEnabled(std::size_t index, bool value) noexcept;
+  std::array<bool, Count> enabled{true, true, true, true, true};
 };
 
 struct MembraneDrumControls {
@@ -39,10 +39,12 @@ struct MembraneDrumControls {
   float bodyBrightness{.55f};
   float tensionOctaves{.11f};
   float tensionDecaySeconds{.13f};
-  float contactLevel{.7f};
+  float contactDirectLevel{.245f};
+  float contactBodyLevel{.7f};
   float contactDurationSeconds{.004f};
   float contactBrightness{.58f};
-  float fmLevel{.18f};
+  float fmDirectLevel{.0144f};
+  float fmBodyLevel{.081f};
   float fmDepthHz{260.f};
   float fmDecaySeconds{.07f};
   float pitchDropOctaves{.28f};
@@ -65,10 +67,10 @@ struct MembraneDrumParameters {
   ObservationModel<2>::Parameters observation{};
   ObservationEqualizerParameters equalizer{};
   MembraneDrumRouting routing{};
-  float contactLevel{.7f};
-  float directVelocityExponent{1.f};
-  float bodyVelocityExponent{1.f};
-  float fmLevel{.18f};
+  float contactDirectLevel{.245f};
+  float contactBodyLevel{.7f};
+  float fmDirectLevel{.0144f};
+  float fmBodyLevel{.081f};
   float outputGain{.08f};
   float maximumModalEnergy{64.f};
 };

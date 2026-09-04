@@ -10,12 +10,6 @@ float Unit(const float value, const float fallback = 0.f) noexcept {
   return std::clamp(std::isfinite(value) ? value : fallback, 0.f, 1.f);
 }
 
-float VelocityAmplitude(const float strength, const float exponent) noexcept {
-  // Velocity is deliberately never compressed. Exponents above one may
-  // expand the dynamic response; one is exactly linear.
-  return std::pow(strength, std::clamp(exponent, 1.f, 3.f));
-}
-
 ContactExciterParameters ContactForHit(ContactExciterParameters result,
                                        const MembraneDrumHit &hit) noexcept {
   const float hardness = Unit(hit.hardness, .5f);
@@ -70,7 +64,7 @@ void MembraneDrum::EventVoice::Reset() noexcept {
   contact.Reset();
   fm.Reset();
   location = .5f;
-  directAmplitude = bodyAmplitude = contactLevel = fmLevel = activity = 0.f;
+  directAmplitude = bodyAmplitude = fmVelocityScale = activity = 0.f;
   stealDirect = stealBody = stealFm = stealGain = 0.f;
   last = {};
   generation = 0;
@@ -95,19 +89,17 @@ void MembraneDrum::EventVoice::Trigger(
   contact.Trigger(contactParameters);
   fm.Trigger(fmParameters);
   location = Unit(hit.location, .5f);
-  directAmplitude =
-      VelocityAmplitude(strength, parameters.directVelocityExponent);
-  bodyAmplitude = VelocityAmplitude(strength, parameters.bodyVelocityExponent);
-  contactLevel = parameters.contactLevel;
-  fmLevel = parameters.fmLevel * (.25f + .75f * strength);
+  directAmplitude = strength;
+  bodyAmplitude = strength;
+  fmVelocityScale = .25f + .75f * strength;
   generation = eventGeneration;
 }
 
 MembraneDrum::EventVoice::Sample MembraneDrum::EventVoice::Process() noexcept {
   const auto contactSample = contact.Process();
-  Sample result{contactLevel * directAmplitude * contactSample.directRadiation,
-                contactLevel * bodyAmplitude * contactSample.bodyDrive,
-                fmLevel * bodyAmplitude * fm.Process()};
+  Sample result{directAmplitude * contactSample.directRadiation,
+                bodyAmplitude * contactSample.bodyDrive,
+                fmVelocityScale * bodyAmplitude * fm.Process()};
   if (stealGain > 0.f) {
     result.contactDirect += stealGain * stealDirect;
     result.contactBody += stealGain * stealBody;
@@ -148,11 +140,16 @@ void MembraneDrum::PrepareComponents(const float sampleRate,
   strikeEnergy_.Prepare(sampleRate, parameters.strikeEnergy);
   observation_.Prepare(sampleRate, .01f, parameters.observation);
   equalizer_.Prepare(sampleRate, parameters.equalizer);
-  directMixer_.SetGains(
-      {parameters.routing.Get(MembraneDrumRoute::ContactToDirect),
-       parameters.routing.Get(MembraneDrumRoute::FmToDirect)});
-  bodyMixer_.SetGains({parameters.routing.Get(MembraneDrumRoute::ContactToBody),
-                       parameters.routing.Get(MembraneDrumRoute::FmToBody)});
+  directMixer_.SetGains({
+      parameters.routing.Enabled(MembraneDrumRoute::ContactToDirect)
+          ? parameters.contactDirectLevel : 0.f,
+      parameters.routing.Enabled(MembraneDrumRoute::FmToDirect)
+          ? parameters.fmDirectLevel : 0.f});
+  bodyMixer_.SetGains({
+      parameters.routing.Enabled(MembraneDrumRoute::ContactToBody)
+          ? parameters.contactBodyLevel : 0.f,
+      parameters.routing.Enabled(MembraneDrumRoute::FmToBody)
+          ? parameters.fmBodyLevel : 0.f});
 }
 
 void MembraneDrum::Reset() noexcept {
@@ -200,7 +197,8 @@ MembraneDrumSources MembraneDrum::ProcessSources() noexcept {
   }
   strikeEnergy_.Process();
   const float body =
-      parameters_.routing.Get(MembraneDrumRoute::BodyToObservation) *
+      (parameters_.routing.Enabled(MembraneDrumRoute::BodyToObservation)
+           ? 1.f : 0.f) *
       membrane_.Process(membraneDrive, strikeEnergy_.TensionScale());
   return {direct, body};
 }

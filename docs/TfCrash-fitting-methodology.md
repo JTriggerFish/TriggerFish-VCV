@@ -13,10 +13,9 @@ Calibration is now fitting-by-ear first. Numerical analysis remains a set of
 diagnostic views and regression checks; it does not approve sound quality.
 Automated search code is retained as experimental developer tooling. It may
 produce a neutral starting state for the ear-fitting workbench, but it never
-approves a fit. The current 24-anchor bootstrap for the `edge v096 r01` cell has
-an overall level-invariant region/ERB RMSE of about 5.85 dB and a contact-region
-RMSE of about 7.19 dB; it is therefore explicitly an editable starting point,
-not a calibrated result.
+approves a fit. The workbench base now contains only documented neutral DSP
+defaults and a fixed output-unit calibration; it contains no corpus-specific
+modal phases, velocity exponents, contact fit, or instrument preset.
 
 ## Failure review and corrected fit contract
 
@@ -41,6 +40,17 @@ The corrected contract is:
    fine-spectrum, centroid/rolloff, flatness, crest, and ridge/noise balance;
 7. audition the candidate and relevant branch solos before it may be named a
    calibration.
+
+Body T60 is handled by a narrower contract. Factory and calibration starts use
+only the fixed DC and Nyquist curve positions; the six interior slots are
+inactive. Contact, 100 ms colour, and bloom stages cannot change T60. The tail
+schedule is the only generic schedule allowed to expose the two endpoint
+values, but its result is not accepted from the generic spectrogram objective:
+it must also pass the dedicated ERB-band decay measurement. Interior knots are
+a sparse, last-step exception after other topology and colour errors have been
+resolved, not extra degrees of freedom for reducing a spectrogram loss. The
+controlled coloured-noise recovery fixture and numerical procedure are
+documented in `TfPercussion-analysis-toolkit.md`.
 
 The 4 ms contact-only stage remains diagnostic because individual stochastic
 waveforms are not phase-comparable. Every later stage that can alter a saved
@@ -98,13 +108,11 @@ works across its own strike regions and velocities.
 ```text
 contact direct -------------------------------------> contact observation --+
        |
-       +-> immediate projected force --------------------------+
-       |                                                       v
-       `-> nonlinear dispersion -> dispersed projected force -> one stochastic
-                                                               modal field
-                                                                    |
-                                                             body observation
-                                                                    +--------> output
+       `-> body excitation -> projected force -> one stochastic modal field -+
+                                      |                               |
+                                      `-> intrinsic upward cascade    |
+                                                         body observation
+                                                                  +--> output
 ```
 
 The experimental body is one 408-mode stored state: 24 paintable anchors, each
@@ -117,12 +125,18 @@ sparse bank, statistical cloud, and separate turbulent residual primitives are
 retained as reusable DSP modules, but their crash graph, state, and controls are
 disconnected. They cannot alter the active renderer.
 
-Contact and bloom are independently projected inputs but add to that one stored
-modal state. Strike location and velocity therefore colour new force without
-recolouring energy already circulating. The raw dispersion signal is not an
-audible layer. The renderer is mono; stereo presentation belongs after the
-instrument state. Passive mute can only remove stored or future energy, and a
-zero-strength event is a strict no-op.
+Contact writes directly into that one stored modal state. Strike location and
+velocity colour new force without recolouring energy already circulating.
+The visible body-excitation gain sets the nonlinear body's drive; the separate
+body-observation gain cannot alter stored energy or cascade behaviour.
+Bloom is a passive state-level cascade from lower to adjacent higher packets;
+it has no separate signal, delay, latch, output gain, or feedback T60. Its rate,
+energy dependence, and destination phase diffusion are explicit. Higher strike
+energy accelerates the upward transfer, while the separately visible velocity
+brightness control also couples new force more strongly into high modes.
+The renderer is mono; stereo presentation belongs after the instrument state.
+Passive mute can only remove stored or future energy, and a zero-strength event
+is a strict no-op.
 
 This graph is deliberately decomposable: each branch can be soloed, bypassed,
 and compared. Its architecture may change when listening shows that a component
@@ -169,7 +183,7 @@ The initial macro groups are:
 - object: 24 anchor frequencies/levels up to 15 kHz, global turbulence, per-anchor
   turbulence response, packet spread, phase bandwidth, passive neighbour
   exchange, and broad body colour;
-- evolution: bloom route/character/time and the shared frequency-decay shape;
+- evolution: intrinsic bloom rate/energy response and the shared decay shape;
 - strike projection: radial location and implement blend; and
 - constraint/presentation: mute, master level, and safe level matching.
 
@@ -207,3 +221,12 @@ A first-object fit is credible only when:
 The always-on listening limiter is protection, never part of the fitted
 instrument. Analysis uses the pre-limiter signal unless a view is explicitly
 labelled otherwise.
+
+### Modal decay policy
+
+Ordinary fitting places modal frequencies and levels only. The active
+DC/Nyquist T60 envelope is the sole decay model; no resolved-mode decay
+parameter exists. Ridge-specific decay values may be measured as diagnostics,
+but adding such a control requires a future explicit model extension after the
+global T60 acceptance gate has passed. They must never be inherited from
+another instrument calibration.

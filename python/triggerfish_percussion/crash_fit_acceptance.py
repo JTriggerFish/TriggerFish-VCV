@@ -19,6 +19,12 @@ from .crash_fit_modes import (
     stable_modes,
 )
 from .crash_fit_prefix import causal_audio_quality
+from .crash_fit_t60 import (
+    MAXIMUM_BAND_T60_ABSOLUTE_LOG,
+    MAXIMUM_BAND_T60_RMSE_LOG,
+    MINIMUM_COMMON_T60_BANDS,
+    t60_diagnostics,
+)
 from .crash_model import CrashFit
 from .distances import modal_distance
 from .modes import match_modes
@@ -118,6 +124,9 @@ def acceptance_diagnostics(
             "ridge_ratio_absolute_error": texture.ridge_ratio_absolute_error,
             "passed": texture_passed,
         }
+        decay = t60_diagnostics(fixed_rate(cell.reference), rendered)
+        passed = passed and bool(decay["passed"])
+        results[-1]["body_t60"] = decay
     persistent_modes = _persistent_mode_diagnostics(cells, fit)
     passed = passed and bool(persistent_modes["passed"])
     return {
@@ -136,6 +145,9 @@ def acceptance_diagnostics(
             "maximum_flatness_rmse_db": 2.5,
             "maximum_crest_rmse_db": 2.5,
             "maximum_ridge_ratio_absolute_error": 0.08,
+            "maximum_band_t60_rmse_log": MAXIMUM_BAND_T60_RMSE_LOG,
+            "maximum_band_t60_absolute_log": MAXIMUM_BAND_T60_ABSOLUTE_LOG,
+            "minimum_common_t60_bands": MINIMUM_COMMON_T60_BANDS,
         },
         "cells": results,
         "persistent_modes": persistent_modes,

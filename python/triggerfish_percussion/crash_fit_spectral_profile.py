@@ -74,19 +74,19 @@ def refine_initial_spectral_profile(
 
 def _fit_profile(cell, initial, targets, budget, progress):
     if progress:
-        progress("regularized 33-knot object spectral-profile refinement")
-    start = np.asarray(initial.dense_gain_envelope_db[1:], dtype=np.float64)
+        progress("regularized modal-energy profile refinement")
+    start = np.asarray(initial.sparse_amplitude, dtype=np.float64)
 
     def make_fit(values):
-        return replace(initial, dense_gain_envelope_db=(0.0, *values.tolist()))
+        return replace(initial, sparse_amplitude=tuple(values.tolist()))
 
     residual = _CountedResidual(
         lambda values: profile_residual(cell, make_fit(values), targets, start)
     )
-    result = _solve(residual, start, -24.0, 24.0, budget)
+    result = _solve(residual, start, 0.0, 8.0, budget)
     candidate = make_fit(result.x)
     return candidate, _stage_diagnostics(
-        "initial-spectral-profile",
+        "initial-modal-energy-profile",
         cell,
         initial,
         candidate,
@@ -172,7 +172,7 @@ def _fit_diagnostics(
             + diagnostic_evaluations
         ),
         "requested_final_prefix_seconds": 0.1,
-        "start_stage": "initial-spectral-profile",
+        "start_stage": "initial-modal-energy-profile",
         "seed_prefix_seconds": [0.004, 0.015],
         "workers": 1,
         "completed": accepted,

@@ -52,6 +52,12 @@ Parameter names include units where ambiguity is possible. Positional arrays
 are transport details and must not become the durable patch format. Unknown
 module versions, parameter names, ports, cycles, duplicate IDs, non-finite
 values, and out-of-range values are rejected before a voice is prepared.
+Every connection contains one explicit Boolean `enabled` state and no numeric
+gain. Audible levels are named parameters owned by modules, so the UI, JSON,
+and C++ parameter surfaces cannot conceal an additional edge coefficient.
+Deterministic expansion of an explicitly labelled macro is different: `Size
+meta` rewrites visible parameters, while event controls such as `Implement`
+derive per-hit contact projections without creating another saved control.
 
 Fitting snapshots embed this patch alongside their reference identity, event,
 and analysis settings. The patch is therefore reproducible without relying on
@@ -62,17 +68,19 @@ the current value of a factory preset or an external file.
 The browser first validates the patch, then matches it to one of a bounded set
 of registered recipes. A recipe owns a statically ordered schedule of typed C++
 calls; it is not a general graph interpreter. The metallic-plate recipe
-compiles five optional audio connections to prepared gains at those call sites.
-The compact-kick recipe similarly compiles three source-to-mixer routes around
+compiles three optional audio connections to prepared switches at those call sites.
+The compact-kick recipe similarly compiles three source-to-mixer switches around
 two correlated-FM sources and one noise click. The membrane recipe compiles
-five optional gains around contact and correlated-FM exciters, two fixed
-mixers, a normalized and energy-bounded persistent 16-mode membrane, a
+five optional switches around contact and correlated-FM exciters. Four visible
+source-to-bus level parameters feed its two fixed mixers, followed by a
+normalized and energy-bounded persistent 16-mode membrane, a
 strike-history/tension envelope, a
 two-source observation, and a selectable output EQ. This makes every routing
 state explicit while keeping the sample loop free of JSON parsing, allocation,
 virtual dispatch, and topology discovery.
 
-The workbench may change each recipe's optional source connections live. It
+The workbench may enable or disable each recipe's optional source connections
+live. It
 rejects a routing state with no complete path to the output, and required
 mix/observation/output connections are locked. Module replacement and arbitrary
 new connections remain unavailable until another registered recipe declares
@@ -113,7 +121,7 @@ The intended initial recipes are:
 
 | Recipe | Construction |
 | --- | --- |
-| Metallic plate | contact, optional dispersion, stochastic modal field, observation |
+| Metallic plate | contact, stochastic modal field with intrinsic energy cascade, observation |
 | Membrane | contact, modal or feedback body, optional tension state, observation |
 | Snare | membrane plus body-driven wire interaction |
 | Compact kick | two overlap-safe correlated-FM burst branches |

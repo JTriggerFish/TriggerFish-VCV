@@ -141,12 +141,10 @@ void TestMembraneRecipe() {
         "membrane state respects its passive energy capacity");
 }
 
-void TestVelocityCannotCompress() {
+void TestVelocityIsLinear() {
   using namespace tfdsp::percussion;
   auto parameters = DefaultMembraneDrumParameters();
-  parameters.directVelocityExponent = .25f;
-  parameters.bodyVelocityExponent = .25f;
-  parameters.routing.gains = {1.f, 0.f, 0.f, 0.f, 0.f};
+  parameters.routing.enabled = {true, false, false, false, false};
   parameters.observation[0].gain = 1.f;
   parameters.observation[1].gain = 0.f;
   parameters.equalizer.mode = ObservationEqualizerMode::Bypass;
@@ -156,7 +154,7 @@ void TestVelocityCannotCompress() {
   const auto half = Render(
       48000.f, {.5f, .5f, .5f, 1.f, .25f, 29}, parameters);
   CheckNear(Energy(half) / Energy(hard), .25, 1.e-5,
-            "sub-linear membrane velocity requests clamp to linear");
+            "membrane contact amplitude is linear in hit strength");
 }
 
 void TestSingleHitDoesNotReachSafetyCeiling() {
@@ -187,18 +185,16 @@ void TestAcousticKickDoesNotReachSafetyCeiling() {
   controls.bodyBrightness = .28f;
   controls.tensionOctaves = .1f;
   controls.tensionDecaySeconds = .05f;
-  controls.contactLevel = .82f;
+  controls.contactDirectLevel = .287f;
+  controls.contactBodyLevel = .205f;
   controls.contactDurationSeconds = .0065f;
   controls.contactBrightness = .38f;
-  controls.fmLevel = .5f;
+  controls.fmDirectLevel = .04f;
+  controls.fmBodyLevel = .05625f;
   controls.fmDepthHz = 520.f;
   controls.fmDecaySeconds = .07f;
   controls.pitchDropOctaves = 1.f;
   auto parameters = DefaultMembraneDrumParameters(controls);
-  parameters.routing.gains[static_cast<std::size_t>(
-      MembraneDrumRoute::ContactToBody)] *= .25f;
-  parameters.routing.gains[static_cast<std::size_t>(
-      MembraneDrumRoute::FmToBody)] *= .25f;
   MembraneDrum drum;
   drum.Prepare(48000.f, parameters);
   drum.Trigger({1.f, .5f, .5f, .5f, .2f, 37});
@@ -272,9 +268,9 @@ void TestRatesAndRoutes() {
     }), "membrane recipe supports every production sample rate");
   }
   auto silentParameters = DefaultMembraneDrumParameters();
-  for (std::size_t route = 0; route < silentParameters.routing.gains.size();
+  for (std::size_t route = 0; route < silentParameters.routing.enabled.size();
        ++route)
-    silentParameters.routing.Set(route, 0.f);
+    silentParameters.routing.SetEnabled(route, false);
   const auto silent = Render(48000.f,
       {.8f, .5f, .5f, 1.f, .25f, 9}, silentParameters);
   Check(Energy(silent) < 1.e-20,
@@ -288,7 +284,7 @@ int main() {
   TestEqualizerModes();
   TestDynamicTension();
   TestMembraneRecipe();
-  TestVelocityCannotCompress();
+  TestVelocityIsLinear();
   TestSingleHitDoesNotReachSafetyCeiling();
   TestAcousticKickDoesNotReachSafetyCeiling();
   TestDefaultHeadroom();

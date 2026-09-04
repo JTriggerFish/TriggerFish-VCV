@@ -70,7 +70,8 @@ Synthetic tests currently establish:
 - calibrated STFT sine magnitude and common reference/synthesis axes;
 - exact ERB partition energy conservation;
 - transform-cache identity and version separation;
-- known T60 recovery in two bands;
+- recovery of a known two-endpoint T60 envelope from both dark- and
+  bright-coloured decaying noise;
 - explicit rejection of noise-limited and truncated T60 measurements;
 - STFT region membership based on complete window support rather than frame
   centres alone;
@@ -151,10 +152,17 @@ phases against the full signal before resynthesis and residual analysis.
   measure ERB-band energy and robust decay, spectral centroid/bandwidth,
   flatness and crest, temporal modulation, autocorrelation, late diffuseness,
   and velocity-dependent energy transfer.
-- Preserve the same decomposition in synthesis: direct body drive excites the
-  sparse modal branch, while dispersed drive excites the parallel dense
-  residual. Do not force the residual through the modal bank or expose the raw
-  dispersion tap to hide an error in either decomposition.
+- Preserve the active synthesis decomposition: immediate contact is the only
+  force entering one stored modal field. Bloom is measured as progressive
+  upward movement of energy inside that state, not as a delayed signal layer.
+  Modal ridge phase estimates remain analysis/resynthesis evidence; production
+  anchors fit non-negative energy and use the renderer's fixed zero-phase
+  centre policy. The linear anchor initializer therefore disables turbulence
+  and neighbour exchange, then uses non-negative least squares over
+  time-resolved ERB-band power rather than waveform samples. It initializes
+  coherent anchor energy only; the full turbulent/coupled field still requires
+  rendered diagnostics and listening. Fitting an unrelated recording phase
+  cannot manufacture a production phase control.
 
 ### Comparison and acceptance gates
 
@@ -171,6 +179,51 @@ ridges, and matching sparse modes cannot compensate for the wrong wash. Keep
 absolute velocity-to-level curves for dynamics experiments; use one small
 gain-only alignment for explicitly timbral comparisons, never independent
 time-frequency normalization.
+
+### Frequency-dependent T60 fitting
+
+T60 is measured as decay, not inferred from a generic spectrogram score. The
+canonical procedure computes STFT power, partitions it into ERB-rate bands,
+forms a noise-aware Schroeder energy-decay curve in each band, and robustly
+fits the -5 to -25 dB interval. Bands that lack dynamic range, hit the measured
+noise floor, or have a poor linear fit are rejected rather than assigned an
+invented T60. A band must also carry at least -60 dB of integrated energy
+relative to the strongest measured band. This observability gate prevents a
+clean exponential slope in STFT-window leakage from being mistaken for a real
+high-frequency mode: fit quality alone cannot make an inaudible band valid.
+
+The production envelope has two default active points. Their positions are
+fixed at DC and Nyquist, while their T60 values remain editable. Between them,
+the renderer interpolates linearly in ERB rate and logarithmically in seconds.
+The estimator uses the identical parameterization and fits the two log-T60
+values by robust, quality-weighted least squares across reliable audible
+bands. The endpoint values are therefore curve parameters extrapolated slightly beyond the
+measured band range; they are not claims of direct measurements at exactly
+zero Hz or Nyquist.
+
+Acceptance compares bands only through 15 kHz, the highest paintable modal
+anchor. Above that boundary the model output is satellite spill and the
+observation low-pass skirt, so treating a tiny 18--24 kHz remnant as a body
+decay measurement would fit numerical leakage rather than an authored mode.
+
+A deterministic validation fixture sums independent noise bands, applies a
+known production T60 curve, and then measures and recovers it from audio. It
+recovers a 3.2 s / 0.75 s endpoint pair within 4% for both -4 and +4 dB/octave
+spectral tilts, including a 34 dB overall level change. This establishes that
+broad spectral colour and overall level are not being mistaken for decay
+slope.
+
+T60 controls are excluded from contact, 100 ms body-colour, and 250 ms bloom
+searches. Only a long-tail stage may change the two endpoints, and a generic
+spectrogram improvement cannot approve that stage without this dedicated
+decay measurement. Acceptance compares both the fitted endpoint pair and the
+underlying common band measurements, so equal broad slopes cannot conceal a
+large frequency-local decay error. Interior knots remain available in the
+editor and serialized format, but begin inactive. A future fitter may add one
+only after the two-point fit and all non-decay controls are stable, when a
+repeatable frequency-local residual remains and a held-out comparison
+improves. It must not optimize a bank of interior knots as ordinary timbre
+controls.
 
 The fitting loss uses four complementary views rather than treating one
 spectrogram distance as perception:

@@ -148,6 +148,31 @@ void TestExplicitFeedbackCausality() {
         "dispersion declares the oversampled stage's nominal latency");
 }
 
+void TestAllpassFeedthroughCausality() {
+  auto parameters = LinearLoopParameters();
+  parameters.feedbackGain = 0.f;
+  parameters.firstAllpassGain = .6f;
+  parameters.secondAllpassGain = -.4f;
+  parameters.thirdAllpassGain = .3f;
+  parameters.fourthAllpassGain = -.2f;
+  tfdsp::percussion::DispersionLoop loop;
+  loop.Prepare(48000.f, 64.f, parameters);
+  const auto minimum = static_cast<std::size_t>(
+      std::lround(loop.MinimumPropagationSamples()));
+  std::size_t firstNonzero = 256;
+  for (std::size_t sample = 0; sample < 256; ++sample) {
+    const float output = loop.Process(sample == 0 ? 1.f : 0.f);
+    if (std::abs(output) > 1.e-9f && firstNonzero == 256)
+      firstNonzero = sample;
+  }
+  Check(minimum == 20,
+        "non-zero allpasses declare their direct feedthrough as zero latency");
+  Check(firstNonzero == minimum,
+        "dispersion causality includes non-zero allpass feedthrough exactly");
+  Check(loop.NominalPropagationSamples() > loop.MinimumPropagationSamples(),
+        "allpass group-delay scale remains distinct from causal latency");
+}
+
 void TestPassiveConstraintDampsWithoutExciting() {
   const auto parameters = LinearLoopParameters();
   tfdsp::percussion::DispersionLoop neutral;
@@ -318,6 +343,7 @@ int main() {
   TestZeroDriveSelfPhaseReference();
   TestSelfPhaseReportsItsEffectiveDelay();
   TestExplicitFeedbackCausality();
+  TestAllpassFeedthroughCausality();
   TestPassiveConstraintDampsWithoutExciting();
   TestLinearLoopDecayCalibration();
   TestTwoTimesNonlinearityAgainstFourTimesReference();

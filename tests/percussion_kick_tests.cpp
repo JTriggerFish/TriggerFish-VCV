@@ -14,10 +14,10 @@ using percussion_test::Check;
 
 std::vector<float> Render(const float sampleRate, const float strength,
                           const float hardness, const std::uint32_t seed,
-                          const std::array<float, 3> routes = {1.f, 1.f, 1.f}) {
+                          const std::array<bool, 3> routes = {true, true, true}) {
   auto parameters = tfdsp::percussion::DefaultCompactKickParameters();
   for (std::size_t index = 0; index < routes.size(); ++index)
-    parameters.routing.Set(index, routes[index]);
+    parameters.routing.SetEnabled(index, routes[index]);
   tfdsp::percussion::CompactKick kick;
   kick.Prepare(sampleRate, parameters);
   kick.Trigger({strength, hardness, seed});
@@ -119,10 +119,10 @@ void TestVoiceExhaustion() {
 
 void TestRoutes() {
   const auto complete = Render(48000.f, .8f, .5f, 9);
-  const auto primary = Render(48000.f, .8f, .5f, 9, {1.f, 0.f, 0.f});
-  const auto secondary = Render(48000.f, .8f, .5f, 9, {0.f, 1.f, 0.f});
-  const auto click = Render(48000.f, .8f, .5f, 9, {0.f, 0.f, 1.f});
-  const auto silent = Render(48000.f, .8f, .5f, 9, {0.f, 0.f, 0.f});
+  const auto primary = Render(48000.f, .8f, .5f, 9, {true, false, false});
+  const auto secondary = Render(48000.f, .8f, .5f, 9, {false, true, false});
+  const auto click = Render(48000.f, .8f, .5f, 9, {false, false, true});
+  const auto silent = Render(48000.f, .8f, .5f, 9, {false, false, false});
   Check(Energy(primary) > 1.e-5 && Energy(secondary) > 1.e-7 &&
             Energy(click) > 1.e-8,
         "each compact-kick source route is independently audible");

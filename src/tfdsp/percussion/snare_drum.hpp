@@ -18,9 +18,9 @@ enum class SnareDrumRoute : std::size_t {
 struct SnareDrumRouting {
   static constexpr std::size_t Count =
       static_cast<std::size_t>(SnareDrumRoute::Count);
-  float Get(SnareDrumRoute route) const noexcept;
-  void Set(std::size_t index, float gain) noexcept;
-  std::array<float, Count> gains{.35f, 1.f, .05f, .32f, 1.f, 1.f, 1.f};
+  bool Enabled(SnareDrumRoute route) const noexcept;
+  void SetEnabled(std::size_t index, bool value) noexcept;
+  std::array<bool, Count> enabled{true, true, true, true, true, true, true};
 };
 
 struct SnareDrumParameters {
@@ -29,7 +29,7 @@ struct SnareDrumParameters {
   ObservationModel<3>::Parameters observation{};
   ObservationEqualizerParameters equalizer{};
   SnareDrumRouting routing{};
-  float outputGain{.32f};
+  float outputGain{.2f};
 };
 
 struct SnareDrumPreparedParameters {
@@ -38,7 +38,7 @@ struct SnareDrumPreparedParameters {
   ObservationModel<3>::Parameters observation{};
   ObservationEqualizerParameters equalizer{};
   SnareDrumRouting routing{};
-  float outputGain{.32f};
+  float outputGain{.2f};
   float sampleRate{48000.f};
 };
 
@@ -70,7 +70,7 @@ private:
   ObservationModel<3> observation_{};
   ObservationEqualizer equalizer_{};
   SnareDrumRouting routing_{};
-  float outputGain_{.32f};
+  float outputGain_{.2f};
 };
 
 } // namespace tfdsp::percussion

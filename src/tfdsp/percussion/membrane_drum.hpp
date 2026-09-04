@@ -60,8 +60,7 @@ private:
     float location{.5f};
     float directAmplitude{};
     float bodyAmplitude{};
-    float contactLevel{};
-    float fmLevel{};
+    float fmVelocityScale{};
     float activity{};
     float activityRelease{};
     float stealDirect{};

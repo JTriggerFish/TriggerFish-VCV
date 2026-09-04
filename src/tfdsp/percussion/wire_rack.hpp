@@ -26,7 +26,6 @@ struct WireRackParameters {
   float brightness{.62f};
   float noiseMix{.6f};
   float modalMix{.75f};
-  float outputGain{.42f};
   float maximumModalEnergy{16.f};
   std::uint32_t seed{0x57495245u};
 };
@@ -47,7 +46,6 @@ struct WireRackPreparedParameters {
   float noiseTiltDb{};
   float noiseMix{.6f};
   float modalMix{.75f};
-  float outputLevel{.42f};
   float maximumModalEnergy{16.f};
   std::size_t activeModeCount{WireRackModeCount};
   std::uint32_t seed{0x57495245u};

@@ -1,5 +1,6 @@
 #include "crash_api.hpp"
 #include "crash_macros.hpp"
+#include "percussion_api.hpp"
 
 #include <algorithm>
 #include <array>
@@ -7,6 +8,7 @@
 #include <cstdint>
 #include <iostream>
 #include <limits>
+#include <string_view>
 #include <vector>
 
 namespace {
@@ -81,11 +83,11 @@ double CrestFactor(const std::vector<float> &audio) {
 }
 
 bool SetRoutes(const std::uint32_t handle,
-               const std::array<float, 5> &gains) {
+               const std::array<bool, 3> &enabled) {
   bool accepted = true;
-  for (std::size_t index = 0; index < gains.size(); ++index) {
-    accepted &= tf_crash_route_set(handle, static_cast<std::uint32_t>(index),
-                                   gains[index]) == 1;
+  for (std::size_t index = 0; index < enabled.size(); ++index) {
+    accepted &= tf_crash_route_enable(
+                    handle, static_cast<std::uint32_t>(index), enabled[index]) == 1;
   }
   return accepted && tf_crash_macro_commit(handle) == 1;
 }
@@ -94,9 +96,10 @@ bool SetRoutes(const std::uint32_t handle,
 
 int main() {
   Check(tf_crash_api_version() == 1, "unreleased API remains version one");
-  Check(tf_crash_route_count() == 5,
-        "the metallic recipe exposes five optional routes");
-  Check(tf_crash_macro_count() == 167, "the fitting surface is versioned");
+  Check(tf_crash_route_count() == 3,
+        "the metallic recipe exposes three optional routes");
+  Check(tf_crash_macro_count() == 124,
+        "the fitting surface contains only active unified parameters");
   Check(std::abs(tf_crash_macro_default(0) + 36.f) < 1.e-6f &&
             tf_crash_macro_maximum(0) == 0.f,
         "the crash workbench uses an attenuation-only -36 dB level");
@@ -114,8 +117,9 @@ int main() {
   std::size_t secondLevel = painted.size();
   std::size_t fieldTurbulence = painted.size();
   std::size_t bloomDiffusion = painted.size();
-  std::size_t bloomLevel = painted.size();
-  std::size_t bloomNonlinearity = painted.size();
+  std::size_t bloomRate = painted.size();
+  std::size_t bloomEnergyDependence = painted.size();
+  std::size_t bodyExcitation = painted.size();
   std::size_t firstDecayActive = painted.size();
   std::size_t firstModeTurbulence = painted.size();
   for (std::size_t index = 0; index < painted.size(); ++index) {
@@ -124,16 +128,20 @@ int main() {
     else if (key == "resolved_level_0") firstLevel = index;
     else if (key == "resolved_level_1") secondLevel = index;
     else if (key == "field_turbulence") fieldTurbulence = index;
-    else if (key == "bloom_diffusion") bloomDiffusion = index;
-    else if (key == "bloom_level") bloomLevel = index;
-    else if (key == "bloom_nonlinearity") bloomNonlinearity = index;
-    else if (key == "body_decay_active_0") firstDecayActive = index;
+    else if (key == "bloom_phase_diffusion") bloomDiffusion = index;
+    else if (key == "bloom_rate") bloomRate = index;
+    else if (key == "bloom_energy_dependence")
+      bloomEnergyDependence = index;
+    else if (key == "body_excitation") bodyExcitation = index;
+    else if (key == "body_decay_active_1") firstDecayActive = index;
     else if (key == "resolved_turbulence_0") firstModeTurbulence = index;
   }
   Check(firstFrequency < painted.size() && firstLevel < painted.size() &&
             secondLevel < painted.size() &&
             fieldTurbulence < painted.size() && bloomDiffusion < painted.size() &&
-            bloomLevel < painted.size() && bloomNonlinearity < painted.size() &&
+            bloomRate < painted.size() &&
+            bloomEnergyDependence < painted.size() &&
+            bodyExcitation < painted.size() &&
             firstDecayActive < painted.size() &&
             firstModeTurbulence < painted.size(),
         "modal-field macros have stable keys");
@@ -143,10 +151,10 @@ int main() {
   painted[firstLevel] = 12.f;
   painted[secondLevel] = -12.f;
   painted[firstModeTurbulence] = 0.f;
-  const auto baseFit = tfworkbench::CrashWorkbenchBaseFit();
-  Check(std::abs(baseFit.fieldGain / baseFit.directGain -
-                 .0376872f / .227942f) < 1.e-5f,
-        "workbench level calibration preserves the fitted body/contact ratio");
+  painted[bodyExcitation] = .2f;
+  const auto baseFit = tfworkbench::MetallicWorkbenchBaseFit();
+  Check(std::abs(baseFit.outputGain - 174.f) < 1.e-5f,
+        "the neutral metallic base contains only fixed output calibration");
   const auto paintedFit = tfworkbench::ApplyCrashMacros(baseFit, painted);
   const auto defaultFit = tfworkbench::ApplyCrashMacros(
       baseFit, tfworkbench::DefaultCrashMacros());
@@ -155,27 +163,32 @@ int main() {
         "resolved editor directly places and levels resolved modes");
   Check(paintedFit.fieldTurbulenceScale[0] == 0.f,
         "each modal anchor owns a turbulence-response scaler");
-  Check(paintedFit.denseGainEnvelopeDb == defaultFit.denseGainEnvelopeDb,
-        "resolved-mode paint cannot colour the dense wash");
-  Check(std::abs(defaultFit.contactChirpGain - baseFit.contactChirpGain) <
-                1.e-6f &&
-            std::abs(defaultFit.contactDurationScale -
-                     baseFit.contactDurationScale) < 1.e-6f &&
-            std::abs(defaultFit.dispersionDrive - baseFit.dispersionDrive) <
-                1.e-6f &&
-            std::abs(defaultFit.dispersionExcursionSamples -
-                     baseFit.dispersionExcursionSamples) < 1.e-5f,
-        "neutral macros preserve the fitted contact and bloom");
+  Check(std::abs(paintedFit.bodyExcitationGain - .2f) < 1.e-6f,
+        "body excitation is an explicit modal-input parameter");
+  Check(std::abs(defaultFit.bloomRateOctavesPerSecond - 2.f) < 1.e-5f &&
+            defaultFit.contactDurationScale == .65f,
+        "default macros resolve explicit contact and bloom values");
   auto noBloom = tfworkbench::DefaultCrashMacros();
-  noBloom[bloomLevel] = 0.f;
+  noBloom[bloomRate] = 0.f;
   const auto noBloomFit = tfworkbench::ApplyCrashMacros(baseFit, noBloom);
-  Check(noBloomFit.bloomBodyGain == 0.f &&
-            std::abs(noBloomFit.dispersionDrive - baseFit.dispersionDrive) <
-                1.e-6f,
-        "bloom level reaches zero without changing loop nonlinearity");
-  Check(defaultFit.bodyDecayActive.front() &&
-            defaultFit.bodyDecayActive.back(),
-        "the T60 envelope always retains DC and Nyquist boundaries");
+  Check(noBloomFit.bloomRateOctavesPerSecond == 0.f &&
+            noBloomFit.bloomEnergyDependence ==
+                defaultFit.bloomEnergyDependence,
+        "bloom rate reaches zero without changing its energy response");
+  Check(std::count(defaultFit.bodyDecayActive.begin(),
+                   defaultFit.bodyDecayActive.end(), true) == 0,
+        "the T60 envelope defaults to no optional interior knots");
+  auto slowMacros = tfworkbench::DefaultCrashMacros();
+  auto fastMacros = slowMacros;
+  slowMacros[bloomRate] = 1.f;
+  fastMacros[bloomRate] = 12.f;
+  const auto slowFit = tfworkbench::ApplyCrashMacros(baseFit, slowMacros);
+  const auto fastFit = tfworkbench::ApplyCrashMacros(baseFit, fastMacros);
+  Check(slowFit.bloomRateOctavesPerSecond <
+            fastFit.bloomRateOctavesPerSecond &&
+            slowFit.bloomEnergyDependence == fastFit.bloomEnergyDependence &&
+            slowFit.bloomPhaseDiffusion == fastFit.bloomPhaseDiffusion,
+        "bloom rate is independent of energy response and phase diffusion");
   auto cleared = tfworkbench::DefaultCrashMacros();
   for (std::size_t mode = 0; mode < 24; ++mode) {
     const auto index = firstLevel + mode;
@@ -189,9 +202,18 @@ int main() {
   Check(tf_crash_create(0.f) == 0, "invalid sample rates are rejected");
   const auto handle = tf_crash_create(48000.f);
   Check(handle != 0, "a renderer session can be created");
+  Check(tf_percussion_parameter_count(handle) == tf_crash_macro_count(),
+        "legacy and generic APIs expose the same complete control surface");
+  for (std::uint32_t index = 0; index < tf_crash_macro_count(); ++index) {
+    const auto *legacyKey = tf_crash_macro_key(index);
+    const auto *genericKey = tf_percussion_parameter_key(handle, index);
+    Check(legacyKey != nullptr && genericKey != nullptr &&
+              std::string_view(legacyKey) == genericKey,
+          "legacy and generic APIs expose controls in identical key order");
+  }
   for (std::uint32_t index = 0; index < tf_crash_route_count(); ++index) {
-    Check(std::abs(tf_crash_route_get(handle, index) - 1.f) < 1.e-6f,
-          "metallic recipe routes default to unity");
+    Check(tf_crash_route_enabled(handle, index) == 1,
+          "metallic recipe routes default to enabled");
   }
 
   const auto first = Render(handle, 17, .8f, 256);
@@ -206,7 +228,7 @@ int main() {
     return std::isfinite(sample);
   }), "rendered samples remain finite");
 
-  Check(SetRoutes(handle, {0.f, 0.f, 0.f, 1.f, 0.f}),
+  Check(SetRoutes(handle, {false, true, false}),
         "the direct-contact-only route is accepted");
   const auto directOnly = Render(handle, 17, .8f, 256);
   Check(Energy(directOnly) > 1.e-12,
@@ -214,31 +236,22 @@ int main() {
   Check(Difference(first, directOnly) > 1.e-8,
         "the direct route is distinct from the complete recipe");
 
-  Check(SetRoutes(handle, {0.f, 1.f, 0.f, 0.f, 1.f}),
-        "the immediate-body-only route is accepted");
-  const auto immediateBody = Render(handle, 17, .8f, 256);
-  Check(Energy(immediateBody) > 1.e-12,
-        "the immediate body path remains audible");
+  Check(SetRoutes(handle, {true, false, true}),
+        "the modal-body-only route is accepted");
+  const auto modalBody = Render(handle, 17, .8f, 256);
+  Check(Energy(modalBody) > 1.e-12,
+        "the modal body path remains audible");
 
-  Check(SetRoutes(handle, {1.f, 0.f, 1.f, 0.f, 1.f}),
-        "the bloomed-body-only route is accepted");
-  const auto bloomedBody = Render(handle, 17, .8f, 256);
-  Check(Energy(bloomedBody) > 1.e-12,
-        "the bloomed body path remains audible");
-  Check(Difference(immediateBody, bloomedBody) > 1.e-8,
-        "immediate and bloomed body paths are distinct");
-
-  Check(SetRoutes(handle, {1.f, 1.f, 1.f, 0.f, 0.f}),
+  Check(SetRoutes(handle, {true, false, false}),
         "a silent observation ablation is accepted by the low-level API");
   const auto silent = Render(handle, 17, .8f, 256);
   Check(Energy(silent) < 1.e-20,
         "disabling both observation feeds produces silence");
-  Check(tf_crash_route_set(handle, tf_crash_route_count(), 1.f) == 0,
+  Check(tf_crash_route_enable(handle, tf_crash_route_count(), 1) == 0,
         "invalid route indices are rejected");
-  Check(tf_crash_route_set(handle, 0,
-                           std::numeric_limits<float>::quiet_NaN()) == 0,
-        "non-finite route gains are rejected");
-  Check(SetRoutes(handle, {1.f, 1.f, 1.f, 1.f, 1.f}),
+  Check(tf_crash_route_enable(handle, 0, 2) == 0,
+        "non-boolean route states are rejected");
+  Check(SetRoutes(handle, {true, true, true}),
         "factory routing can be restored after ablation");
 
   const auto brush = Render(handle, 17, .8f, 256, 0.f, 48000);
@@ -283,11 +296,11 @@ int main() {
         "unified turbulence materially changes the body response");
   Check(tf_crash_macro_set(handle, bloomDiffusion, 0.f) &&
             tf_crash_macro_commit(handle),
-        "the bloom allpass chain can collapse to matched delays");
+        "bloom transfer phase diffusion can be disabled");
   const auto focusedBloom = Render(handle, 17, .8f, 256);
   Check(tf_crash_macro_set(handle, bloomDiffusion, 1.f) &&
             tf_crash_macro_commit(handle),
-        "the bloom allpass chain can restore full diffusion");
+        "bloom transfer can restore full phase diffusion");
   const auto diffuseBloom = Render(handle, 17, .8f, 256);
   const double bloomEnergy =
       Difference(focusedBloom, std::vector<float>(focusedBloom.size()));

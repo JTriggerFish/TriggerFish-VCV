@@ -7,13 +7,13 @@
 
 namespace tfdsp::percussion {
 
-float SnareDrumRouting::Get(const SnareDrumRoute route) const noexcept {
-  return gains[static_cast<std::size_t>(route)];
+bool SnareDrumRouting::Enabled(const SnareDrumRoute route) const noexcept {
+  return enabled[static_cast<std::size_t>(route)];
 }
 
-void SnareDrumRouting::Set(const std::size_t index, const float gain) noexcept {
-  if (index < gains.size())
-    gains[index] = std::clamp(tfdsp::FiniteNormalOrZero(gain), 0.f, 2.f);
+void SnareDrumRouting::SetEnabled(const std::size_t index,
+                                  const bool value) noexcept {
+  if (index < enabled.size()) enabled[index] = value;
 }
 
 SnareDrumParameters DefaultSnareDrumParameters() noexcept {
@@ -26,16 +26,16 @@ SnareDrumParameters DefaultSnareDrumParameters() noexcept {
   body.bodyBrightness = .68f;
   body.tensionOctaves = .08f;
   body.tensionDecaySeconds = .09f;
-  body.contactLevel = .78f;
+  body.contactDirectLevel = .273f;
+  body.contactBodyLevel = .78f;
   body.contactDurationSeconds = .0022f;
   body.contactBrightness = .25f;
-  body.fmLevel = .08f;
+  body.fmDirectLevel = .004f;
+  body.fmBodyLevel = .0256f;
   body.fmDepthHz = 180.f;
   body.fmDecaySeconds = .035f;
   body.pitchDropOctaves = .12f;
   result.membrane = DefaultMembraneDrumParameters(body);
-  result.membrane.directVelocityExponent = 2.59f;
-  result.membrane.bodyVelocityExponent = 2.23f;
   // Keep the safety ceiling inactive for normal hits so velocity remains an
   // amplitude/energy control instead of collapsing into hard limiting.
   result.membrane.maximumModalEnergy = 64.f;
@@ -46,7 +46,6 @@ SnareDrumParameters DefaultSnareDrumParameters() noexcept {
   result.membrane.observation[1].gain = 1.f;
   result.membrane.equalizer.mode = ObservationEqualizerMode::Bypass;
   result.membrane.outputGain = 1.f;
-  result.membrane.routing.gains = {.35f, 1.f, .05f, .32f, 1.f};
 
   result.wires.sensitivity = 12.f;
   result.wires.attackSeconds = .0015f;
@@ -61,12 +60,11 @@ SnareDrumParameters DefaultSnareDrumParameters() noexcept {
   result.wires.brightness = 0.f;
   result.wires.noiseMix = .6f;
   result.wires.modalMix = .45f;
-  result.wires.outputGain = .46f;
   result.wires.maximumModalEnergy = 16.f;
 
   result.observation[0].gain = .08f;
   result.observation[1].gain = .95f;
-  result.observation[2].gain = 1.f;
+  result.observation[2].gain = .46f;
   for (auto &path : result.observation)
     path.radiationEnabled = false;
   result.equalizer.mode = ObservationEqualizerMode::Radiation;
@@ -76,7 +74,7 @@ SnareDrumParameters DefaultSnareDrumParameters() noexcept {
   result.equalizer.radiation.colourGainDb = 0.f;
   result.equalizer.radiation.colourQ = .7f;
   result.equalizer.outputGain = 1.f;
-  result.outputGain = .32f;
+  result.outputGain = .2f;
   return result;
 }
 
@@ -85,10 +83,20 @@ PrepareSnareDrumParameters(const float sampleRate,
                            const SnareDrumParameters &source) {
   SnareDrumPreparedParameters result;
   auto membrane = source.membrane;
-  membrane.routing.gains = {source.routing.Get(SnareDrumRoute::ContactToDirect),
-                            source.routing.Get(SnareDrumRoute::ContactToBody),
-                            source.routing.Get(SnareDrumRoute::FmToDirect),
-                            source.routing.Get(SnareDrumRoute::FmToBody), 1.f};
+  membrane.routing.SetEnabled(
+      static_cast<std::size_t>(MembraneDrumRoute::ContactToDirect),
+      source.routing.Enabled(SnareDrumRoute::ContactToDirect));
+  membrane.routing.SetEnabled(
+      static_cast<std::size_t>(MembraneDrumRoute::ContactToBody),
+      source.routing.Enabled(SnareDrumRoute::ContactToBody));
+  membrane.routing.SetEnabled(
+      static_cast<std::size_t>(MembraneDrumRoute::FmToDirect),
+      source.routing.Enabled(SnareDrumRoute::FmToDirect));
+  membrane.routing.SetEnabled(
+      static_cast<std::size_t>(MembraneDrumRoute::FmToBody),
+      source.routing.Enabled(SnareDrumRoute::FmToBody));
+  membrane.routing.SetEnabled(
+      static_cast<std::size_t>(MembraneDrumRoute::BodyToObservation), true);
   result.membrane = PrepareMembraneDrumParameters(sampleRate, membrane);
   result.wires = PrepareWireRackParameters(sampleRate, source.wires);
   result.observation = source.observation;
@@ -130,12 +138,15 @@ void SnareDrum::Trigger(const MembraneDrumHit &hit) noexcept {
 SnareDrumFrame SnareDrum::ProcessFrame() noexcept {
   const auto membrane = membrane_.ProcessSources();
   const float wireDrive =
-      routing_.Get(SnareDrumRoute::BodyToWires) * membrane.body;
+      (routing_.Enabled(SnareDrumRoute::BodyToWires) ? 1.f : 0.f) *
+      membrane.body;
   const float wires = wires_.Process(wireDrive);
   const float observed = observation_.Process(
       {membrane.direct,
-       routing_.Get(SnareDrumRoute::BodyToObservation) * membrane.body,
-       routing_.Get(SnareDrumRoute::WiresToObservation) * wires});
+       (routing_.Enabled(SnareDrumRoute::BodyToObservation) ? 1.f : 0.f) *
+           membrane.body,
+       (routing_.Enabled(SnareDrumRoute::WiresToObservation) ? 1.f : 0.f) *
+           wires});
   const float output =
       tfdsp::FiniteNormalOrZero(outputGain_ * equalizer_.Process(observed));
   return {membrane.direct, membrane.body, wires, output};

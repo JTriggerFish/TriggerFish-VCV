@@ -9,9 +9,7 @@
 namespace tfdsp::percussion {
 namespace {
 
-// Contact body drive and generalized modal force use different arbitrary units.
-// ModalBank itself applies no hidden decay-dependent gain normalization.
-constexpr float ModalDriveGain = .05f;
+constexpr std::uint32_t ModalFieldSeed = 0x43524153u;
 
 float Positive(const float value, const float fallback) noexcept {
   return std::isfinite(value) && value > 0.f ? value : fallback;
@@ -22,19 +20,19 @@ public:
   BodyDecayEnvelope(const float sampleRate,
                     const CrashCymbalFitParameters &fit) noexcept {
     const float nyquist = .5f * sampleRate;
-    for (std::size_t index = 0; index < CrashBodyDecayPointCount; ++index) {
-      if (index != 0 && index + 1 != CrashBodyDecayPointCount &&
-          !fit.bodyDecayActive[index])
-        continue;
-      const float frequency = index == 0 ? 0.f :
-          index + 1 == CrashBodyDecayPointCount ? nyquist :
-          std::clamp(tfdsp::FiniteNormalOrZero(
-                         fit.bodyDecayFrequencyHz[index]),
-                     1.f, std::max(1.f, nyquist - 1.f));
+    points_[count_++] = {ErbRate(0.f), std::log(std::clamp(
+        Positive(fit.bodyDecaySeconds.front(), 1.f), .01f, 30.f))};
+    for (std::size_t index = 0; index < CrashBodyDecayInteriorPointCount;
+         ++index) {
+      if (!fit.bodyDecayActive[index]) continue;
+      const float frequency = std::clamp(tfdsp::FiniteNormalOrZero(
+          fit.bodyDecayFrequencyHz[index]), 1.f, std::max(1.f, nyquist - 1.f));
       const float seconds = std::clamp(
-          Positive(fit.bodyDecaySeconds[index], 1.f), .01f, 30.f);
+          Positive(fit.bodyDecaySeconds[index + 1], 1.f), .01f, 30.f);
       points_[count_++] = {ErbRate(frequency), std::log(seconds)};
     }
+    points_[count_++] = {ErbRate(nyquist), std::log(std::clamp(
+        Positive(fit.bodyDecaySeconds.back(), 1.f), .01f, 30.f))};
     std::sort(points_.begin(), points_.begin() + count_,
               [](const auto &left, const auto &right) {
                 return left.erbRate < right.erbRate;
@@ -78,16 +76,13 @@ CrashModalField::Parameters ModalField(
     const BodyDecayEnvelope &decay) noexcept {
   struct Anchor {
     float frequencyHz;
-    float decayRatio;
     float amplitude;
-    float phaseRadians;
     float turbulenceScale;
   };
   std::array<Anchor, CrashSparseModeCount> anchors{};
   for (std::size_t index = 0; index < anchors.size(); ++index) {
     anchors[index] = {
-        fit.sparseFrequencyHz[index], fit.sparseDecayRatio[index],
-        fit.sparseAmplitude[index], fit.sparsePhaseRadians[index],
+        fit.sparseFrequencyHz[index], fit.sparseAmplitude[index],
         fit.fieldTurbulenceScale[index]};
   }
   std::sort(anchors.begin(), anchors.end(), [](const auto &left,
@@ -96,14 +91,21 @@ CrashModalField::Parameters ModalField(
   });
   CrashModalField::Parameters result{};
   DeterministicRandom random;
-  random.Seed(fit.denseModeSeed ^ 0x4649454cu);
+  random.Seed(ModalFieldSeed ^ 0x4649454cu);
   const float globalTurbulence = std::clamp(fit.fieldTurbulence, 0.f, 1.f);
+  const float turbulenceSlope = std::clamp(
+      fit.fieldTurbulenceSlopePerOctave, -1.f, 1.f);
+  const float turbulenceCentre = std::clamp(
+      Positive(fit.fieldTurbulenceCentreHz, 4000.f), 20.f, .48f * sampleRate);
+  const float bodyTiltCentre = std::clamp(
+      Positive(fit.bodyTiltCentreHz, 4000.f), 20.f, .48f * sampleRate);
   std::array<float, CrashSparseModeCount> anchorGains{};
   float anchorSquaredGain = 0.f;
   for (std::size_t anchor = 0; anchor < anchorGains.size(); ++anchor) {
     const float frequency = Positive(anchors[anchor].frequencyHz, 1000.f);
     const float tilt = std::pow(
-        10.f, fit.denseTiltDbPerOctave * std::log2(frequency / 4000.f) / 20.f);
+        10.f, std::clamp(fit.bodyTiltDbPerOctave, -24.f, 24.f) *
+            std::log2(frequency / bodyTiltCentre) / 20.f);
     const float gain = std::clamp(
         Positive(anchors[anchor].amplitude, 0.f) * tilt, 0.f, 8.f);
     anchorGains[anchor] = gain;
@@ -115,8 +117,12 @@ CrashModalField::Parameters ModalField(
   constexpr std::size_t PairCount = (CrashPacketModeCount - 1) / 2;
 
   for (std::size_t anchor = 0; anchor < CrashSparseModeCount; ++anchor) {
+    const float spectralTurbulence = std::clamp(
+        globalTurbulence + turbulenceSlope * std::log2(
+            std::max(anchors[anchor].frequencyHz, 20.f) / turbulenceCentre),
+        0.f, 1.f);
     const float turbulence = std::clamp(
-        globalTurbulence * anchors[anchor].turbulenceScale, 0.f, 1.f);
+        spectralTurbulence * anchors[anchor].turbulenceScale, 0.f, 1.f);
     const float diffuseEnergy = .9f * turbulence * turbulence;
     const float coreWeight = std::sqrt(1.f - diffuseEnergy);
     const float satelliteWeight = std::sqrt(
@@ -130,8 +136,6 @@ CrashModalField::Parameters ModalField(
             std::clamp(Positive(fit.sparseTune, 1.f), .5f, 2.f),
         20.f, .48f * sampleRate);
     const float anchorGain = anchorNormalization * anchorGains[anchor];
-    const float decayRatio = std::clamp(
-        Positive(anchors[anchor].decayRatio, 1.f), .5f, 2.f);
     const auto makeMode = [&](const std::size_t slot, const float frequency,
                               const float weight, const float phase) {
       const std::size_t index = anchor * CrashPacketModeCount + slot;
@@ -139,8 +143,8 @@ CrashModalField::Parameters ModalField(
                                               .48f * sampleRate);
       result[index] = {
           safeFrequency,
-          std::clamp(decay.At(safeFrequency) * decayRatio, .01f, 30.f),
-          ModalDriveGain * anchorGain * weight,
+          std::clamp(decay.At(safeFrequency), .01f, 30.f),
+          anchorGain * weight,
           1.f,
           phase,
           bandwidthErb * ErbBandwidth(safeFrequency) *
@@ -149,8 +153,7 @@ CrashModalField::Parameters ModalField(
           turbulence * turbulence};
     };
 
-    makeMode(0, centre, coreWeight,
-             std::clamp(anchors[anchor].phaseRadians, -Pi, Pi));
+    makeMode(0, centre, coreWeight, 0.f);
     const float centreErb = ErbRate(centre);
     for (std::size_t pair = 0; pair < PairCount; ++pair) {
       const float radius = std::pow(
@@ -185,46 +188,14 @@ void SetLocationProjections(const Parameters &modes,
         static_cast<float>(Count - 1);
     const float logDistance = std::log2(std::max(frequency, 1.f) / 4200.f);
     const float bellFocus = std::exp(-.5f * logDistance * logDistance);
-    bell[mode] = .25f + 1.15f * bellFocus;
-    bow[mode] = .72f + .22f *
+    const float baseBell = .25f + 1.15f * bellFocus;
+    const float baseBow = .72f + .22f *
         std::abs(std::sin(3.14159265358979323846f * (2.7f * position + .13f)));
-    edge[mode] = .65f + .55f * std::sqrt(position);
+    const float baseEdge = .65f + .55f * std::sqrt(position);
+    bell[mode] = baseBell;
+    bow[mode] = baseBow;
+    edge[mode] = baseEdge;
   }
-}
-
-DispersionLoopParameters Dispersion(
-    const float sampleRate, const CrashCymbalFitParameters &fit) noexcept {
-  const float scale = sampleRate / 48000.f;
-  DispersionLoopParameters result;
-  result.baseDelaySamples = 11.f * scale;
-  result.slowDelaySamples = 8.f * scale;
-  result.slowDepthSamples = 1.3f * scale;
-  result.slowRateHz = .17f;
-  result.firstAllpassDelaySamples = 7.f * scale;
-  const float diffusion = std::clamp(fit.dispersionDiffusion, 0.f, 1.f);
-  result.firstAllpassGain = diffusion * .61f;
-  result.secondAllpassDelaySamples = 13.f * scale;
-  result.secondAllpassGain = diffusion * -.53f;
-  result.thirdAllpassDelaySamples = 5.f * scale;
-  result.thirdAllpassGain = diffusion * .3f;
-  result.fourthAllpassDelaySamples = 17.f * scale;
-  result.fourthAllpassGain = diffusion * -.25f;
-  result.selfPhase.centreDelaySamples = 9.f * scale;
-  result.selfPhase.maximumExcursionSamples =
-      std::clamp(fit.dispersionExcursionSamples, 0.f, 16.f) * scale;
-  result.selfPhase.drive = std::clamp(fit.dispersionDrive, 0.f, 8.f);
-  result.selfPhase.toneHz = 7600.f;
-  result.selfPhase.envelopeReleaseSeconds = .018f;
-  result.selfPhase.normalization = .55f;
-  result.decay = {
-      std::clamp(fit.dispersionLowDecaySeconds, .05f, 5.f),
-      std::clamp(fit.dispersionMiddleDecaySeconds, .05f, 5.f),
-      std::clamp(fit.dispersionHighDecaySeconds, .05f, 5.f)};
-  result.feedbackGain = std::clamp(fit.dispersionFeedback, 0.f, .9999f);
-  result.lowCrossoverHz = 700.f;
-  result.highCrossoverHz = 6500.f;
-  result.modulationSeed = 0x43524153u;
-  return result;
 }
 
 ObservationModel<2>::Parameters Observation(
@@ -234,28 +205,28 @@ ObservationModel<2>::Parameters Observation(
   result[0].radiationEnabled = fit.directRadiationEnabled;
   result[0].radiation.lowCutHz =
       std::clamp(fit.directLowCutHz, 10.f, 1000.f);
-  result[0].radiation.lowCutQ = std::clamp(fit.directLowCutQ, .25f, 4.f);
+  result[0].radiation.lowCutQ = .70710678f;
   result[0].radiation.colourFrequencyHz =
       std::clamp(fit.directColourFrequencyHz, 100.f, 18000.f);
   result[0].radiation.colourGainDb =
       std::clamp(fit.directColourGainDb, -18.f, 18.f);
-  result[0].radiation.colourQ = std::clamp(fit.directColourQ, .25f, 12.f);
+  result[0].radiation.colourQ = .8f;
   result[0].radiation.highCutHz =
       std::clamp(fit.directHighCutHz, 1000.f, 22000.f);
-  result[0].radiation.highCutQ = std::clamp(fit.directHighCutQ, .25f, 4.f);
+  result[0].radiation.highCutQ = .70710678f;
   result[1].gain = std::clamp(fit.fieldGain, 0.f, 4.f);
-  result[1].radiationEnabled = fit.denseRadiationEnabled;
+  result[1].radiationEnabled = fit.bodyRadiationEnabled;
   result[1].radiation.lowCutHz =
-      std::clamp(fit.denseLowCutHz, 10.f, 1000.f);
-  result[1].radiation.lowCutQ = std::clamp(fit.denseLowCutQ, .25f, 4.f);
+      std::clamp(fit.bodyLowCutHz, 10.f, 1000.f);
+  result[1].radiation.lowCutQ = .70710678f;
   result[1].radiation.colourFrequencyHz =
-      std::clamp(fit.denseColourFrequencyHz, 100.f, 18000.f);
+      std::clamp(fit.bodyColourFrequencyHz, 100.f, 18000.f);
   result[1].radiation.colourGainDb =
-      std::clamp(fit.denseColourGainDb, -18.f, 18.f);
-  result[1].radiation.colourQ = std::clamp(fit.denseColourQ, .25f, 12.f);
+      std::clamp(fit.bodyColourGainDb, -18.f, 18.f);
+  result[1].radiation.colourQ = .8f;
   result[1].radiation.highCutHz =
-      std::clamp(fit.denseHighCutHz, 1000.f, 22000.f);
-  result[1].radiation.highCutQ = std::clamp(fit.denseHighCutQ, .25f, 4.f);
+      std::clamp(fit.bodyHighCutHz, 1000.f, 22000.f);
+  result[1].radiation.highCutQ = .70710678f;
   return result;
 }
 
@@ -272,8 +243,12 @@ CrashCymbalParameters DefaultCrashCymbalParameters(
       result.fieldBowProjection, result.fieldEdgeProjection);
   result.modalFieldControls.exchangeAngleRadians =
       .012f * std::clamp(fit.fieldExchange, 0.f, 1.f);
-  result.modalFieldControls.seed = fit.denseModeSeed ^ 0x4649454cu;
-  result.dispersion = Dispersion(sampleRate, fit);
+  result.modalFieldControls.seed = ModalFieldSeed ^ 0x4649454cu;
+  result.modalFieldControls.cascade = {
+      std::clamp(fit.bloomRateOctavesPerSecond, 0.f, 32.f),
+      std::clamp(fit.bloomEnergyDependence, 0.f, 1.f),
+      std::clamp(fit.bloomPhaseDiffusion, 0.f, 1.f),
+      ModalFieldSeed ^ 0x43415343u};
   result.observation = Observation(fit);
   return result;
 }

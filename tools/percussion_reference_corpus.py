@@ -83,9 +83,8 @@ def _private_crash(root: Path) -> tuple[dict[str, object], dict[str, Path]] | No
             "audition_trim_db": 42.0,
             "calibration": {
                 "id": "crash-standard",
-                "name": "Crash — medium edge (unverified start)",
+                "name": "Crash — medium edge",
                 "recipe": "metal.cymbal.v1",
-                "parameter_preset": "crash-start",
                 "articulation": "edge",
                 "velocity": 72,
                 "repeat": 1,
@@ -186,9 +185,8 @@ def _snare(library: Path):
         5.0,
         {
             "id": "snare-standard",
-            "name": "Snare — medium standard hit (unverified start)",
+            "name": "Snare — medium standard hit",
             "recipe": "drum.snare.v1",
-            "parameter_preset": "snare-default",
             "articulation": "main",
             "velocity": 82,
             "repeat": 1,
@@ -225,7 +223,7 @@ def _kick(library: Path):
         2.0,
         {
             "id": "kick-standard",
-            "name": "Acoustic kick — medium centre (unverified start)",
+            "name": "Acoustic kick — medium centre",
             "recipe": "drum.membrane.v1",
             "parameter_preset": "acoustic-kick",
             "articulation": "centre",
@@ -266,9 +264,8 @@ def _gong(library: Path):
         -6.0,
         {
             "id": "gong-standard",
-            "name": "Gong — representative mallet (unverified start)",
+            "name": "Gong — representative mallet",
             "recipe": "metal.cymbal.v1",
-            "parameter_preset": "gong-start",
             "articulation": "mallet",
             "velocity": 96,
             "repeat": 3,
@@ -315,9 +312,8 @@ def _ride(reference_root: Path):
         18.0,
         {
             "id": "ride-standard",
-            "name": "Ride — medium bow (unverified start)",
+            "name": "Ride — medium bow",
             "recipe": "metal.cymbal.v1",
-            "parameter_preset": "ride-start",
             "articulation": "bow",
             "velocity": 82,
             "repeat": 1,
@@ -392,9 +388,8 @@ def _hihat(library: Path):
         8.0,
         {
             "id": "hihat-standard",
-            "name": "Hi-hat — medium half-open (unverified start)",
+            "name": "Hi-hat — medium half-open",
             "recipe": "metal.cymbal.v1",
-            "parameter_preset": "hihat-start",
             "articulation": "half-open",
             "velocity": 96,
             "repeat": 1,

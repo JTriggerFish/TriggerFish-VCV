@@ -45,14 +45,13 @@ CorrelatedFmBurstParameters MakeFm(const MembraneDrumControls &controls,
 
 } // namespace
 
-float MembraneDrumRouting::Get(const MembraneDrumRoute route) const noexcept {
-  return gains[static_cast<std::size_t>(route)];
+bool MembraneDrumRouting::Enabled(const MembraneDrumRoute route) const noexcept {
+  return enabled[static_cast<std::size_t>(route)];
 }
 
-void MembraneDrumRouting::Set(const std::size_t index,
-                              const float gain) noexcept {
-  if (index < gains.size())
-    gains[index] = std::clamp(tfdsp::FiniteNormalOrZero(gain), 0.f, 2.f);
+void MembraneDrumRouting::SetEnabled(const std::size_t index,
+                                     const bool value) noexcept {
+  if (index < enabled.size()) enabled[index] = value;
 }
 
 MembraneDrumParameters DefaultMembraneDrumParameters(
@@ -114,8 +113,11 @@ MembraneDrumParameters DefaultMembraneDrumParameters(
   result.contact.microContacts.brightness = Safe(
       source.contactBrightness, .58f, 0.f, 1.f);
   result.contact.microContacts.amplitude = .35f;
-  result.contactLevel = Safe(source.contactLevel, .7f, 0.f, 4.f);
-  result.fmLevel = Safe(source.fmLevel, .18f, 0.f, 3.f);
+  result.contactDirectLevel = Safe(
+      source.contactDirectLevel, .245f, 0.f, 4.f);
+  result.contactBodyLevel = Safe(source.contactBodyLevel, .7f, 0.f, 4.f);
+  result.fmDirectLevel = Safe(source.fmDirectLevel, .0144f, 0.f, 3.f);
+  result.fmBodyLevel = Safe(source.fmBodyLevel, .081f, 0.f, 3.f);
 
   result.observation[0].gain = Safe(source.directLevel, .3f, 0.f, 4.f);
   result.observation[0].delaySeconds = Safe(

@@ -3,16 +3,13 @@ import { ModuleTypes } from "./percussion_registry.mjs";
 
 const Nodes = [
   ["contact", "exciter.contact", 24, 92],
-  ["bloom", "transform.dispersion-loop", 184, 22],
-  ["body", "body.stochastic-modal-field", 350, 92],
-  ["observation", "observation.dual-source", 520, 92],
-  ["output", "output.mono", 690, 92],
+  ["body", "body.stochastic-modal-field", 230, 92],
+  ["observation", "observation.dual-source", 440, 92],
+  ["output", "output.mono", 650, 92],
 ];
 
 const Connections = [
-  ["contact.body", "bloom.drive"],
   ["contact.body", "body.primary"],
-  ["bloom.return", "body.secondary"],
   ["contact.direct", "observation.direct"],
   ["body.audio", "observation.body"],
   ["observation.audio", "output.audio"],
@@ -26,13 +23,17 @@ function moduleForParameter(key) {
   if (key === "model_level_db") return "output";
   if (key.startsWith("direct_radiation_") || key.startsWith("direct_low_") ||
       key.startsWith("direct_high_") || key.startsWith("direct_colour_") ||
-      key.startsWith("dense_radiation_") || key.startsWith("dense_low_") ||
-      key.startsWith("dense_high_") || key.startsWith("dense_colour_")) {
+      key.startsWith("body_radiation_") || key.startsWith("body_low_") ||
+      key.startsWith("body_high_") || key.startsWith("body_colour_")) {
     return "observation";
   }
-  if (key === "direct_gain" || key.startsWith("impact_")) return "contact";
-  if (key.startsWith("bloom_")) return "bloom";
-  if (key === "field_gain" || key === "body_brightness" ||
+  if (key === "direct_gain" || key === "field_gain") return "observation";
+  if (key === "velocity_brightness" ||
+      key.startsWith("impact_")) return "contact";
+  if (key.startsWith("bloom_")) return "body";
+  if (key === "body_excitation" || key === "body_brightness" ||
+      key === "body_tilt_centre" ||
+      key === "body_tune" ||
       key.startsWith("field_") || key.startsWith("body_decay_") ||
       key.startsWith("resolved_")) return "body";
   return null;
@@ -55,7 +56,7 @@ export function createCrashPatch(descriptors, values) {
     recipe: "metal.cymbal.v1",
     nodes,
     connections: Connections.map(([from, to], index) => ({
-      id: `route-${index + 1}`, from, to, enabled: true, gain: 1,
+      id: `route-${index + 1}`, from, to, enabled: true,
       required: index + 1 === Connections.length,
       ...(from === "contact.direct" ? { editor: { viaY: 184 } } : {}),
     })),
@@ -101,12 +102,12 @@ function validateParameterOwnership(patch) {
 
 function validateAudibleRoute(patch) {
   const reachable = new Set(["contact"]);
-  for (const node of ["bloom", "body", "observation", "output"]) {
+  for (const node of ["body", "observation", "output"]) {
     const connected = patch.connections.some(connection => {
       const from = endpoint(connection.from);
       const to = endpoint(connection.to);
       return to.node === node && reachable.has(from.node) &&
-        connection.enabled !== false && connection.gain !== 0;
+        connection.enabled !== false;
     });
     if (connected) reachable.add(node);
   }
@@ -132,7 +133,7 @@ export function validateCrashAdapterPatch(patch) {
   }
   const output = patch.connections.find(item =>
     item.from === "observation.audio" && item.to === "output.audio");
-  if (output.enabled === false || output.gain !== undefined && output.gain !== 1)
+  if (output.enabled === false)
     throw new Error("the compiled crash output route is required");
   validateParameterOwnership(patch);
   validateAudibleRoute(patch);
@@ -143,6 +144,6 @@ export function routingValuesFromPatch(patch) {
   return Connections.slice(0, -1).map(([from, to]) => {
     const connection = patch.connections.find(item =>
       item.from === from && item.to === to);
-    return connection?.enabled === false ? 0 : connection?.gain ?? 1;
+    return connection?.enabled !== false;
   });
 }

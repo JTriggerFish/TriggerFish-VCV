@@ -11,7 +11,9 @@
 
 namespace tfdsp::percussion {
 
-struct ContactRoutingGains {
+// Derived port projection supplied by a visible performance macro such as
+// Implement. It is not serialized as independent patch state.
+struct ContactPortProjection {
   float pulseDirect{0.f};
   float pulseBody{1.f};
   float chirpDirect{1.f};
@@ -28,7 +30,7 @@ struct ContactExciterParameters {
   TonalContactChirpParameters chirp{};
   EnvelopedNoiseBurstParameters noise{};
   MicroContactBurstParameters microContacts{};
-  ContactRoutingGains routing{};
+  ContactPortProjection projection{};
 };
 
 struct ContactExciterSample {
@@ -56,8 +58,8 @@ public:
   }
 
   void Trigger(const ContactExciterParameters &parameters) noexcept {
-    routing_ = parameters.routing;
-    SanitizeRouting();
+    projection_ = parameters.projection;
+    SanitizeProjection();
     pulse_.Trigger(parameters.pulseDurationSeconds, parameters.pulseAmplitude);
     chirp_.Trigger(parameters.chirp);
     noise_.Trigger(parameters.noise);
@@ -70,12 +72,12 @@ public:
     const float noise = noise_.Process();
     const float micro = microContacts_.Process();
     ContactExciterSample output;
-    output.directRadiation = routing_.pulseDirect * pulse +
-        routing_.chirpDirect * chirp + routing_.noiseDirect * noise +
-        routing_.microDirect * micro;
-    output.bodyDrive = routing_.pulseBody * pulse +
-        routing_.chirpBody * chirp + routing_.noiseBody * noise +
-        routing_.microBody * micro;
+    output.directRadiation = projection_.pulseDirect * pulse +
+        projection_.chirpDirect * chirp + projection_.noiseDirect * noise +
+        projection_.microDirect * micro;
+    output.bodyDrive = projection_.pulseBody * pulse +
+        projection_.chirpBody * chirp + projection_.noiseBody * noise +
+        projection_.microBody * micro;
     if (!std::isfinite(output.directRadiation))
       output.directRadiation = 0.f;
     if (!std::isfinite(output.bodyDrive))
@@ -93,22 +95,22 @@ private:
     return std::clamp(tfdsp::FiniteNormalOrZero(gain), -16.f, 16.f);
   }
 
-  void SanitizeRouting() noexcept {
-    routing_.pulseDirect = BoundedGain(routing_.pulseDirect);
-    routing_.pulseBody = BoundedGain(routing_.pulseBody);
-    routing_.chirpDirect = BoundedGain(routing_.chirpDirect);
-    routing_.chirpBody = BoundedGain(routing_.chirpBody);
-    routing_.noiseDirect = BoundedGain(routing_.noiseDirect);
-    routing_.noiseBody = BoundedGain(routing_.noiseBody);
-    routing_.microDirect = BoundedGain(routing_.microDirect);
-    routing_.microBody = BoundedGain(routing_.microBody);
+  void SanitizeProjection() noexcept {
+    projection_.pulseDirect = BoundedGain(projection_.pulseDirect);
+    projection_.pulseBody = BoundedGain(projection_.pulseBody);
+    projection_.chirpDirect = BoundedGain(projection_.chirpDirect);
+    projection_.chirpBody = BoundedGain(projection_.chirpBody);
+    projection_.noiseDirect = BoundedGain(projection_.noiseDirect);
+    projection_.noiseBody = BoundedGain(projection_.noiseBody);
+    projection_.microDirect = BoundedGain(projection_.microDirect);
+    projection_.microBody = BoundedGain(projection_.microBody);
   }
 
   FiniteForcePulse pulse_{};
   TonalContactChirp chirp_{};
   EnvelopedNoiseBurst noise_{};
   MicroContactBurst microContacts_{};
-  ContactRoutingGains routing_{};
+  ContactPortProjection projection_{};
 };
 
 } // namespace tfdsp::percussion

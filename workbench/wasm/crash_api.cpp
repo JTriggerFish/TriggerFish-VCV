@@ -98,14 +98,15 @@ std::uint32_t tf_crash_route_count() noexcept {
       tfdsp::percussion::MetallicPlateRouting::Count);
 }
 
-float tf_crash_route_get(const std::uint32_t handle,
-                         const std::uint32_t index) noexcept {
-  return tf_percussion_route_get(handle, index);
+int tf_crash_route_enabled(const std::uint32_t handle,
+                           const std::uint32_t index) noexcept {
+  return tf_percussion_route_enabled(handle, index);
 }
 
-int tf_crash_route_set(const std::uint32_t handle, const std::uint32_t index,
-                       const float gain) noexcept {
-  return tf_percussion_route_set(handle, index, gain);
+int tf_crash_route_enable(const std::uint32_t handle,
+                          const std::uint32_t index,
+                          const int enabled) noexcept {
+  return tf_percussion_route_enable(handle, index, enabled);
 }
 
 } // extern "C"

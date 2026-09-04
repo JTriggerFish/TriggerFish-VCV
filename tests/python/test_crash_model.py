@@ -33,6 +33,7 @@ from triggerfish_percussion.crash_fit_causal import (
     _validate_frozen_stages,
     fit_causal_model,
 )
+from triggerfish_percussion.crash_fit_common import modal_power_features
 from triggerfish_percussion.crash_fit_spectral_profile import (
     temporal_spectral_parameter_names,
 )
@@ -76,7 +77,6 @@ def test_native_crash_parameters_round_trip_and_render():
     fit = CrashFit(
         contact_noise_gain=1.7,
         contact_chirp_frequency_scale=1.2,
-        strength_gamma=2.0,
         output_gain=2.0,
     )
     first = render_crash(fit, 0.1, strength=0.7, seed=12)
@@ -92,37 +92,38 @@ def test_python_modal_grid_matches_the_native_constructive_defaults():
     parameters = native.CrashCymbalFitParameters()
     for field in (
         "sparse_frequency_hz",
-        "sparse_decay_ratio",
         "sparse_amplitude",
         "body_decay_frequency_hz",
         "body_decay_seconds",
         "body_decay_active",
-        "strength_gamma",
-        "body_strength_gamma",
     ):
         np.testing.assert_allclose(getattr(fit, field), getattr(parameters, field))
+    assert fit.body_decay_active == (False,) * 6
+    assert fit.body_excitation_gain == pytest.approx(parameters.body_excitation_gain)
 
 
-def test_legacy_decay_upgrade_preserves_all_five_interior_knots():
-    frequencies = (150.0, 500.0, 1500.0, 6000.0, 16000.0)
-    seconds = (3.5, 2.8, 2.5, 4.5, 0.35)
-    fit = CrashFit(
-        body_decay_frequency_hz=frequencies,
-        body_decay_seconds=seconds,
-    )
-    assert fit.body_decay_frequency_hz[1:6] == frequencies
-    assert fit.body_decay_seconds[1:6] == seconds
-    assert fit.body_decay_seconds[0] == seconds[0]
-    assert fit.body_decay_seconds[-1] == seconds[-1]
-    assert fit.body_decay_active == (True, True, True, True, True, True, False, True)
+def test_fit_mapping_accepts_only_current_named_fields():
+    fit = CrashFit.from_mapping({"body_tilt_db_per_octave": 2.0})
+    assert fit.body_tilt_db_per_octave == 2.0
+    with pytest.raises(ValueError, match="unknown crash fit fields"):
+        CrashFit.from_mapping({"dense_tilt_db_per_octave": 2.0})
 
 
-def test_dense_mode_seed_is_repeatable_and_object_specific():
-    first = render_crash(CrashFit(dense_mode_seed=123), 0.1, seed=12)
-    repeated = render_crash(CrashFit(dense_mode_seed=123), 0.1, seed=12)
-    different = render_crash(CrashFit(dense_mode_seed=124), 0.1, seed=12)
-    assert np.array_equal(first, repeated)
-    assert not np.array_equal(first, different)
+def test_modal_projection_features_ignore_a_half_cycle_phase_offset():
+    sample_rate = 48_000
+    time = np.arange(round(2.5 * sample_rate)) / sample_rate
+    signal = np.sin(2.0 * np.pi * 173.0 * time)
+    positive = modal_power_features(AudioBuffer(signal, sample_rate), 0)
+    inverted = modal_power_features(AudioBuffer(-signal, sample_rate), 0)
+    np.testing.assert_allclose(positive, inverted, rtol=0.0, atol=0.0)
+
+
+def test_decay_curve_rejects_obsolete_point_counts():
+    with pytest.raises(ValueError, match="six interior and eight T60 points"):
+        CrashFit(
+            body_decay_frequency_hz=(150.0, 500.0, 1500.0, 6000.0, 16000.0),
+            body_decay_seconds=(3.5, 2.8, 2.5, 4.5, 0.35),
+        )
 
 
 def test_crash_binding_exposes_implement_and_brush_contact_spread():
@@ -140,50 +141,60 @@ def test_crash_binding_exposes_implement_and_brush_contact_spread():
     assert np.linalg.norm(brush_sweep[late, 0]) > np.linalg.norm(brush_tap[late, 0])
 
 
-def test_indexed_fit_parameter_updates_one_dense_envelope_node():
+def test_indexed_fit_parameter_updates_one_decay_slot():
     initial = CrashFit()
-    fit = replace_fit_parameters(initial, {"dense_gain_envelope_db[3]": 6.0})
-    assert fit.dense_gain_envelope_db[3] == 6.0
+    fit = replace_fit_parameters(initial, {"body_decay_seconds[3]": 6.0})
+    assert fit.body_decay_seconds[3] == 6.0
     changed = np.flatnonzero(
-        np.asarray(fit.dense_gain_envelope_db)
-        != np.asarray(initial.dense_gain_envelope_db)
+        np.asarray(fit.body_decay_seconds) != np.asarray(initial.body_decay_seconds)
     )
     assert changed.tolist() == [3]
-    assert fit_parameter_value(fit, "dense_gain_envelope_db[3]") == 6.0
-
-
-def test_old_dense_gain_envelope_is_interpolated_to_current_grid():
-    fit = CrashFit(dense_gain_envelope_db=(0.0, 2.0, 4.0, 6.0, 8.0, 10.0))
-    assert len(fit.dense_gain_envelope_db) == 33
-    assert fit.dense_gain_envelope_db[0] == 0.0
-    assert fit.dense_gain_envelope_db[-1] == 10.0
+    assert fit_parameter_value(fit, "body_decay_seconds[3]") == 6.0
 
 
 def test_spectral_profile_refinement_cannot_collapse_source_balance():
     names = temporal_spectral_parameter_names()
     assert "direct_gain" not in names
-    assert "sparse_gain" not in names
-    assert "dense_gain" not in names
+    assert "bloom_rate_octaves_per_second" in names
+    assert "bloom_energy_dependence" in names
 
 
-def test_unified_fit_can_identify_bloom_routing_separately_from_body_level():
+def test_unified_fit_can_identify_intrinsic_bloom_separately_from_body_level():
     stages = {stage.name: stage for stage in UNIFIED_CAUSAL_STAGES}
     for name in ("unified-initial-body", "unified-bloom"):
         parameters = {item.name for item in stages[name].parameters}
-        assert "bloom_body_gain" in parameters
+        assert "bloom_rate_octaves_per_second" in parameters
+        assert "bloom_energy_dependence" in parameters
         assert "field_gain" in parameters or name == "unified-bloom"
 
 
-def test_fitter_velocity_domains_match_the_noncompressive_renderer():
-    velocity_names = {"strength_gamma", "body_strength_gamma"}
-    parameters = [
-        parameter
+def test_only_the_long_tail_stage_may_fit_body_t60():
+    stages = {stage.name: stage for stage in UNIFIED_CAUSAL_STAGES}
+    short_stages = (
+        "impact-contact",
+        "unified-impact-balance",
+        "unified-initial-body",
+        "unified-bloom",
+    )
+    for name in short_stages:
+        assert not any(
+            item.name.startswith("body_decay_seconds[")
+            for item in stages[name].parameters
+        )
+    assert {item.name for item in stages["unified-tail"].parameters} == {
+        "body_decay_seconds[0]",
+        "body_decay_seconds[7]",
+    }
+
+
+def test_fitter_has_no_hidden_velocity_curve_parameters():
+    names = {
+        parameter.name
         for stage in UNIFIED_CAUSAL_STAGES
         for parameter in stage.parameters
-        if parameter.name in velocity_names
-    ]
-    assert {parameter.name for parameter in parameters} == velocity_names
-    assert all(parameter.lower == 1.0 for parameter in parameters)
+    }
+    assert "strength_gamma" not in names
+    assert "body_strength_gamma" not in names
 
 
 def test_unified_fit_never_promotes_relative_improvement_without_absolute_quality():
@@ -196,19 +207,20 @@ def test_unified_fit_never_promotes_relative_improvement_without_absolute_qualit
         assert stage.requires_acceptance_gate
 
 
-def test_screened_initial_decay_keeps_earlier_gates_and_one_final_gate():
+def test_screened_initial_decay_does_not_use_t60_as_short_term_colour():
     stages = SCREENED_INITIAL_DECAY_STAGES
-    assert [stage.name for stage in stages[:3]] == [
+    assert [stage.name for stage in stages] == [
         "impact-contact",
-        "impact-balance",
-        "contact-tail",
+        "unified-impact-balance",
+        "unified-initial-body",
+        "unified-bloom",
     ]
-    assert not any(stage.requires_acceptance_gate for stage in stages[3:-1])
-    assert stages[-1].requires_acceptance_gate
-    names = [parameter.name for parameter in stages[-1].parameters]
-    assert len(names) == len(set(names))
-    for index in (1, 2, 3, 7):
-        assert f"body_decay_seconds[{index}]" in names
+    assert all(
+        not any(
+            item.name.startswith("body_decay_seconds[") for item in stage.parameters
+        )
+        for stage in stages
+    )
 
 
 def test_resume_skips_diagnostic_only_intermediate_quality_gate():
@@ -335,26 +347,26 @@ def test_first_100ms_policy_counts_nested_attack_features_once():
 
 def test_attack_audit_domain_exposes_contact_and_body_controls():
     names = {parameter.name for parameter in ATTACK_PARAMETERS}
-    assert {"contact_noise_gain", "contact_chirp_gain", "dispersion_drive"} <= names
-    assert {"dense_gain", "sparse_gain", "body_decay_seconds[0]"} <= names
+    assert {"contact_noise_gain", "contact_chirp_gain"} <= names
+    assert {"field_gain", "bloom_rate_octaves_per_second"} <= names
+    assert not any(name.startswith("body_decay_seconds[") for name in names)
 
 
-def test_screened_attack_uses_soft_blocks_then_one_hard_joint_gate():
-    assert len(SCREENED_ATTACK_STAGES) == 6
-    assert all(
-        not stage.requires_acceptance_gate for stage in SCREENED_ATTACK_STAGES[:-1]
-    )
-    assert SCREENED_ATTACK_STAGES[-1].requires_acceptance_gate
-    joint_names = {item.name for item in SCREENED_ATTACK_STAGES[-1].parameters}
-    assert "contact_chirp_gain" not in joint_names
-    assert {"contact_noise_gain", "dense_gain", "dispersion_feedback"} <= joint_names
+def test_screened_attack_is_the_active_causal_prefix():
+    assert SCREENED_ATTACK_STAGES == UNIFIED_CAUSAL_STAGES[:3]
+    assert not SCREENED_ATTACK_STAGES[0].requires_quality
+    assert all(stage.requires_acceptance_gate for stage in SCREENED_ATTACK_STAGES[1:])
 
 
 def test_single_hit_schedule_excludes_velocity_curve_controls():
     stages = single_hit_stages(SCREENED_ATTACK_STAGES)
     names = {parameter.name for stage in stages for parameter in stage.parameters}
     assert names.isdisjoint(SINGLE_HIT_UNIDENTIFIABLE_PARAMETERS)
-    assert {"contact_noise_gain", "dense_gain", "dispersion_feedback"} <= names
+    assert {
+        "contact_noise_gain",
+        "field_gain",
+        "bloom_rate_octaves_per_second",
+    } <= names
     audit_names = {parameter.name for parameter in SINGLE_HIT_ATTACK_PARAMETERS}
     assert audit_names.isdisjoint(SINGLE_HIT_UNIDENTIFIABLE_PARAMETERS)
 
@@ -537,7 +549,6 @@ def test_reference_residual_subtracts_an_explicit_persistent_mode():
     fit = CrashFit(
         sparse_frequency_hz=(1000.0,) + (2000.0,) * 23,
         body_decay_seconds=(np.log(1000.0) * tau_seconds,) * 8,
-        sparse_decay_ratio=(1.0,) * 24,
         sparse_amplitude=(1.0,) + (0.0,) * 23,
     )
     cell = CrashFitCell("synthetic", AudioBuffer(samples, sample_rate), 1.0)

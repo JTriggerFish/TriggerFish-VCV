@@ -63,7 +63,7 @@ const expression = `new Promise(resolve => {
     if (pixels) for (let i = 0; i < pixels.length; i += 64) {
       if (pixels[i] + pixels[i + 1] + pixels[i + 2] > 12) ++lit;
     }
-    if (status === "Ready" && lit > 0 || performance.now() >= deadline) {
+    if (status.startsWith("Ready") && lit > 0 || performance.now() >= deadline) {
       resolve({ status, lit, width: canvas?.width, height: canvas?.height });
     } else setTimeout(poll, 100);
   };
@@ -139,7 +139,7 @@ if (profileUi) {
       slider.value = Number(slider.value) + .1;
       slider.dispatchEvent(new Event("input"));
       const poll = () => {
-        if (document.getElementById("status").textContent === "Ready" &&
+        if (document.getElementById("status").textContent.startsWith("Ready") &&
             performance.now() - started > 300) {
           clearInterval(timer); observer?.disconnect();
           resolve({
@@ -163,7 +163,7 @@ if (testAudio) {
       const deadline = performance.now() + 15000;
       let readySince = 0;
       const poll = () => {
-        const ready = document.getElementById("status")?.textContent === "Ready" &&
+        const ready = document.getElementById("status")?.textContent.startsWith("Ready") &&
           document.getElementById("live-commit")?.textContent
             .startsWith("Live DSP ready");
         readySince = ready ? (readySince || performance.now()) : 0;
@@ -369,11 +369,11 @@ if (testControls) {
       const modalAspect = modal.viewBox.baseVal.width / modal.viewBox.baseVal.height;
       const deadline = performance.now() + 5000;
       const poll = () => {
-        if (document.getElementById("status").textContent === "Ready" ||
+        if (document.getElementById("status").textContent.startsWith("Ready") ||
             performance.now() >= deadline) {
           const checks = {
             modularRouting: routingOpened && routingClosed &&
-              routingNodeCount === 5 && routingEdgeCount === 6 &&
+              routingNodeCount === 4 && routingEdgeCount === 4 &&
               routingDisabled && routingRestored &&
               document.querySelectorAll("[data-module-id]").length >= 8 &&
               Boolean(document.querySelector(
@@ -419,11 +419,11 @@ if (testControls) {
             noLegacyBodyUi: !document.getElementById("body-ui-mode") &&
               !document.querySelector('[data-ui-mode="legacy"]'),
             bloomDiffusionControl: Boolean(document.querySelector(
-              '[data-fit-key="bloom_diffusion"] input')),
+              '[data-fit-key="bloom_phase_diffusion"] input')),
             independentBloomControls: Boolean(document.querySelector(
-              '[data-fit-key="bloom_level"] input')) &&
+              '[data-fit-key="bloom_rate"] input')) &&
               Boolean(document.querySelector(
-                '[data-fit-key="bloom_nonlinearity"] input')),
+                '[data-fit-key="bloom_energy_dependence"] input')),
             modalPacketEditor: Boolean(document.querySelector(
               "#modal-editor svg.modal-editor")) &&
               document.querySelectorAll("#modal-editor .modal-bar").length > 0 &&
@@ -483,7 +483,7 @@ if (testControls) {
               divider.getAttribute("aria-valuenow") === dividerStart,
             compactRadiation: Boolean(document.getElementById(
               "direct-radiation-advanced")) && Boolean(document.getElementById(
-                "dense-radiation-advanced")),
+                "body-radiation-advanced")),
           };
           resolve({
             checks, passed: Object.values(checks).every(Boolean),
@@ -517,7 +517,7 @@ if (testControls) {
       select.dispatchEvent(new Event("change"));
       const deadline = performance.now() + 12000;
       const poll = () => {
-        const ready = document.getElementById("status").textContent === "Ready" &&
+        const ready = document.getElementById("status").textContent.startsWith("Ready") &&
           document.getElementById("live-commit").textContent
             .startsWith("Live DSP ready");
         if (!ready && performance.now() < deadline) {
@@ -555,7 +555,7 @@ if (testControls) {
             selector: select.options.length === 4 && select.value === "1",
             controls: document.querySelectorAll(
               '[data-kick-key] input[type="range"]',
-            ).length === 15,
+            ).length === 16,
             contextualPanels:
               getComputedStyle(document.querySelector(
                 '[data-module-id="kick-primary"]')).display !== "none" &&
@@ -590,7 +590,7 @@ if (testControls) {
       select.dispatchEvent(new Event("change"));
       const deadline = performance.now() + 12000;
       const poll = () => {
-        const ready = document.getElementById("status").textContent === "Ready" &&
+        const ready = document.getElementById("status").textContent.startsWith("Ready") &&
           document.getElementById("live-commit").textContent
             .startsWith("Live DSP ready");
         if (!ready && performance.now() < deadline) {
@@ -656,7 +656,7 @@ if (testControls) {
       select.dispatchEvent(new Event("change"));
       const deadline = performance.now() + 12000;
       const poll = () => {
-        const ready = document.getElementById("status").textContent === "Ready" &&
+        const ready = document.getElementById("status").textContent.startsWith("Ready") &&
           document.getElementById("live-commit").textContent
             .startsWith("Live DSP ready");
         if (!ready && performance.now() < deadline) {
@@ -702,7 +702,7 @@ if (testControls) {
       picker.dispatchEvent(new Event("change"));
       const deadline = performance.now() + 12000;
       const poll = () => {
-        const ready = document.getElementById("status").textContent === "Ready";
+        const ready = document.getElementById("status").textContent.startsWith("Ready");
         const loaded = picker.value === "snare-standard" &&
           document.getElementById("instrument-recipe").value === "3" &&
           document.getElementById("reference-corpus").value ===
@@ -717,8 +717,8 @@ if (testControls) {
                 '[data-membrane-key="fundamental_hz"] output',
               )?.textContent.startsWith("185.0") &&
               document.querySelector(
-                '[data-membrane-key="model_level_db"] output',
-              )?.textContent.startsWith("-10.00") &&
+                 '[data-membrane-key="model_level_db"] output',
+               )?.textContent.startsWith("-14.00") &&
               document.querySelector(
                 'input[name="membrane-implement"][value="1"]',
               )?.checked,
@@ -744,7 +744,7 @@ if (screenshot) {
         picker.dispatchEvent(new Event("change"));
         const deadline = performance.now() + 15000;
         const poll = () => {
-          const ready = document.getElementById("status").textContent === "Ready";
+          const ready = document.getElementById("status").textContent.startsWith("Ready");
           if (ready || performance.now() >= deadline) resolve({ ready });
           else setTimeout(poll, 50);
         };
@@ -767,7 +767,7 @@ socket.close();
 console.log(JSON.stringify(result));
 const audioMeter = result.audio?.afterStrikes?.meter ?? "";
 const xruns = Number(audioMeter.match(/xruns (\d+)/)?.[1] ?? 0);
-if (result.status !== "Ready" || result.lit === 0 || testAudio &&
+if (!result.status.startsWith("Ready") || result.lit === 0 || testAudio &&
     (!audioMeter.includes("running") || !/hits [1-9]\d*/.test(audioMeter) ||
       !audioMeter.includes("out -") || xruns > 32) ||
     testControls && !result.controls?.passed) {

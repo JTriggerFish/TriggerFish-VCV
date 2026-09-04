@@ -14,6 +14,7 @@
 namespace tfdsp::percussion {
 
 struct DispersionLoopParameters {
+  float inputLowpassHz{20000.f};
   float baseDelaySamples{16.f};
   float slowDelaySamples{12.f};
   float slowDepthSamples{1.f};
@@ -71,6 +72,7 @@ public:
     fourthAllpass_.Reset();
     selfPhase_.Reset();
     loss_.Reset();
+    inputState_ = 0.f;
   }
 
   float Process(float bodyDrive) noexcept {
@@ -85,6 +87,9 @@ public:
   float Process(float bodyDrive,
                 const PassiveConstraintGains constraint) noexcept {
     bodyDrive = tfdsp::FiniteNormalOrZero(bodyDrive);
+    inputState_ = tfdsp::FiniteNormalOrZero(
+        inputCoefficient_ * inputState_ +
+        (1.f - inputCoefficient_) * bodyDrive);
     float circulating = base_.Read();
     circulating = slow_.Process(circulating);
     circulating = firstAllpass_.Process(circulating);
@@ -93,7 +98,7 @@ public:
     circulating = fourthAllpass_.Process(circulating);
     circulating = selfPhase_.Process(circulating);
     const float feedback = feedbackGain_ * loss_.Process(circulating, constraint);
-    base_.Push(bodyDrive + feedback);
+    base_.Push(inputState_ + feedback);
     return tfdsp::FiniteNormalOrZero(circulating);
   }
 
@@ -108,6 +113,13 @@ public:
 private:
   void ConfigurePreparedParameters(
       const DispersionLoopParameters &parameters) noexcept {
+    const float maximumCutoff = std::max(1.f, .49f * sampleRate_);
+    const float minimumCutoff = std::min(20.f, maximumCutoff);
+    const float inputCutoff = std::clamp(
+        tfdsp::FiniteNormalOrZero(parameters.inputLowpassHz), minimumCutoff,
+        maximumCutoff);
+    inputCoefficient_ = std::exp(
+        -6.28318530717958647692f * inputCutoff / sampleRate_);
     slow_.SetStaticParameters(parameters.slowDelaySamples,
                               parameters.slowDepthSamples,
                               parameters.slowRateHz, sampleRate_,
@@ -119,13 +131,19 @@ private:
     selfPhase_.SetParameters(parameters.selfPhase);
     feedbackGain_ = std::clamp(
         std::isfinite(parameters.feedbackGain) ? parameters.feedbackGain : 0.f,
-        0.f, .9999f);
+        0.f, 1.f);
     minimumPropagationSamples_ =
+        base_.DelaySamples() + slow_.MinimumDelaySamples() +
+        firstAllpass_.MinimumPropagationSamples() +
+        secondAllpass_.MinimumPropagationSamples() +
+        thirdAllpass_.MinimumPropagationSamples() +
+        fourthAllpass_.MinimumPropagationSamples() +
+        selfPhase_.MinimumDelaySamples();
+    nominalPropagationSamples_ =
         base_.DelaySamples() + slow_.CentreDelaySamples() +
         firstAllpass_.DelaySamples() + secondAllpass_.DelaySamples() +
         thirdAllpass_.DelaySamples() + fourthAllpass_.DelaySamples() +
-        selfPhase_.CentreDelaySamples();
-    nominalPropagationSamples_ = minimumPropagationSamples_ +
+        selfPhase_.CentreDelaySamples() +
         static_cast<float>(selfPhase_.NominalLatencySamples());
     loss_.SetDecayTimes(nominalPropagationSamples_ / sampleRate_,
                         parameters.decay);
@@ -141,6 +159,8 @@ private:
   ThreeBandDecayFilter loss_{};
   float sampleRate_{48000.f};
   float feedbackGain_{};
+  float inputCoefficient_{};
+  float inputState_{};
   float minimumPropagationSamples_{};
   float nominalPropagationSamples_{};
 };

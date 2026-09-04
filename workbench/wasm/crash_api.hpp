@@ -29,8 +29,8 @@ int tf_crash_macro_set(std::uint32_t handle, std::uint32_t index,
                        float value) noexcept;
 int tf_crash_macro_commit(std::uint32_t handle) noexcept;
 std::uint32_t tf_crash_route_count() noexcept;
-float tf_crash_route_get(std::uint32_t handle, std::uint32_t index) noexcept;
-int tf_crash_route_set(std::uint32_t handle, std::uint32_t index,
-                       float gain) noexcept;
+int tf_crash_route_enabled(std::uint32_t handle, std::uint32_t index) noexcept;
+int tf_crash_route_enable(std::uint32_t handle, std::uint32_t index,
+                          int enabled) noexcept;
 
 }

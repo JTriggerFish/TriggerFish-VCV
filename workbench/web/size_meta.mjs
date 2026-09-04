@@ -3,29 +3,27 @@ const clamp = (value, minimum, maximum) =>
 
 const gongPreset = {
   impact_tone_noise: .35, impact_width: 1.8,
-  bloom_level: 1.15, bloom_nonlinearity: .65, bloom_development: .8,
-  body_brightness: -2.5,
-  body_decay_frequency_1: 240, body_decay_frequency_2: 700,
-  body_decay_frequency_3: 2400, body_decay_frequency_4: 8000,
-  body_decay_seconds_0: 12, body_decay_seconds_1: 10,
-  body_decay_seconds_2: 7, body_decay_seconds_3: 4,
-  body_decay_seconds_4: 3, body_decay_seconds_7: 2.5,
-  body_decay_active_1: 1, body_decay_active_2: 1,
-  body_decay_active_3: 1, body_decay_active_4: 1,
+  bloom_rate: 1.2, bloom_energy_dependence: .8,
+  bloom_phase_diffusion: .7, body_brightness: -2.5,
+  body_tilt_centre: 1200, field_turbulence_slope: .3,
+  field_turbulence_centre: 1600,
+  body_decay_seconds_0: 12, body_decay_seconds_7: 2.5,
+  body_decay_active_1: 0, body_decay_active_2: 0,
+  body_decay_active_3: 0, body_decay_active_4: 0,
+  body_decay_active_5: 0, body_decay_active_6: 0,
 };
 
 const gongLevels = [5, 6, 8, 9, 8, 7, 5, 3, 1, -1, -3, -5];
 const chinaPreset = {
   impact_tone_noise: .62, impact_width: .65,
-  bloom_level: .85, bloom_nonlinearity: .5, bloom_development: .3,
-  body_brightness: 1.5,
-  body_decay_frequency_1: 1100, body_decay_frequency_2: 3000,
-  body_decay_frequency_3: 8000, body_decay_frequency_4: 17000,
-  body_decay_seconds_0: 2.8, body_decay_seconds_1: 2.2,
-  body_decay_seconds_2: 1.5, body_decay_seconds_3: .8,
-  body_decay_seconds_4: .5, body_decay_seconds_7: .35,
-  body_decay_active_1: 1, body_decay_active_2: 1,
-  body_decay_active_3: 1, body_decay_active_4: 1,
+  bloom_rate: 5, bloom_energy_dependence: .55,
+  bloom_phase_diffusion: .8, body_brightness: 1.5,
+  body_tilt_centre: 4000, field_turbulence_slope: .12,
+  field_turbulence_centre: 4000,
+  body_decay_seconds_0: 2.8, body_decay_seconds_7: .35,
+  body_decay_active_1: 0, body_decay_active_2: 0,
+  body_decay_active_3: 0, body_decay_active_4: 0,
+  body_decay_active_5: 0, body_decay_active_6: 0,
 };
 
 const chinaLevels = [-7, -5, -3, 0, 4, 7, 6, 5, 3, 2, 0, -2];

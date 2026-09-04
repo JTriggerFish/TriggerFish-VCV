@@ -111,7 +111,10 @@ void CompactKick::Prepare(const float sampleRate,
   parameters_ = parameters;
   for (auto &voice : voices_) voice.Prepare(sampleRate);
   observation_.Prepare(sampleRate, .01f, parameters.observation);
-  sourceMixer_.SetGains(parameters.routing.gains);
+  sourceMixer_.SetGains({
+      parameters.routing.Enabled(CompactKickRoute::PrimaryToMix) ? 1.f : 0.f,
+      parameters.routing.Enabled(CompactKickRoute::SecondaryToMix) ? 1.f : 0.f,
+      parameters.routing.Enabled(CompactKickRoute::ClickToMix) ? 1.f : 0.f});
   Reset();
 }
 

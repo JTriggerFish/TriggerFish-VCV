@@ -1,5 +1,6 @@
 #pragma once
 
+#include "modal_energy_cascade.hpp"
 #include "tfdsp/finite_audio.hpp"
 
 #include <algorithm>
@@ -25,6 +26,7 @@ struct StochasticModalModeParameters {
 struct StochasticModalFieldControls {
   float exchangeAngleRadians{};
   std::uint32_t seed{0x4649454cu};
+  ModalEnergyCascadeParameters cascade{};
 };
 
 template <std::size_t ModeCount> struct PreparedStochasticModalField {
@@ -40,6 +42,7 @@ template <std::size_t ModeCount> struct PreparedStochasticModalField {
   std::array<float, ModeCount> exchangeCosine{};
   std::array<float, ModeCount> exchangeSine{};
   std::array<float, ModeCount> exchangeAmount{};
+  std::array<float, ModeCount> frequencyHz{};
   std::array<std::uint32_t, ModeCount> sourceIndex{};
   std::array<std::uint16_t, ModeCount> packet{};
   std::array<std::uint8_t, ModeCount> band{};
@@ -48,6 +51,7 @@ template <std::size_t ModeCount> struct PreparedStochasticModalField {
   float highCrossoverHz{6500.f};
   float maximumExchangeAngle{};
   std::uint32_t seed{0x4649454cu};
+  ModalEnergyCascadeParameters cascade{};
   std::uint32_t activeModeCount{};
 };
 
@@ -98,12 +102,24 @@ PreparedStochasticModalField<ModeCount> PrepareStochasticModalField(
   result.maximumExchangeAngle = std::clamp(
       tfdsp::FiniteNormalOrZero(controls.exchangeAngleRadians), 0.f, .05f);
   result.seed = controls.seed;
+  result.cascade = controls.cascade;
   constexpr float TwoPi = 6.28318530717958647692f;
   for (std::size_t source = 0; source < ModeCount; ++source) {
     const float inputGain = detail::ModalInputGain(parameters[source].inputGain);
     const float outputGain =
         detail::ModalOutputGain(parameters[source].outputGain);
     if (inputGain == 0.f || outputGain == 0.f) continue;
+    const auto packet = parameters[source].packet;
+    if (result.activeModeCount > 0 &&
+        result.packet[result.activeModeCount - 1] != packet) {
+      for (std::size_t previous = 0; previous < result.activeModeCount;
+           ++previous) {
+        if (result.packet[previous] == packet) {
+          throw std::invalid_argument(
+              "modal-field packet members must be contiguous");
+        }
+      }
+    }
     const std::size_t mode = result.activeModeCount++;
     result.sourceIndex[mode] = static_cast<std::uint32_t>(source);
     const float frequency = std::clamp(
@@ -113,6 +129,7 @@ PreparedStochasticModalField<ModeCount> PrepareStochasticModalField(
         tfdsp::FiniteNormalOrZero(parameters[source].decaySeconds), .001f,
         60.f);
     const float angle = TwoPi * frequency / sampleRate;
+    result.frequencyHz[mode] = frequency;
     const float oscillatorCosine = std::cos(angle);
     const float oscillatorSine = std::sin(angle);
     result.radius[mode] = std::exp(std::log(.001f) / (decay * sampleRate));
@@ -144,7 +161,7 @@ PreparedStochasticModalField<ModeCount> PrepareStochasticModalField(
     result.cosineSpread[mode] = .5f * (positiveCosine - negativeCosine);
     result.sineCentre[mode] = .5f * (positiveSine + negativeSine);
     result.sineSpread[mode] = .5f * (positiveSine - negativeSine);
-    result.packet[mode] = parameters[source].packet;
+    result.packet[mode] = packet;
     result.exchangeAmount[mode] =
         detail::UnitModalValue(parameters[source].exchangeAmount);
     result.band[mode] = frequency < lowCrossoverHz ? 0 :

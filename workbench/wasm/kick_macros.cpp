@@ -10,6 +10,7 @@ using Scale = ParameterScale;
 
 const std::array<ParameterDescriptor, KickParameterCount> Descriptors{{
     {"model_level_db", "Model level", "dB", -60.f, 0.f, -12.f},
+    {"primary_level", "Primary level", "x", 0.f, 2.f, 1.f},
     {"fundamental_hz", "Fundamental", "Hz", 25.f, 120.f, 52.f,
      Scale::Logarithmic},
     {"pitch_drop_octaves", "Pitch drop", "oct", 0.f, 4.f, 1.8f},
@@ -55,6 +56,7 @@ KickParameterValues DefaultKickParameters() noexcept {
 tfdsp::percussion::CompactKickParameters ApplyKickParameters(
     const KickParameterValues &values) noexcept {
   tfdsp::percussion::CompactKickControls controls;
+  controls.primaryLevel = values[Index(KickParameter::PrimaryLevel)];
   controls.fundamentalHz = values[Index(KickParameter::FundamentalHz)];
   controls.pitchDropOctaves = values[Index(KickParameter::PitchDropOctaves)];
   controls.pitchDecaySeconds = values[Index(KickParameter::PitchDecaySeconds)];

@@ -32,15 +32,20 @@ const Groups = new Map([
   ["membrane-output-controls", ["model_level_db"]],
   ["membrane-body-controls", [
     "fundamental_hz", "decay_seconds", "decay_tilt", "inharmonicity",
-    "body_brightness", "body_velocity_exponent",
+    "body_brightness",
   ]],
   ["membrane-tension-controls", ["tension_octaves", "tension_decay_seconds"]],
   ["membrane-contact-controls", [
-    "contact_level", "contact_duration_seconds", "contact_brightness",
-    "direct_velocity_exponent",
+    "contact_duration_seconds", "contact_brightness",
   ]],
   ["membrane-fm-controls", [
-    "fm_level", "fm_depth_hz", "fm_decay_seconds", "pitch_drop_octaves",
+    "fm_depth_hz", "fm_decay_seconds", "pitch_drop_octaves",
+  ]],
+  ["membrane-direct-mix-controls", [
+    "contact_direct_level", "fm_direct_level",
+  ]],
+  ["membrane-body-mix-controls", [
+    "contact_body_level", "fm_body_level",
   ]],
   ["membrane-observation-controls", [
     "direct_level", "body_level", "direct_delay_ms",

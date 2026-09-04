@@ -7,11 +7,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from .crash_fit_common import CrashFitCell, render_cell
-from .crash_fit_parameters import (
-    BODY_DECAY_SLOTS,
-    fit_parameter_value,
-    replace_fit_parameters,
-)
+from .crash_fit_parameters import fit_parameter_value, replace_fit_parameters
 from .crash_fit_prefix import (
     PrefixQuality,
     causal_audio_quality,
@@ -37,15 +33,14 @@ class BoundedParameter:
 
 
 TEMPORAL_PARAMETERS = (
-    *(
-        BoundedParameter(f"body_decay_seconds[{index}]", 0.02, 20.0)
-        for index in BODY_DECAY_SLOTS
-    ),
-    *(BoundedParameter(f"turbulence_gain[{index}]", 0.0, 1.0) for index in range(3)),
-    BoundedParameter("turbulence_persistence", 0.25, 4.0),
-    BoundedParameter("colour_frequency_hz", 1000.0, 14000.0),
-    BoundedParameter("colour_gain_db", -12.0, 12.0),
-    BoundedParameter("high_cut_hz", 6000.0, 22000.0),
+    BoundedParameter("bloom_rate_octaves_per_second", 0.0, 16.0),
+    BoundedParameter("bloom_energy_dependence", 0.0, 1.0),
+    BoundedParameter("bloom_phase_diffusion", 0.0, 1.0),
+    BoundedParameter("field_turbulence_slope_per_octave", -1.0, 1.0),
+    BoundedParameter("field_turbulence_centre_hz", 40.0, 15000.0),
+    BoundedParameter("body_colour_frequency_hz", 100.0, 18000.0),
+    BoundedParameter("body_colour_gain_db", -18.0, 18.0),
+    BoundedParameter("body_high_cut_hz", 1000.0, 22000.0),
 )
 
 
@@ -91,9 +86,8 @@ def profile_residual(cell, fit, targets, start):
         audio, targets, ((0.004, 0.25), (0.015, 0.6), (0.1, 1.5)), 1.0
     )
     parts += _texture_residuals(audio, targets, ((0.015, 0.5), (0.1, 2.0)), 1.25, 0.0)
-    envelope = np.asarray(fit.dense_gain_envelope_db)
-    parts.append(0.18 * np.diff(envelope, n=2) / (6.0 * np.sqrt(envelope.size - 2)))
-    parts.append(0.04 * (envelope[1:] - start) / (12.0 * np.sqrt(start.size)))
+    amplitudes = np.asarray(fit.sparse_amplitude)
+    parts.append(0.02 * (amplitudes - start) / np.sqrt(start.size))
     return np.concatenate(parts)
 
 

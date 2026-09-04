@@ -15,19 +15,19 @@ const Nodes = [
 ];
 
 const Connections = [
-  ["membrane-contact.direct", "membrane-direct-mix.a", false, .35],
-  ["membrane-contact.body", "membrane-body-mix.a", false, 1],
-  ["membrane-fm.audio", "membrane-direct-mix.b", false, .05],
-  ["membrane-fm.audio", "membrane-body-mix.b", false, .32],
-  ["membrane-body.audio", "membrane-observation.body", false, 1],
-  ["membrane-body.audio", "snare-wires.motion", false, 1],
-  ["snare-wires.audio", "membrane-observation.wires", false, 1],
-  ["membrane-contact.event", "membrane-tension.strike", true, 1],
-  ["membrane-body-mix.audio", "membrane-body.drive", true, 1],
-  ["membrane-tension.tension", "membrane-body.tension", true, 1],
-  ["membrane-direct-mix.audio", "membrane-observation.direct", true, 1],
-  ["membrane-observation.audio", "membrane-eq.audio", true, 1],
-  ["membrane-eq.audio", "membrane-output.audio", true, 1],
+  ["membrane-contact.direct", "membrane-direct-mix.a", false],
+  ["membrane-contact.body", "membrane-body-mix.a", false],
+  ["membrane-fm.audio", "membrane-direct-mix.b", false],
+  ["membrane-fm.audio", "membrane-body-mix.b", false],
+  ["membrane-body.audio", "membrane-observation.body", false],
+  ["membrane-body.audio", "snare-wires.motion", false],
+  ["snare-wires.audio", "membrane-observation.wires", false],
+  ["membrane-contact.event", "membrane-tension.strike", true],
+  ["membrane-body-mix.audio", "membrane-body.drive", true],
+  ["membrane-tension.tension", "membrane-body.tension", true],
+  ["membrane-direct-mix.audio", "membrane-observation.direct", true],
+  ["membrane-observation.audio", "membrane-eq.audio", true],
+  ["membrane-eq.audio", "membrane-output.audio", true],
 ];
 
 const RoutedEndpoints = Connections.slice(0, 7).map(item => item.slice(0, 2));
@@ -37,6 +37,10 @@ function owner(key) {
   if (key.startsWith("wire_")) return "snare-wires";
   if (key.startsWith("ring_")) return "membrane-body";
   if (key === "model_level_db") return "membrane-output";
+  if (key === "contact_direct_level" || key === "fm_direct_level")
+    return "membrane-direct-mix";
+  if (key === "contact_body_level" || key === "fm_body_level")
+    return "membrane-body-mix";
   if (key.startsWith("contact_")) return "membrane-contact";
   if (key.startsWith("fm_") || key === "pitch_drop_octaves")
     return "membrane-fm";
@@ -56,8 +60,8 @@ export function createSnarePatch(descriptors, values) {
       id, type, name, version: ModuleTypes.get(type).version,
       parameters: {}, editor: { x, y },
     })),
-    connections: Connections.map(([from, to, required, gain], index) => ({
-      id: `snare-route-${index}`, from, to, enabled: true, gain, required,
+    connections: Connections.map(([from, to, required], index) => ({
+      id: `snare-route-${index}`, from, to, enabled: true, required,
     })),
     outputs: { mono: "membrane-output.audio" },
     performanceControls: [
@@ -91,7 +95,7 @@ export function snareRoutingValues(patch) {
   return RoutedEndpoints.map(([from, to]) => {
     const route = patch.connections.find(item =>
       item.from === from && item.to === to);
-    return route?.enabled === false ? 0 : route?.gain ?? 1;
+    return route?.enabled !== false;
   });
 }
 
@@ -111,8 +115,7 @@ export function validateSnarePatch(patch) {
   for (const [from, to, required] of Connections) {
     const route = routes.get(`${from}>${to}`);
     if (!route) throw new Error("patch is not supported by the snare recipe");
-    if (required && (route.enabled === false ||
-        route.gain !== undefined && route.gain !== 1))
+    if (required && route.enabled === false)
       throw new Error("snare structural routes are required");
   }
   for (const node of patch.nodes)
@@ -122,7 +125,7 @@ export function validateSnarePatch(patch) {
   const active = index => {
     const [from, to] = RoutedEndpoints[index];
     const route = routes.get(`${from}>${to}`);
-    return route?.enabled !== false && route?.gain !== 0;
+    return route?.enabled !== false;
   };
   const direct = active(0) || active(2);
   const membraneDrive = active(1) || active(3);

@@ -1,12 +1,15 @@
 import numpy as np
 import pytest
 
+from triggerfish_percussion.audio_io import AudioBuffer
+from triggerfish_percussion.crash_fit_t60 import t60_diagnostics
 from triggerfish_percussion.decay import (
     band_decay_fits,
     energy_decay_db,
     fit_decay,
     pre_onset_noise_power,
 )
+from triggerfish_percussion.erb import erb_rate, frequency_from_erb_rate
 from triggerfish_percussion.descriptors import (
     contact_descriptors,
     spectral_trajectories,
@@ -32,6 +35,53 @@ from triggerfish_percussion.modal_evidence import (
     estimate_modal_evidence,
     estimate_subband_modes,
 )
+from triggerfish_percussion.t60_envelope import (
+    interpolate_t60,
+    measure_band_t60,
+    recover_two_point_t60,
+)
+
+
+def _coloured_noise_with_t60(
+    dc_seconds: float, nyquist_seconds: float, tilt_db_per_octave: float
+) -> tuple[np.ndarray, int]:
+    """Build independent noise bands with the production decay curve."""
+    sample_rate = 48_000
+    sample_count = 6 * sample_rate
+    time = np.arange(sample_count) / sample_rate
+    generator = np.random.default_rng(731)
+    edge_rates = np.linspace(float(erb_rate(40.0)), float(erb_rate(22_000.0)), 41)
+    edges = frequency_from_erb_rate(edge_rates)
+    frequencies = np.fft.rfftfreq(sample_count, 1.0 / sample_rate)
+    result = np.zeros(sample_count)
+    point_frequencies = np.linspace(0.0, sample_rate / 2, 8)
+    point_seconds = np.linspace(dc_seconds, nyquist_seconds, 8)
+    active = (True, False, False, False, False, False, False, True)
+    for lower, upper in zip(edges, edges[1:]):
+        selected = (frequencies >= lower) & (frequencies < upper)
+        spectrum = np.zeros(frequencies.size, dtype=np.complex128)
+        spectrum[selected] = generator.normal(
+            size=np.count_nonzero(selected)
+        ) + 1j * generator.normal(size=np.count_nonzero(selected))
+        noise = np.fft.irfft(spectrum, sample_count)
+        noise /= max(float(np.sqrt(np.mean(np.square(noise)))), 1.0e-12)
+        center = float(
+            frequency_from_erb_rate(0.5 * (erb_rate(lower) + erb_rate(upper)))
+        )
+        t60 = float(
+            interpolate_t60(
+                center,
+                point_frequencies,
+                point_seconds,
+                active,
+                sample_rate,
+            )
+        )
+        colour = 10.0 ** (
+            tilt_db_per_octave * np.log2(max(center, 40.0) / 1000.0) / 20.0
+        )
+        result += colour * noise * 10.0 ** (-3.0 * time / t60)
+    return result / np.sqrt(len(edges) - 1), sample_rate
 
 
 def test_energy_decay_recovers_a_known_t60():
@@ -44,6 +94,48 @@ def test_energy_decay_recovers_a_known_t60():
     assert fit.r_squared > 0.999
     fits = band_decay_fits(time, np.vstack((energy, 10.0 ** (-6.0 * time))))
     assert [item.t60_seconds for item in fits] == pytest.approx([0.5, 1.0], rel=0.03)
+
+
+@pytest.mark.parametrize("tilt_db_per_octave", (-4.0, 4.0))
+def test_two_point_t60_fit_recovers_coloured_noise_envelope(tilt_db_per_octave):
+    samples, sample_rate = _coloured_noise_with_t60(3.2, 0.75, tilt_db_per_octave)
+    onset_sample = round(0.1 * sample_rate)
+    noise = 1.0e-5 * np.random.default_rng(93).normal(size=onset_sample + samples.size)
+    samples = noise + np.pad(samples, (onset_sample, 0))
+    if tilt_db_per_octave > 0:
+        samples *= 0.02
+    fitted = recover_two_point_t60(
+        samples, sample_rate, band_count=24, onset_sample=onset_sample
+    )
+    assert fitted.dc_seconds == pytest.approx(3.2, rel=0.12)
+    assert fitted.nyquist_seconds == pytest.approx(0.75, rel=0.12)
+    assert fitted.log_rmse < 0.12
+    assert fitted.band_frequencies_hz.size >= 20
+
+
+def test_t60_acceptance_gate_rejects_the_wrong_decay():
+    samples, sample_rate = _coloured_noise_with_t60(3.2, 0.75, -2.0)
+    onset_sample = round(0.1 * sample_rate)
+    reference = np.pad(samples, (onset_sample, 0))
+    time = np.arange(samples.size) / sample_rate
+    too_short = samples * 10.0 ** (-3.0 * time / 0.45)
+    matching = t60_diagnostics(
+        AudioBuffer(reference, sample_rate), AudioBuffer(samples, sample_rate)
+    )
+    rejected = t60_diagnostics(
+        AudioBuffer(reference, sample_rate), AudioBuffer(too_short, sample_rate)
+    )
+    assert matching["passed"]
+    assert not rejected["passed"]
+
+
+def test_t60_gate_does_not_invent_evidence_for_an_unmeasurable_reference():
+    sample_rate = 48_000
+    silence = AudioBuffer(np.zeros(round(0.1 * sample_rate)), sample_rate)
+    diagnostics = t60_diagnostics(silence, silence)
+    assert not diagnostics["passed"]
+    assert not diagnostics["evaluated"]
+    assert diagnostics["status"] == "insufficient_reference_evidence"
 
 
 def test_band_decay_rejects_a_recording_too_short_for_the_fit_interval():
@@ -74,6 +166,21 @@ def test_silent_decay_is_finite_but_not_a_measurement():
     fit = band_decay_fits(time, np.zeros((1, time.size)))[0]
     assert fit.status == "insufficient_energy"
     assert np.isnan(fit.t60_seconds)
+
+
+def test_t60_measurement_rejects_window_leakage_as_unobservable():
+    sample_rate = 48_000
+    time = np.arange(4 * sample_rate) / sample_rate
+    signal = np.sin(2 * np.pi * 220.0 * time) * 10.0 ** (-3.0 * time / 2.0)
+    frequencies, fits = measure_band_t60(
+        signal, sample_rate, band_count=24, start_seconds=0.1
+    )
+    measured = np.asarray([item.status == "measured" for item in fits])
+    rejected = np.asarray(
+        [item.status == "below_relative_energy_floor" for item in fits]
+    )
+    assert np.any(measured & (frequencies < 500.0))
+    assert np.all(rejected[frequencies > 2_000.0])
 
 
 def test_esprit_recovers_close_damped_sinusoids():

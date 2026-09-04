@@ -2,7 +2,6 @@
 
 #include "crash_cymbal_parameters.hpp"
 #include "modal_constraint.hpp"
-#include "passive_constraint.hpp"
 #include "tfdsp/finite_audio.hpp"
 
 #include <array>
@@ -23,7 +22,7 @@ struct CrashCymbalHit {
 
 struct CrashCymbalFrame {
   float directContact{};
-  float dispersion{};
+  float bloomTransferEnergy{};
   float modalBody{};
   float output{};
 };
@@ -40,7 +39,8 @@ public:
   float Process() noexcept;
   void SetMute(float amount) noexcept;
 
-  float MinimumBodyDelaySamples() const noexcept;
+  double StoredBodyEnergy() const noexcept;
+  float StoredBodyEnergyCentroidHz() const noexcept;
 
 private:
   void PrepareComponents(float sampleRate,
@@ -50,16 +50,13 @@ private:
   void SetExcitationProjection(float location, float strength) noexcept;
 
   ContactExciter contact_{};
-  DispersionLoop dispersion_{};
   CrashModalField modalField_{};
   ObservationModel<2> observation_{};
-  DynamicLossController delayConstraint_{};
   ModalConstraintController modalConstraint_{};
   CrashCymbalParameters parameters_{};
   CrashModalField::Projection fieldProjection_{};
+  float bodyExcitationGain_{.05f};
   float bodyDriveScale_{1.f};
-  float bloomDriveScale_{1.f};
-  float bloomBodyGain_{1.f};
   MetallicPlateRouting routing_{};
   float sampleRate_{48000.f};
   bool hasProcessedSinceReset_{};

@@ -47,18 +47,15 @@ function connect(connection, nodes, connectionIds, adjacency, indegree) {
   const toType = toNode && ModuleTypes.get(toNode.type);
   const output = fromType && port(fromType, "outputs", from.port);
   const input = toType && port(toType, "inputs", to.port);
-  const invalidEnabled = connection.enabled !== undefined &&
-    typeof connection.enabled !== "boolean";
-  const invalidGain = connection.gain !== undefined &&
-    (!Number.isFinite(connection.gain) || connection.gain < 0 ||
-     connection.gain > 2);
+  const invalidEnabled = typeof connection.enabled !== "boolean";
+  const invalidGain = Object.hasOwn(connection, "gain");
   if (!output || !input || output.type !== input.type || invalidEnabled ||
       invalidGain || typeof connection.id !== "string" ||
       connectionIds.has(connection.id)) {
     throw new Error(`invalid percussion connection: ${connection?.id ?? "unknown"}`);
   }
   connectionIds.add(connection.id);
-  if (connection.enabled === false || connection.gain === 0) return;
+  if (connection.enabled === false) return;
   adjacency.get(from.node).push(to.node);
   indegree.set(to.node, indegree.get(to.node) + 1);
 }
