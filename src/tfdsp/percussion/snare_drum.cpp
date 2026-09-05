@@ -34,6 +34,7 @@ SnareDrumParameters DefaultSnareDrumParameters() noexcept {
   body.fmBodyLevel = .0256f;
   body.fmDepthHz = 180.f;
   body.fmDecaySeconds = .035f;
+  body.fmPitchDecaySeconds = .0245f;
   body.pitchDropOctaves = .12f;
   result.membrane = DefaultMembraneDrumParameters(body);
   result.membrane.membrane[5].frequencyHz = 675.f;

@@ -13,7 +13,7 @@ if (wasm._tf_percussion_recipe_count() !== 4) {
   throw new Error("unexpected recipe count");
 }
 if (wasm.UTF8ToString(wasm._tf_percussion_recipe_key(1)) !==
-    "drum.kick-fm.v1") throw new Error("kick recipe is unavailable");
+    "drum.kick.v1") throw new Error("kick recipe is unavailable");
 if (wasm._tf_crash_route_count() !== 3) throw new Error("unexpected route count");
 if (wasm._tf_crash_macro_count() !== 149) throw new Error("unexpected macro count");
 if (wasm.UTF8ToString(wasm._tf_crash_macro_name(0)) !== "Model level") {
@@ -123,7 +123,7 @@ if (!(quietEnergy / energy > 0.24 && quietEnergy / energy < 0.26)) {
 wasm._tf_crash_destroy(handle);
 
 const kick = wasm._tf_percussion_create(1, 48000);
-if (!kick || wasm._tf_percussion_parameter_count(kick) !== 16 ||
+if (!kick || wasm._tf_percussion_parameter_count(kick) !== 93 ||
     wasm._tf_percussion_route_count(kick) !== 3) {
   throw new Error("kick recipe allocation failed");
 }
@@ -140,7 +140,7 @@ if (!kickAudio.every(Number.isFinite) ||
 wasm._tf_percussion_destroy(kick);
 
 const membrane = wasm._tf_percussion_create(2, 48000);
-if (!membrane || wasm._tf_percussion_parameter_count(membrane) !== 33 ||
+if (!membrane || wasm._tf_percussion_parameter_count(membrane) !== 36 ||
     wasm._tf_percussion_route_count(membrane) !== 5) {
   throw new Error("membrane recipe allocation failed");
 }
@@ -156,7 +156,7 @@ if (!membraneAudio.every(Number.isFinite) ||
 wasm._tf_percussion_destroy(membrane);
 
 const snare = wasm._tf_percussion_create(3, 48000);
-if (!snare || wasm._tf_percussion_parameter_count(snare) !== 50 ||
+if (!snare || wasm._tf_percussion_parameter_count(snare) !== 53 ||
     wasm._tf_percussion_route_count(snare) !== 7) {
   throw new Error("snare recipe allocation failed");
 }

@@ -37,9 +37,10 @@ const Groups = new Map([
   ["membrane-tension-controls", ["tension_octaves", "tension_decay_seconds"]],
   ["membrane-contact-controls", [
     "contact_duration_seconds", "contact_brightness",
+    "contact_noise_level", "contact_noise_decay_seconds",
   ]],
   ["membrane-fm-controls", [
-    "fm_depth_hz", "fm_decay_seconds", "pitch_drop_octaves",
+    "fm_depth_hz", "fm_decay_seconds", "pitch_drop_octaves", "fm_pitch_decay_seconds",
   ]],
   ["membrane-direct-mix-controls", [
     "contact_direct_level", "fm_direct_level",
@@ -94,7 +95,7 @@ export class MembraneControls {
 
   #presets() {
     const parent = document.getElementById("membrane-preset-controls");
-    for (const key of ["tom", "acousticKick"]) {
+    for (const key of ["tom"]) {
       const button = document.createElement("button");
       button.type = "button";
       button.textContent = membranePresetName(key);
@@ -135,7 +136,9 @@ export class MembraneControls {
   #paintMode() {
     const descriptor = this.byKey.get("equalizer_mode");
     const mode = Math.round(this.state.macros[descriptor.index]);
-    document.getElementById("membrane-radiation-panel").hidden = mode !== 1;
+    document.getElementById("membrane-radiation-panel").hidden = mode === 0;
+    for (const key of ["colour_frequency_hz", "colour_gain_db"])
+      document.querySelector(`[data-membrane-key="${key}"]`).hidden = mode !== 1;
     document.getElementById("membrane-multiband-panel").hidden = mode !== 2;
   }
 
@@ -146,6 +149,14 @@ export class MembraneControls {
     row.className = "slider-row";
     row.dataset.membraneKey = key;
     row.dataset.tooltip = `${descriptor.name}; double-click to restore its default.`;
+    if (key === "fm_pitch_decay_seconds")
+      row.dataset.tooltip = "Time for the FM carrier to fall to the membrane fundamental; independent of the burst's amplitude decay. Double-click resets.";
+    if (key === "fm_decay_seconds")
+      row.dataset.tooltip = "Time for the exciter amplitude to fade by 80 dB. This is not the membrane T60; it no longer changes pitch-fall time. Double-click resets.";
+    if (key === "contact_noise_level")
+      row.dataset.tooltip = "Broadband noise within the contact exciter, before the direct/body route gains. Does not change the pulse or chirp level. Double-click resets.";
+    if (key === "contact_noise_decay_seconds")
+      row.dataset.tooltip = "Base time for contact noise to fade by 80 dB; implement and contact spread modify this duration. Independent of pulse width and membrane damping. Double-click resets.";
     const title = document.createElement("span");
     title.textContent = descriptor.name;
     const input = document.createElement("input");

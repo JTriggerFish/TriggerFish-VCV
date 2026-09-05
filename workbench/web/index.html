@@ -85,8 +85,9 @@
           <details open data-module-id="membrane-tension"><summary data-tooltip="A bounded strike-history envelope briefly raises effective tension; it is not a measurement of modal energy.">Strike energy and tension</summary><div id="membrane-tension-controls" data-membrane-controls></div></details>
           <details open data-module-id="snare-wires"><summary data-tooltip="A motion-driven wire contact: static displacement is silent, while membrane motion excites correlated noise and a dense bank of short wire modes.">Snare-wire response</summary><div id="snare-wire-response-controls" data-snare-controls></div></details>
           <section data-module-id="kick-output"><h2>Output</h2><div id="kick-output-controls" data-kick-controls></div></section>
-          <details open data-module-id="kick-primary"><summary data-tooltip="The main pitch-dropping, FM-broadened kick body.">Primary FM body</summary><div id="kick-primary-controls" data-kick-controls></div></details>
-          <details open data-module-id="kick-secondary"><summary data-tooltip="A correlated second body branch that adds membrane complexity without a resonator network.">Secondary FM body</summary><div id="kick-secondary-controls" data-kick-controls></div></details>
+          <details open data-module-id="kick-thump"><summary data-tooltip="Clean low-frequency weight with independent pitch fall and amplitude decay.">Thump</summary><div id="kick-thump-controls" data-kick-controls></div></details>
+          <details open data-module-id="kick-resonance"><summary data-tooltip="Passive ringing excited by contact; its level does not change the direct generators.">Resonance</summary><div id="kick-resonance-controls" data-kick-controls></div></details>
+          <details data-module-id="kick-tension"><summary data-tooltip="Optional pitch lift from strike history, independent of the thump pitch envelope.">Advanced resonance: tension</summary><div id="kick-tension-controls" data-kick-controls></div></details>
           <section data-module-id="output"><h2>Output</h2><div id="model-level" data-fit-controls></div></section>
           <section data-module-id="body"><h2>Starting point</h2>
             <label>Size meta <input id="size-meta" type="range" min="0" max="1" value="0.5" step="0.01"><output>0.50</output></label>
@@ -113,8 +114,8 @@
             <div id="membrane-radiation-panel"><div id="membrane-radiation-controls" data-membrane-controls></div></div>
             <div id="membrane-multiband-panel"><div id="membrane-multiband-controls" data-membrane-controls></div></div>
           </details>
-          <details open data-module-id="kick-click"><summary data-tooltip="A short tilted noise burst for beater contact.">Click source</summary><div id="kick-click-controls" data-kick-controls></div></details>
-          <details open data-module-id="kick-observation"><summary data-tooltip="Static output radiation filtering; it does not feed the synthesis branches.">Kick observation</summary><div id="kick-observation-controls" data-kick-controls></div></details>
+          <details open data-module-id="kick-contact"><summary data-tooltip="One beater contact: smooth force, brief tonal articulation and noise. Its audible level is independent of resonance drive.">Contact</summary><div id="kick-contact-controls" data-kick-controls></div></details>
+          <details open data-module-id="kick-observation"><summary data-tooltip="Shared output-only filtering, with no automatic level compensation.">Output EQ</summary><div id="kick-observation-controls" data-kick-controls></div><div id="kick-radiation-controls" data-kick-controls></div><div id="kick-multiband-controls" data-kick-controls></div></details>
           <details open data-module-id="body"><summary data-tooltip="One interpolated frequency-dependent loss curve applied directly to every modal state.">Modal T60 curve</summary>
             <div class="decay-heading"><p class="control-help">Absolute decay curve shared by every mode. Drag the diamond to move the whole curve.</p><span id="decay-readout">2/8 knots</span></div>
             <div id="decay-editor" data-fit-controls></div>
@@ -165,18 +166,25 @@
           </div>
         </div>
       </section>
-      <section class="performance-panel" data-module-id="kick-primary"><h2>Kick trigger</h2>
-        <div class="performance-controls">
-          <div id="kick-pad" class="strike-pad kick-pad">
+      <section class="performance-panel" data-module-id="kick-thump"><h2>Kick trigger</h2>
+          <div class="performance-controls">
+            <div id="kick-pad" class="strike-pad kick-pad">
             <span class="strike-x"><i>soft beater</i><i>hard beater</i></span>
             <span class="strike-y"><i>strong</i><i>light</i></span>
           </div>
           <label class="character-control"><span>Beater hardness</span><input id="kick-hardness" type="range" min="0" max="1" value="0.5" step="0.01"><output>0.50</output>
             <span class="slider-endpoints"><i>soft</i><i>hard</i></span>
-          </label>
-        </div>
-      </section>
-      <section class="performance-panel" data-module-id="membrane-contact"><h2>Membrane strike</h2>
+            </label>
+            <label>Contact family
+              <select id="kick-implement"><option value="0">Brush</option><option value="0.5">Mallet / felt</option><option value="1" selected>Hard beater</option></select>
+            </label>
+            <details><summary>Strike details</summary>
+              <label class="slider-row"><span>Strike location</span><input id="kick-location" type="range" min="0" max="1" value="0.5" step="0.01"><output>0.50</output></label>
+              <label class="slider-row"><span>Contact spread</span><input id="kick-spread" type="range" min="0" max="1" value="0.25" step="0.01"><output>0.25</output></label>
+            </details>
+          </div>
+        </section>
+        <section class="performance-panel" data-module-id="membrane-contact"><h2>Membrane strike</h2>
         <div class="performance-controls">
           <div id="membrane-pad" class="strike-pad">
             <span class="strike-x"><i>centre</i><i>mid</i><i>edge</i></span>
@@ -221,9 +229,23 @@
           <label data-tooltip="Quantize newly painted, inserted, or moved modal centres to the nearest harmonic."><input id="harmonic-snap" type="checkbox" disabled> Snap edits</label>
           <button id="harmonic-snap-all" disabled data-tooltip="Move every active modal centre to its nearest harmonic while preserving its level, decay, and turbulence.">Snap active</button>
         </div>
+        <div id="modal-templates"></div>
         <div id="modal-editor" data-fit-controls></div>
         <div class="modal-gesture-help">Select &amp; shape: double-click to insert/remove, wheel or wing drag changes width · Prominence brush: reshape existing anchors · Paint modes: drag to create and shape</div>
         <div id="modal-selection" class="selection-controls" data-fit-controls></div>
+      </section>
+      <section class="modal-design" data-module-id="kick-resonance">
+        <h2>Resonance modes</h2>
+        <div id="kick-modal-templates"></div>
+        <div class="modal-toolbar">
+          <button id="kick-mode-edit">Select / move</button>
+          <button id="kick-mode-paint">Paint modes</button>
+          <button id="kick-mode-clear">Clear modes</button>
+          <span id="kick-mode-readout"></span>
+        </div>
+        <div id="kick-modal-editor"></div>
+        <p class="control-help">Double-click to add or delete; drag bars to set frequency and relative prominence. Shift gives precision. No per-mode decay: the shared frequency-dependent damping controls apply to every mode.</p>
+        <div id="kick-mode-selection" class="selection-controls"></div>
       </section>
     </section>
   </main>

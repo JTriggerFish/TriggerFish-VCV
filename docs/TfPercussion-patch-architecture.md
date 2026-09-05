@@ -69,8 +69,9 @@ The browser first validates the patch, then matches it to one of a bounded set
 of registered recipes. A recipe owns a statically ordered schedule of typed C++
 calls; it is not a general graph interpreter. The metallic-plate recipe
 compiles three optional audio connections to prepared switches at those call sites.
-The compact-kick recipe similarly compiles three source-to-mixer switches around
-two correlated-FM sources and one noise click. The membrane recipe compiles
+The unified kick recipe similarly compiles three observation switches around
+one contact, one swept-sine thump and a persistent membrane resonator. See
+[kick architecture](TfPercussion-kick-architecture.md). The membrane recipe compiles
 five optional switches around contact and correlated-FM exciters. Four visible
 source-to-bus level parameters feed its two fixed mixers, followed by a
 normalized and energy-bounded persistent 16-mode membrane, a

@@ -1,11 +1,9 @@
-import {
-  createAcousticKickPatch, membranePresetValues, patchWithMembraneValues,
-} from "./membrane_patch.mjs";
+import { createKickPatch } from "./kick_patch.mjs";
 import { metallicCalibrationValues } from "./metallic_calibrations.mjs";
 
 export function calibrationParameterValues(calibration, descriptors) {
-  if (calibration.parameter_preset === "acoustic-kick")
-    return membranePresetValues("acousticKick", descriptors);
+  if (calibration.parameter_preset === "kick")
+    return descriptors.map(item => item.defaultValue);
   const metallic = metallicCalibrationValues(
     calibration.parameter_preset, descriptors,
   );
@@ -18,8 +16,6 @@ export function calibrationParameterValues(calibration, descriptors) {
 export function calibrationPatch(
   calibration, descriptors, values, fallbackPatch,
 ) {
-  if (calibration.parameter_preset !== "acoustic-kick") return fallbackPatch;
-  return patchWithMembraneValues(
-    createAcousticKickPatch(descriptors), descriptors, values,
-  );
+  if (calibration.parameter_preset !== "kick") return fallbackPatch;
+  return createKickPatch(descriptors, values);
 }

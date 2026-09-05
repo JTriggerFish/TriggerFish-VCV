@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {
   fitMacroValues, readFit, snapshotState, validateFit,
 } from "../web/state.mjs";
-import { createKickPatch } from "../web/compact_kick_patch.mjs";
+import { createKickPatch } from "../web/kick_patch.mjs";
 import { createSnarePatch } from "../web/snare_patch.mjs";
 
 const descriptors = [
@@ -107,7 +107,7 @@ assert.deepEqual(
 const kickDescriptors = [
   { index: 0, key: "model_level_db", minimum: -60, maximum: 0,
     defaultValue: -12 },
-  { index: 1, key: "fundamental_hz", minimum: 25, maximum: 120,
+  { index: 1, key: "thump_pitch_hz", minimum: 25, maximum: 120,
     defaultValue: 52 },
 ];
 const kickValues = [-9, 58];
@@ -115,7 +115,7 @@ const kickFit = snapshotState({
   ...state, macros: kickValues,
   patch: createKickPatch(kickDescriptors, kickValues),
 }, "Kick", kickDescriptors);
-assert.equal(kickFit.renderer.recipe, "drum.kick-fm.v1");
+assert.equal(kickFit.renderer.recipe, "drum.kick.v1");
 assert.deepEqual(
   fitMacroValues(validateFit(kickFit, kickDescriptors), kickDescriptors),
   kickValues,

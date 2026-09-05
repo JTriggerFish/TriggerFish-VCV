@@ -3,6 +3,7 @@
 #include "tfdsp/percussion/strike_energy_envelope.hpp"
 #include "tfdsp/percussion/fixed_mixer.hpp"
 #include "tfdsp/percussion/membrane_drum.hpp"
+#include "tfdsp/percussion/kick_voice_parameters.hpp"
 #include "tfdsp/percussion/membrane_resonator.hpp"
 #include "tfdsp/percussion/observation_equalizer.hpp"
 
@@ -271,6 +272,131 @@ void TestRatesAndRoutes() {
         "disabling every membrane route produces silence");
 }
 
+void TestIndependentFmPitchTime() {
+  using namespace tfdsp::percussion;
+  MembraneDrumControls controls;
+  controls.fmDecaySeconds = .4f;
+  controls.fmPitchDecaySeconds = .02f;
+  const auto first = DefaultMembraneDrumParameters(controls);
+  CheckNear(first.fm.carrierFrequencyHz.segments[0].durationSeconds, .02, 1.e-6,
+            "FM pitch fall has an independent visible duration");
+  CheckNear(first.fm.amplitude.segments[1].durationSeconds, .4, 1.e-6,
+            "short pitch fall does not shorten FM amplitude decay");
+  controls.fmDecaySeconds = .15f;
+  const auto second = DefaultMembraneDrumParameters(controls);
+  CheckNear(second.fm.carrierFrequencyHz.segments[0].durationSeconds, .02, 1.e-6,
+            "amplitude edits cannot silently alter pitch timing");
+}
+
+void TestFmDepthActuallyDecaysGeometrically() {
+  using namespace tfdsp::percussion;
+  MembraneDrumControls controls;
+  controls.fmDepthHz = 500.f;
+  controls.fmDecaySeconds = .2f;
+  const auto parameters = DefaultMembraneDrumParameters(controls);
+  BreakpointTrajectory<CorrelatedFmMaximumSegments> depth;
+  depth.Prepare(48000.f);
+  depth.Start(parameters.fm.frequencyDeviationHz.initialValue,
+              parameters.fm.frequencyDeviationHz.segments,
+              parameters.fm.frequencyDeviationHz.segmentCount);
+  for (int i = 0; i < 3840; ++i) depth.Process();
+  CheckNear(depth.Value(), 5., .01,
+            "halfway through an 80 dB geometric FM fade is -40 dB, not half amplitude");
+  for (int i = 0; i < 4000; ++i) depth.Process();
+  CheckNear(depth.Value(), 0., 1.e-8, "FM fade finishes at exact zero");
+}
+
+void TestIndependentContactNoise() {
+  using namespace tfdsp::percussion;
+  MembraneDrumControls controls;
+  controls.contactNoiseLevel = 1.3f;
+  controls.contactNoiseDecaySeconds = .2f;
+  const auto parameters = DefaultMembraneDrumParameters(controls);
+  CheckNear(parameters.contact.noise.amplitude, 1.3, 1.e-6,
+            "contact noise level is an explicit control");
+  CheckNear(parameters.contact.noise.decaySeconds, .2, 1.e-6,
+            "contact noise has an independent fade time");
+  CheckNear(parameters.contact.pulseDurationSeconds, controls.contactDurationSeconds,
+            1.e-6, "longer noise does not stretch the contact pulse");
+  CheckNear(parameters.membrane[0].decaySeconds, controls.decaySeconds, 1.e-6,
+            "noise duration does not change membrane damping");
+}
+
+void TestUnifiedKickSurface() {
+  using namespace tfdsp::percussion;
+  KickVoiceControls controls;
+  controls.thumpPitchHz = 20.f;
+  controls.thumpDecaySeconds = .3f;
+  controls.modes[0].frequencyHz = 40.f;
+  controls.resonanceLevel = 0.f;
+  controls.contactLevel = 0.f;
+  controls.contactNoiseDecaySeconds = .15f;
+  const auto parameters = DefaultKickVoiceParameters(controls);
+  CheckNear(parameters.fm.carrierFrequencyHz.segments[0].targetValue, 20., 1.e-6,
+            "kick thump can settle below the membrane recipe's 25 Hz limit");
+  CheckNear(parameters.membrane[0].frequencyHz, 40., 1.e-6,
+            "mode frequency is independent of thump pitch");
+  controls.modes[0].frequencyHz = 200.f;
+  controls.resonanceDecaySeconds = 1.f;
+  controls.resonanceDecayTilt = 1.f;
+  auto frequencyLoss = DefaultKickVoiceParameters(controls);
+  CheckNear(frequencyLoss.membrane[0].decaySeconds, .5, 1.e-6,
+            "global frequency loss halves T60 one octave above 100 Hz");
+  controls.modes[1].levelDb = -72.f;
+  frequencyLoss = DefaultKickVoiceParameters(controls);
+  CheckNear(frequencyLoss.membrane[0].decaySeconds, .5, 1.e-6,
+            "disabling another mode cannot change damping");
+  CheckNear(frequencyLoss.membrane[1].inputGain, 0., 1.e-6,
+            "disabled modes receive no strike energy");
+  CheckNear(frequencyLoss.membrane[1].outputGain, 0., 1.e-6,
+            "disabled modes have no observation");
+  CheckNear(parameters.fm.amplitude.segments[1].durationSeconds, .4, 1.e-6,
+            "kick source T60 converts correctly to its finite -80 dB fade");
+  CheckNear(parameters.contact.noise.decaySeconds, .2, 1.e-6,
+            "contact noise T60 is not confused with fade duration");
+  CheckNear(parameters.contactBodyLevel, 1., 1.e-6,
+            "muting audible contact does not mute its unit body excitation");
+  CheckNear(parameters.fmBodyLevel, 0., 1.e-6, "thump does not drive resonance");
+  CheckNear(parameters.fm.frequencyDeviationHz.initialValue, 0., 1.e-6,
+            "thump is a clean oscillator, not a forced FM layer");
+  auto muted = parameters;
+  ApplyKickRouting(muted, {{false, false, false}});
+  Check(muted.routing.Enabled(MembraneDrumRoute::ContactToBody),
+        "muting observations retains the required contact-to-resonator path");
+  for (unsigned mask = 0; mask < 8; ++mask) {
+    KickVoiceRouting routing;
+    for (unsigned i = 0; i < 3; ++i) routing.enabled[i] = mask & (1u << i);
+    auto routed = DefaultKickVoiceParameters();
+    ApplyKickRouting(routed, routing);
+    const auto audio = Render(48000.f, {.5f, .5f, .5f, .5f, .2f, 37}, routed);
+    Check(std::all_of(audio.begin(), audio.end(), [](float value) {
+      return std::isfinite(value);
+    }), "every kick routing mask remains finite");
+    Check((Energy(audio) > 1.e-10) == (mask != 0),
+          "each kick branch is independently audible, all off is silent");
+  }
+}
+
+void TestKickQuietModeRemovalIsContinuous() {
+  using namespace tfdsp::percussion;
+  KickVoiceControls controls;
+  controls.contactLevel = controls.thumpLevel = controls.tensionOctaves = 0.f;
+  for (auto &mode : controls.modes) mode = {110.f, -72.f, 1.f, 1.f};
+  controls.modes[0] = {55.f, 0.f, 1.f, 1.f};
+  controls.modes[1].levelDb = -71.99f;
+  const auto near = Render(48000.f, {.5f, 0.f, .5f, .5f, .2f, 1449},
+                            DefaultKickVoiceParameters(controls));
+  controls.modes[1].levelDb = -72.f;
+  const auto off = Render(48000.f, {.5f, 0.f, .5f, .5f, .2f, 1449},
+                           DefaultKickVoiceParameters(controls));
+  Check(std::abs(10. * std::log10(Energy(off) / Energy(near))) < .001,
+        "removing a -71.99 dB mode cannot boost the remaining modes");
+  double error = 0.;
+  for (std::size_t i = 0; i < off.size(); ++i)
+    error += (off[i] - near[i]) * (off[i] - near[i]);
+  Check(error / Energy(off) < 1.e-8, "quiet-mode off boundary is continuous");
+}
+
 } // namespace
 
 int main() {
@@ -283,6 +409,11 @@ int main() {
   TestAcousticKickEnergyBudget();
   TestDefaultHeadroom();
   TestRatesAndRoutes();
+  TestIndependentFmPitchTime();
+  TestFmDepthActuallyDecaysGeometrically();
+  TestIndependentContactNoise();
+  TestUnifiedKickSurface();
+  TestKickQuietModeRemovalIsContinuous();
   if (percussion_test::failures == 0)
     std::cout << "All membrane percussion tests passed\n";
   return percussion_test::failures == 0 ? 0 : 1;

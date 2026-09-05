@@ -10,8 +10,7 @@ get_filename_component(TRIGGERFISH_ROOT "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
 
 set(TRIGGERFISH_PERCUSSION_SOURCES
   ${TRIGGERFISH_ROOT}/src/tfdsp/sampleRate.cpp
-  ${TRIGGERFISH_ROOT}/src/tfdsp/percussion/compact_kick.cpp
-  ${TRIGGERFISH_ROOT}/src/tfdsp/percussion/compact_kick_parameters.cpp
+  ${TRIGGERFISH_ROOT}/src/tfdsp/percussion/kick_voice_parameters.cpp
   ${TRIGGERFISH_ROOT}/src/tfdsp/percussion/crash_cymbal.cpp
   ${TRIGGERFISH_ROOT}/src/tfdsp/percussion/crash_cymbal_parameters.cpp
   ${TRIGGERFISH_ROOT}/src/tfdsp/percussion/membrane_drum.cpp
@@ -21,6 +20,7 @@ set(TRIGGERFISH_PERCUSSION_SOURCES
   ${CMAKE_CURRENT_LIST_DIR}/wasm/crash_api.cpp
   ${CMAKE_CURRENT_LIST_DIR}/wasm/crash_macros.cpp
   ${CMAKE_CURRENT_LIST_DIR}/wasm/kick_macros.cpp
+  ${CMAKE_CURRENT_LIST_DIR}/wasm/kick_mode_macros.cpp
   ${CMAKE_CURRENT_LIST_DIR}/wasm/membrane_macros.cpp
   ${CMAKE_CURRENT_LIST_DIR}/wasm/snare_macros.cpp
   ${CMAKE_CURRENT_LIST_DIR}/wasm/percussion_api.cpp

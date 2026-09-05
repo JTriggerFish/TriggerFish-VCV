@@ -9,6 +9,10 @@ export const ModuleRoles = Object.freeze({
 
 const types = [
   {
+    type: "exciter.thump", version: 1, name: "Thump", role: "exciter",
+    inputs: [], outputs: [{ name: "audio", type: "audio" }],
+  },
+  {
     type: "exciter.contact", version: 1, name: "Contact", role: "exciter",
     inputs: [], outputs: [
       { name: "direct", type: "audio" }, { name: "body", type: "audio" },
@@ -113,10 +117,7 @@ export const RecipeTypes = new Map([
   ["metal.pair.v1", { name: "Interacting metallic plates", available: false }],
   ["drum.membrane.v1", { name: "Membrane", available: true }],
   ["drum.snare.v1", { name: "Membrane with wires", available: true }],
-  ["drum.kick-fm.v1", { name: "Compact FM kick", available: true }],
-  ["drum.kick-acoustic.v1", {
-    name: "Exciter with resonant body", available: false,
-  }],
+  ["drum.kick.v1", { name: "Kick", available: true }],
 ]);
 
 export function modulePresentation(patch) {

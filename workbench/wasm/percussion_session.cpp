@@ -58,7 +58,7 @@ const ParameterDescriptor *Description(
   case Recipe::MetallicPlate:
     return index < ActiveCrashMacroCount
         ? &ActiveCrashMacroDescription(index) : nullptr;
-  case Recipe::CompactKick:
+  case Recipe::Kick:
     return index < session.kickValues.size()
         ? &KickParameterDescription(index) : nullptr;
   case Recipe::MembraneDrum:
@@ -74,7 +74,7 @@ const ParameterDescriptor *Description(
 std::size_t ParameterCount(const Session &session) noexcept {
   switch (session.recipe) {
   case Recipe::MetallicPlate: return ActiveCrashMacroCount;
-  case Recipe::CompactKick: return session.kickValues.size();
+  case Recipe::Kick: return session.kickValues.size();
   case Recipe::MembraneDrum: return session.membraneValues.size();
   case Recipe::SnareDrum: return session.snareValues.size();
   default: return 0;
@@ -90,9 +90,9 @@ void Prepare(Session &session) {
     session.cymbal.Prepare(session.sampleRate, parameters);
     return;
   }
-  if (session.recipe == Recipe::CompactKick) {
+  if (session.recipe == Recipe::Kick) {
     auto parameters = ApplyKickParameters(session.kickValues);
-    parameters.routing = session.kickRouting;
+    tfdsp::percussion::ApplyKickRouting(parameters, session.kickRouting);
     session.kick.Prepare(session.sampleRate, parameters);
     return;
   }
@@ -110,7 +110,7 @@ void Prepare(Session &session) {
 float Process(Session &session) noexcept {
   switch (session.recipe) {
   case Recipe::MetallicPlate: return session.cymbal.Process();
-  case Recipe::CompactKick: return session.kick.Process();
+  case Recipe::Kick: return session.kick.Process();
   case Recipe::MembraneDrum: return session.membrane.Process();
   case Recipe::SnareDrum: return session.snare.Process();
   default: return 0.f;

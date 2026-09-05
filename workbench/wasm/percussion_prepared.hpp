@@ -1,6 +1,5 @@
 #pragma once
 
-#include "tfdsp/percussion/compact_kick_parameters.hpp"
 #include "tfdsp/percussion/crash_cymbal_parameters.hpp"
 #include "tfdsp/percussion/membrane_drum_parameters.hpp"
 #include "tfdsp/percussion/snare_drum.hpp"
@@ -28,7 +27,7 @@ struct PreparedMetallicRecipe {
 
 struct PreparedKickRecipe {
   PreparedRecipeHeader header{};
-  tfdsp::percussion::CompactKickParameters parameters{};
+  tfdsp::percussion::MembraneDrumPreparedParameters parameters{};
 };
 
 struct PreparedMembraneRecipe {

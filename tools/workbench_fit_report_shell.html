@@ -1,0 +1,32 @@
+<!doctype html><meta charset="utf-8"><title>Gong fit review</title>
+<style>body{background:#10141b;color:#ddd;font:16px system-ui;max-width:1250px;margin:30px auto}a{color:#fcbf49}td,th{padding:8px;text-align:left}audio{vertical-align:middle;margin:12px}button{padding:10px}</style>
+<h1>Gong — reference vs candidate</h1><p>One mallet strike, fixed source gain. No independent normalization or time stretching. Candidate is not listening-approved.</p>
+<p><a href="candidate.fit.json" download>Download candidate fit</a> · Use “Load fit” in the <a href="/">workbench</a>.</p>
+<p><button data-audio="reference">Play reference</button> <button data-audio="candidate">Play candidate</button> <button id="stop">Stop</button>
+<label>Master <input id="master" type="range" min="-48" max="0" value="-12" step=".5"><output>-12 dB</output></label></p>
+<p id="audio-status">Playback uses the same always-on 3 ms limiter as the workbench. Plots and saved audio remain pre-limiter.</p>
+<script type="module">
+let context, master, source, ready;
+const cache=new Map(), status=document.getElementById('audio-status');
+async function initialize(){
+  context=new AudioContext({latencyHint:'interactive'});
+  await context.audioWorklet.addModule('../lookahead_limiter_processor.mjs');
+  const limiter=new AudioWorkletNode(context,'triggerfish-lookahead-limiter');
+  master=new GainNode(context,{gain:10**(Number(document.getElementById('master').value)/20)});
+  master.connect(limiter).connect(context.destination);
+}
+document.getElementById('master').oninput=e=>{
+  e.target.nextElementSibling.textContent=e.target.value+' dB';
+  if(master)master.gain.value=10**(Number(e.target.value)/20);
+};
+document.getElementById('stop').onclick=()=>{source?.stop();source=null;};
+for(const button of document.querySelectorAll('[data-audio]'))button.onclick=async()=>{
+  try{
+    ready??=initialize();await ready;await context.resume();
+    const name=button.dataset.audio;
+    if(!cache.has(name))cache.set(name,await context.decodeAudioData(await(await fetch(name+'.wav')).arrayBuffer()));
+    source?.stop();source=new AudioBufferSourceNode(context,{buffer:cache.get(name)});
+    source.connect(master);source.start();status.textContent='Playing '+name+' · limiter enabled';
+  }catch(error){status.textContent=String(error);}
+};
+</script>

@@ -37,30 +37,14 @@ assert.deepEqual(gong, [
   1.1, 25, 2,
 ]);
 
-const membraneDescriptors = [
-  { key: "model_level_db", defaultValue: -10, index: 0 },
-  { key: "fundamental_hz", defaultValue: 105, index: 1 },
-  { key: "decay_seconds", defaultValue: 1.15, index: 2 },
-  { key: "contact_direct_level", defaultValue: .245, index: 3 },
-  { key: "contact_body_level", defaultValue: .7, index: 4 },
-  { key: "fm_direct_level", defaultValue: .0144, index: 5 },
-  { key: "fm_body_level", defaultValue: .081, index: 6 },
+const kickDescriptors = [
+  {key:"model_level_db", defaultValue:-12, index:0},
+  {key:"thump_pitch_hz", defaultValue:28, index:1},
+  {key:"contact_level", defaultValue:.4, index:2},
 ];
-const acousticKick = calibrationParameterValues(
-  { parameter_preset: "acoustic-kick" }, membraneDescriptors);
-assert.deepEqual(acousticKick, [-12, 35, .25, 1.64, .205, .04, .05625]);
-const acousticPatch = calibrationPatch(
-  { parameter_preset: "acoustic-kick" }, membraneDescriptors,
-  acousticKick, null,
-);
-assert.equal(acousticPatch.name, "Acoustic kick");
-assert.equal(acousticPatch.recipe, "drum.membrane.v1");
-assert.ok(acousticPatch.connections.every(connection =>
-  !Object.hasOwn(connection, "gain")));
-assert.equal(acousticPatch.nodes.find(
-  node => node.id === "membrane-direct-mix")
-  .parameters.contact_direct_level, 1.64);
-assert.equal(acousticPatch.nodes.find(
-  node => node.id === "membrane-body-mix").parameters.fm_body_level, .05625);
-
+const kickValues = calibrationParameterValues({parameter_preset:"kick"}, kickDescriptors);
+const kickPatch = calibrationPatch({parameter_preset:"kick"}, kickDescriptors, kickValues, null);
+assert.equal(kickPatch.recipe, "drum.kick.v1");
+assert.equal(kickPatch.nodes.find(n=>n.id==="kick-contact").parameters.contact_level, .4);
+assert.throws(()=>calibrationParameterValues({parameter_preset:"acoustic-kick"},kickDescriptors), /Unknown/);
 console.log("instrument calibration tests passed");

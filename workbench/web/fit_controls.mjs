@@ -1,4 +1,5 @@
 import { ModalEditor } from "./modal_editor.mjs";
+import { mountModalTemplates } from "./modal_templates.mjs";
 import { DecayCurveEditor } from "./decay_curve_editor.mjs";
 import { expandedSizeMeta } from "./size_meta.mjs";
 
@@ -341,6 +342,14 @@ export class FitControls {
         document.getElementById("modal-readout").textContent = text;
       },
     });
+    mountModalTemplates(document.getElementById("modal-templates"), {
+      capacity: curve.frequencies.length, minimumFrequency: 40, maximumFrequency: 15000,
+      apply: generated => {
+        const next = points().map((point, i) => generated[i]
+          ? {...point, ...generated[i]} : {...point, level:-72, active:false});
+        replace(next, "modal_template"); editor.select(null); editor.refresh();
+      },
+    });
     const tools = { edit: "edit", level: "shape", paint: "paint" };
     const setTool = tool => {
       editor.setTool(tool);
@@ -366,13 +375,13 @@ export class FitControls {
         point.active = false;
       });
       replace(next, "modal_clear");
-      editor.refresh(); inspect(null);
+      editor.select(null); editor.refresh();
     };
     document.getElementById("modal-preset").onchange = event => {
       if (!event.target.value) return;
       this.applyModalPreset(event.target.value, curve, turbulence);
       event.target.value = "";
-      editor.refresh(); inspect(null);
+      editor.select(null); editor.refresh();
     };
     this.bindHarmonicGuide(editor);
     setTool("edit");

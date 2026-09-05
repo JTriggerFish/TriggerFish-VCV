@@ -24,14 +24,14 @@ std::uint32_t tf_percussion_recipe_count() noexcept {
 
 const char *tf_percussion_recipe_key(const std::uint32_t recipe) noexcept {
   static constexpr std::array keys{
-      "metal.cymbal.v1", "drum.kick-fm.v1", "drum.membrane.v1",
+      "metal.cymbal.v1", "drum.kick.v1", "drum.membrane.v1",
       "drum.snare.v1"};
   return recipe < keys.size() ? keys[recipe] : nullptr;
 }
 
 const char *tf_percussion_recipe_name(const std::uint32_t recipe) noexcept {
   static constexpr std::array names{
-      "Metallic plate", "Compact FM kick", "Membrane drum", "Snare drum"};
+      "Metallic plate", "Kick", "Membrane drum", "Snare drum"};
   return recipe < names.size() ? names[recipe] : nullptr;
 }
 
@@ -58,7 +58,7 @@ void tf_percussion_destroy(const std::uint32_t handle) noexcept {
   if (auto *session = Find(handle)) {
     switch (session->recipe) {
     case Recipe::MetallicPlate: session->cymbal.Reset(); break;
-    case Recipe::CompactKick: session->kick.Reset(); break;
+    case Recipe::Kick: session->kick.Reset(); break;
     case Recipe::MembraneDrum: session->membrane.Reset(); break;
     case Recipe::SnareDrum: session->snare.Reset(); break;
     default: break;
@@ -77,7 +77,7 @@ int tf_percussion_reset(const std::uint32_t handle) noexcept {
   if (!session) return 0;
   switch (session->recipe) {
   case Recipe::MetallicPlate: session->cymbal.Reset(); break;
-  case Recipe::CompactKick: session->kick.Reset(); break;
+  case Recipe::Kick: session->kick.Reset(); break;
   case Recipe::MembraneDrum: session->membrane.Reset(); break;
   case Recipe::SnareDrum: session->snare.Reset(); break;
   default: return 0;
@@ -96,8 +96,8 @@ int tf_percussion_trigger(
     session->cymbal.Trigger(
         {strength, location, hardness, seed, implement, contactSpread});
     break;
-  case Recipe::CompactKick:
-    session->kick.Trigger({strength, hardness, seed});
+  case Recipe::Kick:
+    session->kick.Trigger({strength, location, hardness, implement, contactSpread, seed});
     break;
   case Recipe::MembraneDrum:
     session->membrane.Trigger(
@@ -192,7 +192,7 @@ float tf_percussion_parameter_get(const std::uint32_t handle,
   switch (session->recipe) {
   case Recipe::MetallicPlate:
     return session->crashValues[tfworkbench::ActiveCrashMacroIndices[index]];
-  case Recipe::CompactKick: return session->kickValues[index];
+  case Recipe::Kick: return session->kickValues[index];
   case Recipe::MembraneDrum: return session->membraneValues[index];
   case Recipe::SnareDrum: return session->snareValues[index];
   default: return 0.f;
@@ -213,7 +213,7 @@ int tf_percussion_parameter_set(const std::uint32_t handle,
   case Recipe::MetallicPlate:
     session->crashValues[tfworkbench::ActiveCrashMacroIndices[index]] = bounded;
     break;
-  case Recipe::CompactKick:
+  case Recipe::Kick:
     session->kickValues[index] = bounded;
     break;
   case Recipe::MembraneDrum:
@@ -245,7 +245,7 @@ std::uint32_t tf_percussion_route_count(
   switch (session->recipe) {
   case Recipe::MetallicPlate:
     return static_cast<std::uint32_t>(session->cymbalRouting.enabled.size());
-  case Recipe::CompactKick:
+  case Recipe::Kick:
     return static_cast<std::uint32_t>(session->kickRouting.enabled.size());
   case Recipe::MembraneDrum:
     return static_cast<std::uint32_t>(session->membraneRouting.enabled.size());
@@ -261,7 +261,7 @@ int tf_percussion_route_enabled(const std::uint32_t handle,
   if (!session || index >= tf_percussion_route_count(handle)) return 0;
   switch (session->recipe) {
   case Recipe::MetallicPlate: return session->cymbalRouting.enabled[index];
-  case Recipe::CompactKick: return session->kickRouting.enabled[index];
+  case Recipe::Kick: return session->kickRouting.enabled[index];
   case Recipe::MembraneDrum: return session->membraneRouting.enabled[index];
   case Recipe::SnareDrum: return session->snareRouting.enabled[index];
   default: return 0;
@@ -278,7 +278,7 @@ int tf_percussion_route_enable(const std::uint32_t handle,
   case Recipe::MetallicPlate:
     session->cymbalRouting.SetEnabled(index, enabled != 0);
     break;
-  case Recipe::CompactKick:
+  case Recipe::Kick:
     session->kickRouting.SetEnabled(index, enabled != 0);
     break;
   case Recipe::MembraneDrum:

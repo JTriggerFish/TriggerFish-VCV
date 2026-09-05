@@ -2,29 +2,33 @@ import { PatchSchema } from "./percussion_patch.mjs";
 import { ModuleTypes } from "./percussion_registry.mjs";
 
 const Nodes = [
-  ["kick-primary", "exciter.correlated-fm", 24, 18, "Primary FM"],
-  ["kick-secondary", "exciter.correlated-fm", 24, 82, "Secondary FM"],
-  ["kick-click", "exciter.noise-burst", 24, 146, "Click"],
-  ["kick-mix", "transform.sum3", 250, 82, "Source mix"],
-  ["kick-observation", "observation.single-source", 470, 82, "Observation"],
-  ["kick-output", "output.mono", 690, 82, "Mono"],
+  ["kick-contact", "exciter.contact", 24, 18, "Contact"],
+  ["kick-thump", "exciter.thump", 24, 185, "Thump"],
+  ["kick-resonance", "body.membrane-modal", 270, 18, "Resonance"],
+  ["kick-tension", "interaction.strike-energy", 24, 100, "Strike / tension"],
+  ["kick-mix", "transform.sum3", 480, 110, "Observation mix"],
+  ["kick-observation", "observation.equalizer", 690, 110, "Output EQ"],
+  ["kick-output", "output.mono", 900, 110, "Mono"],
 ];
 
 const Connections = [
-  ["kick-primary.audio", "kick-mix.a"],
-  ["kick-secondary.audio", "kick-mix.b"],
-  ["kick-click.audio", "kick-mix.c"],
-  ["kick-mix.audio", "kick-observation.source"],
+  ["kick-contact.direct", "kick-mix.a"],
+  ["kick-thump.audio", "kick-mix.b"],
+  ["kick-resonance.audio", "kick-mix.c"],
+  ["kick-contact.body", "kick-resonance.drive"],
+  ["kick-contact.event", "kick-tension.strike"],
+  ["kick-tension.tension", "kick-resonance.tension"],
+  ["kick-mix.audio", "kick-observation.audio"],
   ["kick-observation.audio", "kick-output.audio"],
 ];
 
 function owner(key) {
   if (key === "model_level_db") return "kick-output";
-  if (key.startsWith("secondary_")) return "kick-secondary";
-  if (key.startsWith("click_")) return "kick-click";
-  if (key === "low_cut_hz" || key === "high_cut_hz")
-    return "kick-observation";
-  return "kick-primary";
+  if (key.startsWith("contact_")) return "kick-contact";
+  if (key.startsWith("thump_")) return "kick-thump";
+  if (key.startsWith("resonance_")) return "kick-resonance";
+  if (key.startsWith("tension_")) return "kick-tension";
+  return "kick-observation";
 }
 
 function clone(value) { return JSON.parse(JSON.stringify(value)); }
@@ -32,10 +36,10 @@ function clone(value) { return JSON.parse(JSON.stringify(value)); }
 export function createKickPatch(descriptors, values) {
   const patch = {
     schema: PatchSchema,
-    id: "factory.kick.compact-01",
-    name: "Compact FM kick",
+    id: "factory.kick.standard-01",
+    name: "Kick",
     engineMinimum: 1,
-    recipe: "drum.kick-fm.v1",
+    recipe: "drum.kick.v1",
     nodes: Nodes.map(([id, type, x, y, name]) => ({
       id, type, name, version: ModuleTypes.get(type).version, parameters: {},
       editor: { x, y },
@@ -45,7 +49,7 @@ export function createKickPatch(descriptors, values) {
       required: index >= 3,
     })),
     outputs: { mono: "kick-output.audio" },
-    performanceControls: ["strength", "hardness"],
+    performanceControls: ["strength", "hardness", "implement", "location", "contactSpread"],
   };
   return patchWithKickValues(patch, descriptors, values);
 }
@@ -72,22 +76,22 @@ export function kickValuesFromPatch(patch, descriptors) {
 }
 
 export function validateKickPatch(patch) {
-  if (patch.recipe !== "drum.kick-fm.v1" || patch.nodes.length !== Nodes.length ||
+  if (patch.recipe !== "drum.kick.v1" || patch.nodes.length !== Nodes.length ||
       patch.connections.length !== Connections.length ||
       patch.outputs?.mono !== "kick-output.audio") {
-    throw new Error("patch is not supported by the compact kick recipe");
+    throw new Error("patch is not supported by the kick recipe");
   }
   const types = new Map(patch.nodes.map(node => [node.id, node.type]));
   for (const [id, type] of Nodes) {
     if (types.get(id) !== type)
-      throw new Error("patch is not supported by the compact kick recipe");
+      throw new Error("patch is not supported by the kick recipe");
   }
   const routes = new Map(patch.connections.map(item => [
     `${item.from}>${item.to}`, item,
   ]));
   for (const [from, to] of Connections) {
     if (!routes.has(`${from}>${to}`))
-      throw new Error("patch is not supported by the compact kick recipe");
+      throw new Error("patch is not supported by the kick recipe");
   }
   for (const node of patch.nodes) {
     for (const key of Object.keys(node.parameters ?? {})) {
@@ -98,13 +102,13 @@ export function validateKickPatch(patch) {
   for (const [from, to] of Connections.slice(3)) {
     const route = routes.get(`${from}>${to}`);
     if (route.enabled === false)
-      throw new Error("compact kick output routes are required");
+      throw new Error("kick output routes are required");
   }
   const audible = Connections.slice(0, 3).some(([from, to]) => {
     const route = routes.get(`${from}>${to}`);
     return route.enabled !== false;
   });
-  if (!audible) throw new Error("the compact kick patch has no audible route");
+  if (!audible) throw new Error("the kick patch has no audible route");
   return patch;
 }
 

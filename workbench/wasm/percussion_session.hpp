@@ -4,7 +4,7 @@
 #include "kick_macros.hpp"
 #include "membrane_macros.hpp"
 #include "snare_macros.hpp"
-#include "tfdsp/percussion/compact_kick.hpp"
+#include "tfdsp/percussion/kick_voice_parameters.hpp"
 #include "tfdsp/percussion/crash_cymbal.hpp"
 #include "tfdsp/percussion/membrane_drum.hpp"
 #include "tfdsp/percussion/snare_drum.hpp"
@@ -15,12 +15,12 @@
 namespace tfworkbench::detail {
 
 enum class Recipe : std::uint32_t {
-  MetallicPlate, CompactKick, MembraneDrum, SnareDrum, Count
+  MetallicPlate, Kick, MembraneDrum, SnareDrum, Count
 };
 
 struct Session {
   tfdsp::percussion::CrashCymbal cymbal{};
-  tfdsp::percussion::CompactKick kick{};
+  tfdsp::percussion::MembraneDrum kick{};
   tfdsp::percussion::MembraneDrum membrane{};
   tfdsp::percussion::SnareDrum snare{};
   tfdsp::percussion::CrashCymbalFitParameters crashBase{};
@@ -29,7 +29,7 @@ struct Session {
   MembraneParameterValues membraneValues{};
   SnareParameterValues snareValues{};
   tfdsp::percussion::MetallicPlateRouting cymbalRouting{};
-  tfdsp::percussion::CompactKickRouting kickRouting{};
+  tfdsp::percussion::KickVoiceRouting kickRouting{};
   tfdsp::percussion::MembraneDrumRouting membraneRouting{};
   tfdsp::percussion::SnareDrumRouting snareRouting{};
   float sampleRate{48000.f};

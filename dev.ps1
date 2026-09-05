@@ -25,8 +25,13 @@ param(
         "test-workbench-api",
         "test-workbench-wasm",
         "test-workbench-browser",
+        "test-kick-workbench",
         "audit-workbench-starts",
         "fit-crash-start",
+        "fit-gong-start",
+        "fit-kick-start",
+        "test-gong-report",
+        "test-fit-report",
         "build-workbench",
         "serve-workbench",
         "benchmark-er",
@@ -35,6 +40,8 @@ param(
         "benchmark-percussion",
         "benchmark-workbench",
         "python-test",
+        "test-fitting-tools",
+        "test-kick-architecture",
         "shell",
         "rack-dep",
         "rack-build",
@@ -347,7 +354,7 @@ switch ($Command) {
             Pop-Location
         }
     }
-    "test-workbench-browser" {
+    { $_ -in "test-workbench-browser", "test-kick-workbench" } {
         & $PSCommandPath -Command build-workbench -Jobs $Jobs
         if ($LASTEXITCODE -ne 0) {
             throw "Workbench site build failed with exit code $LASTEXITCODE."
@@ -357,9 +364,13 @@ switch ($Command) {
         . $emsdkEnvironment
         Push-Location $repoRoot
         try {
-            & $env:EMSDK_NODE workbench/tests/browser_probe.mjs `
-                http://127.0.0.1:9223 build/workbench-browser.png `
-                --reload --controls --trigger
+            if ($Command -eq "test-kick-workbench") {
+                & $env:EMSDK_NODE workbench/tests/kick_ui_probe.mjs
+            } else {
+                & $env:EMSDK_NODE workbench/tests/browser_probe.mjs `
+                    http://127.0.0.1:9223 build/workbench-browser.png `
+                    --reload --controls --trigger
+            }
             if ($LASTEXITCODE -ne 0) {
                 throw "Workbench browser probe failed with exit code $LASTEXITCODE."
             }
@@ -407,6 +418,37 @@ switch ($Command) {
         finally {
             Pop-Location
         }
+    }
+    { $_ -in "fit-gong-start", "fit-kick-start", "test-kick-architecture" } {
+        & $PSCommandPath -Command build-workbench -Jobs $Jobs
+        if ($LASTEXITCODE -ne 0) { throw "Workbench build failed." }
+        $emsdkEnvironment = Join-Path $emsdkRoot "emsdk_env.ps1"
+        Assert-Path $emsdkEnvironment "Emscripten SDK environment script"
+        . $emsdkEnvironment
+        $python = Join-Path $repoRoot ".venv\Scripts\python.exe"
+        Assert-Path $python "Development Python environment; run dev.ps1 python-test first"
+        Push-Location $repoRoot
+        try {
+            $fitScript = switch ($Command) {
+                "fit-kick-start" { "tools/fit_workbench_kick.py" }
+                "test-kick-architecture" { "tools/test_kick_architecture.py" }
+                default { "tools/fit_workbench_gong.py" }
+            }
+            & $python $fitScript
+            if ($LASTEXITCODE -ne 0) { throw "Workbench search failed with exit code $LASTEXITCODE." }
+        }
+        finally { Pop-Location }
+    }
+    { $_ -in "test-gong-report", "test-fit-report" } {
+        $emsdkEnvironment = Join-Path $emsdkRoot "emsdk_env.ps1"
+        Assert-Path $emsdkEnvironment "Emscripten SDK environment script"
+        . $emsdkEnvironment
+        Push-Location $repoRoot
+        try {
+            & $env:EMSDK_NODE workbench/tests/report_probe.mjs
+            if ($LASTEXITCODE -ne 0) { throw "Fit report checks failed." }
+        }
+        finally { Pop-Location }
     }
     "build-workbench" {
         $emsdkEnvironment = Join-Path $emsdkRoot "emsdk_env.ps1"
@@ -470,6 +512,20 @@ switch ($Command) {
         finally {
             Pop-Location
         }
+    }
+    "test-fitting-tools" {
+        $python = Join-Path $repoRoot ".venv\Scripts\python.exe"
+        Assert-Path $python "Development Python environment; run dev.ps1 python-test first"
+        Push-Location $repoRoot
+        try {
+            & $python -m pytest tests/python/test_trajectory_fit_loss.py `
+                tests/python/test_short_drum_fit_loss.py tests/python/test_smooth_drum_fit_loss.py `
+                tests/python/test_workbench_search.py tests/python/test_workbench_fit_baseline.py `
+                  tests/python/test_workbench_global_search.py tests/python/test_fit_provenance.py `
+                  tests/python/test_modal_fit_initialization.py --basetemp build/pytest-fit-temp
+            if ($LASTEXITCODE -ne 0) { throw "Fitting tests failed with exit code $LASTEXITCODE." }
+        }
+        finally { Pop-Location }
     }
     "python-test" {
         $previousPath = $env:Path

@@ -10,7 +10,7 @@ or retained.
 | --- | --- | --- | --- |
 | Crash — medium edge | `metal.cymbal.v1` | edge, velocity 72, take 1 | current factory defaults |
 | Snare — medium standard hit | `drum.snare.v1` | main, velocity 82, take 1 | current factory defaults |
-| Acoustic kick — medium centre | `drum.membrane.v1` | centre, velocity 64, take 1 | -12 dB; explicit beater, FM/body, membrane, and observation routes |
+| Acoustic kick — medium centre | `drum.kick.v1` | centre, velocity 64, take 1 | -12 dB; contact, thump, editable resonance modes; output EQ bypassed |
 | Gong — representative mallet | `metal.cymbal.v1` | mallet, velocity 96, take 3 | measured `gong-v1` start |
 | Ride — medium bow | `metal.cymbal.v1` | bow, velocity 82, take 1 | current factory defaults |
 | Hi-hat — medium half-open | `metal.cymbal.v1` | half-open, velocity 96, take 1 | current factory defaults plus passive pedal constraint |
@@ -29,6 +29,11 @@ next to the recipe selector. Loading an entry performs one atomic user action:
 None of these entries is an accepted synthesis calibration. In particular, a
 parameter vector produced by an optimizer is not promoted merely because it
 improves a relative or aggregate score.
+
+The [kick fitting procedure](TfPercussion-kick-fitting.md) uses a separate
+`/kick-review/` report. The previous EQ-assisted candidate has been withdrawn
+after switching to explicit editable modes. No replacement real-sample fit is
+accepted yet; the toolbar entry remains an uncalibrated starting point.
 
 Each factory model level can be checked against its named reference without changing
 either waveform. It is not a per-hit normalizer and it is not evidence that the
@@ -49,16 +54,12 @@ excitation remain available because they change articulation rather than
 flattening level.
 
 The ordinary reference selectors remain available for neighbouring cells.
-Corpus monitor gains are fixed once per source collection and affect reference
-and synthesis playback equally. They compensate large collection-level
-monitoring differences; they are not fitted synthesis parameters and never
-normalize individual files.
-The model-level control is attenuation-only (`-60..0 dB`). If matching would
-need positive gain, the workbench stops at 0 dB and reports that the starting
-point itself is under-levelled instead of hiding the defect.
-Double-clicking the model-level control remains an explicit one-cell comparison
-aid. Loading a reference target or moving between velocity cells does not invoke
-that operation, because per-cell normalization would erase the velocity curve.
+Reference gains have fixed corpus defaults, affect reference audio only, and
+are visible/editable. They never normalize individual files. The model-level
+control is attenuation-only (`-60..0 dB`) and double-click restores its fixed
+default. There is no level matching action. See the current
+[gain contract](TfPercussion-gain-staging.md) and
+[fitting method](TfPercussion-fitting-methodology.md).
 The current private crash view is intentionally limited to five velocities,
 five articulations, and one repeat. Snare, kick, gong, ride, and hi-hat use similarly
 small allow-listed views so the browser stays useful rather than becoming a

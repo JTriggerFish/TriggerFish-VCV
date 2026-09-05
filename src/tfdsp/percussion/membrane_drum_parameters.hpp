@@ -41,12 +41,16 @@ struct MembraneDrumControls {
   float tensionDecaySeconds{.13f};
   float contactDirectLevel{.245f};
   float contactBodyLevel{.7f};
+  float contactNoiseLevel{.45f};
+  float contactNoiseDecaySeconds{.012f};
   float contactDurationSeconds{.004f};
   float contactBrightness{.58f};
   float fmDirectLevel{.0144f};
   float fmBodyLevel{.081f};
   float fmDepthHz{260.f};
   float fmDecaySeconds{.07f};
+  // Time to reach the settled carrier pitch, independent of amplitude decay.
+  float fmPitchDecaySeconds{.049f};
   float pitchDropOctaves{.28f};
   float directLevel{.9f};
   float bodyLevel{3.f};

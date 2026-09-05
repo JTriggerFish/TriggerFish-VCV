@@ -147,6 +147,7 @@ legend { color:var(--muted); font-size:11px; padding:0 4px; }
 .harmonic-toolbar output { min-width:74px; }
 .harmonic-toolbar select:disabled,.harmonic-toolbar input:disabled,.harmonic-toolbar button:disabled,.harmonic-toolbar label:has(select:disabled) { opacity:.5; }
 #modal-editor { flex:1 1 auto; min-height:0; }
+#kick-modal-editor { flex:1 1 auto; min-height:180px; }
 .modal-editor { display:block; width:100%; height:100%; min-height:0; border:1px solid var(--line); border-radius:6px; background:#090d12; touch-action:none; user-select:none; outline:none; }
 .modal-editor:focus { border-color:#536579; }
 .modal-editor.drawing { cursor:crosshair; }

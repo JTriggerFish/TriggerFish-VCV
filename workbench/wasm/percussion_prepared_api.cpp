@@ -18,7 +18,7 @@ std::uint32_t tf_percussion_prepared_size(
   switch (session->recipe) {
   case Recipe::MetallicPlate:
     return sizeof(tfworkbench::PreparedMetallicRecipe);
-  case Recipe::CompactKick: return sizeof(tfworkbench::PreparedKickRecipe);
+  case Recipe::Kick: return sizeof(tfworkbench::PreparedKickRecipe);
   case Recipe::MembraneDrum:
     return sizeof(tfworkbench::PreparedMembraneRecipe);
   case Recipe::SnareDrum: return sizeof(tfworkbench::PreparedSnareRecipe);
@@ -45,14 +45,15 @@ int tf_percussion_export_prepared(
       prepared.parameters = tfdsp::percussion::PrepareCrashCymbalParameters(
           session->sampleRate, parameters);
       std::memcpy(destination, &prepared, sizeof(prepared));
-    } else if (session->recipe == Recipe::CompactKick) {
+    } else if (session->recipe == Recipe::Kick) {
       tfworkbench::PreparedKickRecipe prepared;
       prepared.header.recipe = static_cast<std::uint32_t>(session->recipe);
       prepared.header.byteSize = sizeof(prepared);
       prepared.header.sampleRate = session->sampleRate;
-      prepared.parameters = tfworkbench::ApplyKickParameters(
-          session->kickValues);
-      prepared.parameters.routing = session->kickRouting;
+      auto parameters = tfworkbench::ApplyKickParameters(session->kickValues);
+      tfdsp::percussion::ApplyKickRouting(parameters, session->kickRouting);
+      prepared.parameters = tfdsp::percussion::PrepareMembraneDrumParameters(
+          session->sampleRate, parameters);
       std::memcpy(destination, &prepared, sizeof(prepared));
     } else if (session->recipe == Recipe::MembraneDrum) {
       tfworkbench::PreparedMembraneRecipe prepared;
@@ -111,11 +112,15 @@ int tf_percussion_apply_prepared(
       session->cymbal.Prepare(prepared.parameters);
       return 1;
     }
-    if (session->recipe == Recipe::CompactKick &&
+    if (session->recipe == Recipe::Kick &&
         byteSize == sizeof(tfworkbench::PreparedKickRecipe)) {
       tfworkbench::PreparedKickRecipe prepared;
       std::memcpy(&prepared, source, sizeof(prepared));
-      session->kick.Prepare(session->sampleRate, prepared.parameters);
+      if (!std::isfinite(prepared.parameters.sampleRate) ||
+          !std::isfinite(prepared.parameters.membrane.sampleRate) ||
+          std::abs(prepared.parameters.sampleRate - session->sampleRate) > .01f ||
+          std::abs(prepared.parameters.membrane.sampleRate - session->sampleRate) > .01f) return 0;
+      session->kick.Prepare(prepared.parameters);
       return 1;
     }
     if (session->recipe == Recipe::MembraneDrum &&

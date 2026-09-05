@@ -116,19 +116,22 @@ export class ModalEditor {
     frequency = clamp(
       frequency, this.options.minimumFrequency, this.options.maximumFrequency,
     );
-    const first = erb(this.options.minimumFrequency);
-    const last = erb(this.options.maximumFrequency);
+    const scale = this.options.frequencyScale === "log" ? Math.log : erb;
+    const first = scale(this.options.minimumFrequency);
+    const last = scale(this.options.maximumFrequency);
     return Plot.left + (this.width - Plot.left - Plot.right) *
-      (erb(frequency) - first) / (last - first);
+      (scale(frequency) - first) / (last - first);
   }
 
   frequency(position) {
     const amount = clamp(
       (position - Plot.left) / (this.width - Plot.left - Plot.right), 0, 1,
     );
-    return inverseErb(
-      erb(this.options.minimumFrequency) + amount *
-      (erb(this.options.maximumFrequency) - erb(this.options.minimumFrequency)),
+    const scale = this.options.frequencyScale === "log" ? Math.log : erb;
+    const inverse = this.options.frequencyScale === "log" ? Math.exp : inverseErb;
+    return inverse(
+      scale(this.options.minimumFrequency) + amount *
+      (scale(this.options.maximumFrequency) - scale(this.options.minimumFrequency)),
     );
   }
 
@@ -229,6 +232,7 @@ export class ModalEditor {
     this.svg.addEventListener("pointerup", finish);
     this.svg.addEventListener("pointercancel", finish);
     this.svg.addEventListener("wheel", event => {
+      if (this.options.widthEnabled === false) return;
       if (this.selected === null) return;
       event.preventDefault();
       const points = this.options.points();
@@ -268,7 +272,7 @@ export class ModalEditor {
     const position = this.eventPosition(event);
     const point = this.point(index);
     this.drag = {
-      kind: (event.ctrlKey || event.metaKey) ? "width" : kind,
+      kind: this.options.widthEnabled !== false && (event.ctrlKey || event.metaKey) ? "width" : kind,
       pointerId: event.pointerId, index, start: position,
       point: { ...point },
     };
@@ -548,6 +552,7 @@ export class ModalEditor {
   pointText(point) {
     return `${point.frequency < 1000 ? point.frequency.toFixed(1) :
       (point.frequency / 1000).toFixed(3) + " k"}Hz · ` +
-      `${point.level.toFixed(1)} dB · turbulence ${point.turbulence.toFixed(2)}x`;
+      `${point.level.toFixed(1)} dB` + (this.options.widthEnabled === false ? "" :
+        ` · turbulence ${point.turbulence.toFixed(2)}x`);
   }
 }

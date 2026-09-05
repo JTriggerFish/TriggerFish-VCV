@@ -224,8 +224,8 @@ def _kick(library: Path):
         {
             "id": "kick-standard",
             "name": "Acoustic kick — medium centre",
-            "recipe": "drum.membrane.v1",
-            "parameter_preset": "acoustic-kick",
+            "recipe": "drum.kick.v1",
+            "parameter_preset": "kick",
             "articulation": "centre",
             "velocity": 64,
             "repeat": 1,

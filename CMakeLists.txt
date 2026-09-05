@@ -20,6 +20,7 @@ add_library(triggerfish_dsp STATIC
 	src/tfdsp/sampleRate.cpp
 	src/tfdsp/percussion/compact_kick.cpp
 	src/tfdsp/percussion/compact_kick_parameters.cpp
+	src/tfdsp/percussion/kick_voice_parameters.cpp
 	src/tfdsp/percussion/crash_cymbal.cpp
 	src/tfdsp/percussion/crash_cymbal_parameters.cpp
 	src/tfdsp/percussion/membrane_drum.cpp

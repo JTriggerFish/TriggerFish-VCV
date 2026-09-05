@@ -8,7 +8,7 @@ import {
 import { KickControls } from "./kick_controls.mjs";
 import { MembraneControls } from "./membrane_controls.mjs";
 import {
-  createAcousticKickPatch, createTomPatch, membranePresetValues,
+  createTomPatch, membranePresetValues,
 } from "./membrane_patch.mjs";
 import { SnareControls } from "./snare_controls.mjs";
 import { PerformanceControls } from "./performance_controls.mjs";
@@ -100,6 +100,7 @@ function refreshModelLevelControl() {
 }
 
 function buildControls(resetValues = true) {
+  fitControls?.destroy?.();
   if (resetValues)
     state.macros = engine.parameters.map(item => item.defaultValue);
   const ControlType = state.recipeKey === "metal.cymbal.v1"
@@ -122,9 +123,7 @@ function buildControls(resetValues = true) {
 function applyMembranePreset(key) {
   const values = membranePresetValues(key, engine.parameters);
   state.macros.splice(0, state.macros.length, ...values);
-  state.patch = key === "acousticKick"
-    ? createAcousticKickPatch(engine.parameters)
-    : createTomPatch(engine.parameters, values);
+  state.patch = createTomPatch(engine.parameters, values);
   routingController?.setPatch(state.patch);
   routingController?.refreshPresentation();
   buildPageValues();

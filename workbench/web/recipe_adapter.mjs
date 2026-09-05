@@ -1,7 +1,7 @@
 import {
   createKickPatch, kickRoutingValues, kickValuesFromPatch,
   patchWithKickValues, validateKickPatch,
-} from "./compact_kick_patch.mjs";
+} from "./kick_patch.mjs";
 import {
   createCrashPatch, macroValuesFromPatch, patchWithMacroValues,
   routingValuesFromPatch, validateCrashAdapterPatch,
@@ -23,7 +23,7 @@ const adapters = new Map([
     routing: routingValuesFromPatch,
     validate: validateCrashAdapterPatch,
   }],
-  ["drum.kick-fm.v1", {
+  ["drum.kick.v1", {
     create: createKickPatch,
     withValues: patchWithKickValues,
     values: kickValuesFromPatch,

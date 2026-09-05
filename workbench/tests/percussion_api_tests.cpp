@@ -104,7 +104,7 @@ int main() {
         "four compiled percussion recipes are registered");
   Check(
       std::string_view(tf_percussion_recipe_key(0)) == "metal.cymbal.v1" &&
-          std::string_view(tf_percussion_recipe_key(1)) == "drum.kick-fm.v1" &&
+          std::string_view(tf_percussion_recipe_key(1)) == "drum.kick.v1" &&
           std::string_view(tf_percussion_recipe_key(2)) == "drum.membrane.v1" &&
           std::string_view(tf_percussion_recipe_key(3)) == "drum.snare.v1",
       "recipe keys are stable");
@@ -128,51 +128,51 @@ int main() {
 
   const auto kick = tf_percussion_create(1, 48000.f);
   Check(kick != 0 && tf_percussion_recipe(kick) == 1,
-        "compact kick session can be created");
-  Check(tf_percussion_parameter_count(kick) == 16,
-        "compact kick exposes its bounded control surface");
+        "kick session can be created");
+  Check(tf_percussion_parameter_count(kick) == 93,
+        "kick exposes its bounded control surface");
   Check(tf_percussion_route_count(kick) == 3,
-        "compact kick exposes three source routes");
+        "kick exposes three source routes");
   const auto level = ParameterIndex(kick, "model_level_db");
-  const auto pitch = ParameterIndex(kick, "fundamental_hz");
-  Check(level < 16 && pitch < 16,
-        "compact kick parameters have stable identifiers");
+  const auto pitch = ParameterIndex(kick, "thump_pitch_hz");
+  Check(level < 93 && pitch < 93,
+        "kick parameters have stable identifiers");
   Check(tf_percussion_parameter_scale(kick, pitch) == 1,
-        "compact kick pitch declares logarithmic control scaling");
+        "kick pitch declares logarithmic control scaling");
 
   const auto first = Render(kick, 17, 128);
   const auto repeated = Render(kick, 17, 128);
   const auto whole = Render(kick, 17, first.size());
   const auto variation = Render(kick, 18, 128);
-  Check(first == repeated, "compact kick API is deterministic");
-  Check(first == whole, "compact kick API is host-block independent");
+  Check(first == repeated, "kick API is deterministic");
+  Check(first == whole, "kick API is host-block independent");
   Check(Difference(first, variation) > 1.e-7,
-        "compact kick API forwards event seeds");
+        "kick API forwards event seeds");
   Check(std::all_of(first.begin(), first.end(),
                     [](const float sample) { return std::isfinite(sample); }) &&
             Energy(first) > 1.e-5,
-        "compact kick API renders finite audible output");
-  CheckPreparedRoundTrip(kick, 1, "prepared compact kick is sample-identical");
+        "kick API renders finite audible output");
+  CheckPreparedRoundTrip(kick, 1, "prepared kick is sample-identical");
 
   for (std::uint32_t route = 0; route < 3; ++route)
     Check(tf_percussion_route_enable(kick, route, 0),
-          "compact kick route can be disabled");
-  Check(tf_percussion_commit(kick), "compact kick routing commits");
+          "kick route can be disabled");
+  Check(tf_percussion_commit(kick), "kick routing commits");
   Check(Energy(Render(kick, 17, 128)) < 1.e-20,
-        "disabling every compact kick source produces silence");
+        "disabling every kick source produces silence");
   for (std::uint32_t route = 0; route < 3; ++route)
     Check(tf_percussion_route_enable(kick, route, 1),
-          "compact kick route can be restored");
+          "kick route can be restored");
   Check(tf_percussion_parameter_set(
             kick, level, tf_percussion_parameter_default(kick, level) - 6.f) &&
             tf_percussion_commit(kick),
-        "compact kick parameters commit through the shared API");
+        "kick parameters commit through the shared API");
   const double quietRatio = Energy(Render(kick, 17, 128)) / Energy(first);
   Check(quietRatio > .24 && quietRatio < .26,
-        "compact kick model level follows its decibel law");
+        "kick model level follows its decibel law");
   Check(!tf_percussion_parameter_set(kick, 99, 0.f) &&
             !tf_percussion_route_enable(kick, 99, 1),
-        "out-of-range compact kick edits are rejected");
+        "out-of-range kick edits are rejected");
   tf_percussion_destroy(kick);
   Check(!tf_percussion_process(kick, nullptr, 0),
         "destroyed recipe handles cannot be reused");
@@ -180,12 +180,15 @@ int main() {
   const auto membrane = tf_percussion_create(2, 48000.f);
   Check(membrane != 0 && tf_percussion_recipe(membrane) == 2,
         "membrane session can be created");
-  Check(tf_percussion_parameter_count(membrane) == 33 &&
+  Check(tf_percussion_parameter_count(membrane) == 36 &&
             tf_percussion_route_count(membrane) == 5,
         "membrane exposes its bounded controls and routing");
   const auto membranePitch = ParameterIndex(membrane, "fundamental_hz");
   const auto eqMode = ParameterIndex(membrane, "equalizer_mode");
-  Check(membranePitch < 33 && eqMode < 33,
+  Check(membranePitch < 36 && eqMode < 36 &&
+            ParameterIndex(membrane, "fm_pitch_decay_seconds") < 36 &&
+            ParameterIndex(membrane, "contact_noise_level") < 36 &&
+            ParameterIndex(membrane, "contact_noise_decay_seconds") < 36,
         "membrane parameters have stable identifiers");
   Check(tf_percussion_parameter_scale(membrane, eqMode) == 3,
         "membrane output EQ declares a discrete choice control");
@@ -204,13 +207,13 @@ int main() {
   const auto snare = tf_percussion_create(3, 48000.f);
   Check(snare != 0 && tf_percussion_recipe(snare) == 3,
         "snare session can be created");
-  Check(tf_percussion_parameter_count(snare) == 50 &&
+  Check(tf_percussion_parameter_count(snare) == 53 &&
             tf_percussion_route_count(snare) == 7,
         "snare exposes membrane, wire, and routing controls");
   const auto wireLevel = ParameterIndex(snare, "wire_level");
   const auto wireDensity = ParameterIndex(snare, "wire_density");
   const auto snarePitch = ParameterIndex(snare, "fundamental_hz");
-  Check(wireLevel < 50 && wireDensity < 50,
+  Check(wireLevel < 53 && wireDensity < 53,
         "snare wire parameters have stable identifiers");
   Check(tf_percussion_parameter_default(snare, snarePitch) == 185.f &&
             tf_percussion_parameter_get(snare, snarePitch) == 185.f,

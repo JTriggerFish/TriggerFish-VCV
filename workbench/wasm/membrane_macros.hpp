@@ -42,6 +42,9 @@ enum class MembraneParameter : std::size_t {
   Band3GainDb,
   Band4FrequencyHz,
   Band4GainDb,
+  FmPitchDecaySeconds,
+  ContactNoiseLevel,
+  ContactNoiseDecaySeconds,
   Count
 };
 

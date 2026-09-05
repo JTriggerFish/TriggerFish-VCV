@@ -1,5 +1,10 @@
 # Crash cymbal calibration baseline
 
+> Historical crash workflow. The active single-gong search, its exact renderer,
+> objective, optimizer and verification are described in
+> [Current percussion fitting method](TfPercussion-fitting-methodology.md).
+> Earlier numerical gong-fit claims are withdrawn after the gain/topology changes.
+
 ## Status
 
 The current `CrashCymbal` graph is an experimental, deterministic instrument
@@ -14,7 +19,7 @@ diagnostic views and regression checks; it does not approve sound quality.
 Automated search code is retained as experimental developer tooling. It may
 produce a neutral starting state for the ear-fitting workbench, but it never
 approves a fit. The workbench base now contains only documented neutral DSP
-defaults and a fixed output-unit calibration; it contains no corpus-specific
+defaults and a literal visible output gain; it contains no corpus-specific
 modal phases, velocity exponents, contact fit, or instrument preset.
 
 ## Failure review and corrected fit contract
@@ -111,25 +116,11 @@ painted handles, one normalized excitation shelf with a movable centre, passive
 upward transport, and only the fixed 40 Hz/15 kHz T60 boundary values; all six
 interior decay knots remain disabled. The saved workbench preset is `gong-v1`.
 
-After separating excitation from observation, the first nine measured low
-ridges are 375, 551, 129, 305, 422, 246, 621, 727, and 879 Hz in both renders;
-their relative levels agree within 0.25 dB. Full-render RMS is 0.08148 versus
-0.08131 in the reference, with a negative model-level setting. The model's five
-ERB-band peak times are approximately 0.01, 0.20, 0.73, 0.82, and 0.90 seconds,
-versus 0.01, 0.07, 0.48, 0.87, and 0.96 seconds in the reference.
-
-The reference's directly measured band-decay curve is about 6.25 seconds at
-40 Hz and 3.43 seconds at 15 kHz. Those are observed envelopes, not the modal
-loss values: passive upward transport is another reason energy leaves a source
-band. Joint fitting therefore uses intrinsic endpoints of 12 and 1.1 seconds;
-the cascade plus these two losses matches the 4-second five-band levels within
-about 3.3 dB, without adding an interior T60 knot.
-
-This is an auditionable bootstrap, not a listening-approved final fit. Its
-known structural mismatch is the 300 Hz--3 kHz envelope: its two band peaks
-still arrive roughly 0.13 and 0.25 seconds too late. Modal painting now affects
-observation only and the two-point T60 is already reserved for true loss, so
-neither may be abused to conceal this transport-kinetics limitation.
+This script is a hard-coded bootstrap generator, not an optimizer. Historical
+level/ridge/peak-time comparisons here were for a different renderer state and
+are no longer valid. Use `dev.ps1 fit-gong-start` for the exact-workbench search
+and `dev.ps1 audit-workbench-starts` for the current shipped preset. Neither
+command interprets a smaller numerical discrepancy as listening approval.
 
 ## Current synthesis graph
 
@@ -156,8 +147,8 @@ disconnected. They cannot alter the active renderer.
 
 Contact writes directly into that one stored modal state. Strike location and
 velocity colour redistribute a normalized new-force vector without recolouring
-energy already circulating. Painted bars form an independently normalized
-observation-prominence vector; they do not change stored strike energy.
+energy already circulating. Painted bars are literal observation gains;
+they do not change stored strike energy.
 The visible body-excitation gain sets the nonlinear body's drive; the separate
 body-observation gain cannot alter stored energy or cascade behaviour.
 Bloom is a passive state-level cascade through a fixed half-octave transport
@@ -190,7 +181,7 @@ will be a separate, default-off developer build target. A session proceeds as:
 5. Snapshot promising states with all controls, renderer/schema versions,
    reference identity and hash, source transform, sample rate, and notes.
 6. Promote a snapshot to a named fit only after direct listening at normal and
-   level-matched gain. Keep its parent so a later regression can be reversed.
+   explicitly chosen monitor gains. Keep its parent so a later regression can be reversed.
 7. Warm-start the neighbouring velocity or articulation, then inspect which
    values are object constants and which form meaningful control curves.
 
@@ -217,7 +208,7 @@ The initial macro groups are:
   exchange, and broad body colour;
 - evolution: intrinsic bloom rate/energy response and the shared decay shape;
 - strike projection: radial location and implement blend; and
-- constraint/presentation: mute, master level, and safe level matching.
+- constraint/presentation: mute and explicit model/reference/master levels.
 
 This list is provisional. Finite-difference and sweep renders can reveal dead,
 redundant, discontinuous, or dangerously sensitive controls, but listening

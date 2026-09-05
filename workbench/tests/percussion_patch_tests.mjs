@@ -1,15 +1,30 @@
 import assert from "node:assert/strict";
+import {modalTemplate, MembraneRatios} from "../web/modal_templates.mjs";
+
+const harmonicModes = modalTemplate({family:"harmonic", fundamental:100, count:3});
+assert.deepEqual(harmonicModes.map(point=>point.frequency), [100,200,300]);
+assert.equal(harmonicModes[1].level, -6);
+assert.equal(modalTemplate({count:32}).length, 16);
+assert.equal(modalTemplate()[1].frequency, 55 * MembraneRatios[1]);
+assert.equal(modalTemplate({fundamental:10000}).length, 1);
+assert.equal(modalTemplate({family:"harmonic", count:32}).length, 32);
+harmonicModes[1].frequency = 211;
+assert.equal(harmonicModes[1].frequency, 211); // No persistent formula constraint.
+assert.equal(modalTemplate({family:"harmonic", fundamental:100, count:3})[1].frequency, 200);
+for (const invalid of [{count:0}, {count:1.5}, {family:"unknown"},
+  {fundamental:NaN}, {minimumFrequency:0}, {minimumFrequency:100, maximumFrequency:50}])
+  assert.throws(()=>modalTemplate(invalid), /Invalid/);
 
 import {
   createKickPatch, kickRoutingValues, validateKickPatch,
-} from "../web/compact_kick_patch.mjs";
+} from "../web/kick_patch.mjs";
 import {
   createCrashPatch, macroValuesFromPatch, routingValuesFromPatch,
   validateCrashAdapterPatch,
 } from "../web/metallic_plate_patch.mjs";
 import { PatchSchema, validatePatch } from "../web/percussion_patch.mjs";
 import {
-  createAcousticKickPatch, createMembranePatch, membranePresetValues,
+  createMembranePatch, membranePresetValues,
   membraneRoutingValues,
   validateMembranePatch,
 } from "../web/membrane_patch.mjs";
@@ -143,15 +158,15 @@ const kickDescriptors = [
     defaultValue: -12,
   },
   {
-    index: 1, key: "fundamental_hz", minimum: 25, maximum: 120,
+    index: 1, key: "thump_pitch_hz", minimum: 25, maximum: 120,
     defaultValue: 52,
   },
   {
-    index: 2, key: "secondary_ratio", minimum: .5, maximum: 3,
+    index: 2, key: "resonance_frequency_0", minimum: .5, maximum: 3,
     defaultValue: 1.52,
   },
   {
-    index: 3, key: "click_level", minimum: 0, maximum: 1.5,
+    index: 3, key: "contact_level", minimum: 0, maximum: 1.5,
     defaultValue: .16,
   },
   {
@@ -204,22 +219,6 @@ assert.equal(validatePatch(membrane, membraneDescriptors), membrane);
 assert.equal(validateMembranePatch(membrane), membrane);
 assert.deepEqual(membraneRoutingValues(membrane),
   [true, true, true, true, true]);
-const acousticKick = membranePresetValues(
-  "acousticKick", membraneDescriptors,
-);
-assert.equal(acousticKick[1], 35);
-assert.equal(acousticKick[3], 1.64);
-assert.equal(acousticKick[6], .05625);
-const acousticKickPatch = createAcousticKickPatch(
-  membraneDescriptors,
-);
-assert.equal(acousticKickPatch.id, "factory.membrane.acoustic-kick-01");
-assert.equal(acousticKickPatch.name, "Acoustic kick");
-assert.equal(validateMembranePatch(acousticKickPatch), acousticKickPatch);
-const tomAfterKick = membranePresetValues("tom", membraneDescriptors);
-assert.deepEqual(acousticKick.slice(9), [600, 10]);
-assert.deepEqual(tomAfterKick.slice(9), [2800, 0],
-  "factory presets restore their own defaults instead of prior values");
 const fractionalChoice = structuredClone(membrane);
 fractionalChoice.nodes.find(node => node.id === "membrane-eq")
   .parameters.equalizer_mode = 1.5;

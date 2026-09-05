@@ -51,6 +51,11 @@ const std::array<ParameterDescriptor, MembraneParameterCount> Descriptors{{
     {"band_4_frequency_hz", "Band 4 frequency", "Hz", 1500.f, 20000.f, 7500.f,
      Scale::Logarithmic},
     {"band_4_gain_db", "Band 4 gain", "dB", -24.f, 24.f, 0.f},
+    {"fm_pitch_decay_seconds", "Pitch fall time", "s", .003f, .5f, .049f,
+     Scale::Logarithmic},
+    {"contact_noise_level", "Contact noise", "x", 0.f, 4.f, .45f},
+    {"contact_noise_decay_seconds", "Noise fade time", "s", .001f, 1.f, .012f,
+     Scale::Logarithmic},
 }};
 
 std::size_t Index(const MembraneParameter parameter) noexcept {
@@ -86,10 +91,13 @@ ApplyMembraneParameters(const MembraneParameterValues &values) noexcept {
   controls.contactBodyLevel = values[Index(P::ContactBodyLevel)];
   controls.contactDurationSeconds = values[Index(P::ContactDurationSeconds)];
   controls.contactBrightness = values[Index(P::ContactBrightness)];
+  controls.contactNoiseLevel = values[Index(P::ContactNoiseLevel)];
+  controls.contactNoiseDecaySeconds = values[Index(P::ContactNoiseDecaySeconds)];
   controls.fmDirectLevel = values[Index(P::FmDirectLevel)];
   controls.fmBodyLevel = values[Index(P::FmBodyLevel)];
   controls.fmDepthHz = values[Index(P::FmDepthHz)];
   controls.fmDecaySeconds = values[Index(P::FmDecaySeconds)];
+  controls.fmPitchDecaySeconds = values[Index(P::FmPitchDecaySeconds)];
   controls.pitchDropOctaves = values[Index(P::PitchDropOctaves)];
   controls.directLevel = values[Index(P::DirectLevel)];
   controls.bodyLevel = values[Index(P::BodyLevel)];

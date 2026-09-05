@@ -28,13 +28,19 @@ CorrelatedFmBurstParameters MakeFm(const MembraneDrumControls &controls,
   result.amplitude.segmentCount = 3;
   result.carrierFrequencyHz.initialValue = fundamental * std::exp2(drop);
   result.carrierFrequencyHz.segments[0] = {
-      fundamental, std::min(.5f, .7f * decay), Curve::Geometric};
+      fundamental, Safe(controls.fmPitchDecaySeconds, .049f, .003f, .5f),
+      Curve::Geometric};
   result.carrierFrequencyHz.segmentCount = 1;
   result.frequencyDeviationHz.initialValue = Safe(
       controls.fmDepthHz, 260.f, 0.f, 8000.f);
+  // Geometric interpolation cannot reach zero: a zero endpoint selects the
+  // trajectory's linear fallback and leaves excessive FM throughout the hit.
+  // Fade by 80 dB, then finish continuously at zero, like the amplitude path.
   result.frequencyDeviationHz.segments[0] = {
-      0.f, std::min(.5f, .8f * decay), Curve::Geometric};
-  result.frequencyDeviationHz.segmentCount = 1;
+      .0001f * result.frequencyDeviationHz.initialValue,
+      std::min(.5f, .8f * decay), Curve::Geometric};
+  result.frequencyDeviationHz.segments[1] = {0.f, .001f, Curve::Linear};
+  result.frequencyDeviationHz.segmentCount = 2;
   result.irregularCutoffHz = 2600.f;
   result.periodicModulatorHz = 1.58f * fundamental;
   result.periodicMix = .18f;
@@ -103,8 +109,9 @@ MembraneDrumParameters DefaultMembraneDrumParameters(
   result.contact.chirp.amplitude = .5f;
   result.contact.noise.attackSeconds = .0001f;
   result.contact.noise.holdSeconds = .0004f;
-  result.contact.noise.decaySeconds = .012f;
-  result.contact.noise.amplitude = .45f;
+  result.contact.noise.decaySeconds = Safe(
+      source.contactNoiseDecaySeconds, .012f, .001f, 1.f);
+  result.contact.noise.amplitude = Safe(source.contactNoiseLevel, .45f, 0.f, 4.f);
   result.contact.noise.tiltDb = 12.f *
       (Safe(source.contactBrightness, .58f, 0.f, 1.f) - .5f);
   result.contact.microContacts.durationSeconds = .018f;

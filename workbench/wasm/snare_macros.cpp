@@ -72,6 +72,7 @@ SnareParameterValues MakeDefaultValues() noexcept {
   Set(result, P::FmBodyLevel, .0256f);
   Set(result, P::FmDepthHz, 180.f);
   Set(result, P::FmDecaySeconds, .035f);
+  Set(result, P::FmPitchDecaySeconds, .0245f);
   Set(result, P::PitchDropOctaves, .12f);
   Set(result, P::DirectLevel, .24f);
   Set(result, P::BodyLevel, 2.85f);
