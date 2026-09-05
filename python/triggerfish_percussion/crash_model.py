@@ -37,6 +37,14 @@ class CrashFit:
         14100.0,
         14600.0,
         15000.0,
+        15000.0,
+        15000.0,
+        15000.0,
+        15000.0,
+        15000.0,
+        15000.0,
+        15000.0,
+        15000.0,
     )
     sparse_amplitude: tuple[float, ...] = (
         0.35,
@@ -63,8 +71,16 @@ class CrashFit:
         0.46,
         0.35,
         0.22,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
     )
-    field_turbulence_scale: tuple[float, ...] = (1.0,) * 24
+    field_turbulence_scale: tuple[float, ...] = (1.0,) * 32
     sparse_tune: float = 1.0
     body_decay_frequency_hz: tuple[float, ...] = (
         500.0,
@@ -72,7 +88,7 @@ class CrashFit:
         5000.0,
         8000.0,
         12000.0,
-        16000.0,
+        14000.0,
     )
     body_decay_seconds: tuple[float, ...] = (
         4.0,
@@ -93,16 +109,17 @@ class CrashFit:
         False,
     )
     body_tilt_db_per_octave: float = -1.0
-    body_tilt_centre_hz: float = 4000.0
+    body_excitation_centre_hz: float = 1000.0
     bloom_rate_octaves_per_second: float = 2.0
-    bloom_energy_dependence: float = 0.7
+    bloom_energy_acceleration: float = 0.7
     bloom_phase_diffusion: float = 0.7
-    body_excitation_gain: float = 0.05
-    field_gain: float = 0.73824115
+    body_excitation_gain: float = 1.0
+    field_gain: float = 1.0
     field_turbulence: float = 0.65
     field_turbulence_slope_per_octave: float = 0.0
     field_turbulence_centre_hz: float = 4000.0
     field_packet_spread_erb: float = 6.0
+    field_satellite_density: float = 0.5
     field_phase_bandwidth_erb: float = 1.0
     field_exchange: float = 0.35
     contact_duration_scale: float = 1.0

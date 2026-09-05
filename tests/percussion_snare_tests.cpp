@@ -77,10 +77,10 @@ void TestWireResponseIsNotDelayed() {
       break;
     }
   }
-  if (firstWireSample > 2)
+  if (firstWireSample > 4)
     std::cerr << "first snare-wire response sample: " << firstWireSample << '\n';
-  Check(firstWireSample <= 2,
-        "body-driven snare wires respond in the first three samples without a delay line");
+  Check(firstWireSample <= 4,
+        "normalized body drive crosses the wire onset threshold within 0.1 ms");
 }
 
 void TestRoutingAndPreparedState() {

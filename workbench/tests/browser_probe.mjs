@@ -423,7 +423,7 @@ if (testControls) {
             independentBloomControls: Boolean(document.querySelector(
               '[data-fit-key="bloom_rate"] input')) &&
               Boolean(document.querySelector(
-                '[data-fit-key="bloom_energy_dependence"] input')),
+                '[data-fit-key="bloom_energy_acceleration"] input')),
             modalPacketEditor: Boolean(document.querySelector(
               "#modal-editor svg.modal-editor")) &&
               document.querySelectorAll("#modal-editor .modal-bar").length > 0 &&
@@ -718,7 +718,7 @@ if (testControls) {
               )?.textContent.startsWith("185.0") &&
               document.querySelector(
                  '[data-membrane-key="model_level_db"] output',
-               )?.textContent.startsWith("-14.00") &&
+               )?.textContent.startsWith("-6.00") &&
               document.querySelector(
                 'input[name="membrane-implement"][value="1"]',
               )?.checked,
@@ -733,6 +733,47 @@ if (testControls) {
   result.controls.calibrationPreset = calibrationPreset.result.value;
   result.controls.checks.calibrationPreset =
     result.controls.calibrationPreset.passed;
+  const gainControls = await call("Runtime.evaluate", {
+    expression: `new Promise(resolve => {
+      const recipe = document.getElementById("instrument-recipe");
+      recipe.value = "0";
+      recipe.dispatchEvent(new Event("change"));
+      const slider = document.querySelector("#model-level input");
+      slider.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+      const resetValue = Number(slider.value);
+      slider.value = .6;
+      slider.dispatchEvent(new Event("input"));
+      const referenceGain = document.getElementById("reference-gain");
+      const adjustedReferenceGain = Number(referenceGain.value) - 6;
+      referenceGain.value = adjustedReferenceGain;
+      referenceGain.dispatchEvent(new Event("input"));
+      const layer = document.getElementById("reference-velocity");
+      const previousLayer = layer.value;
+      layer.value = Number(layer.value) === Number(layer.min) ? layer.max : layer.min;
+      layer.dispatchEvent(new Event("input"));
+      const start = performance.now();
+      const poll = () => {
+        const elapsed = performance.now() - start;
+        if (elapsed > 1500 && document.getElementById("status").textContent.startsWith("Ready") || elapsed > 15000) {
+          const result = {
+            resetIsDefault: Math.abs(resetValue - .9) < 1e-6,
+            selectionPreservesGain: Math.abs(Number(slider.value) - .6) < 1e-6,
+            referenceChanged: layer.value !== previousLayer,
+            layerPreservesReferenceGain: Number(referenceGain.value) === adjustedReferenceGain,
+            manualReferenceGain: !document.getElementById("reference-gain").disabled,
+            noMatchAction: !document.getElementById("match-model-level"),
+          };
+          slider.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+          referenceGain.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+          resolve(result);
+        } else setTimeout(poll, 100);
+      };
+      poll();
+    })`,
+    awaitPromise: true, returnByValue: true,
+  });
+  result.controls.gainControls = gainControls.result.value;
+  result.controls.checks.gainControls = Object.values(gainControls.result.value).every(Boolean);
   result.controls.passed = Object.values(result.controls.checks).every(Boolean);
 }
 if (screenshot) {

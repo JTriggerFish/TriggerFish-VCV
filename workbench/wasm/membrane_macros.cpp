@@ -9,7 +9,7 @@ namespace {
 using Scale = ParameterScale;
 
 const std::array<ParameterDescriptor, MembraneParameterCount> Descriptors{{
-    {"model_level_db", "Model level", "dB", -60.f, 0.f, -22.f},
+    {"model_level_db", "Model level", "dB", -60.f, 0.f, -6.f},
     {"fundamental_hz", "Fundamental", "Hz", 25.f, 500.f, 105.f,
      Scale::Logarithmic},
     {"decay_seconds", "Body decay", "s", .03f, 8.f, 1.15f, Scale::Logarithmic},
@@ -29,8 +29,8 @@ const std::array<ParameterDescriptor, MembraneParameterCount> Descriptors{{
     {"fm_depth_hz", "FM depth", "Hz", 0.f, 8000.f, 260.f},
     {"fm_decay_seconds", "FM decay", "s", .003f, 1.f, .07f, Scale::Logarithmic},
     {"pitch_drop_octaves", "FM pitch drop", "oct", 0.f, 3.f, .28f},
-    {"direct_level", "Direct level", "x", 0.f, 3.f, .3f},
-    {"body_level", "Body level", "x", 0.f, 3.f, 1.f},
+    {"direct_level", "Direct level", "x", 0.f, 3.f, .9f},
+    {"body_level", "Body level", "x", 0.f, 3.f, 3.f},
     {"direct_delay_ms", "Direct delay", "ms", 0.f, 10.f, 0.f},
     {"equalizer_mode", "Output EQ", "mode", 0.f, 2.f, 1.f, Scale::Choice},
     {"low_cut_hz", "High-pass", "Hz", 5.f, 1000.f, 24.f, Scale::Logarithmic},

@@ -81,7 +81,6 @@ void CrashCymbal::Reset() noexcept {
   observation_.Reset();
   modalConstraint_.Reset();
   SetExcitationProjection(1.f, .8f);
-  bodyDriveScale_ = 1.f;
   hasProcessedSinceReset_ = false;
 }
 
@@ -91,11 +90,6 @@ void CrashCymbal::Trigger(const CrashCymbalHit &hit) noexcept {
     return;
   SetExcitationProjection(hit.location, strength);
   contact_.Trigger(ContactParameters(hit));
-  const float implement = Unit(hit.implement);
-  const float brush = Unit(1.f - 2.f * implement);
-  const float stick = Unit(2.f * implement - 1.f);
-  const float mallet = 1.f - brush - stick;
-  bodyDriveScale_ = .5f * brush + .75f * mallet + stick;
 }
 
 CrashCymbalFrame CrashCymbal::ProcessFrame() noexcept {
@@ -103,7 +97,7 @@ CrashCymbalFrame CrashCymbal::ProcessFrame() noexcept {
   const auto modalLoss = modalConstraint_.Process();
   const auto contact = contact_.Process();
   const float bodyDrive =
-      bodyExcitationGain_ * bodyDriveScale_ * contact.bodyDrive;
+      bodyExcitationGain_ * contact.bodyDrive;
   const float body = modalField_.ProcessExcitedPair(
       (routing_.Enabled(MetallicPlateRoute::ContactToBody) ? 1.f : 0.f) *
           bodyDrive,
@@ -195,10 +189,6 @@ ContactExciterParameters CrashCymbal::ContactParameters(
   // Reserve more of the knob's travel for the bright end, where the cymbal
   // body becomes increasingly sensitive to small bandwidth changes.
   const float brushCharacter = hardness * hardness;
-  // Fine bristles sustain more overlapping contact energy. Keep perceived
-  // strike strength broadly stable while retaining that longer, darker shape.
-  const float brushLevel = Mix(
-      .62f, 1.f, brushCharacter * brushCharacter);
 
   ContactExciterParameters result;
   result.pulseDurationSeconds =
@@ -268,17 +258,6 @@ ContactExciterParameters CrashCymbal::ContactParameters(
       implementMix(1.4f, .3f, 1.f) *
       std::clamp(tfdsp::FiniteNormalOrZero(fit.contactMicroGain), 0.f, 4.f);
   result.microContacts.seed = hit.seed ^ 0x4d494352u;
-  result.projection = {
-      implementMix(0.f, .02f, .02f),
-      implementMix(0.f, .95f, .95f),
-      implementMix(0.f, .2f, .8f),
-      implementMix(0.f, .12f, .28f),
-      // A brush contains many more contacts than a stick. Its routing is
-      // energy-normalized here while its long stochastic gesture is retained.
-      implementMix(.165375f * brushLevel, .24f, .32f),
-      implementMix(.6615f * brushLevel, .5f, .72f),
-      implementMix(.33075f * brushLevel, .22f, .25f),
-      implementMix(1.323f * brushLevel, .42f, .85f)};
   return result;
 }
 
@@ -292,7 +271,7 @@ void CrashCymbal::SetExcitationProjection(const float value,
       parameters_.fieldBowProjection, parameters_.fieldEdgeProjection);
   ApplyVelocityColour(fieldProjection_, parameters_.modalField, strength,
                       velocityBrightness);
-  modalField_.SetExcitationProjection(fieldProjection_);
+  modalField_.SetEnergyNormalizedExcitationProjection(fieldProjection_);
 }
 
 } // namespace tfdsp::percussion

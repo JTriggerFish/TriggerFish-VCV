@@ -36,9 +36,6 @@ SnareDrumParameters DefaultSnareDrumParameters() noexcept {
   body.fmDecaySeconds = .035f;
   body.pitchDropOctaves = .12f;
   result.membrane = DefaultMembraneDrumParameters(body);
-  // Keep the safety ceiling inactive for normal hits so velocity remains an
-  // amplitude/energy control instead of collapsing into hard limiting.
-  result.membrane.maximumModalEnergy = 64.f;
   result.membrane.membrane[5].frequencyHz = 675.f;
   result.membrane.membrane[5].decaySeconds = 1.8f;
   result.membrane.membrane[5].outputGain = .3f;
@@ -47,7 +44,7 @@ SnareDrumParameters DefaultSnareDrumParameters() noexcept {
   result.membrane.equalizer.mode = ObservationEqualizerMode::Bypass;
   result.membrane.outputGain = 1.f;
 
-  result.wires.sensitivity = 12.f;
+  result.wires.sensitivity = 1.5f;
   result.wires.attackSeconds = .0015f;
   result.wires.releaseSeconds = .08f;
   result.wires.threshold = .0015f;
@@ -60,11 +57,10 @@ SnareDrumParameters DefaultSnareDrumParameters() noexcept {
   result.wires.brightness = 0.f;
   result.wires.noiseMix = .6f;
   result.wires.modalMix = .45f;
-  result.wires.maximumModalEnergy = 16.f;
 
-  result.observation[0].gain = .08f;
-  result.observation[1].gain = .95f;
-  result.observation[2].gain = .46f;
+  result.observation[0].gain = .24f;
+  result.observation[1].gain = 2.85f;
+  result.observation[2].gain = 1.38f;
   for (auto &path : result.observation)
     path.radiationEnabled = false;
   result.equalizer.mode = ObservationEqualizerMode::Radiation;
@@ -74,7 +70,7 @@ SnareDrumParameters DefaultSnareDrumParameters() noexcept {
   result.equalizer.radiation.colourGainDb = 0.f;
   result.equalizer.radiation.colourQ = .7f;
   result.equalizer.outputGain = 1.f;
-  result.outputGain = .2f;
+  result.outputGain = .5f;
   return result;
 }
 

@@ -32,7 +32,7 @@ function moduleForParameter(key) {
       key.startsWith("impact_")) return "contact";
   if (key.startsWith("bloom_")) return "body";
   if (key === "body_excitation" || key === "body_brightness" ||
-      key === "body_tilt_centre" ||
+      key === "body_excitation_centre" ||
       key === "body_tune" ||
       key.startsWith("field_") || key.startsWith("body_decay_") ||
       key.startsWith("resolved_")) return "body";

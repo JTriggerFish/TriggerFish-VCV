@@ -11,8 +11,8 @@ using Scale = ParameterScale;
 const std::array<ParameterDescriptor,
                  SnareParameterCount - MembraneParameterCount>
     WireDescriptors{{
-        {"wire_level", "Wire level", "x", 0.f, 6.f, .46f},
-        {"wire_sensitivity", "Wire sensitivity", "x", 0.f, 32.f, 12.f},
+        {"wire_level", "Wire level", "x", 0.f, 6.f, 1.38f},
+        {"wire_sensitivity", "Wire sensitivity", "x", 0.f, 4.f, 1.5f},
         {"wire_threshold", "Wire threshold", "", 0.f, .08f, .0015f},
         {"wire_motion_highpass_hz", "Wire motion high-pass", "Hz", 20.f, 4000.f,
          140.f, Scale::Logarithmic},
@@ -56,7 +56,7 @@ SnareParameterValues MakeDefaultValues() noexcept {
     result[index] =
         WireDescriptors[index - MembraneParameterCount].defaultValue;
   using P = MembraneParameter;
-  Set(result, P::ModelLevelDb, -14.f);
+  Set(result, P::ModelLevelDb, -6.f);
   Set(result, P::FundamentalHz, 185.f);
   Set(result, P::DecaySeconds, .12f);
   Set(result, P::DecayTilt, .45f);
@@ -73,8 +73,8 @@ SnareParameterValues MakeDefaultValues() noexcept {
   Set(result, P::FmDepthHz, 180.f);
   Set(result, P::FmDecaySeconds, .035f);
   Set(result, P::PitchDropOctaves, .12f);
-  Set(result, P::DirectLevel, .08f);
-  Set(result, P::BodyLevel, .95f);
+  Set(result, P::DirectLevel, .24f);
+  Set(result, P::BodyLevel, 2.85f);
   Set(result, P::LowCutHz, 38.f);
   Set(result, P::HighCutHz, 8000.f);
   Set(result, P::ColourFrequencyHz, 210.f);
@@ -116,7 +116,6 @@ ApplySnareParameters(const SnareParameterValues &values) noexcept {
   auto membrane = ApplyMembraneParameters(membraneValues);
   auto result = tfdsp::percussion::DefaultSnareDrumParameters();
   result.membrane = membrane;
-  result.membrane.maximumModalEnergy = 64.f;
   result.observation[0] = membrane.observation[0];
   result.observation[1] = membrane.observation[1];
   result.observation[2].gain = values[Index(SnareParameter::WireLevel)];

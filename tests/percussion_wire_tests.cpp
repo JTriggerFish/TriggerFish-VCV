@@ -68,7 +68,7 @@ void TestStaticAndSlowMotionArePassive() {
         "fast membrane motion drives wires far more than a slow closure");
 }
 
-void TestOrdinaryMotionDoesNotReachSafetyCeiling() {
+void TestOrdinaryMotionEnergyBudget() {
   using namespace tfdsp::percussion;
   const auto prepared = PrepareWireRackParameters(48000.f, {});
   WireRack rack;
@@ -80,11 +80,8 @@ void TestOrdinaryMotionDoesNotReachSafetyCeiling() {
     rack.Process(drive);
     maximumEnergy = std::max(maximumEnergy, rack.StoredEnergy());
   }
-  if (!(maximumEnergy < .25f * prepared.maximumModalEnergy))
-    std::cerr << "wire ordinary-motion energy/capacity: " << maximumEnergy
-              << '/' << prepared.maximumModalEnergy << '\n';
-  Check(maximumEnergy < .25f * prepared.maximumModalEnergy,
-        "ordinary wire motion stays clear of the safety ceiling");
+  Check(maximumEnergy > 0 && maximumEnergy < 1,
+        "ordinary continuous wire drive has normalized energy units");
 }
 
 void TestRatesAndBounds() {
@@ -107,8 +104,8 @@ void TestRatesAndBounds() {
                 << '/' << maximumEnergy << '\n';
     Check(std::isfinite(peak) && peak > .01f && peak < 3.f,
           "raw wire source remains finite across sample rates");
-    Check(maximumEnergy <= prepared.maximumModalEnergy + 1.e-4f,
-          "wire rack respects its stored-energy capacity");
+    Check(std::isfinite(maximumEnergy) && maximumEnergy < 1,
+          "continuous wire injection has physical-time scaling, not a state cap");
   }
 }
 
@@ -117,7 +114,7 @@ void TestRatesAndBounds() {
 int main() {
   TestBodyDrivenResponse();
   TestStaticAndSlowMotionArePassive();
-  TestOrdinaryMotionDoesNotReachSafetyCeiling();
+  TestOrdinaryMotionEnergyBudget();
   TestRatesAndBounds();
   return percussion_test::failures == 0 ? 0 : 1;
 }

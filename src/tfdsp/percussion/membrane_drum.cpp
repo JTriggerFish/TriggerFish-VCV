@@ -1,4 +1,5 @@
 #include "membrane_drum.hpp"
+#include "trajectory_impulse_scale.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -54,6 +55,7 @@ ContactExciterParameters ContactForHit(ContactExciterParameters result,
 } // namespace
 
 void MembraneDrum::EventVoice::Prepare(const float sampleRate) {
+  this->sampleRate = sampleRate;
   contact.Prepare(sampleRate);
   fm.Prepare(sampleRate);
   stealStep = 1.f / std::max(1.f, .001f * sampleRate);
@@ -64,8 +66,8 @@ void MembraneDrum::EventVoice::Reset() noexcept {
   contact.Reset();
   fm.Reset();
   location = .5f;
-  directAmplitude = bodyAmplitude = fmVelocityScale = activity = 0.f;
-  stealDirect = stealBody = stealFm = stealGain = 0.f;
+  directAmplitude = bodyAmplitude = fmBodyScale = activity = 0.f;
+  stealDirect = stealBody = stealFm = stealFmBody = stealGain = 0.f;
   last = {};
   generation = 0;
 }
@@ -77,6 +79,7 @@ void MembraneDrum::EventVoice::Trigger(
     stealDirect = last.contactDirect;
     stealBody = last.contactBody;
     stealFm = last.fm;
+    stealFmBody = last.fmBody;
     stealGain = 1.f;
   } else {
     stealDirect = stealBody = stealFm = stealGain = 0.f;
@@ -91,19 +94,21 @@ void MembraneDrum::EventVoice::Trigger(
   location = Unit(hit.location, .5f);
   directAmplitude = strength;
   bodyAmplitude = strength;
-  fmVelocityScale = .25f + .75f * strength;
+  fmBodyScale = TrajectoryImpulseScale(fmParameters.amplitude, sampleRate);
   generation = eventGeneration;
 }
 
 MembraneDrum::EventVoice::Sample MembraneDrum::EventVoice::Process() noexcept {
   const auto contactSample = contact.Process();
+  const float fmAudio = bodyAmplitude * fm.Process();
   Sample result{directAmplitude * contactSample.directRadiation,
                 bodyAmplitude * contactSample.bodyDrive,
-                fmVelocityScale * bodyAmplitude * fm.Process()};
+                fmAudio, fmBodyScale * fmAudio};
   if (stealGain > 0.f) {
     result.contactDirect += stealGain * stealDirect;
     result.contactBody += stealGain * stealBody;
     result.fm += stealGain * stealFm;
+    result.fmBody += stealGain * stealFmBody;
     stealGain = std::max(0.f, stealGain - stealStep);
   }
   last = result;
@@ -121,8 +126,7 @@ bool MembraneDrum::EventVoice::Active() const noexcept {
 void MembraneDrum::Prepare(const float sampleRate,
                            const MembraneDrumParameters &parameters) {
   PrepareComponents(sampleRate, parameters);
-  membrane_.Prepare(sampleRate, parameters.membrane,
-                    parameters.maximumModalEnergy);
+  membrane_.Prepare(sampleRate, parameters.membrane);
   Reset();
 }
 
@@ -190,7 +194,7 @@ MembraneDrumSources MembraneDrum::ProcessSources() noexcept {
   for (auto &voice : voices_) {
     const auto event = voice.Process();
     direct += directMixer_.Process({event.contactDirect, event.fm});
-    const float bodyForce = bodyMixer_.Process({event.contactBody, event.fm});
+    const float bodyForce = bodyMixer_.Process({event.contactBody, event.fmBody});
     const auto projected = membrane_.Project(bodyForce, voice.location);
     for (std::size_t mode = 0; mode < membraneDrive.size(); ++mode)
       membraneDrive[mode] += projected[mode];

@@ -15,7 +15,7 @@ if (wasm._tf_percussion_recipe_count() !== 4) {
 if (wasm.UTF8ToString(wasm._tf_percussion_recipe_key(1)) !==
     "drum.kick-fm.v1") throw new Error("kick recipe is unavailable");
 if (wasm._tf_crash_route_count() !== 3) throw new Error("unexpected route count");
-if (wasm._tf_crash_macro_count() !== 124) throw new Error("unexpected macro count");
+if (wasm._tf_crash_macro_count() !== 149) throw new Error("unexpected macro count");
 if (wasm.UTF8ToString(wasm._tf_crash_macro_name(0)) !== "Model level") {
   throw new Error("macro metadata is unavailable");
 }
@@ -24,7 +24,7 @@ const frameCount = 8192;
 const outputPointer = wasm._malloc(frameCount * Float32Array.BYTES_PER_ELEMENT);
 const handle = wasm._tf_crash_create(48000);
 if (!handle || !outputPointer) throw new Error("renderer allocation failed");
-if (wasm._tf_percussion_parameter_count(handle) !== 124) {
+if (wasm._tf_percussion_parameter_count(handle) !== 149) {
   throw new Error("metallic recipe still exposes legacy no-op controls");
 }
 

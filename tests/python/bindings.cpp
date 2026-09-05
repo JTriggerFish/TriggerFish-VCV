@@ -1033,11 +1033,12 @@ PYBIND11_MODULE(_triggerfish_dsp, module)
 		.def_readwrite("body_decay_active", &CrashFit::bodyDecayActive)
 		.def_readwrite("body_tilt_db_per_octave",
 			&CrashFit::bodyTiltDbPerOctave)
-		.def_readwrite("body_tilt_centre_hz", &CrashFit::bodyTiltCentreHz)
+		.def_readwrite("body_excitation_centre_hz",
+			&CrashFit::bodyExcitationCentreHz)
 		.def_readwrite("bloom_rate_octaves_per_second",
 			&CrashFit::bloomRateOctavesPerSecond)
-		.def_readwrite("bloom_energy_dependence",
-			&CrashFit::bloomEnergyDependence)
+		.def_readwrite("bloom_energy_acceleration",
+			&CrashFit::bloomEnergyAcceleration)
 		.def_readwrite("bloom_phase_diffusion", &CrashFit::bloomPhaseDiffusion)
 		.def_readwrite("body_excitation_gain", &CrashFit::bodyExcitationGain)
 		.def_readwrite("field_gain", &CrashFit::fieldGain)
@@ -1047,6 +1048,7 @@ PYBIND11_MODULE(_triggerfish_dsp, module)
 		.def_readwrite("field_turbulence_centre_hz",
 			&CrashFit::fieldTurbulenceCentreHz)
 		.def_readwrite("field_packet_spread_erb", &CrashFit::fieldPacketSpreadErb)
+		.def_readwrite("field_satellite_density", &CrashFit::fieldSatelliteDensity)
 		.def_readwrite("field_phase_bandwidth_erb",
 			&CrashFit::fieldPhaseBandwidthErb)
 		.def_readwrite("field_exchange", &CrashFit::fieldExchange)

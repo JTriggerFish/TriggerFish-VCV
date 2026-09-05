@@ -41,8 +41,8 @@ The corrected contract is:
 7. audition the candidate and relevant branch solos before it may be named a
    calibration.
 
-Body T60 is handled by a narrower contract. Factory and calibration starts use
-only the fixed DC and Nyquist curve positions; the six interior slots are
+Modal T60 is handled by a narrower contract. Factory and calibration starts use
+only the fixed 40 Hz and 15 kHz curve positions; the six interior slots are
 inactive. Contact, 100 ms colour, and bloom stages cannot change T60. The tail
 schedule is the only generic schedule allowed to expose the two endpoint
 values, but its result is not accepted from the generic spectrogram objective:
@@ -103,6 +103,34 @@ Other licensed and open cymbal collections are validation sources, not cells
 silently pooled into this one-object fit. They are introduced after one object
 works across its own strike regions and velocities.
 
+### Gong bootstrap fit
+
+`tools/calibrate_gong.py` holds one deliberately sparse, listening-oriented
+gong bootstrap against the local `Gong Dresden 03` reference. It uses 17 active
+painted handles, one normalized excitation shelf with a movable centre, passive
+upward transport, and only the fixed 40 Hz/15 kHz T60 boundary values; all six
+interior decay knots remain disabled. The saved workbench preset is `gong-v1`.
+
+After separating excitation from observation, the first nine measured low
+ridges are 375, 551, 129, 305, 422, 246, 621, 727, and 879 Hz in both renders;
+their relative levels agree within 0.25 dB. Full-render RMS is 0.08148 versus
+0.08131 in the reference, with a negative model-level setting. The model's five
+ERB-band peak times are approximately 0.01, 0.20, 0.73, 0.82, and 0.90 seconds,
+versus 0.01, 0.07, 0.48, 0.87, and 0.96 seconds in the reference.
+
+The reference's directly measured band-decay curve is about 6.25 seconds at
+40 Hz and 3.43 seconds at 15 kHz. Those are observed envelopes, not the modal
+loss values: passive upward transport is another reason energy leaves a source
+band. Joint fitting therefore uses intrinsic endpoints of 12 and 1.1 seconds;
+the cascade plus these two losses matches the 4-second five-band levels within
+about 3.3 dB, without adding an interior T60 knot.
+
+This is an auditionable bootstrap, not a listening-approved final fit. Its
+known structural mismatch is the 300 Hz--3 kHz envelope: its two band peaks
+still arrive roughly 0.13 and 0.25 seconds too late. Modal painting now affects
+observation only and the two-point T60 is already reserved for true loss, so
+neither may be abused to conceal this transport-kinetics limitation.
+
 ## Current synthesis graph
 
 ```text
@@ -115,8 +143,9 @@ contact direct -------------------------------------> contact observation --+
                                                                   +--> output
 ```
 
-The experimental body is one 408-mode stored state: 24 paintable anchors, each
-with one coherent centre mode and 16 stochastic satellites. A global turbulence
+The experimental body is one stored state with a 512-state ceiling: zero to 32
+paintable centre handles reserve one state each, and deterministic stochastic
+sideband pairs are allocated from the remaining shared pool. Global turbulence
 control transfers normalized excitation energy from centres to satellites and
 increases ERB spread, phase diffusion, and passive local exchange. A paintable
 per-anchor `0..2x` scaler lets selected ridges stay clean. All anchors share one
@@ -126,12 +155,15 @@ retained as reusable DSP modules, but their crash graph, state, and controls are
 disconnected. They cannot alter the active renderer.
 
 Contact writes directly into that one stored modal state. Strike location and
-velocity colour new force without recolouring energy already circulating.
+velocity colour redistribute a normalized new-force vector without recolouring
+energy already circulating. Painted bars form an independently normalized
+observation-prominence vector; they do not change stored strike energy.
 The visible body-excitation gain sets the nonlinear body's drive; the separate
 body-observation gain cannot alter stored energy or cascade behaviour.
-Bloom is a passive state-level cascade from lower to adjacent higher packets;
+Bloom is a passive state-level cascade through a fixed half-octave transport
+stencil interpolated onto the available higher packets;
 it has no separate signal, delay, latch, output gain, or feedback T60. Its rate,
-energy dependence, and destination phase diffusion are explicit. Higher strike
+energy acceleration, and destination phase diffusion are explicit. Higher strike
 energy accelerates the upward transfer, while the separately visible velocity
 brightness control also couples new force more strongly into high modes.
 The renderer is mono; stereo presentation belongs after the instrument state.
@@ -180,7 +212,7 @@ UI and renderer only after controlled ablation.
 The initial macro groups are:
 
 - impact: strength, hardness/contact width, tonal-to-noise contact balance;
-- object: 24 anchor frequencies/levels up to 15 kHz, global turbulence, per-anchor
+- object: 0-32 centre frequencies/levels up to 15 kHz, global turbulence, per-anchor
   turbulence response, packet spread, phase bandwidth, passive neighbour
   exchange, and broad body colour;
 - evolution: intrinsic bloom rate/energy response and the shared decay shape;
@@ -225,7 +257,7 @@ labelled otherwise.
 ### Modal decay policy
 
 Ordinary fitting places modal frequencies and levels only. The active
-DC/Nyquist T60 envelope is the sole decay model; no resolved-mode decay
+40 Hz/15 kHz modal-T60 envelope is the sole decay model; no resolved-mode decay
 parameter exists. Ridge-specific decay values may be measured as diagnostics,
 but adding such a control requires a future explicit model extension after the
 global T60 acceptance gate has passed. They must never be inherited from

@@ -68,11 +68,11 @@ def _parameter_address(name: str) -> tuple[str, int | None]:
     return field, int(suffix[:-1])
 
 
-# Ordinary fitting owns only the fixed DC and Nyquist values. Interior slots
+# Ordinary fitting owns only the fixed 40 Hz and 15 kHz values. Interior slots
 # remain inactive until an explicit last-step refinement is justified.
 BODY_DECAY_SLOTS = (0, 7)
 BODY_DECAY_PARAMETERS = tuple(
-    parameter(f"body_decay_seconds[{index}]", 0.02, 20.0) for index in BODY_DECAY_SLOTS
+    parameter(f"body_decay_seconds[{index}]", 0.02, 30.0) for index in BODY_DECAY_SLOTS
 )
 
 
@@ -112,8 +112,8 @@ UNIFIED_CAUSAL_STAGES = (
         (
             parameter("field_gain", 0.0, 3.0),
             parameter("body_excitation_gain", 0.001, 4.0),
-            parameter("body_tilt_db_per_octave", -24.0, 24.0),
-            parameter("body_tilt_centre_hz", 40.0, 15_000.0),
+            parameter("body_tilt_db_per_octave", -72.0, 24.0),
+            parameter("body_excitation_centre_hz", 40.0, 15_000.0),
             parameter("field_turbulence", 0.0, 1.0),
             parameter("field_turbulence_slope_per_octave", -1.0, 1.0),
             parameter("field_turbulence_centre_hz", 40.0, 15_000.0),
@@ -121,7 +121,7 @@ UNIFIED_CAUSAL_STAGES = (
             parameter("field_phase_bandwidth_erb", 0.0, 4.0),
             parameter("field_exchange", 0.0, 1.0),
             parameter("bloom_rate_octaves_per_second", 0.0, 16.0),
-            parameter("bloom_energy_dependence", 0.0, 1.0),
+            parameter("bloom_energy_acceleration", 0.0, 1.0),
             parameter("bloom_phase_diffusion", 0.0, 1.0),
             parameter("body_colour_frequency_hz", 100.0, 18_000.0),
             parameter("body_colour_gain_db", -18.0, 18.0),
@@ -133,7 +133,7 @@ UNIFIED_CAUSAL_STAGES = (
         0.600,
         (
             parameter("bloom_rate_octaves_per_second", 0.0, 16.0),
-            parameter("bloom_energy_dependence", 0.0, 1.0),
+            parameter("bloom_energy_acceleration", 0.0, 1.0),
             parameter("bloom_phase_diffusion", 0.0, 1.0),
             parameter("field_turbulence", 0.0, 1.0),
             parameter("field_turbulence_slope_per_octave", -1.0, 1.0),

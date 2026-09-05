@@ -46,8 +46,8 @@ def t60_diagnostics(reference, candidate) -> dict[str, object]:
         }
 
     endpoint_difference = np.log(
-        [candidate_fit.dc_seconds, candidate_fit.nyquist_seconds]
-    ) - np.log([reference_fit.dc_seconds, reference_fit.nyquist_seconds])
+        [candidate_fit.low_seconds, candidate_fit.high_seconds]
+    ) - np.log([reference_fit.low_seconds, reference_fit.high_seconds])
     endpoint_rmse = float(np.sqrt(np.mean(np.square(endpoint_difference))))
     endpoint_maximum = float(np.max(np.abs(endpoint_difference)))
     frequencies, reference_bands, candidate_bands = _common_bands(
@@ -68,12 +68,12 @@ def t60_diagnostics(reference, candidate) -> dict[str, object]:
             "measured" if enough_common_bands else "insufficient_candidate_evidence"
         ),
         "reference_endpoint_seconds": [
-            reference_fit.dc_seconds,
-            reference_fit.nyquist_seconds,
+            reference_fit.low_seconds,
+            reference_fit.high_seconds,
         ],
         "candidate_endpoint_seconds": [
-            candidate_fit.dc_seconds,
-            candidate_fit.nyquist_seconds,
+            candidate_fit.low_seconds,
+            candidate_fit.high_seconds,
         ],
         "reference_curve_log_rmse": reference_fit.log_rmse,
         "candidate_curve_log_rmse": candidate_fit.log_rmse,

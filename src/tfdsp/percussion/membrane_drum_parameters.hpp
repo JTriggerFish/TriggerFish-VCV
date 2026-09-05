@@ -48,15 +48,15 @@ struct MembraneDrumControls {
   float fmDepthHz{260.f};
   float fmDecaySeconds{.07f};
   float pitchDropOctaves{.28f};
-  float directLevel{.3f};
-  float bodyLevel{1.f};
+  float directLevel{.9f};
+  float bodyLevel{3.f};
   float directDelaySeconds{};
   ObservationEqualizerMode equalizerMode{ObservationEqualizerMode::Radiation};
   float lowCutHz{24.f};
   float highCutHz{18000.f};
   float colourFrequencyHz{2800.f};
   float colourGainDb{};
-  float outputGain{.08f};
+  float outputGain{.5f};
 };
 
 struct MembraneDrumParameters {
@@ -71,8 +71,7 @@ struct MembraneDrumParameters {
   float contactBodyLevel{.7f};
   float fmDirectLevel{.0144f};
   float fmBodyLevel{.081f};
-  float outputGain{.08f};
-  float maximumModalEnergy{64.f};
+  float outputGain{.5f};
 };
 
 struct MembraneDrumPreparedParameters {

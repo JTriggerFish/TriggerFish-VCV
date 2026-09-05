@@ -43,7 +43,7 @@ from triggerfish_percussion.t60_envelope import (
 
 
 def _coloured_noise_with_t60(
-    dc_seconds: float, nyquist_seconds: float, tilt_db_per_octave: float
+    low_seconds: float, high_seconds: float, tilt_db_per_octave: float
 ) -> tuple[np.ndarray, int]:
     """Build independent noise bands with the production decay curve."""
     sample_rate = 48_000
@@ -55,7 +55,7 @@ def _coloured_noise_with_t60(
     frequencies = np.fft.rfftfreq(sample_count, 1.0 / sample_rate)
     result = np.zeros(sample_count)
     point_frequencies = np.linspace(0.0, sample_rate / 2, 8)
-    point_seconds = np.linspace(dc_seconds, nyquist_seconds, 8)
+    point_seconds = np.linspace(low_seconds, high_seconds, 8)
     active = (True, False, False, False, False, False, False, True)
     for lower, upper in zip(edges, edges[1:]):
         selected = (frequencies >= lower) & (frequencies < upper)
@@ -105,10 +105,14 @@ def test_two_point_t60_fit_recovers_coloured_noise_envelope(tilt_db_per_octave):
     if tilt_db_per_octave > 0:
         samples *= 0.02
     fitted = recover_two_point_t60(
-        samples, sample_rate, band_count=24, onset_sample=onset_sample
+        samples,
+        sample_rate,
+        band_count=24,
+        onset_sample=onset_sample,
+        minimum_r_squared=0.8,
     )
-    assert fitted.dc_seconds == pytest.approx(3.2, rel=0.12)
-    assert fitted.nyquist_seconds == pytest.approx(0.75, rel=0.12)
+    assert fitted.low_seconds == pytest.approx(3.2, rel=0.12)
+    assert fitted.high_seconds == pytest.approx(0.75, rel=0.12)
     assert fitted.log_rmse < 0.12
     assert fitted.band_frequencies_hz.size >= 20
 

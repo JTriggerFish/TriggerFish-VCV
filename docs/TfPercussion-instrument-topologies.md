@@ -416,7 +416,7 @@ only when ablation shows that each branch explains a distinct measurement.
 | Drive controls velocity-sensitive bloom | energy-dependent transfer in the active modal cascade | Active calibration target |
 | Feedback loop contains every dispersion processor | one explicit outer-loop graph | Reusable tutorial topology, inactive by default |
 | Dispersion is not heard directly | no dispersion branch in the active observation graph | Active topology |
-| Progressive spectral bloom | passive adjacent-packet transfer within the unified modal field | Active cymbal topology |
+| Progressive spectral bloom | passive fixed-distance transport interpolated across the unified modal field | Active cymbal topology |
 | Plugin dry signal is polarity-cancelled | native wet-only implementation; no dry-null hack required | Equivalent implementation |
 | Approximately twelve parallel combs | optional parallel/coupled dense-residual lines | Residual candidate |
 | A few dark lower-order groups plus messy high groups | clustered resonator parameters and group filters | Calibration structure |

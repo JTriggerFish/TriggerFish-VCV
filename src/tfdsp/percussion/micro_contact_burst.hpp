@@ -54,19 +54,16 @@ public:
         FiniteOr(parameters.microDecaySeconds, 0.f), 1.f / sampleRate_, .1f);
     contactDecay_ = std::exp(-1.f / (decaySeconds * sampleRate_));
     const float brightness = std::clamp(FiniteOr(parameters.brightness, 0.f), 0.f, 1.f);
-    const float cutoffHz = 800.f * std::pow(.45f * sampleRate_ / 800.f, brightness);
+    const float cutoffHz = std::min(.45f * sampleRate_,
+        800.f * std::pow(20000.f / 800.f, brightness));
     lowpassCoefficient_ = std::exp(-6.283185307179586f * cutoffHz / sampleRate_);
     const auto whiteNoiseVariance = [](const float pole) noexcept {
       const float feed = 1.f - pole;
       return feed / (2.f - feed);
     };
-    constexpr float ReferenceBrightness = .7f;
-    const float referenceCutoff = 800.f *
-        std::pow(.45f * sampleRate_ / 800.f, ReferenceBrightness);
-    const float referencePole =
-        std::exp(-6.283185307179586f * referenceCutoff / sampleRate_);
-    colourGain_ = std::sqrt(
-        whiteNoiseVariance(referencePole) /
+    // Unit-variance carrier before the explicit 40 Hz rejection. This is
+    // filter normalization, not a fitted brightness-dependent makeup gain.
+    colourGain_ = std::sqrt(3.f /
         std::max(whiteNoiseVariance(lowpassCoefficient_), 1.e-12f));
     amplitude_ = std::clamp(
         tfdsp::FiniteNormalOrZero(FiniteOr(parameters.amplitude, 0.f)),
@@ -102,7 +99,7 @@ public:
     highpassState_ = tfdsp::FiniteNormalOrZero(highpassState_);
     previousLowpass_ = lowpassState_;
 
-    const float output = .5f * colourGain_ * amplitude_ * windowSine_ *
+    const float output = colourGain_ * amplitude_ * windowSine_ *
                          contactEnvelope_ * highpassState_;
     const float nextWindowSine = windowSine_ * windowRotationCosine_ +
                                  windowCosine_ * windowRotationSine_;
@@ -114,6 +111,14 @@ public:
   }
 
   bool Active() const noexcept { return sample_ < sampleCount_; }
+
+  float BodyImpulseScale() const noexcept {
+    // Undo the audio carrier normalization: body forcing needs a fixed
+    // noise spectral density per event, not fixed audio RMS per sample.
+    // Contact occupancy remains part of the gesture, never a seed-based AGC.
+    const float windowEnergy = .5f * (static_cast<float>(sampleCount_) + 1.f);
+    return std::sqrt(3.f / windowEnergy) / colourGain_;
+  }
 
 private:
   static float FiniteOr(const float value, const float fallback) noexcept {

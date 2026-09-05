@@ -165,7 +165,7 @@ def _body_t60(fit: CrashFit, frequency_hz: float, sample_rate: int) -> float:
     return float(
         interpolate_t60(
             frequency_hz,
-            (0.0, *fit.body_decay_frequency_hz, 0.5 * sample_rate),
+            (40.0, *fit.body_decay_frequency_hz, 15_000.0),
             fit.body_decay_seconds,
             (True, *fit.body_decay_active, True),
             sample_rate,

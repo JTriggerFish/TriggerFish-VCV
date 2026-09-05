@@ -17,6 +17,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <iostream>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -158,6 +159,9 @@ void BenchmarkModalBanks() {
 
 void BenchmarkModalField() {
   auto parameters = tfdsp::percussion::DefaultCrashCymbalParameters(48000.f);
+  const auto activeModes = std::count_if(
+      parameters.modalField.begin(), parameters.modalField.end(),
+      [](const auto &mode) { return mode.inputGain != 0.f; });
   const auto measure = [&](const std::string_view name,
                            const bool phase, const bool exchange) {
     auto modes = parameters.modalField;
@@ -175,10 +179,11 @@ void BenchmarkModalField() {
       return field.ProcessExcitedPair(input, .5f * input);
     });
   };
-  measure("408-mode field, coherent", false, false);
-  measure("408-mode field, phase only", true, false);
-  measure("408-mode field, exchange only", false, true);
-  measure("408-mode field, phase and exchange", true, true);
+  const std::string prefix = std::to_string(activeModes) + "-state field, ";
+  measure(prefix + "coherent", false, false);
+  measure(prefix + "phase only", true, false);
+  measure(prefix + "exchange only", false, true);
+  measure(prefix + "phase and exchange", true, true);
 }
 
 void BenchmarkDispersion() {
@@ -205,7 +210,13 @@ void BenchmarkCrashVariant(const std::string_view name,
 
 void BenchmarkCrashCymbal() {
   tfdsp::percussion::CrashCymbalFitParameters fit;
-  BenchmarkCrashVariant("408-mode crash", fit);
+  const auto parameters =
+      tfdsp::percussion::DefaultCrashCymbalParameters(48000.f, fit);
+  const auto activeModes = std::count_if(
+      parameters.modalField.begin(), parameters.modalField.end(),
+      [](const auto &mode) { return mode.inputGain != 0.f; });
+  BenchmarkCrashVariant(
+      std::to_string(activeModes) + "-state pooled crash", fit);
 }
 
 void BenchmarkCompactKick() {

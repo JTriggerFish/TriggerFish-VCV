@@ -34,11 +34,18 @@ public:
   void SetStaticParameters(const Parameters &parameters) {
     const auto primaryProjection = excitationProjection_;
     const auto secondaryProjection = secondaryExcitationProjection_;
+    const bool normalizePrimary = primaryProjectionEnergyNormalized_;
     LoadPrepared(PrepareStochasticModalField(
         sampleRate_, parameters, CurrentControls(),
         lowCrossoverHz_, highCrossoverHz_));
-    SetProjection(
-        primaryProjection, excitationProjection_, primaryDriveGain_);
+    if (normalizePrimary) {
+      SetEnergyNormalizedProjection(
+          primaryProjection, excitationProjection_, primaryDriveGain_);
+      primaryProjectionEnergyNormalized_ = true;
+    } else {
+      SetProjection(
+          primaryProjection, excitationProjection_, primaryDriveGain_);
+    }
     SetProjection(secondaryProjection, secondaryExcitationProjection_,
                   secondaryDriveGain_);
   }
@@ -69,6 +76,7 @@ public:
     band_ = prepared.band;
     excitationProjection_.fill(1.f);
     secondaryExcitationProjection_.fill(1.f);
+    primaryProjectionEnergyNormalized_ = false;
     for (std::size_t mode = 0; mode < activeModeCount_; ++mode) {
       effectiveRadius_[mode] = radius_[mode];
       primaryDriveGain_[mode] = inputGain_[mode];
@@ -91,6 +99,17 @@ public:
 
   void SetExcitationProjection(const Projection &projection) noexcept {
     SetProjection(projection, excitationProjection_, primaryDriveGain_);
+    primaryProjectionEnergyNormalized_ = false;
+  }
+
+  // Redistributes, rather than scales, the field's prepared drive energy.
+  // This is useful for physical controls such as strike location and velocity
+  // colour whose job is spectral placement, not an implicit level change.
+  void SetEnergyNormalizedExcitationProjection(
+      const Projection &projection) noexcept {
+    SetEnergyNormalizedProjection(
+        projection, excitationProjection_, primaryDriveGain_);
+    primaryProjectionEnergyNormalized_ = true;
   }
 
   void SetSecondaryExcitationProjection(
@@ -153,10 +172,40 @@ private:
 
   void SetProjection(const Projection &source, Projection &destination,
                      Projection &driveGain) noexcept {
+    for (std::size_t sourceMode = 0; sourceMode < ModeCount; ++sourceMode)
+      destination[sourceMode] = SafeProjection(source[sourceMode]);
     for (std::size_t mode = 0; mode < activeModeCount_; ++mode) {
-      destination[mode] = SafeProjection(source[sourceIndex_[mode]]);
-      driveGain[mode] = inputGain_[mode] * destination[mode];
+      driveGain[mode] =
+          inputGain_[mode] * destination[sourceIndex_[mode]];
     }
+  }
+
+  void SetEnergyNormalizedProjection(
+      const Projection &source, Projection &destination,
+      Projection &driveGain) noexcept {
+    double referenceEnergy = 0.0;
+    double projectedEnergy = 0.0;
+    for (std::size_t sourceMode = 0; sourceMode < ModeCount; ++sourceMode)
+      destination[sourceMode] = SafeProjection(source[sourceMode]);
+    for (std::size_t mode = 0; mode < activeModeCount_; ++mode) {
+      const float gain =
+          inputGain_[mode] * destination[sourceIndex_[mode]];
+      driveGain[mode] = gain;
+      referenceEnergy += static_cast<double>(inputGain_[mode]) *
+          inputGain_[mode];
+      projectedEnergy += static_cast<double>(gain) * gain;
+    }
+    if (!(projectedEnergy > 1.e-30)) {
+      for (std::size_t mode = 0; mode < activeModeCount_; ++mode)
+        driveGain[mode] = 0.f;
+      return;
+    }
+    const float scale = static_cast<float>(
+        std::sqrt(referenceEnergy / projectedEnergy));
+    for (std::size_t sourceMode = 0; sourceMode < ModeCount; ++sourceMode)
+      destination[sourceMode] *= scale;
+    for (std::size_t mode = 0; mode < activeModeCount_; ++mode)
+      driveGain[mode] *= scale;
   }
 
   void UpdateDamping(const ModalDampingGains damping) noexcept {
@@ -295,6 +344,7 @@ private:
   std::uint32_t seed_{0x4649454cu};
   std::size_t activeModeCount_{};
   bool oddExchange_{};
+  bool primaryProjectionEnergyNormalized_{};
 };
 
 } // namespace tfdsp::percussion

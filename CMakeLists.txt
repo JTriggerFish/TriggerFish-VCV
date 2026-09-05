@@ -157,6 +157,9 @@ if(BUILD_TESTING)
 		triggerfish_dsp)
 	add_test(NAME triggerfish_percussion_contact_tests
 		COMMAND triggerfish_percussion_contact_tests)
+	add_executable(triggerfish_percussion_gain_tests tests/percussion_gain_tests.cpp)
+	target_link_libraries(triggerfish_percussion_gain_tests PRIVATE triggerfish_dsp)
+	add_test(NAME triggerfish_percussion_gain_tests COMMAND triggerfish_percussion_gain_tests)
 
 	add_executable(triggerfish_percussion_control_tests
 		tests/percussion_control_tests.cpp)

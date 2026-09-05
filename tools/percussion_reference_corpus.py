@@ -80,7 +80,7 @@ def _private_crash(root: Path) -> tuple[dict[str, object], dict[str, Path]] | No
             # One fixed gain preserves the reference velocity curve. It places
             # the mean peak of the five exposed layers near -6 dBFS before the
             # user's master control; individual cells are never normalized.
-            "audition_trim_db": 42.0,
+            "reference_gain_db": 42.0,
             "calibration": {
                 "id": "crash-standard",
                 "name": "Crash — medium edge",
@@ -141,7 +141,7 @@ def _curated(
         {
             "id": corpus_id,
             "name": name,
-            "audition_trim_db": trim_db,
+            "reference_gain_db": trim_db,
             "calibration": calibration,
             "cells": cells,
         },

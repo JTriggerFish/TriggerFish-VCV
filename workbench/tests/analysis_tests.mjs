@@ -2,15 +2,26 @@ import assert from "node:assert/strict";
 import {
   centeredErrorStatistics, fft, stft, windowSamples,
 } from "../web/analysis.mjs";
-import {
-  matchedModelLevelDb, modelLevelMatch,
-} from "../web/level_match.mjs";
 import { waveformEnvelope } from "../web/waveform_view.mjs";
+import { calibrateReference, setReferenceGain } from "../web/references.mjs";
 import {
   alignedReferenceWindow, normalizationCeilingDb, wheelPanSeconds,
 } from "../web/spectrogram.mjs";
 
 const impulseReal = new Float64Array(8);
+const rawReference = { sha256: "source", samples: new Float32Array([.001, -.002]) };
+const calibratedReference = calibrateReference(rawReference, 40);
+assert.equal(calibratedReference.sha256, rawReference.sha256);
+assert.ok(Math.abs(calibratedReference.samples[0] - .1) < 1e-7);
+assert.equal(calibratedReference.samples[1] / calibratedReference.samples[0], -2);
+assert.ok(Math.abs(rawReference.samples[0] - .001) < 1e-9);
+assert.equal(calibratedReference.referenceGainDb, 40);
+assert.throws(() => calibrateReference(calibratedReference, 40), /already calibrated/);
+const quieterReference = setReferenceGain(calibratedReference, 20);
+assert.ok(Math.abs(quieterReference.samples[0] - .01) < 1e-8);
+assert.deepEqual(setReferenceGain(quieterReference, 40).samples, calibratedReference.samples);
+assert.deepEqual(setReferenceGain(quieterReference, 0).samples, rawReference.samples);
+assert.throws(() => setReferenceGain(rawReference, NaN), /invalid reference gain/);
 impulseReal[0] = 1;
 const impulseImaginary = new Float64Array(8);
 fft(impulseReal, impulseImaginary);
@@ -38,34 +49,6 @@ assert.equal(peakBin, 64);
 const peakDb = spectrum.values[middleFrame * spectrum.bins + peakBin];
 assert.ok(Math.abs(peakDb - 20 * Math.log10(0.5)) < 0.05);
 assert.ok(Math.abs(spectrum.peakDb - 20 * Math.log10(0.5)) < 0.05);
-
-const reference = Float32Array.from(tone, value => 0.5 * value);
-const synthesis = Float32Array.from(tone, value => 0.25 * value);
-const matched = matchedModelLevelDb({
-  currentDb: -36, reference, referenceSampleRate: sampleRate,
-  synthesis, synthesisSampleRate: sampleRate,
-  minimumDb: -60, maximumDb: 0,
-});
-assert.ok(Math.abs(matched - (-36 + 20 * Math.log10(2))) < 1e-6);
-
-const delayedReference = new Float32Array(tone.length + 480);
-delayedReference.set(reference, 480);
-const onsetMatched = matchedModelLevelDb({
-  currentDb: -36, reference: delayedReference,
-  referenceSampleRate: sampleRate, referenceStartSeconds: .01,
-  synthesis, synthesisSampleRate: sampleRate,
-  minimumDb: -60, maximumDb: 0,
-});
-assert.ok(Math.abs(onsetMatched - (-36 + 20 * Math.log10(2))) < 1e-6);
-
-const clipped = modelLevelMatch({
-  currentDb: -3, reference: tone, referenceSampleRate: sampleRate,
-  synthesis: Float32Array.from(tone, value => value * .01),
-  synthesisSampleRate: sampleRate, minimumDb: -60, maximumDb: 0,
-});
-assert.equal(clipped.appliedDb, 0);
-assert.equal(clipped.clipped, true);
-assert.ok(clipped.requestedDb > 30);
 
 const envelope = waveformEnvelope(
   Float32Array.from([0, -1, .5, 0, .25, -.75, 0, 0]), 4, .5, 2,

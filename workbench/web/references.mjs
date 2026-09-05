@@ -81,16 +81,41 @@ export async function readWav(file) {
   return decodeWav(await file.arrayBuffer(), file.name);
 }
 
-export async function readRemoteReference(corpus, cell) {
+export async function readRemoteReference(corpus, cell,
+    referenceGainDb = corpus.reference_gain_db ?? 0) {
   const response = await fetch(cell.url);
   if (!response.ok) throw new Error(`could not load ${cell.label}`);
-  return decodeWav(await response.arrayBuffer(), cell.label, {
+  const reference = await decodeWav(await response.arrayBuffer(), cell.label, {
     corpus: {
       id: corpus.id, name: corpus.name,
-      auditionTrimDb: corpus.audition_trim_db ?? 0,
+      referenceGainDb: corpus.reference_gain_db ?? 0,
     },
     cell: { ...cell },
   });
+  return calibrateReference(reference, referenceGainDb);
+}
+
+// One fixed corpus conversion, not per-hit normalization. Keep source hashes
+// untouched and record the conversion so snapshots/analysis remain auditable.
+export function calibrateReference(reference, gainDb) {
+  if (!Number.isFinite(gainDb) || gainDb < -120 || gainDb > 120)
+    throw new Error("invalid reference calibration gain");
+  if (reference.referenceGainDb !== undefined)
+    throw new Error("reference is already calibrated");
+  return setReferenceGain(reference, gainDb);
+}
+
+// Always derive manual edits from immutable source samples, never a previous
+// scaled buffer. This keeps reset and snapshot restore independent of edit order.
+export function setReferenceGain(reference, gainDb) {
+  if (!Number.isFinite(gainDb) || gainDb < -120 || gainDb > 120)
+    throw new Error("invalid reference gain");
+  const rawSamples = reference.rawSamples ?? reference.samples;
+  const gain = 10 ** (gainDb / 20);
+  return {
+    ...reference, rawSamples, referenceGainDb: gainDb,
+    samples: rawSamples.map(sample => sample * gain),
+  };
 }
 
 export async function readReferenceCorpora() {

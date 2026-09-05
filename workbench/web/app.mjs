@@ -11,11 +11,10 @@ import {
   createAcousticKickPatch, createTomPatch, membranePresetValues,
 } from "./membrane_patch.mjs";
 import { SnareControls } from "./snare_controls.mjs";
-import { modelLevelMatch } from "./level_match.mjs";
 import { PerformanceControls } from "./performance_controls.mjs";
 import { recipeAdapter } from "./recipe_adapter.mjs";
 import { RecipeController } from "./recipe_controller.mjs";
-import { readReferences } from "./references.mjs";
+import { readReferences, setReferenceGain } from "./references.mjs";
 import { ReferenceBrowser } from "./reference_browser.mjs";
 import { RoutingController } from "./routing_controller.mjs";
 import { SettingsController } from "./settings.mjs";
@@ -42,7 +41,6 @@ const state = {
     strength: 0.8, location: 0.8, hardness: 0.65, implement: 1,
     contactSpread: 0.2, constraint: 0,
   },
-  modelLevelTouched: false,
   analysis: {
     size: 2048, hop: 512, window: "hann", floorDb: -160,
     dynamicRangeDb: 90,
@@ -78,20 +76,17 @@ let renderTimer;
 let renderGeneration = 0;
 let renderInFlight = false;
 let queuedRender = null;
-let pendingLevelMatch = null;
 let fitControls;
 let referenceBrowser;
 let performanceControls;
 let recipeController;
 let routingController;
 let restoringReference = false;
-let levelMatchWarning = "";
 
 function setStatus(message) { byId("status").textContent = message; }
 function setReadyIfIdle() {
-  if (!pendingAnalysis.size && !renderInFlight && !renderTimer &&
-      !pendingLevelMatch) {
-    setStatus(levelMatchWarning ? `Ready · ${levelMatchWarning}` : "Ready");
+  if (!pendingAnalysis.size && !renderInFlight && !renderTimer) {
+    setStatus("Ready");
   }
 }
 function updateColourCeiling() {
@@ -104,18 +99,6 @@ function refreshModelLevelControl() {
   fitControls?.refresh("model_level_db");
 }
 
-function requestLevelMatch(resetToFactory = false) {
-  if (!engine || !state.reference) return;
-  if (resetToFactory) state.macros[0] = engine.macros[0].defaultValue;
-  state.modelLevelTouched = false;
-  levelMatchWarning = "";
-  pendingLevelMatch = { referenceId: state.reference.id };
-  refreshModelLevelControl();
-  audition.setMacros(state.macros);
-  setStatus("Matching model level…");
-  renderSynthesis();
-}
-
 function buildControls(resetValues = true) {
   if (resetValues)
     state.macros = engine.parameters.map(item => item.defaultValue);
@@ -125,15 +108,12 @@ function buildControls(resetValues = true) {
         ? SnareControls : KickControls;
   fitControls = new ControlType({
     descriptors: engine.parameters, state,
-    onChange: key => {
-      levelMatchWarning = "";
-      if (key === "model_level_db") {
-        state.modelLevelTouched = true;
-        pendingLevelMatch = null;
-      }
+    onChange: () => scheduleRender(),
+    onLevelReset: () => {
+      state.macros[0] = engine.macros[0].defaultValue;
+      refreshModelLevelControl();
       scheduleRender();
     },
-    onLevelReset: () => requestLevelMatch(),
     onPreset: key => applyMembranePreset(key),
   });
   fitControls.build();
@@ -145,8 +125,6 @@ function applyMembranePreset(key) {
   state.patch = key === "acousticKick"
     ? createAcousticKickPatch(engine.parameters)
     : createTomPatch(engine.parameters, values);
-  state.modelLevelTouched = true;
-  pendingLevelMatch = null;
   routingController?.setPatch(state.patch);
   routingController?.refreshPresentation();
   buildPageValues();
@@ -170,7 +148,7 @@ function analyze(kind, samples, sampleRate, cacheKey) {
 function referenceSpectrumKey(reference) {
   const source = reference.sha256 ?? reference.id;
   const { size, hop, window, floorDb } = state.analysis;
-  return `${source}|${size}|${hop}|${window}|${floorDb}`;
+  return `${source}|${reference.referenceGainDb ?? 0}|${size}|${hop}|${window}|${floorDb}`;
 }
 
 function cacheReferenceSpectrum(key, spectrum) {
@@ -249,41 +227,9 @@ renderWorker.onmessage = ({ data }) => {
   renderInFlight = false;
   if (data.generation === renderGeneration) {
     if (data.error) {
-      pendingLevelMatch = null;
       setStatus(data.error);
     }
     else {
-      if (pendingLevelMatch &&
-          pendingLevelMatch.referenceId === state.reference?.id) {
-        const descriptor = engine.macros[0];
-        const match = modelLevelMatch({
-          currentDb: state.macros[0],
-          reference: state.reference.samples,
-          referenceSampleRate: state.reference.sampleRate,
-          synthesis: data.samples,
-          synthesisSampleRate: data.sampleRate,
-          minimumDb: descriptor.minimum,
-          maximumDb: descriptor.maximum,
-          referenceStartSeconds: state.reference.cell?.onset_seconds ?? 0,
-        });
-        const matched = match.appliedDb;
-        pendingLevelMatch = null;
-        if (match.clipped) {
-          const shortfall = Math.max(0, match.requestedDb - match.appliedDb);
-          levelMatchWarning = shortfall > .05
-            ? `Model is ${shortfall.toFixed(1)} dB too quiet at its 0 dB ceiling — preset is not calibrated`
-            : "Reference level is outside the attenuation-only model range";
-        }
-        if (Math.abs(matched - state.macros[0]) > 0.01) {
-          state.macros[0] = matched;
-          refreshModelLevelControl();
-          audition.setMacros(state.macros);
-          queuedRender = null;
-          setStatus("Applying matched model level…");
-          renderSynthesis();
-          return;
-        }
-      }
       state.synthesis = data.samples;
       analyze("synthesis", state.synthesis, data.sampleRate);
       drawWaveform(state);
@@ -299,7 +245,6 @@ renderWorker.onmessage = ({ data }) => {
 
 renderWorker.onerror = event => {
   renderInFlight = false;
-  pendingLevelMatch = null;
   setStatus(event.message);
 };
 
@@ -307,9 +252,7 @@ function setReference(reference) {
   const firstReference = !state.reference;
   state.reference = reference;
   fitControls?.decayEditor?.refresh();
-  audition.setTrim(reference.corpus?.auditionTrimDb ?? 0);
-  byId("calibration-trim").textContent =
-    `Corpus monitor gain ${audition.trimDb >= 0 ? "+" : ""}${audition.trimDb.toFixed(1)} dB`;
+  paintReferenceGain();
   if (reference.cell) {
     Object.assign(state.eventDefaults, {
       strength: reference.cell.strength,
@@ -336,10 +279,32 @@ function setReference(reference) {
   drawWaveform(state);
   view.reset(referenceWindow.duration, referenceWindow.offset);
   if (!restoringReference) {
-    if (state.modelLevelTouched) scheduleRender();
-    else requestLevelMatch(true);
+    // Selecting another layer must never alter the saved instrument gain.
+    scheduleRender();
   }
 }
+
+function paintReferenceGain() {
+  const input = byId("reference-gain");
+  input.disabled = !state.reference;
+  input.value = state.reference?.referenceGainDb ?? 0;
+  input.nextElementSibling.textContent = `${Number(input.value).toFixed(1)} dB`;
+}
+
+function editReferenceGain(gainDb) {
+  if (!state.reference) return;
+  state.reference = setReferenceGain(state.reference, gainDb);
+  referenceBrowser?.rememberGain(state.reference);
+  paintReferenceGain();
+  analyzeReference();
+  drawWaveform(state);
+}
+
+byId("reference-gain").oninput = event => editReferenceGain(Number(event.target.value));
+byId("reference-gain").ondblclick = event => {
+  event.preventDefault();
+  editReferenceGain(state.reference?.corpus?.referenceGainDb ?? 0);
+};
 
 function renderSnapshotList() {
   const parent = byId("snapshots"); parent.replaceChildren();
@@ -354,9 +319,15 @@ function renderSnapshotList() {
 
 async function restore(item) {
   const fit = item.fit;
-  const sameReference = !fit.reference ||
+  const sameSource = !fit.reference ||
     (fit.reference.sha256 && fit.reference.sha256 === state.reference?.sha256) ||
     fit.reference.id === state.reference?.id;
+  if (sameSource && fit.reference && state.reference) {
+    state.reference = setReferenceGain(state.reference, fit.reference.referenceGainDb ?? 0);
+    referenceBrowser?.rememberGain(state.reference);
+    paintReferenceGain();
+  }
+  const sameReference = sameSource;
   if (!sameReference) {
     restoringReference = true;
     try {
@@ -379,10 +350,9 @@ async function restore(item) {
   state.patch = structuredClone(fit.instrument);
   state.macros.splice(0, state.macros.length,
     ...fitMacroValues(fit, engine.parameters));
-  state.modelLevelTouched = true;
-  pendingLevelMatch = null;
   Object.assign(state.event, fit.controls.event);
   Object.assign(state.analysis, fit.controls.analysis);
+  analyzeReference();
   state.activeSnapshotId = fit.id;
   routingController.setPatch(state.patch);
   if (item.audio) {
@@ -421,8 +391,6 @@ async function initialize() {
       // Reference targets carry a collection-level monitoring calibration. Keep it
       // fixed when neighbouring velocity cells are selected; per-cell matching
       // would erase the source velocity curve.
-      state.modelLevelTouched = true;
-      pendingLevelMatch = null;
       renderSynthesis();
     },
   });
@@ -501,8 +469,11 @@ async function initialize() {
     const live = audition.state === "off" ? "" :
       ` · ${(audition.sampleRate / 1000).toFixed(1)} kHz` +
       ` · ${audition.state} · hits ${audition.triggerCount}`;
+    const input = Number.isFinite(audition.inputPeakDb)
+      ? ` · pre ${audition.inputPeakDb.toFixed(1)} dBFS` : "";
+    const warning = audition.reduction < -3 ? " · LIMITING — lower monitor/model level" : "";
     byId("limiter").textContent =
-      `Limiter ${audition.reduction.toFixed(1)} dB${latency}${output}${live}${underflows}`;
+      `Limiter ${audition.reduction.toFixed(1)} dB${input}${output}${warning}${latency}${live}${underflows}`;
     byId("live-commit").textContent = audition.macroCommitPending
       ? `Preparing live DSP… ${audition.macroCommitElapsedMs.toFixed(0)} ms`
       : audition.macroCommitMs > 0
@@ -539,10 +510,7 @@ function bindCalibrationPresets() {
       state.patch = recipeAdapter(state.recipeKey).withValues(
         state.patch, engine.parameters, state.macros,
       );
-      // A named reference target owns one fixed collection-level trim. Loading
-      // its reference must not silently replace that value with a per-cell
-      // match.
-      state.modelLevelTouched = true;
+      // Loading a target never computes a reference/model level correction.
       routingController.setPatch(state.patch);
       routingController.refreshPresentation();
       buildPageValues();

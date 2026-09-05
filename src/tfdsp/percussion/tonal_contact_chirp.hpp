@@ -1,6 +1,7 @@
 #pragma once
 
 #include "tfdsp/finite_audio.hpp"
+#include "contact_normalization.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -88,6 +89,11 @@ public:
   }
 
   bool Active() const noexcept { return sample_ < sampleCount_; }
+
+  float BodyImpulseScale() const noexcept {
+    return sampleCount_ > 1 ? contact_normalization::ChirpImpulseScale(
+        sampleCount_, decayNepers_) : 0.f;
+  }
 
 private:
   static float FiniteOr(const float value, const float fallback) noexcept {

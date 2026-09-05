@@ -6,8 +6,8 @@ export class SafeAudition {
   constructor(onStatus = () => {}) {
     this.onStatus = onStatus;
     this.masterDb = -12;
-    this.trimDb = 0;
     this.reductionDb = 0;
+    this.inputPeakDb = -Infinity;
     this.triggerCount = 0;
     this.pendingMacros = [];
     this.pendingRouting = [];
@@ -40,26 +40,26 @@ export class SafeAudition {
       ),
       this.context.audioWorklet.addModule("lookahead_limiter_processor.mjs"),
     ]);
-    this.trim = new GainNode(this.context);
     this.limiter = new AudioWorkletNode(
       this.context, "triggerfish-lookahead-limiter",
       { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1] },
     );
     this.limiter.port.onmessage = event => {
-      this.reductionDb = Number(event.data);
+      this.reductionDb = event.data.reductionDb;
+      this.inputPeakDb = event.data.inputPeakDb;
     };
     this.master = new GainNode(this.context);
     this.meter = new AnalyserNode(this.context, {
       fftSize: 256, smoothingTimeConstant: 0,
     });
     this.meterSamples = new Float32Array(this.meter.fftSize);
-    this.trim.connect(this.limiter);
-    this.limiter.connect(this.master).connect(this.meter).connect(
+    this.master.connect(this.limiter);
+    this.limiter.connect(this.meter).connect(
       this.context.destination,
     );
     this.renderer = new StandbyRenderer({
       context: this.context,
-      destination: this.trim,
+      destination: this.master,
       onApplied: configuration => this.#configurationApplied(configuration),
       onTriggered: () => { ++this.triggerCount; },
       onError: error => this.onStatus(String(error)),
@@ -69,7 +69,6 @@ export class SafeAudition {
       onError: error => this.onStatus(String(error)),
     });
     this.setMaster(this.masterDb);
-    this.setTrim(this.trimDb);
     this.#configureRenderer();
     await this.preparer.ready();
     await this.renderer.ready();
@@ -104,11 +103,6 @@ export class SafeAudition {
   setMaster(db) {
     this.masterDb = Math.min(0, Math.max(-60, Number(db)));
     if (this.master) this.master.gain.value = 10 ** (this.masterDb / 20);
-  }
-
-  setTrim(db) {
-    this.trimDb = Math.min(48, Math.max(-48, Number(db)));
-    if (this.trim) this.trim.gain.value = 10 ** (this.trimDb / 20);
   }
 
   setMacros(values) {
@@ -151,7 +145,7 @@ export class SafeAudition {
     });
     buffer.copyToChannel(samples, 0);
     this.source = new AudioBufferSourceNode(this.context, { buffer });
-    this.source.connect(this.trim);
+    this.source.connect(this.master);
     this.source.onended = () => {
       this.source = null;
       this.renderer.setMuted(false);

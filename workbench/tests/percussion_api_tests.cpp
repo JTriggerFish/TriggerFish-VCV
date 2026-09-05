@@ -1,4 +1,5 @@
 #include "percussion_api.hpp"
+#include "crash_macros.hpp"
 
 #include <algorithm>
 #include <array>
@@ -112,7 +113,8 @@ int main() {
         "unknown recipes are rejected");
 
   const auto metallic = tf_percussion_create(0, 48000.f);
-  Check(metallic != 0 && tf_percussion_parameter_count(metallic) == 124,
+  Check(metallic != 0 && tf_percussion_parameter_count(metallic) ==
+            tfworkbench::CrashMacroCount,
         "metallic recipe exposes only active unified-model parameters");
   Check(ParameterIndex(metallic, "body_tone_wash") == UINT32_MAX &&
             ParameterIndex(metallic, "dense_mode_density") == UINT32_MAX &&

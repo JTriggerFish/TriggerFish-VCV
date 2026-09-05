@@ -1,5 +1,9 @@
 # Percussion ear-fitting workbench
 
+Current gain/normalization behaviour is specified by
+[the gain-staging contract](TfPercussion-gain-staging.md). Historical fitting
+notes below are not authority for current level conventions.
+
 ## Purpose and boundary
 
 This workbench is an optional developer application for constructing and
@@ -32,8 +36,8 @@ buttons select Brush, Mallet, or Stick. One adjacent Character slider is
 contextual: bristle stiffness, mallet firmness, or tip hardness. The brush
 family suppresses the stick chirp/impulse and routes a correlated, smoothly
 windowed bristle-contact stream to both direct sound and body drive. Brush
-routes are energy-normalized for their much larger number of contacts, with
-more energy sent into the cymbal body than the dry near-field presentation.
+body gestures use stochastic envelope normalization; there are no hidden
+implement-specific port gains. Contact/body balance belongs to visible controls.
 Stiffness continuously moves a fixed seeded gesture from dark, overlapping
 fine-bristle contact toward a brighter, more articulated coarse-bristle sound;
 it does not regenerate stochastic contacts or drive the full stick-strength
@@ -69,9 +73,9 @@ always-visible fitting controls are:
 | Contact | independent sliders | near-field level, ping/noise balance and contact width | direct presentation plus coordinated pulse, chirp, noise and micro-contact gains/durations; hardness and implement remain event inputs |
 | Bloom | independent sliders | delayed-body level, nonlinear character, timing, persistence, bandwidth, transfer colour, and diffusion | a visible bloom-node output level plus explicit delay, one loop T60, input low-pass, energy-normalized output tilt, self-phase strength, and serial-allpass amount |
 | Body model | separate focused and legacy-diagnostic views | one anchor-driven stochastic field by default; the older sparse/dense/noise branches remain only for comparison | modal-field turbulence, ERB packet spread, phase bandwidth and passive neighbour exchange |
-| Modal field anchors | wide 24-anchor ERB editor from 40 Hz to 15 kHz | direct placement of coherent centre lines and their constructive stochastic neighbourhoods | each anchor controls frequency, packet energy, and a `0..2x` response to global turbulence |
+| Modal field anchors | wide editor with 0-32 active centre handles from 40 Hz to 15 kHz | direct placement of coherent centre lines and their constructively allocated stochastic neighbourhoods | each handle controls frequency, packet energy, and a `0..2x` response to global turbulence |
 | Dense modal wash | smooth ERB curve plus continuous sliders | broad spectral colour, range, density and statistical irregularity | the relative colour curve changes modal energy without moving resonances. Density continuously spans the equivalent of 64--4096 active modes. The implementation activates a deterministic nested subset and crossfades the boundary mode; the original 2048-mode bank remains the `1x` factory case and values above it progressively add a separately seeded extension bank. |
-| Body T60 | editable two-to-eight-knot ERB/log curve | absolute frequency-dependent decay | fixed DC/Nyquist boundary positions with editable finite T60 values; one prepared curve sampled by every body mode |
+| Modal T60 curve | editable two-to-eight-knot ERB/log curve | direct frequency-dependent modal loss | fixed 40 Hz/15 kHz boundary positions with editable finite T60 values; one prepared curve sampled by every body state |
 | Unified turbulence | one primary slider, a per-anchor response curve, and advanced trajectory controls | continuously broadens selected anchors into modal wash and finally noise-like response while others can remain clean | normalized satellite energy, ERB spread, passive phase decorrelation and local orthogonal energy exchange |
 | Radiation | compact bandwidth/colour controls | observation colour, not stored-body loss | direct and body static filters; cutoff frequencies and one broad colour gain/frequency pair remain editable, while non-constructive Q values are fixed by the filter topology |
 | Size meta | unlabelled scalar slider | useful broad starting point | expands visibly into the detailed controls; centre is the exact neutral default and saved fits contain only expanded values |
@@ -199,7 +203,7 @@ is ready. A later parameter or routing edit never re-prepares the active DSP
 instance. An ordinary Worker expands the high-level controls and compiles the
 modal recurrence coefficients into an immutable, version-one prepared blob.
 The AudioWorklet then performs only bounded component installation and state
-initialization in a muted standby processor; it does not evaluate 408 modes'
+initialization in a muted standby processor; it does not evaluate the active modal pool's
 trigonometric or exponential coefficient formulas. The old processor keeps
 sounding and crossfades to the ready candidate over 3 ms. Rapid edits are
 coalesced, stale candidates are destroyed, and retirement is serialized so

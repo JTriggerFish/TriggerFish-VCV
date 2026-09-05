@@ -55,8 +55,7 @@ private:
   ModalConstraintController modalConstraint_{};
   CrashCymbalParameters parameters_{};
   CrashModalField::Projection fieldProjection_{};
-  float bodyExcitationGain_{.05f};
-  float bodyDriveScale_{1.f};
+  float bodyExcitationGain_{1.f};
   MetallicPlateRouting routing_{};
   float sampleRate_{48000.f};
   bool hasProcessedSinceReset_{};

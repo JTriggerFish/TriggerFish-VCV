@@ -1,6 +1,7 @@
 #pragma once
 
 #include "deterministic_random.hpp"
+#include "contact_normalization.hpp"
 #include "spectral_tilt_filter.hpp"
 #include "tfdsp/finite_audio.hpp"
 
@@ -80,6 +81,11 @@ public:
 
   bool Active() const noexcept {
     return sample_ < attackSamples_ + holdSamples_ + decaySamples_;
+  }
+
+  float BodyImpulseScale() const noexcept {
+    return contact_normalization::NoiseImpulseScale(
+        attackSamples_, holdSamples_, decaySamples_);
   }
 
 private:

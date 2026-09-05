@@ -120,7 +120,7 @@ excite a body is not mistaken for an independently mixed noise layer.
 The remaining design is split by responsibility:
 
 - [Nonlinear resonator architecture](TfPercussion-nonlinear-resonator-architecture.md):
-  self-contained signal flow, contact and bloom behaviour, the 408-state
+  self-contained signal flow, contact and bloom behaviour, the pooled 512-state
   unified stochastic modal field, energy invariants, controls, and current
   limitations.
 - [Metallic percussion DSP components](TfPercussion-metal-components.md):
@@ -166,9 +166,10 @@ The remaining design is split by responsibility:
 
 ## Cymbal representation decision
 
-The current proposed crash body is one stochastic modal field. Twenty-four
-editable anchors each expand to a coherent centre and sixteen stochastic
-satellites. Direct contact and dispersed bloom excite the same stored field.
+The current proposed crash body is one stochastic modal field. Zero to 32
+editable anchors reserve coherent centres, while deterministic satellite pairs
+share the remaining capacity of one 512-state pool. Direct contact and
+intrinsic bloom excite the same stored field.
 Normalized centre-to-satellite drive, ERB-domain spread, magnitude-preserving
 phase diffusion, and local orthogonal energy exchange provide a continuous
 resolved-ridge-to-wash trajectory. Raw dispersion remains excitation and

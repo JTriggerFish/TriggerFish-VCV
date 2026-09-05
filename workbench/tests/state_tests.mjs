@@ -25,7 +25,7 @@ const analysis = {
 };
 const state = {
   macros: [-36, .8], event, analysis, activeSnapshotId: null,
-  reference: { id: "sha256:test", sha256: "test" },
+  reference: { id: "sha256:test", sha256: "test", referenceGainDb: 42 },
 };
 
 const fit = snapshotState(state, "Test", descriptors);
@@ -35,6 +35,10 @@ assert.equal(fit.renderer.api, 1);
 assert.equal(fit.controls.macros, undefined);
 assert.deepEqual(fitMacroValues(validateFit(fit, descriptors), descriptors), [-36, .8]);
 const roundTrip = validateFit(JSON.parse(JSON.stringify(fit)), descriptors);
+assert.equal(roundTrip.reference.referenceGainDb, 42);
+assert.throws(() => validateFit({
+  ...fit, reference: { ...fit.reference, referenceGainDb: Infinity },
+}, descriptors), /invalid reference gain/);
 assert.deepEqual(fitMacroValues(roundTrip, descriptors), [-36, .8]);
 
 const referenceFree = snapshotState(

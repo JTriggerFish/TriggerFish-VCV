@@ -98,11 +98,11 @@ int main() {
   Check(tf_crash_api_version() == 1, "unreleased API remains version one");
   Check(tf_crash_route_count() == 3,
         "the metallic recipe exposes three optional routes");
-  Check(tf_crash_macro_count() == 124,
+  Check(tf_crash_macro_count() == tfworkbench::CrashMacroCount,
         "the fitting surface contains only active unified parameters");
-  Check(std::abs(tf_crash_macro_default(0) + 36.f) < 1.e-6f &&
+  Check(std::abs(tf_crash_macro_default(0) + 6.f) < 1.e-6f &&
             tf_crash_macro_maximum(0) == 0.f,
-        "the crash workbench uses an attenuation-only -36 dB level");
+        "the crash workbench uses an attenuation-only -6 dB level with unity base gain");
   Check(tf_crash_macro_key(0) != nullptr &&
             tf_crash_macro_name(0) != nullptr &&
             tf_crash_macro_unit(0) != nullptr,
@@ -118,7 +118,7 @@ int main() {
   std::size_t fieldTurbulence = painted.size();
   std::size_t bloomDiffusion = painted.size();
   std::size_t bloomRate = painted.size();
-  std::size_t bloomEnergyDependence = painted.size();
+  std::size_t bloomEnergyAcceleration = painted.size();
   std::size_t bodyExcitation = painted.size();
   std::size_t firstDecayActive = painted.size();
   std::size_t firstModeTurbulence = painted.size();
@@ -130,8 +130,8 @@ int main() {
     else if (key == "field_turbulence") fieldTurbulence = index;
     else if (key == "bloom_phase_diffusion") bloomDiffusion = index;
     else if (key == "bloom_rate") bloomRate = index;
-    else if (key == "bloom_energy_dependence")
-      bloomEnergyDependence = index;
+    else if (key == "bloom_energy_acceleration")
+      bloomEnergyAcceleration = index;
     else if (key == "body_excitation") bodyExcitation = index;
     else if (key == "body_decay_active_1") firstDecayActive = index;
     else if (key == "resolved_turbulence_0") firstModeTurbulence = index;
@@ -140,7 +140,7 @@ int main() {
             secondLevel < painted.size() &&
             fieldTurbulence < painted.size() && bloomDiffusion < painted.size() &&
             bloomRate < painted.size() &&
-            bloomEnergyDependence < painted.size() &&
+            bloomEnergyAcceleration < painted.size() &&
             bodyExcitation < painted.size() &&
             firstDecayActive < painted.size() &&
             firstModeTurbulence < painted.size(),
@@ -153,8 +153,8 @@ int main() {
   painted[firstModeTurbulence] = 0.f;
   painted[bodyExcitation] = .2f;
   const auto baseFit = tfworkbench::MetallicWorkbenchBaseFit();
-  Check(std::abs(baseFit.outputGain - 174.f) < 1.e-5f,
-        "the neutral metallic base contains only fixed output calibration");
+  Check(std::abs(baseFit.outputGain - 1.f) < 1.e-5f,
+        "the neutral metallic base has no hidden output calibration gain");
   const auto paintedFit = tfworkbench::ApplyCrashMacros(baseFit, painted);
   const auto defaultFit = tfworkbench::ApplyCrashMacros(
       baseFit, tfworkbench::DefaultCrashMacros());
@@ -172,8 +172,8 @@ int main() {
   noBloom[bloomRate] = 0.f;
   const auto noBloomFit = tfworkbench::ApplyCrashMacros(baseFit, noBloom);
   Check(noBloomFit.bloomRateOctavesPerSecond == 0.f &&
-            noBloomFit.bloomEnergyDependence ==
-                defaultFit.bloomEnergyDependence,
+            noBloomFit.bloomEnergyAcceleration ==
+                defaultFit.bloomEnergyAcceleration,
         "bloom rate reaches zero without changing its energy response");
   Check(std::count(defaultFit.bodyDecayActive.begin(),
                    defaultFit.bodyDecayActive.end(), true) == 0,
@@ -186,11 +186,12 @@ int main() {
   const auto fastFit = tfworkbench::ApplyCrashMacros(baseFit, fastMacros);
   Check(slowFit.bloomRateOctavesPerSecond <
             fastFit.bloomRateOctavesPerSecond &&
-            slowFit.bloomEnergyDependence == fastFit.bloomEnergyDependence &&
+            slowFit.bloomEnergyAcceleration == fastFit.bloomEnergyAcceleration &&
             slowFit.bloomPhaseDiffusion == fastFit.bloomPhaseDiffusion,
         "bloom rate is independent of energy response and phase diffusion");
   auto cleared = tfworkbench::DefaultCrashMacros();
-  for (std::size_t mode = 0; mode < 24; ++mode) {
+  for (std::size_t mode = 0;
+       mode < tfworkbench::ResolvedModePointCount; ++mode) {
     const auto index = firstLevel + mode;
     cleared[index] = tfworkbench::CrashMacroDescription(index).minimum;
   }
@@ -265,15 +266,15 @@ int main() {
   const double stiffToStick = Energy(stiffBrush) / std::max(Energy(stick), 1.e-30);
   const double softBrightness = HighFrequencyFraction(softBrush);
   const double stiffBrightness = HighFrequencyFraction(stiffBrush);
-  if (!(brushToStick > .3 && brushToStick < 1.5 &&
-        softToStick > .3 && softToStick < 1.5 &&
-        stiffToStick > .3 && stiffToStick < 1.5))
+  if (!(brushToStick > .25 && brushToStick < 4 &&
+        softToStick > .25 && softToStick < 4 &&
+        stiffToStick > .25 && stiffToStick < 4))
     std::cerr << "workbench brush/stick energy ratios: " << softToStick
               << ", " << brushToStick << ", " << stiffToStick << '\n';
-  Check(brushToStick > .3 && brushToStick < 1.5 &&
-            softToStick > .3 && softToStick < 1.5 &&
-            stiffToStick > .3 && stiffToStick < 1.5,
-        "factory brush energy remains comparable to the stick family");
+  Check(brushToStick > .25 && brushToStick < 4 &&
+            softToStick > .25 && softToStick < 4 &&
+            stiffToStick > .25 && stiffToStick < 4,
+        "brush/stick integrated levels stay within 6 dB without implement makeup");
   Check(stiffBrightness > 1.35 * softBrightness,
         "bristle stiffness audibly increases high-frequency articulation");
   Check(CrestFactor(stiffBrush) < 12.,

@@ -8,6 +8,7 @@ export class ReferenceBrowser {
     this.onReference = onReference;
     this.onStatus = onStatus;
     this.generation = 0;
+    this.gains = new Map();
   }
 
   async initialize() {
@@ -78,7 +79,7 @@ export class ReferenceBrowser {
     ));
     this.elements.articulation.value = cell.articulation;
     this.configureLayers(cell.velocity, cell.repeat);
-    const reference = await this.load();
+    const reference = await this.load(saved.referenceGainDb);
     if (!reference) return false;
     if (saved.sha256 && reference.sha256 !== saved.sha256) {
       throw new Error("The saved reference cell no longer has the same hash");
@@ -121,7 +122,12 @@ export class ReferenceBrowser {
     this.timer = setTimeout(() => this.load(), 100);
   }
 
-  async load() {
+  rememberGain(reference) {
+    if (reference.corpus)
+      this.gains.set(reference.corpus.id, reference.referenceGainDb);
+  }
+
+  async load(referenceGainDb = this.gains.get(this.current.id)) {
     const generation = ++this.generation;
     const cell = this.current.cells.find(item =>
       item.articulation === this.elements.articulation.value &&
@@ -129,8 +135,9 @@ export class ReferenceBrowser {
     if (!cell) return null;
     this.onStatus(`Loading ${cell.label}…`);
     try {
-      const reference = await readRemoteReference(this.current, cell);
+      const reference = await readRemoteReference(this.current, cell, referenceGainDb);
       if (generation === this.generation) {
+        this.rememberGain(reference);
         this.onReference(reference);
         return reference;
       }

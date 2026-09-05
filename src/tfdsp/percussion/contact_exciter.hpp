@@ -11,26 +11,12 @@
 
 namespace tfdsp::percussion {
 
-// Derived port projection supplied by a visible performance macro such as
-// Implement. It is not serialized as independent patch state.
-struct ContactPortProjection {
-  float pulseDirect{0.f};
-  float pulseBody{1.f};
-  float chirpDirect{1.f};
-  float chirpBody{.25f};
-  float noiseDirect{.25f};
-  float noiseBody{.5f};
-  float microDirect{.5f};
-  float microBody{.75f};
-};
-
 struct ContactExciterParameters {
   float pulseDurationSeconds{.001f};
   float pulseAmplitude{1.f};
   TonalContactChirpParameters chirp{};
   EnvelopedNoiseBurstParameters noise{};
   MicroContactBurstParameters microContacts{};
-  ContactPortProjection projection{};
 };
 
 struct ContactExciterSample {
@@ -58,12 +44,15 @@ public:
   }
 
   void Trigger(const ContactExciterParameters &parameters) noexcept {
-    projection_ = parameters.projection;
-    SanitizeProjection();
     pulse_.Trigger(parameters.pulseDurationSeconds, parameters.pulseAmplitude);
     chirp_.Trigger(parameters.chirp);
     noise_.Trigger(parameters.noise);
     microContacts_.Trigger(parameters.microContacts);
+    // Prepare unit conversions once per event, never from a playing tail.
+    pulseBodyScale_ = pulse_.BodyImpulseScale();
+    chirpBodyScale_ = chirp_.BodyImpulseScale();
+    noiseBodyScale_ = noise_.BodyImpulseScale();
+    microBodyScale_ = microContacts_.BodyImpulseScale();
   }
 
   ContactExciterSample Process() noexcept {
@@ -72,12 +61,9 @@ public:
     const float noise = noise_.Process();
     const float micro = microContacts_.Process();
     ContactExciterSample output;
-    output.directRadiation = projection_.pulseDirect * pulse +
-        projection_.chirpDirect * chirp + projection_.noiseDirect * noise +
-        projection_.microDirect * micro;
-    output.bodyDrive = projection_.pulseBody * pulse +
-        projection_.chirpBody * chirp + projection_.noiseBody * noise +
-        projection_.microBody * micro;
+    output.directRadiation = pulse + chirp + noise + micro;
+    output.bodyDrive = pulseBodyScale_ * pulse + chirpBodyScale_ * chirp +
+        noiseBodyScale_ * noise + microBodyScale_ * micro;
     if (!std::isfinite(output.directRadiation))
       output.directRadiation = 0.f;
     if (!std::isfinite(output.bodyDrive))
@@ -91,26 +77,14 @@ public:
   }
 
 private:
-  static float BoundedGain(const float gain) noexcept {
-    return std::clamp(tfdsp::FiniteNormalOrZero(gain), -16.f, 16.f);
-  }
-
-  void SanitizeProjection() noexcept {
-    projection_.pulseDirect = BoundedGain(projection_.pulseDirect);
-    projection_.pulseBody = BoundedGain(projection_.pulseBody);
-    projection_.chirpDirect = BoundedGain(projection_.chirpDirect);
-    projection_.chirpBody = BoundedGain(projection_.chirpBody);
-    projection_.noiseDirect = BoundedGain(projection_.noiseDirect);
-    projection_.noiseBody = BoundedGain(projection_.noiseBody);
-    projection_.microDirect = BoundedGain(projection_.microDirect);
-    projection_.microBody = BoundedGain(projection_.microBody);
-  }
-
   FiniteForcePulse pulse_{};
   TonalContactChirp chirp_{};
   EnvelopedNoiseBurst noise_{};
   MicroContactBurst microContacts_{};
-  ContactPortProjection projection_{};
+  float pulseBodyScale_{};
+  float chirpBodyScale_{};
+  float noiseBodyScale_{};
+  float microBodyScale_{};
 };
 
 } // namespace tfdsp::percussion

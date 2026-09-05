@@ -29,6 +29,7 @@ export function snapshotState(state, name = "Snapshot", descriptors = []) {
       channels: state.reference.channels,
       bits: state.reference.bits,
       duration: state.reference.duration,
+      referenceGainDb: state.reference.referenceGainDb ?? 0,
       corpus: state.reference.corpus ?? null,
       cell: state.reference.cell ?? null,
     } : null,
@@ -52,6 +53,9 @@ export function validateFit(value, descriptors = []) {
     throw new Error("unsupported or incomplete percussion fit");
   }
   validatePatch(value.instrument, descriptors);
+  const referenceGain = value.reference?.referenceGainDb ?? 0;
+  if (!Number.isFinite(referenceGain) || Math.abs(referenceGain) > 120)
+    throw new Error("invalid reference gain");
   recipeAdapter(value.instrument.recipe).validate(value.instrument);
   for (const key of [
     "strength", "location", "hardness", "implement", "contactSpread",

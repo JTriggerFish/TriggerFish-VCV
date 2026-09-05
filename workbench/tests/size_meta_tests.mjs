@@ -5,7 +5,7 @@ import { expandedSizeMeta } from "../web/size_meta.mjs";
 const descriptors = [
   { key: "impact_width", defaultValue: 1, minimum: .25, maximum: 4,
     scale: "logarithmic", index: 0 },
-  { key: "bloom_energy_dependence", defaultValue: .35, minimum: 0, maximum: 1,
+  { key: "bloom_energy_acceleration", defaultValue: .35, minimum: 0, maximum: 1,
     scale: "linear", index: 1 },
   ...Array.from({ length: 6 }, (_, index) => ({
     key: `body_decay_active_${index + 1}`, defaultValue: 0,
@@ -30,7 +30,7 @@ const values = position => Object.fromEntries(
 );
 
 assert.equal(values(.5).impact_width, 1);
-assert.equal(values(.5).bloom_energy_dependence, .35);
+assert.equal(values(.5).bloom_energy_acceleration, .35);
 assert.equal(values(0).impact_width, 2.2);
 assert.equal(values(0).body_excitation, 1);
 assert.equal(values(.5).body_excitation, .05);
@@ -40,7 +40,7 @@ assert.equal(values(0).resolved_frequency_5, 550.8);
 assert.equal(values(1).resolved_frequency_5, 600 * 1.45);
 assert.equal(values(0).resolved_frequency_23, 15000);
 assert.equal(values(1).resolved_frequency_23, 2400 * 1.45);
-assert.equal(values(0).resolved_level_0, -23);
+assert.equal(values(0).resolved_level_0, -12.12);
 assert.equal(values(1).resolved_level_23, -2);
 for (let index = 1; index <= 6; ++index) {
   assert.equal(values(0)[`body_decay_active_${index}`], 0);

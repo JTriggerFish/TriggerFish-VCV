@@ -122,11 +122,11 @@ void TestMicroContacts() {
   for (std::size_t sample = 0; sample < Samples; ++sample) {
     identical = identical && first[sample] == repeated[sample];
     seedChangesDetail = seedChangesDetail || first[sample] != different[sample];
-    bounded = bounded && std::abs(first[sample]) <= 1.f;
+    bounded = bounded && std::isfinite(first[sample]) && std::abs(first[sample]) < 8.f;
   }
   Check(identical, "micro-contact detail is repeatable for a fixed seed");
   Check(seedChangesDetail, "micro-contact seed changes only stochastic detail");
-  Check(bounded, "micro-contact cluster has bounded amplitude");
+  Check(bounded, "unit-RMS micro-contact carrier has finite, unclipped peaks");
   Check(energy > 1.e-5, "dense micro-contact cluster produces energy");
   CheckNear(RenderMicroContacts(1234, .25f) / energy, .0625, 1.e-6,
             "micro-contact energy follows squared hit strength");
@@ -245,10 +245,18 @@ void TestNoiseTilt() {
     darkEnergy += darkOutput * darkOutput;
     brightEnergy += brightOutput * brightOutput;
   }
-  Check(darkEnergy / inputEnergy > .95 && darkEnergy / inputEnergy < 1.05 &&
-            brightEnergy / inputEnergy > .95 &&
-            brightEnergy / inputEnergy < 1.05,
-        "noise tilt preserves white-noise energy while changing colour");
+  const auto variance = [](const double tilt) {
+    const double feed = 1.0 - std::exp(-6.283185307179586 * 3000 / 48000);
+    const double pole = 1.0 - feed;
+    const double low = std::pow(10.0, -tilt / 40.0);
+    const double high = std::pow(10.0, tilt / 40.0);
+    return (low*low*feed + 2*high*high*pole*pole +
+            2*low*high*feed*pole) / (2-feed);
+  };
+  CheckNear(darkEnergy / inputEnergy, variance(-12), .02,
+            "dark shelf has exactly its filter gain, without RMS makeup");
+  CheckNear(brightEnergy / inputEnergy, variance(12), .02,
+            "bright shelf has exactly its filter gain, without RMS makeup");
 
   neutral.Reset();
   Check(neutral.Process(std::numeric_limits<float>::denorm_min()) == 0.f &&
@@ -265,19 +273,20 @@ void TestContactProjection() {
   parameters.chirp.amplitude = 0.f;
   parameters.noise.amplitude = 0.f;
   parameters.microContacts.amplitude = 0.f;
-  parameters.projection = {};
-  parameters.projection.pulseDirect = 2.f;
-  parameters.projection.pulseBody = 3.f;
   exciter.Trigger(parameters);
   bool separated = true;
+  double impulse = 0.0;
   std::size_t activeSamples = 0;
   while (exciter.Active()) {
     const auto output = exciter.Process();
     separated = separated &&
-        std::abs(output.bodyDrive - 1.5f * output.directRadiation) < 1.e-6f;
+        std::abs(output.bodyDrive - std::tan(3.141592653589793 / 98.0) *
+            output.directRadiation) < 1.e-6f;
+    impulse += output.bodyDrive;
     ++activeSamples;
   }
-  Check(separated, "contact exciter keeps its port projection explicit");
+  Check(separated, "contact ports differ only by documented unit conversion");
+  CheckNear(impulse, .5, 1.e-6, "body half-sine has the requested impulse");
   Check(activeSamples >= 48,
         "contact exciter remains active until its longest primitive finishes");
   const auto silence = exciter.Process();

@@ -7,6 +7,9 @@ model and it does not claim that each control is a measurable physical property.
 Its controls are intended to be audible, reasonably orthogonal, and fit-able to
 recordings.
 
+Signal units and all gain stages are defined in
+[the gain-staging contract](TfPercussion-gain-staging.md).
+
 The defining design choice is that attack ridges, dense wash, and nonlinear
 bloom are different behaviours of one modal state. There is no delayed bloom
 sample, hidden latch, separately audible noise tail, or second resonator bank in
@@ -71,31 +74,49 @@ modal coupling of new force. It never recolours energy already ringing.
 
 ![Modal-packet preparation and audio processing](TfNonlinear-resonator-modal-packet.svg)
 
-The editor contains 24 anchors. Each anchor has:
+The editor contains between zero and 32 active centre handles. Each handle has:
 
 - a centre frequency;
-- a relative excitation level; and
+- a relative observation prominence; and
 - a local multiplier for the global turbulence field.
 
-At preparation time an anchor expands to one coherent centre state and sixteen
-deterministic stochastic satellites. The current cymbal therefore has 408
-complex modal states. This is a quality-first capacity choice, not part of the
-public architecture.
+At preparation time every active handle reserves one coherent centre state.
+Deterministic sideband pairs are then allocated from one shared pool of 512
+complex modal states. Local turbulence and ERB spread request useful coverage;
+the global satellite-density control scales that request, and overlap between
+neighbouring packet widths reduces redundant satellites. Painted centres are
+never removed by this heuristic. Allocation is performed outside the audio
+loop and the resulting states are packed into one flat SoA bank.
 
 For mode $m$, before cross-mode processing, the recurrence is
 
 $$
 z_m[n+1] = r_m e^{j\omega_m[n]}z_m[n]
-           + \sqrt{a_m}\,q_m x[n],
+           + q_m x[n],
 $$
 
-where $r_m$ comes from the shared T60 curve, $a_m$ is the painted linear modal
-level, $q_m$ contains the normalized excitation tilt and current strike
-projection, and $\omega_m[n]$ may contain a small stochastic phase perturbation.
-Observation uses $\sqrt{a_m}\,\operatorname{Re}(z_m)$, so an ordinary directly
-excited mode follows $a_m$ while energy arriving through the cascade still
-approaches silence continuously as its painted level approaches zero. With no
-drive or constraint, the pole radius is the only loss in this recurrence.
+where $r_m$ comes from the shared T60 curve, $q_m$ contains the excitation
+tilt, packet weight, and current strike projection, and $\omega_m[n]$ may
+contain a small stochastic phase perturbation. The complete drive vector is
+renormalized after location and velocity colour are applied:
+
+$$
+\sum_m q_m^2 = 1.
+$$
+
+This normalizes spatial coupling, not the work done by an entire contact.
+Delivered energy also depends on contact waveform and existing modal phase.
+Observation is
+
+$$
+y[n]=G_\mathrm{body}\sum_m g_m\operatorname{Re}(z_m[n]),
+$$
+
+where the painted anchor levels define literal $g_m$ amplitudes
+and $G_\mathrm{body}$ is the explicit body-observation level. Painted levels do
+not affect $q_m$, stored energy, or cascade activation. A handle at the editor's
+silence boundary is absent from both vectors. With no drive or constraint, the
+pole radius is the only loss in this recurrence.
 
 Global turbulence and its per-anchor multiplier control a normalized
 centre-to-satellite trajectory. Increasing turbulence:
@@ -117,36 +138,52 @@ $$
 where $t_c$ is `Turbulence`, $s$ is `Turbulence slope`, and $f_c$ is
 `Turbulence centre`. Positive slope keeps low packets more defined while making
 high packets progressively wash-like. This is deliberately independent of the
-painted body-energy tilt.
+painted modal prominence.
 
 ## Intrinsic bloom: stored-energy transport
 
-Bloom is a passive, one-way cascade between frequency-ordered packets. It acts
-directly on their complex states. For adjacent lower and upper packets with
-stored energies $E_l$ and $E_u$, one sample computes a bounded transfer fraction
+Bloom is passive, one-way transport between frequency-ordered packets. It acts
+directly on their complex states. A fixed half-octave transport stencil is
+interpolated onto the available painted anchors. Adding an anchor between two
+existing frequencies therefore refines the audible modal field; it does not
+insert another serial bloom stage or change the meaning of the rate control.
+For source energy $E_l$, one sample computes a bounded transfer fraction
 
 $$
 q = 1-\exp\!\left(-\frac{R\,a(E_l)}{F_s\,\Delta o}\right),
 $$
 
-where $R$ is `Bloom rate` in octaves per second, $\Delta o$ is the octave gap,
-and $F_s$ is sample rate. `Bloom energy dependence` controls
+where $R$ is `Bloom rate` in octaves per second, $\Delta o$ is the half-octave
+stencil distance (shortened only at the upper field boundary), and $F_s$ is
+sample rate. `Energy acceleration` controls
 
 $$
-a(E_l)=1+d\left(\frac{E_l}{E_l+E_{\mathrm{ref}}}-1\right).
+a(E)=1+7d\frac{E}{E+E_{\mathrm{ref}}}.
 $$
 
-At $d=0$, transport rate is level-independent. At $d>0$, a higher-energy
-strike moves energy upward faster. This is in addition to, and testable
+Here $E$ and $E_{\mathrm{ref}}$ are totals for the whole field, rather than
+per-packet values. Consequently the activation does not change when an artist
+inserts an intermediate anchor. At $d=0$, transport rate is level-independent.
+At $d>0$, stored energy accelerates transport from the declared baseline $R$
+toward $8R$. This deliberately broad range allows a forceful onset to bloom
+quickly while a quiet late tail travels slowly. The cascade may therefore drain
+lower packets upward; the shared
+frequency-dependent T60 curve remains the final decay shaper. This is in
+addition to, and testable
 separately from, the visible velocity-brightness excitation tilt.
 With the factory mapping, every increase in strike strength therefore both
 injects more total energy and increases high-frequency excitation; it cannot
 become darker merely because the input became stronger.
 
-The state update is
+The event energy is deposited into the one or two anchors bracketing the target
+log-frequency. Linear interpolation in octaves preserves the requested mean
+travel distance. If a field is sparser than the stencil, part of the event
+remains at the source and the rest enters the next available anchor. The state
+update is therefore, schematically,
 
 $$
-E_l'=(1-q)E_l, \qquad E_u'=E_u+qE_l.
+E_l'=(1-q)E_l+w_lqE_l, \qquad
+E_u'=E_u+w_uqE_l, \qquad w_l+w_u=1.
 $$
 
 It is implemented by magnitude scaling of the actual complex packet states, so
@@ -157,14 +194,16 @@ E_l'+E_u'=E_l+E_u.
 $$
 
 No signal is added to the output. If the upper packet was silent it is seeded
-with exactly the transferred energy; otherwise its existing state is scaled.
+with exactly the transferred energy, distributed between its coherent centre
+and stochastic satellites using the same normalized weights as a direct hit;
+otherwise its existing state is scaled.
 `Bloom phase diffusion` then rotates destination phasors by deterministic
 signed angles. Rotation changes correlation and texture but preserves
 magnitude.
 
-Adjacent pairs are processed from highest to lowest frequency. Newly received
-energy therefore cannot cross a second packet boundary in the same sample. The
-bloom is continuous from the beginning of a strike and progresses upward at a
+All transfers use packet energies captured at the beginning of the sample.
+Newly received energy therefore cannot cascade again in that sample. The bloom
+is continuous from the beginning of a strike and progresses upward at a
 declared rate; it cannot suddenly appear after an arbitrary timer. Repeated
 hits add force to the state already present, so a crash can build and swell.
 
@@ -201,17 +240,20 @@ These operations have distinct jobs:
 | Phase bandwidth | time-varying coherence/linewidth |
 | Local exchange | passive short-range state mixing |
 | Bloom rate | directed upward state-energy travel |
-| Bloom energy dependence | how strongly travel accelerates with strike energy |
+| Energy acceleration | how strongly travel accelerates with stored strike energy |
 | Bloom phase diffusion | correlation of newly populated upper states |
 
 ## Decay and mute
 
-All modes use one shared frequency-dependent T60 curve. The ordinary curve has
-only two active boundary values, at DC and Nyquist. Up to six interior knots
+All modes use one shared frequency-dependent local-T60 curve. The ordinary
+curve has only two active boundary values at the modal design limits, 40 Hz
+and 15 kHz. Up to six interior knots
 are available for sparse last-stage correction, but fitting may not use them to
 hide errors in excitation, modal placement, turbulence, or bloom.
 
-T60 is interpolated in ERB rate and log seconds. It supplies each mode's pole
+T60 is interpolated in ERB rate and log seconds and held at its boundary value
+outside the design range. Fixed frequency boundaries keep a saved patch's loss
+law invariant when sample rate changes. The curve supplies each mode's pole
 radius
 
 $$
@@ -229,13 +271,24 @@ constraint movement injects no energy.
 
 ## Constructive colour controls
 
-`Initial excitation tilt` shapes where a strike deposits energy around the
-visible `Excitation tilt centre`. Painted modal levels control what is audible;
-the tilt controls what is initially driven. Splitting each painted level evenly
-between drive and observation keeps direct modal level intuitive while making
-cascade arrivals continuous at the editor's silence boundary. The tilt range is
-deliberately wide enough to move from low-dominated gong starts to bright
-cymbal starts.
+`Initial excitation tilt` and `Excitation centre` form a smooth shelf that
+shapes where a strike deposits energy across the modal field. For mode
+frequency $f$, centre $f_c$, and high-side slope $s$ in dB/octave, its
+unnormalized gain is
+
+$$
+q(f)=\left(1+\left(\frac{f}{f_c}\right)^2\right)^{s/(40\log_{10}2)}.
+$$
+
+The response is flat below $f_c$ and approaches slope $s$ above it. A centre
+therefore remains meaningful after normalization, unlike the pivot of a pure
+power law. Painted modal levels control what is audible; this shelf controls
+what is initially driven. The complete shelf/location/velocity
+projection is energy-normalized, while the painted observation vector is
+normalized independently. Consequently modal painting changes spectral
+prominence, `Body observation level` changes overall audible level, and neither
+changes stored strike energy. The tilt range is deliberately wide enough to
+move from low-dominated gong starts to bright cymbal starts.
 
 `Body excitation` is the explicit gain between the contact body port and this
 modal field. It changes stored energy and therefore the operating point of the
@@ -278,7 +331,9 @@ They cover:
 - increased high-frequency response for stronger strikes;
 - stronger energy-dependent upward transport with velocity brightness disabled;
 - exact passivity of an isolated cascade within tolerance;
-- at most one packet boundary crossed per sample;
+- invariant high-band arrival after inserting intermediate painted anchors;
+- preservation of a packet's centre-to-sideband energy ratio on cascade entry;
+- no same-sample retransmission of newly arrived cascade energy;
 - energy-preserving phase diffusion and Givens exchange;
 - passive mute and zero-strength no-op;
 - additive restrikes when nonlinear transport is disabled; and

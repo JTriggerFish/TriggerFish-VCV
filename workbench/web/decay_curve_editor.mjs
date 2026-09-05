@@ -28,13 +28,22 @@ export class DecayCurveEditor {
     this.paint();
   }
 
-  nyquist() {
-    return Math.max(4000, Number(this.options.nyquist()));
+  minimumFrequency() {
+    return Math.max(0, Number(this.options.minimumFrequency));
+  }
+
+  maximumFrequency() {
+    return Math.max(
+      this.minimumFrequency() + 1, Number(this.options.maximumFrequency),
+    );
   }
 
   xPosition(frequency) {
-    const amount = erb(clamp(frequency, 0, this.nyquist())) /
-      erb(this.nyquist());
+    const minimum = erb(this.minimumFrequency());
+    const maximum = erb(this.maximumFrequency());
+    const amount = (erb(clamp(
+      frequency, this.minimumFrequency(), this.maximumFrequency(),
+    )) - minimum) / (maximum - minimum);
     return View.left + amount * (View.width - View.left - View.right);
   }
 
@@ -42,7 +51,9 @@ export class DecayCurveEditor {
     const amount = clamp(
       (position - View.left) / (View.width - View.left - View.right), 0, 1,
     );
-    return inverseErb(amount * erb(this.nyquist()));
+    const minimum = erb(this.minimumFrequency());
+    const maximum = erb(this.maximumFrequency());
+    return inverseErb(minimum + amount * (maximum - minimum));
   }
 
   yPosition(logSeconds) {
@@ -191,10 +202,11 @@ export class DecayCurveEditor {
   }
 
   paintGrid() {
-    const nyquist = this.nyquist();
-    const frequencies = [0, 100, 300, 1000, 3000, 10000, nyquist];
+    const minimum = this.minimumFrequency();
+    const maximum = this.maximumFrequency();
+    const frequencies = [minimum, 100, 300, 1000, 3000, 10000, maximum];
     for (const frequency of [...new Set(frequencies.filter(value =>
-      value >= 0 && value <= nyquist))]) {
+      value >= minimum && value <= maximum))]) {
       const x = this.xPosition(frequency);
       this.svg.append(element("line", {
         x1: x, y1: View.top, x2: x, y2: View.height - View.bottom,
@@ -203,8 +215,8 @@ export class DecayCurveEditor {
       const label = element("text", {
         x, y: View.height - 11, class: "editor-tick", "text-anchor": "middle",
       });
-      label.textContent = frequency === 0 ? "DC" : frequency === nyquist
-        ? `Nyq ${Math.round(nyquist / 100) / 10}k`
+      label.textContent = frequency === minimum ? `${minimum} Hz` :
+        frequency === maximum ? `${maximum / 1000}k`
         : frequency >= 1000 ? `${frequency / 1000}k` : frequency;
       this.svg.append(label);
     }
@@ -249,7 +261,9 @@ export class DecayCurveEditor {
   }
 
   paintAllHandle(points) {
-    const frequency = inverseErb(.5 * erb(this.nyquist()));
+    const frequency = inverseErb(.5 * (
+      erb(this.minimumFrequency()) + erb(this.maximumFrequency())
+    ));
     const rate = erb(frequency);
     let right = 1;
     while (right < points.length && erb(points[right].x) < rate) ++right;

@@ -49,7 +49,7 @@ const erb = frequency => 21.4 * Math.log10(1 + .00437 * frequency);
 const inverseErb = rate => (10 ** (rate / 21.4) - 1) / .00437;
 
 const ControlHelp = {
-  model_level_db: "Attenuation-only pre-limiter synthesis level. Zero is the ceiling; double-click to match the current reference when that is possible without gain.",
+  model_level_db: "Literal output gain in dB, with no hidden boost or loudness matching. Double-click restores the fixed default. Changing references never adjusts this control.",
   direct_gain: "Amount of near-field contact heard directly before the cymbal body develops.",
   impact_tone_noise: "Balances pitched stick ping against broadband contact noise.",
   impact_width: "Scales contact duration. Short contacts are sharper; broad contacts suit softer implements.",
@@ -57,18 +57,19 @@ const ControlHelp = {
   impact_noise_tilt: "Broad spectral tilt of the enveloped contact-noise burst.",
   impact_micro_density: "Density of sub-perceptual micro-contacts within the struck or brushed gesture.",
   velocity_brightness: "Additional body high-frequency excitation per octave as strike strength rises.",
-  bloom_rate: "Rate at which stored modal energy travels upward through neighbouring frequency packets. Zero disables transport; the slider uses extra resolution below one octave per second. Immediate high-frequency excitation is set separately by the modal levels and initial excitation tilt.",
-  bloom_energy_dependence: "Makes upward transfer depend on energy already stored in each lower packet, so stronger strikes bloom more strongly.",
+  bloom_rate: "Rate at which stored modal energy travels upward through neighbouring frequency packets. Zero disables transport; the slider uses extra resolution below one octave per second. Immediate high-frequency excitation is set separately by the initial excitation tilt.",
+  bloom_energy_acceleration: "Accelerates the whole upward cascade as total stored strike energy rises, from the baseline toward at most eight times that rate. It never reduces the baseline and does not depend on how many modal handles or sidebands represent the body.",
   bloom_phase_diffusion: "Randomizes phase as energy enters each higher packet while preserving its magnitude.",
-  body_excitation: "Gain from the contact body port into the modal field. Unlike body observation level, this changes the energy-dependent cascade regime.",
+  body_excitation: "Amplitude gain of normalized contact impulses. 4x means four times drive amplitude (sixteen times isolated linear energy). Changes the energy-dependent cascade, not just output volume.",
   field_gain: "Output observation level of the unified modal body; it does not change stored body energy or bloom.",
-  body_brightness: "Broad tilt applied to the initial modal excitation around the adjustable body-tilt centre.",
-  body_tilt_centre: "Frequency left unchanged by body energy tilt.",
+  body_brightness: "Slope of spatial excitation above its centre. The input vector has unit squared norm; actual delivered energy also depends on contact duration, modal frequencies and existing motion.",
+  body_excitation_centre: "Knee of the initial excitation shelf. Move it to seed low and low-mid modes without directly opening the high-frequency bloom.",
   body_tune: "Common frequency ratio applied after the painted anchor frequencies.",
   field_turbulence: "Turbulence at the adjustable centre frequency, before each anchor's local multiplier.",
   field_turbulence_slope: "Change in turbulence per octave around the centre; positive values keep lows defined while making highs progressively noisier.",
   field_turbulence_centre: "Frequency at which the global turbulence value applies unchanged.",
   field_packet_spread: "Maximum ERB-frequency spread of stochastic satellites around every anchor.",
+  field_satellite_density: "Sampling density inside the turbulent packet widths. It allocates states from the shared pool without changing packet energy or cascade speed.",
   field_phase_bandwidth: "Rate of passive random phase decorrelation inside each modal packet; this is linewidth, not a fitted static phase offset.",
   field_exchange: "Amount of energy-preserving exchange between neighbouring modal states.",
 };
@@ -85,7 +86,7 @@ function helpFor(key) {
     return "Centre frequency of this constructive modal packet; this need not represent one measured physical eigenmode.";
   }
   if (key.startsWith("resolved_level_")) {
-    return "Relative drive energy assigned to this packet. The exact minimum deactivates it.";
+    return "Relative observation prominence of this packet. It does not change strike energy; the exact minimum deactivates the handle.";
   }
   if (key.startsWith("resolved_turbulence_")) {
     return "Local multiplier for global turbulence: zero stays coherent, one follows the global setting, and two diffuses earlier.";
@@ -159,9 +160,9 @@ export class FitControls {
       denormalize: bloomRateDenormalized,
     });
     this.sliders("bloom-controls", [
-      "bloom_energy_dependence", "bloom_phase_diffusion",
+      "bloom_energy_acceleration", "bloom_phase_diffusion",
     ], {
-      bloom_energy_dependence: ["constant", "energy-driven"],
+      bloom_energy_acceleration: ["linear", "energy-accelerated"],
       bloom_phase_diffusion: ["coherent", "diffuse"],
     });
     this.buildResolvedEditor();
@@ -172,7 +173,8 @@ export class FitControls {
 
   buildBodyModel() {
     this.sliders("field-turbulence-controls", [
-      "body_excitation", "body_brightness", "body_tilt_centre", "field_turbulence",
+      "body_excitation", "body_brightness", "body_excitation_centre",
+      "field_turbulence",
       "field_turbulence_slope", "field_turbulence_centre",
     ], {
       field_gain: ["quiet", "loud"],
@@ -181,10 +183,11 @@ export class FitControls {
       field_turbulence_slope: ["noisy lows", "noisy highs"],
     }, () => this.resolvedEditor?.refresh());
     this.sliders("field-advanced-controls", [
-      "body_tune", "field_packet_spread", "field_phase_bandwidth",
+      "body_tune", "field_packet_spread", "field_satellite_density", "field_phase_bandwidth",
       "field_exchange",
     ], {
       field_packet_spread: ["tight", "broad"],
+      field_satellite_density: ["sparse", "dense"],
       field_phase_bandwidth: ["coherent", "diffuse"],
       field_exchange: ["independent", "coupled"],
     }, () => this.resolvedEditor?.refresh());
@@ -303,7 +306,7 @@ export class FitControls {
       this.slider(turbulence[inspected].key, "modal-selection", {
         afterInput: () => editor.refresh(),
       });
-      const names = ["Centre frequency", "Anchor level", "Local turbulence"];
+      const names = ["Centre frequency", "Modal prominence", "Local turbulence"];
       [...selection.querySelectorAll(".slider-row")].forEach((row, rowIndex) => {
         row.querySelector("span").textContent = names[rowIndex];
         if (index !== null) return;
@@ -464,14 +467,16 @@ export class FitControls {
       frequencies: [null, ...interiorFrequencies, null], levels,
     };
     const active = [null, ...interiorActive, null];
-    const nyquist = () => .5 * (this.state.reference?.sampleRate ?? 48000);
+    const decayMinimum = 40;
+    const decayMaximum = 15000;
     const points = () => curve.frequencies.flatMap((frequency, slot) => {
       if (slot !== 0 && slot + 1 !== curve.frequencies.length &&
           this.state.macros[active[slot].index] < .5) return [];
       return [{
         slot,
-        x: slot === 0 ? 0 : slot + 1 === curve.frequencies.length
-          ? nyquist() : this.state.macros[frequency.index],
+        x: slot === 0 ? decayMinimum :
+          slot + 1 === curve.frequencies.length
+            ? decayMaximum : this.state.macros[frequency.index],
         y: Math.log2(this.state.macros[curve.levels[slot].index]),
         fixed: slot === 0 || slot + 1 === curve.frequencies.length,
       }];
@@ -490,10 +495,11 @@ export class FitControls {
     };
     let editor;
     const inspect = slot => this.buildDecayInspector(
-      curve, active, slot, editor, nyquist,
+      curve, active, slot, editor, decayMinimum, decayMaximum,
     );
     editor = new DecayCurveEditor(parent, {
-      nyquist,
+      minimumFrequency: decayMinimum,
+      maximumFrequency: decayMaximum,
       minimumLogSeconds: Math.log2(.02), maximumLogSeconds: Math.log2(20),
       yTicks: [
         { value: Math.log2(.1), label: ".1 s" },
@@ -518,7 +524,7 @@ export class FitControls {
         const slot = interior + 1;
         this.state.macros[active[slot].index] = 1;
         this.state.macros[curve.frequencies[slot].index] = clamp(
-          frequency, 40, Math.min(20000, nyquist() - 1),
+          frequency, decayMinimum, decayMaximum,
         );
         this.state.macros[curve.levels[slot].index] = clamp(
           2 ** logSeconds, curve.levels[slot].minimum,
@@ -547,13 +553,15 @@ export class FitControls {
     inspect(0);
   }
 
-  buildDecayInspector(curve, active, slot, editor, nyquist) {
+  buildDecayInspector(
+    curve, active, slot, editor, decayMinimum, decayMaximum,
+  ) {
     const parent = document.getElementById("decay-selection");
     parent.replaceChildren();
     const last = curve.frequencies.length - 1;
     const title = document.createElement("b");
-    title.textContent = slot === 0 ? "DC boundary" : slot === last
-      ? "Nyquist boundary" : `Selected T60 knot ${slot + 1}`;
+    title.textContent = slot === 0 ? "Low boundary" : slot === last
+      ? "High boundary" : `Selected T60 knot ${slot + 1}`;
     parent.append(title);
     if (slot === 0 || slot === last) {
       const frequencyRow = document.createElement("div");
@@ -561,8 +569,9 @@ export class FitControls {
       const label = document.createElement("span");
       label.textContent = "Frequency";
       const output = document.createElement("output");
-      output.textContent = slot === 0
-        ? "DC" : `${(nyquist() / 1000).toFixed(2)} kHz`;
+      const boundary = slot === 0 ? decayMinimum : decayMaximum;
+      output.textContent = boundary >= 1000
+        ? `${(boundary / 1000).toFixed(1)} kHz` : `${boundary} Hz`;
       frequencyRow.append(label, output);
       parent.append(frequencyRow);
     } else {
@@ -581,7 +590,7 @@ export class FitControls {
     remove.disabled = slot === 0 || slot === last;
     remove.textContent = "Delete knot";
     remove.title = remove.disabled
-      ? "DC and Nyquist boundary knots cannot be deleted"
+      ? "Low and high boundary knots cannot be deleted"
       : "Delete this interior knot (also: double-click it or press Delete)";
     remove.onclick = () => {
       this.state.macros[active[slot].index] = 0;

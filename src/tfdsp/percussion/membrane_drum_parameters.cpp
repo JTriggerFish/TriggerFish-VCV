@@ -119,11 +119,11 @@ MembraneDrumParameters DefaultMembraneDrumParameters(
   result.fmDirectLevel = Safe(source.fmDirectLevel, .0144f, 0.f, 3.f);
   result.fmBodyLevel = Safe(source.fmBodyLevel, .081f, 0.f, 3.f);
 
-  result.observation[0].gain = Safe(source.directLevel, .3f, 0.f, 4.f);
+  result.observation[0].gain = Safe(source.directLevel, .9f, 0.f, 4.f);
   result.observation[0].delaySeconds = Safe(
       source.directDelaySeconds, 0.f, 0.f, .01f);
   result.observation[0].radiationEnabled = false;
-  result.observation[1].gain = Safe(source.bodyLevel, 1.f, 0.f, 4.f);
+  result.observation[1].gain = Safe(source.bodyLevel, 3.f, 0.f, 4.f);
   result.observation[1].radiationEnabled = false;
 
   result.equalizer.mode = source.equalizerMode;
@@ -138,10 +138,7 @@ MembraneDrumParameters DefaultMembraneDrumParameters(
       source.colourGainDb, 0.f, -24.f, 24.f);
   result.equalizer.radiation.colourQ = .7f;
   result.equalizer.outputGain = 1.f;
-  result.outputGain = Safe(source.outputGain, .08f, 0.f, 4.f);
-  // A finite-state guard, not a musical compressor: ordinary single hits
-  // must remain well below this ceiling.
-  result.maximumModalEnergy = 64.f;
+  result.outputGain = Safe(source.outputGain, .5f, 0.f, 4.f);
   return result;
 }
 
@@ -150,7 +147,7 @@ MembraneDrumPreparedParameters PrepareMembraneDrumParameters(
   MembraneDrumPreparedParameters result;
   result.parameters = parameters;
   result.membrane = MembraneResonator<MembraneModeCount>::PrepareParameters(
-      sampleRate, parameters.membrane, parameters.maximumModalEnergy);
+      sampleRate, parameters.membrane);
   result.sampleRate = sampleRate;
   return result;
 }

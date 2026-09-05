@@ -27,12 +27,11 @@ for (const name of [
   "modal_editor.mjs", "decay_curve_editor.mjs", "tooltips.mjs",
   "size_meta.mjs", "engine.mjs", "wasm_engine_core.mjs", "audio.mjs",
   "standby_renderer.mjs", "configuration_preparer.mjs",
-  "limiter_config.mjs", "midi_input.mjs", "settings.mjs",
+  "limiter_config.mjs", "true_peak_detector.mjs", "midi_input.mjs", "settings.mjs",
   "references.mjs", "analysis.mjs", "analysis_worker.mjs",
   "render_worker.mjs", "preparation_worker.mjs",
   "spectrogram.mjs", "state.mjs", "lookahead_limiter_processor.mjs",
   "reference_browser.mjs", "percussion_audio_worklet_processor.mjs",
-  "level_match.mjs",
 ]) {
   await copyFile(join(source, name), join(output, name));
 }

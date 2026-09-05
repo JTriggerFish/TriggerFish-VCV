@@ -2,7 +2,7 @@
      viewBox="0 0 1500 700" role="img"
      aria-labelledby="title description">
   <title id="title">Expansion and processing of one stochastic resonator packet</title>
-  <desc id="description">A painted anchor and global turbulence create one centre oscillator and sixteen ERB-spaced satellites. During audio processing contact excites these complex states, which undergo modal recurrence, passive upward packet-energy transport, magnitude-preserving phase diffusion, and passive neighbour exchange before their outputs are summed.</desc>
+  <desc id="description">A painted observation anchor and global turbulence create one centre oscillator plus a variable allocation of ERB-spaced satellite pairs from a shared pool. During audio processing normalized contact excitation drives these complex states, which undergo modal recurrence, passive upward packet-energy transport, magnitude-preserving phase diffusion, and passive neighbour exchange before their outputs are summed.</desc>
   <defs>
     <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3"
             orient="auto" markerUnits="strokeWidth">
@@ -37,7 +37,7 @@
   <rect class="box control" x="40" y="125" width="220" height="135"/>
   <text class="label" x="150" y="160">Painted anchor</text>
   <text class="detail" x="150" y="188">centre frequency</text>
-  <text class="detail" x="150" y="210">relative level · shared T60 curve</text>
+  <text class="detail" x="150" y="210">observation prominence · shared T60 curve</text>
   <text class="detail" x="150" y="232">local turbulence scaler</text>
 
   <rect class="box control" x="40" y="288" width="220" height="118"/>
@@ -58,7 +58,7 @@
   <path class="flow" d="M610 222 H675"/>
 
   <rect class="box state" x="675" y="115" width="435" height="235"/>
-  <text class="label" x="892" y="151">Prepared packet: 17 complex modal states</text>
+  <text class="label" x="892" y="151">Prepared packet: variable complex modal states</text>
   <line class="packet-line" x1="725" y1="260" x2="1060" y2="260"/>
   <circle class="satellite" cx="735" cy="260" r="6"/>
   <circle class="satellite" cx="770" cy="260" r="7"/>
@@ -71,7 +71,7 @@
   <circle class="satellite" cx="978" cy="260" r="8"/>
   <circle class="satellite" cx="1014" cy="260" r="7"/>
   <circle class="satellite" cx="1050" cy="260" r="6"/>
-  <text class="detail" x="892" y="190">8 lower satellites ← centre → 8 upper satellites</text>
+  <text class="detail" x="892" y="190">allocated lower sidebands ← centre → allocated upper sidebands</text>
   <text class="detail" x="892" y="219">offsets are symmetric in ERB rate, with deterministic jitter</text>
   <text class="formula" x="892" y="310">centreWeight² + Σ satelliteWeight² = 1</text>
   <text class="detail" x="892" y="333">t = 0 drives only the centre; increasing t fills the packet</text>
@@ -81,7 +81,7 @@
   <text class="detail" x="1312" y="211">shared 2-8 knot frequency T60 curve</text>
   <text class="detail" x="1312" y="234">bell · bow · edge projections</text>
   <text class="detail" x="1312" y="257">deterministic object seed</text>
-  <text class="detail" x="1312" y="280">24 packets produce 408 states</text>
+  <text class="detail" x="1312" y="280">0-32 handles share a 512-state pool</text>
   <path class="flow" d="M1110 222 H1175"/>
 
   <line class="boundary" x1="40" y1="445" x2="1460" y2="445"/>

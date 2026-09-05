@@ -12,10 +12,6 @@ namespace {
 using tfdsp::percussion::CrashCymbalFitParameters;
 constexpr float PiOverTwo = 1.57079632679489661923f;
 constexpr float DefaultImpactWidth = .65f;
-// The modal field is energy-normalized internally. This fixed calibration maps
-// those units to the workbench's attenuation-only output scale, where the
-// nominal crash fit lives near -36 dB rather than requiring positive gain.
-constexpr float WorkbenchOutputCalibration = 174.f;
 
 constexpr std::size_t Index(const CrashMacro macro) noexcept {
   return static_cast<std::size_t>(macro);
@@ -44,7 +40,7 @@ std::array<CrashMacroDescriptor, CrashMacroCount> BuildDescriptors() {
     result[Index(macro)] = std::move(descriptor);
   };
   set(CrashMacro::ModelLevelDb,
-      Linear("model_level_db", "Model level", "dB", -60.f, 0.f, -36.f));
+      Linear("model_level_db", "Model level", "dB", -60.f, 0.f, -6.f));
   set(CrashMacro::ImpactToneNoise,
       Linear("impact_tone_noise", "Impact: ping to noise", "", 0.f, 1.f, .9f));
   set(CrashMacro::ImpactWidth,
@@ -53,18 +49,18 @@ std::array<CrashMacroDescriptor, CrashMacroCount> BuildDescriptors() {
   set(CrashMacro::BloomRate,
       Linear("bloom_rate", "Upward cascade rate", "oct/s", 0.f, 16.f,
              fit.bloomRateOctavesPerSecond));
-  set(CrashMacro::BloomEnergyDependence,
-      Linear("bloom_energy_dependence", "Energy dependence", "", 0.f, 1.f,
-             fit.bloomEnergyDependence));
+  set(CrashMacro::BloomEnergyAcceleration,
+      Linear("bloom_energy_acceleration", "Energy acceleration", "", 0.f,
+             1.f, fit.bloomEnergyAcceleration));
   set(CrashMacro::BloomPhaseDiffusion,
       Linear("bloom_phase_diffusion", "Transfer diffusion", "", 0.f, 1.f,
              fit.bloomPhaseDiffusion));
   set(CrashMacro::BodyBrightness,
-      Linear("body_brightness", "Initial excitation tilt", "dB/oct", -24.f, 24.f,
+      Linear("body_brightness", "Initial excitation tilt", "dB/oct", -72.f, 24.f,
              fit.bodyTiltDbPerOctave));
-  set(CrashMacro::BodyTiltCentre,
-      Logarithmic("body_tilt_centre", "Excitation tilt centre", "Hz", 40.f,
-                  15000.f, fit.bodyTiltCentreHz));
+  set(CrashMacro::BodyExcitationCentre,
+      Logarithmic("body_excitation_centre", "Excitation centre", "Hz",
+                  40.f, 15000.f, fit.bodyExcitationCentreHz));
   set(CrashMacro::FieldTurbulence,
       Linear("field_turbulence", "Turbulence", "", 0.f, 1.f,
              fit.fieldTurbulence));
@@ -77,6 +73,9 @@ std::array<CrashMacroDescriptor, CrashMacroCount> BuildDescriptors() {
   set(CrashMacro::FieldPacketSpread,
       Linear("field_packet_spread", "Packet spread", "ERB", 0.f, 12.f,
              fit.fieldPacketSpreadErb));
+  set(CrashMacro::FieldSatelliteDensity,
+      Linear("field_satellite_density", "Satellite density", "", 0.f, 1.f,
+             fit.fieldSatelliteDensity));
   set(CrashMacro::FieldPhaseBandwidth,
       Linear("field_phase_bandwidth", "Phase diffusion", "ERB", 0.f, 4.f,
              fit.fieldPhaseBandwidthErb));
@@ -87,7 +86,7 @@ std::array<CrashMacroDescriptor, CrashMacroCount> BuildDescriptors() {
       Logarithmic("body_excitation", "Body excitation", "x", .001f, 4.f,
                   fit.bodyExcitationGain));
   set(CrashMacro::FieldGain,
-      Linear("field_gain", "Body observation level", "", 0.f, 2.f,
+      Linear("field_gain", "Body observation level", "x", 0.f, 4.f,
              fit.fieldGain));
   set(CrashMacro::DirectGain,
       Linear("direct_gain", "Contact presence", "", 0.f, 2.f,
@@ -128,13 +127,13 @@ std::array<CrashMacroDescriptor, CrashMacroCount> BuildDescriptors() {
     const std::size_t point = interior + 1;
     result[Index(CrashMacro::BodyDecayFrequencyFirst) + interior] = Logarithmic(
         "body_decay_frequency_" + std::to_string(point),
-        "Decay centre " + std::to_string(point + 1), "Hz", 40.f, 20000.f,
+        "Decay centre " + std::to_string(point + 1), "Hz", 40.f, 15000.f,
         fit.bodyDecayFrequencyHz[interior]);
   }
   for (std::size_t point = 0; point < BodyDecayCurvePointCount; ++point) {
     result[Index(CrashMacro::BodyDecaySecondsFirst) + point] = Logarithmic(
         "body_decay_seconds_" + std::to_string(point),
-        "Body T60 " + std::to_string(point + 1), "s", .02f, 20.f,
+        "Modal T60 " + std::to_string(point + 1), "s", .02f, 30.f,
         fit.bodyDecaySeconds[point]);
   }
   for (std::size_t interior = 0; interior < BodyDecayInteriorPointCount;
@@ -155,7 +154,7 @@ std::array<CrashMacroDescriptor, CrashMacroCount> BuildDescriptors() {
         std::max(fit.sparseAmplitude[point], 1.e-8f));
     result[Index(CrashMacro::ResolvedLevelFirst) + point] = Linear(
         "resolved_level_" + std::to_string(point),
-        "Mode level " + std::to_string(point + 1), "dB", -72.f, 6.f,
+        "Mode prominence " + std::to_string(point + 1), "dB", -72.f, 6.f,
         std::max(levelDb, -72.f));
     result[Index(CrashMacro::ResolvedTurbulenceFirst) + point] = Linear(
         "resolved_turbulence_" + std::to_string(point),
@@ -247,7 +246,6 @@ CrashCymbalFitParameters MetallicWorkbenchBaseFit() noexcept {
   // Instrument presets start from the documented DSP defaults. No fitted
   // crash, gong, ride, or hat state is allowed to leak into another preset.
   CrashCymbalFitParameters fit{};
-  fit.outputGain = WorkbenchOutputCalibration;
   return fit;
 }
 
@@ -255,8 +253,7 @@ CrashCymbalFitParameters ApplyCrashMacros(
     const CrashCymbalFitParameters &base,
     const CrashMacroValues &values) noexcept {
   auto fit = base;
-  fit.outputGain = base.outputGain *
-      std::pow(10.f, Value(values, CrashMacro::ModelLevelDb) / 20.f);
+  fit.outputGain = std::pow(10.f, Value(values, CrashMacro::ModelLevelDb) / 20.f);
 
   const float impact = Value(values, CrashMacro::ImpactToneNoise);
   const float tonal = std::cos(PiOverTwo * impact);
@@ -278,18 +275,21 @@ CrashCymbalFitParameters ApplyCrashMacros(
       Value(values, CrashMacro::VelocityBrightness);
 
   fit.bloomRateOctavesPerSecond = Value(values, CrashMacro::BloomRate);
-  fit.bloomEnergyDependence = Value(
-      values, CrashMacro::BloomEnergyDependence);
+  fit.bloomEnergyAcceleration = Value(
+      values, CrashMacro::BloomEnergyAcceleration);
   fit.bloomPhaseDiffusion = Value(values, CrashMacro::BloomPhaseDiffusion);
 
   fit.bodyTiltDbPerOctave = Value(values, CrashMacro::BodyBrightness);
-  fit.bodyTiltCentreHz = Value(values, CrashMacro::BodyTiltCentre);
+  fit.bodyExcitationCentreHz = Value(
+      values, CrashMacro::BodyExcitationCentre);
   fit.fieldTurbulence = Value(values, CrashMacro::FieldTurbulence);
   fit.fieldTurbulenceSlopePerOctave = Value(
       values, CrashMacro::FieldTurbulenceSlope);
   fit.fieldTurbulenceCentreHz = Value(
       values, CrashMacro::FieldTurbulenceCentre);
   fit.fieldPacketSpreadErb = Value(values, CrashMacro::FieldPacketSpread);
+  fit.fieldSatelliteDensity = Value(
+      values, CrashMacro::FieldSatelliteDensity);
   fit.fieldPhaseBandwidthErb =
       Value(values, CrashMacro::FieldPhaseBandwidth);
   fit.fieldExchange = Value(values, CrashMacro::FieldExchange);

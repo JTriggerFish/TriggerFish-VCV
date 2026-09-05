@@ -10,7 +10,7 @@
 namespace tfworkbench {
 
 inline constexpr std::size_t ResolvedModePointCount =
-    tfdsp::percussion::CrashSparseModeCount;
+    tfdsp::percussion::CrashModalAnchorCapacity;
 inline constexpr std::size_t BodyDecayCurvePointCount =
     tfdsp::percussion::CrashBodyDecayPointCount;
 inline constexpr std::size_t BodyDecayInteriorPointCount =
@@ -23,14 +23,15 @@ enum class CrashMacro : std::size_t {
   ImpactToneNoise,
   ImpactWidth,
   BloomRate,
-  BloomEnergyDependence,
+  BloomEnergyAcceleration,
   BloomPhaseDiffusion,
   BodyBrightness,
-  BodyTiltCentre,
+  BodyExcitationCentre,
   FieldTurbulence,
   FieldTurbulenceSlope,
   FieldTurbulenceCentre,
   FieldPacketSpread,
+  FieldSatelliteDensity,
   FieldPhaseBandwidth,
   FieldExchange,
   BodyExcitation,

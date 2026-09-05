@@ -45,7 +45,7 @@ public:
 private:
   struct EventVoice {
     struct Sample {
-      float contactDirect{}, contactBody{}, fm{};
+      float contactDirect{}, contactBody{}, fm{}, fmBody{};
     };
     void Prepare(float sampleRate);
     void Reset() noexcept;
@@ -60,12 +60,14 @@ private:
     float location{.5f};
     float directAmplitude{};
     float bodyAmplitude{};
-    float fmVelocityScale{};
+    float fmBodyScale{};
+    float sampleRate{48000.f};
     float activity{};
     float activityRelease{};
     float stealDirect{};
     float stealBody{};
     float stealFm{};
+    float stealFmBody{};
     float stealGain{};
     float stealStep{};
     Sample last{};

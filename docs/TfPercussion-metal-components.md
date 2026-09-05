@@ -27,11 +27,18 @@ saved parameters or recolour old body state.
 
 ### Unified stochastic modal field
 
-Twenty-four paintable anchors each prepare one coherent centre and sixteen
-satellites. One field therefore spans defined ridges, overlapping metallic
-texture, and dense wash. Increasing turbulence redistributes normalized input
-energy into satellites, expands ERB spread, adds magnitude-preserving phase
-diffusion, and enables local orthogonal exchange.
+Zero to 32 paintable anchors each reserve one coherent centre. Deterministic
+satellite pairs are allocated from the remaining shared 512-state pool according
+to turbulence, spread, density, and overlap. One field therefore spans defined
+ridges, overlapping metallic texture, and dense wash. Increasing turbulence
+redistributes normalized input energy into satellites, expands ERB spread, adds
+magnitude-preserving phase diffusion, and enables local orthogonal exchange.
+
+Painted levels are literal observation amplitudes, not normalized makeup. Initial
+excitation tilt, location, and velocity form a separate drive vector that is
+renormalized after all projections, so spectral placement does not become an
+implicit spatial drive-level control. This does not guarantee equal delivered
+energy for different waveforms; see [gain staging](TfPercussion-gain-staging.md).
 
 All states share one paintable frequency/T60 curve and one mono body
 observation. The former separate sparse bank, modal cloud, and filtered-noise
@@ -41,9 +48,11 @@ from the active cymbal renderer.
 ### Modal energy cascade
 
 The current bloom mechanism is state-level upward transport. It moves a bounded
-fraction of stored energy from each lower packet to its adjacent higher packet,
-preserving total energy before declared modal damping. The pairs are processed
-high-to-low, so energy crosses at most one boundary per sample.
+fraction of stored energy through a fixed half-octave stencil interpolated onto
+the available higher packets,
+preserving total energy before declared modal damping. All transfers use packet
+energies captured before the transport pass, so energy crosses at most one
+stencil step per sample.
 
 Three controls are sufficient:
 

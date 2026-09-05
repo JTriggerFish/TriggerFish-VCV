@@ -13,6 +13,7 @@
 #include <vector>
 
 using percussion_test::Check;
+using percussion_test::CheckNear;
 
 namespace {
 
@@ -116,10 +117,10 @@ void TestVelocityChangesCymbalRegime() {
 
   struct BranchEnergy { double direct{}; double bloom{}; double dense{}; };
   const auto measure = [](const float strength,
-                          const float energyDependence = .7f) {
+                          const float energyAcceleration = .7f) {
     CrashCymbal cymbal;
     CrashCymbalFitParameters fit;
-    fit.bloomEnergyDependence = energyDependence;
+    fit.bloomEnergyAcceleration = energyAcceleration;
     cymbal.Prepare(sampleRate, DefaultCrashCymbalParameters(sampleRate, fit));
     cymbal.Trigger({strength, 1.f, .65f, 81});
     BranchEnergy result;
@@ -141,16 +142,13 @@ void TestVelocityChangesCymbalRegime() {
   const auto loudIndependent = measure(1.f, 0.f);
   const double independentBloomGrowth =
       loudIndependent.bloom / quietIndependent.bloom;
-  constexpr double QuadraticInputGrowth = 16.0;
-  if (!(bloomGrowth > QuadraticInputGrowth &&
-        bloomGrowth > independentBloomGrowth && denseGrowth > 1.0)) {
+  if (!(bloomGrowth > 1.01 * independentBloomGrowth && denseGrowth > 1.0)) {
     std::cerr << "crash velocity direct/bloom/dense growth: "
               << directGrowth << '/' << bloomGrowth << '/' << denseGrowth
               << "; independent bloom " << independentBloomGrowth << '\n';
   }
-  Check(bloomGrowth > QuadraticInputGrowth &&
-        bloomGrowth > independentBloomGrowth && denseGrowth > 1.0,
-        "strong strikes increase energy-dependent modal transfer");
+  Check(bloomGrowth > 1.01 * independentBloomGrowth && denseGrowth > 1.0,
+        "strong strikes accelerate transfer without relying on an unnormalized brightness gain");
 }
 
 void TestSparseModesArePlacedDirectly() {
@@ -291,10 +289,11 @@ void TestUnifiedFieldExpandsAnchorsWithoutChangingDriveEnergy() {
   const auto diffuse = DefaultCrashCymbalParameters(48000.f, diffuseFit);
   const auto coherentMeasure = measure(coherent.modalField);
   const auto diffuseMeasure = measure(diffuse.modalField);
-  Check(coherentMeasure.first == CrashSparseModeCount,
+  Check(coherentMeasure.first == 24,
         "zero turbulence leaves exactly one coherent mode per anchor");
-  Check(diffuseMeasure.first == CrashModalFieldModeCount,
-        "maximum turbulence activates every modal packet member");
+  Check(diffuseMeasure.first > coherentMeasure.first &&
+            diffuseMeasure.first <= CrashModalFieldModeCount,
+        "turbulence allocates sidebands within the shared state pool");
   Check(std::abs(coherentMeasure.second - diffuseMeasure.second) < 1.e-7,
         "modal packet expansion preserves normalized drive energy");
 
@@ -302,16 +301,84 @@ void TestUnifiedFieldExpandsAnchorsWithoutChangingDriveEnergy() {
   selectiveFit.fieldTurbulenceScale[0] = 0.f;
   const auto selective = DefaultCrashCymbalParameters(48000.f, selectiveFit);
   const auto selectiveMeasure = measure(selective.modalField);
-  Check(selectiveMeasure.first == CrashModalFieldModeCount -
-            CrashPacketModeCount + 1,
+  const auto firstPacketModes = std::count_if(
+      diffuse.modalField.begin(), diffuse.modalField.end(),
+      [](const auto &mode) { return mode.inputGain != 0.f && mode.packet == 0; });
+  Check(selectiveMeasure.first == diffuseMeasure.first - firstPacketModes + 1,
         "a clean anchor retains its centre and disables only its satellites");
   Check(std::abs(selectiveMeasure.second - diffuseMeasure.second) < 1.e-7,
         "per-anchor turbulence changes coherence without changing drive energy");
 }
 
+void TestPaintedLevelsOnlyShapeNormalizedObservation() {
+  using namespace tfdsp::percussion;
+  CrashCymbalFitParameters firstFit;
+  firstFit.sparseAmplitude.fill(0.f);
+  firstFit.sparseFrequencyHz[0] = 400.f;
+  firstFit.sparseFrequencyHz[1] = 3200.f;
+  firstFit.sparseAmplitude[0] = 1.f;
+  firstFit.sparseAmplitude[1] = .25f;
+  firstFit.fieldTurbulence = 0.f;
+  firstFit.bodyTiltDbPerOctave = 0.f;
+  auto secondFit = firstFit;
+  secondFit.sparseAmplitude[0] = .25f;
+  secondFit.sparseAmplitude[1] = 1.f;
+  const auto first = DefaultCrashCymbalParameters(48000.f, firstFit);
+  const auto second = DefaultCrashCymbalParameters(48000.f, secondFit);
+  double firstOutputEnergy = 0.0;
+  double secondOutputEnergy = 0.0;
+  for (std::size_t mode = 0; mode < 2; ++mode) {
+    CheckNear(first.modalField[mode].inputGain,
+              second.modalField[mode].inputGain, 1.e-7,
+              "painted prominence does not alter strike-energy allocation");
+    firstOutputEnergy += first.modalField[mode].outputGain *
+        first.modalField[mode].outputGain;
+    secondOutputEnergy += second.modalField[mode].outputGain *
+        second.modalField[mode].outputGain;
+  }
+  Check(first.modalField[0].outputGain > first.modalField[1].outputGain &&
+            second.modalField[0].outputGain < second.modalField[1].outputGain,
+        "painted prominence controls modal observation balance");
+  CheckNear(firstOutputEnergy, 1.0625, 2.e-7,
+            "painted observation uses the exact bar amplitudes");
+  CheckNear(secondOutputEnergy, 1.0625, 2.e-7,
+            "swapping bars preserves their squared observation weights");
+}
+
+void TestExcitationShelfCentreChangesNormalizedColour() {
+  using namespace tfdsp::percussion;
+  CrashCymbalFitParameters fit;
+  fit.sparseAmplitude.fill(0.f);
+  fit.sparseFrequencyHz[0] = 400.f;
+  fit.sparseFrequencyHz[1] = 3200.f;
+  fit.sparseAmplitude[0] = 1.f;
+  fit.sparseAmplitude[1] = 1.f;
+  fit.fieldTurbulence = 0.f;
+  fit.bodyTiltDbPerOctave = -12.f;
+  fit.bodyExcitationCentreHz = 400.f;
+  const auto lowCentre = DefaultCrashCymbalParameters(48000.f, fit);
+  fit.bodyExcitationCentreHz = 1600.f;
+  const auto highCentre = DefaultCrashCymbalParameters(48000.f, fit);
+  const float lowCentreRatio = lowCentre.modalField[0].inputGain /
+      lowCentre.modalField[1].inputGain;
+  const float highCentreRatio = highCentre.modalField[0].inputGain /
+      highCentre.modalField[1].inputGain;
+  Check(lowCentreRatio > 2.f * highCentreRatio,
+        "excitation centre moves the normalized shelf knee");
+  for (const auto &parameters : {lowCentre, highCentre}) {
+    double energy = 0.0;
+    for (std::size_t mode = 0; mode < 2; ++mode)
+      energy += parameters.modalField[mode].inputGain *
+          parameters.modalField[mode].inputGain;
+    CheckNear(energy, 1.0, 2.e-7,
+              "excitation shelf centre preserves drive energy");
+  }
+}
+
 void TestUnifiedFieldAcceptsConstructiveAnchorEditing() {
   using namespace tfdsp::percussion;
   CrashCymbalFitParameters fit;
+  fit.sparseAmplitude.fill(0.f);
   fit.sparseFrequencyHz[0] = 7300.f;
   fit.sparseFrequencyHz[1] = 20.f;
   fit.sparseAmplitude[0] = .75f;
@@ -326,7 +393,7 @@ void TestUnifiedFieldAcceptsConstructiveAnchorEditing() {
                            return mode.packet == packet && mode.inputGain != 0.f;
                          });
   };
-  Check(activeInPacket(0) == CrashPacketModeCount && activeInPacket(1) == 1,
+  Check(activeInPacket(0) > 1 && activeInPacket(1) == 1,
         "frequency sorting keeps each edited anchor's turbulence attached");
 
   fit.sparseAmplitude.fill(0.f);
@@ -453,7 +520,7 @@ void TestBloomIsIntrinsicUpwardEnergyTransport() {
   fit.sparseAmplitude[0] = 1.f;
   fit.bodyDecaySeconds.fill(20.f);
   fit.bloomRateOctavesPerSecond = 8.f;
-  fit.bloomEnergyDependence = 0.f;
+  fit.bloomEnergyAcceleration = 0.f;
   CrashCymbal cascade;
   cascade.Prepare(sampleRate, DefaultCrashCymbalParameters(sampleRate, fit));
   cascade.Trigger({.8f, .5f, .5f, 71});
@@ -477,7 +544,9 @@ void TestStrongerStrikeAcceleratesUpwardEnergyTransport() {
   using namespace tfdsp::percussion;
   using Cascade = ModalEnergyCascade<3>;
   constexpr std::array<float, 3> frequencies{500.f, 2000.f, 8000.f};
-  constexpr std::array<float, 3> gains{1.f, 1.f, 1.f};
+  constexpr float normalizedGain = .5773502691896258f;
+  constexpr std::array<float, 3> gains{
+      normalizedGain, normalizedGain, normalizedGain};
   constexpr std::array<std::uint16_t, 3> packets{0, 1, 2};
   const std::array<float, 4> strengths{.2f, .45f, .7f, 1.f};
   std::array<float, strengths.size()> centroids{};
@@ -575,7 +644,7 @@ void TestRepeatedHitsAccumulateBodyEnergy() {
   constexpr int hitCount = 16;
   CrashCymbalFitParameters fit;
   fit.bloomRateOctavesPerSecond = 3.f;
-  fit.bloomEnergyDependence = .7f;
+  fit.bloomEnergyAcceleration = .7f;
   CrashCymbal cymbal;
   cymbal.Prepare(48000.f, DefaultCrashCymbalParameters(48000.f, fit));
   std::array<double, hitCount> intervalEnergy{};
@@ -609,7 +678,7 @@ void TestMaximumBloomRemainsBounded() {
   using namespace tfdsp::percussion;
   CrashCymbalFitParameters fit;
   fit.bloomRateOctavesPerSecond = 16.f;
-  fit.bloomEnergyDependence = 1.f;
+  fit.bloomEnergyAcceleration = 1.f;
   fit.bloomPhaseDiffusion = 1.f;
   CrashCymbal cymbal;
   cymbal.Prepare(48000.f, DefaultCrashCymbalParameters(48000.f, fit));
@@ -633,6 +702,8 @@ int main() {
   TestImplementFamiliesAreDistinct();
   TestDefaultBodyCoversTheMeasuredLowRegion();
   TestUnifiedFieldExpandsAnchorsWithoutChangingDriveEnergy();
+  TestPaintedLevelsOnlyShapeNormalizedObservation();
+  TestExcitationShelfCentreChangesNormalizedColour();
   TestUnifiedFieldAcceptsConstructiveAnchorEditing();
   TestContactCalibrationMacrosAreAudible();
   TestMuteIsPassive();

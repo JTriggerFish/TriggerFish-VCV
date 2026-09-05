@@ -35,20 +35,16 @@ public:
     std::array<float, ModeCount> center{};
     std::array<float, ModeCount> edge{};
     float sampleRate{48000.f};
-    float maximumStoredEnergy{1.f};
   };
 
-  void Prepare(const float sampleRate, const Parameters &parameters,
-               const float maximumStoredEnergy = 1.f) {
+  void Prepare(const float sampleRate, const Parameters &parameters) {
     if (!std::isfinite(sampleRate) || sampleRate < 1.f)
       throw std::invalid_argument("membrane sample rate must be positive");
-    LoadPrepared(PrepareParameters(sampleRate, parameters,
-                                   maximumStoredEnergy));
+    LoadPrepared(PrepareParameters(sampleRate, parameters));
   }
 
   static PreparedParameters PrepareParameters(
-      const float sampleRate, const Parameters &parameters,
-      const float maximumStoredEnergy = 1.f) {
+      const float sampleRate, const Parameters &parameters) {
     if (!std::isfinite(sampleRate) || sampleRate < 1.f)
       throw std::invalid_argument("membrane sample rate must be positive");
     PreparedParameters result;
@@ -73,11 +69,10 @@ public:
                           projection * projection;
       outputNormSquared += result.outputGains[mode] * result.outputGains[mode];
     }
-    // Keep loudness and stored energy independent of mode count. The two
-    // constants define the bank's calibrated force and observation units.
-    const float driveScale = .25f / std::sqrt(std::max(1.e-12f,
+    // Unit-norm spatial drive and observation; no instrument makeup gains.
+    const float driveScale = 1.f / std::sqrt(std::max(1.e-12f,
                                                        driveNormSquared));
-    const float outputScale = 2.f / std::sqrt(std::max(1.e-12f,
+    const float outputScale = 1.f / std::sqrt(std::max(1.e-12f,
                                                         outputNormSquared));
     constexpr float TwoPi = 6.28318530717958647692f;
     for (std::size_t mode = 0; mode < ModeCount; ++mode) {
@@ -87,8 +82,6 @@ public:
       result.cosines[mode] = std::cos(angle);
       result.sines[mode] = std::sin(angle);
     }
-    result.maximumStoredEnergy = std::clamp(
-        tfdsp::FiniteNormalOrZero(maximumStoredEnergy), .001f, 64.f);
     return result;
   }
 
@@ -102,7 +95,6 @@ public:
     outputGains_ = prepared.outputGains;
     center_ = prepared.center;
     edge_ = prepared.edge;
-    maximumStoredEnergy_ = prepared.maximumStoredEnergy;
     tensionScale_ = 1.f;
     Reset();
   }
@@ -127,9 +119,6 @@ public:
   float Process(const Drive &drive, const float tensionScale) noexcept {
     UpdateCoefficients(tensionScale);
     std::array<float, ModeCount> forces{};
-    float baseEnergy = 0.f;
-    float driveEnergy = 0.f;
-    float crossEnergy = 0.f;
     for (std::size_t mode = 0; mode < ModeCount; ++mode) {
       const float priorReal = real_[mode];
       const float priorImaginary = imaginary_[mode];
@@ -141,17 +130,11 @@ public:
       imaginary_[mode] = tfdsp::FiniteNormalOrZero(
           radii_[mode] * (sines_[mode] * priorReal +
                           cosines_[mode] * priorImaginary));
-      baseEnergy += real_[mode] * real_[mode] +
-                    imaginary_[mode] * imaginary_[mode];
-      crossEnergy += real_[mode] * forces[mode];
-      driveEnergy += forces[mode] * forces[mode];
     }
-    const float driveScale = AvailableDriveScale(
-        baseEnergy, crossEnergy, driveEnergy);
     float output = 0.f;
     for (std::size_t mode = 0; mode < ModeCount; ++mode) {
       real_[mode] = tfdsp::FiniteNormalOrZero(
-          real_[mode] + driveScale * forces[mode]);
+          real_[mode] + forces[mode]);
       output += outputGains_[mode] * real_[mode];
     }
     return tfdsp::FiniteNormalOrZero(output);
@@ -168,18 +151,6 @@ public:
 private:
   static float SafeGain(const float value, const float maximum) noexcept {
     return std::clamp(tfdsp::FiniteNormalOrZero(value), -maximum, maximum);
-  }
-
-  float AvailableDriveScale(const float baseEnergy, const float crossEnergy,
-                            const float driveEnergy) const noexcept {
-    const float proposed = baseEnergy + 2.f * crossEnergy + driveEnergy;
-    if (proposed <= maximumStoredEnergy_) return 1.f;
-    if (driveEnergy <= 1.e-20f) return 0.f;
-    const float discriminant = crossEnergy * crossEnergy + driveEnergy *
-        std::max(0.f, maximumStoredEnergy_ - baseEnergy);
-    return std::clamp((-crossEnergy + std::sqrt(discriminant)) /
-                          driveEnergy,
-                      0.f, 1.f);
   }
 
   void UpdateCoefficients(float tensionScale) noexcept {
@@ -215,7 +186,6 @@ private:
   std::array<float, ModeCount> edge_{};
   float sampleRate_{48000.f};
   float tensionScale_{-1.f};
-  float maximumStoredEnergy_{1.f};
   std::size_t updateCountdown_{};
 };
 

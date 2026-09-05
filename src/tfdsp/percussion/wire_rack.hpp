@@ -13,7 +13,7 @@ namespace tfdsp::percussion {
 inline constexpr std::size_t WireRackModeCount = 48;
 
 struct WireRackParameters {
-  float sensitivity{9.f};
+  float sensitivity{1.125f};
   float threshold{.004f};
   float motionHighpassHz{140.f};
   float attackSeconds{.002f};
@@ -26,7 +26,6 @@ struct WireRackParameters {
   float brightness{.62f};
   float noiseMix{.6f};
   float modalMix{.75f};
-  float maximumModalEnergy{16.f};
   std::uint32_t seed{0x57495245u};
 };
 
@@ -41,12 +40,11 @@ struct WireRackPreparedParameters {
   float motionCoefficient{};
   float attackCoefficient{};
   float releaseCoefficient{};
-  float sensitivity{9.f};
+  float sensitivity{1.125f};
   float threshold{.004f};
   float noiseTiltDb{};
   float noiseMix{.6f};
   float modalMix{.75f};
-  float maximumModalEnergy{16.f};
   std::size_t activeModeCount{WireRackModeCount};
   std::uint32_t seed{0x57495245u};
 };
@@ -68,9 +66,6 @@ public:
   float ContactAmount() const noexcept { return contactEnvelope_; }
 
 private:
-  float AvailableDriveScale(float baseEnergy, float crossEnergy,
-                            float driveEnergy) const noexcept;
-
   std::array<float, WireRackModeCount> real_{};
   std::array<float, WireRackModeCount> imaginary_{};
   WireRackPreparedParameters parameters_{};

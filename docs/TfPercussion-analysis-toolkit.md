@@ -193,7 +193,7 @@ clean exponential slope in STFT-window leakage from being mistaken for a real
 high-frequency mode: fit quality alone cannot make an inaudible band valid.
 
 The production envelope has two default active points. Their positions are
-fixed at DC and Nyquist, while their T60 values remain editable. Between them,
+fixed at 40 Hz and 15 kHz, while their T60 values remain editable. Between them,
 the renderer interpolates linearly in ERB rate and logarithmically in seconds.
 The estimator uses the identical parameterization and fits the two log-T60
 values by robust, quality-weighted least squares across reliable audible

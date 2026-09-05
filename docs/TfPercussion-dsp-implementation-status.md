@@ -17,7 +17,7 @@ instrument or Rack module.
 | Spectral motion | 255-tap antisymmetric FIR Hilbert transformer, phase-continuous signed SSB frequency shifter, and fourth-order translation-band guards | wanted level, image rejection, exact zero shift, through-zero automation, DC/Nyquist translated-content rejection, five sample rates |
 | Resonance and loss | arbitrary damped modal bank, deterministic statistical modal cloud, modal passive-loss adapter, complementary three-band delay loss, orthogonal Givens mixer, projected wet-only fractional-comb network, explicit output submix | analytic modal frequency/T60 recurrence, independent projections, cloud determinism/range/normalization, passive attenuation, exact zero-coupling identity, scattering energy, delay T60 recurrence, excitation isolation, group routing |
 | Reusable nonlinear dispersion | slow stochastic delay, 2x oversampled bounded self-phase delay with a 4x reference implementation, serial four-all-pass dispersion loop with explicit outer feedback; retained as an optional building block but disconnected from the active cymbal recipe | 1x/2x comparison against 4x, causal onset and declared recurrence delay, zero-drive linear reduction, no hidden feedback sample, long contractive stress |
-| Active cymbal energy transport | passive adjacent-packet upward cascade operating on the modal field's stored complex states, with energy-dependent rate and magnitude-preserving destination phase diffusion | energy conservation, one-boundary-per-sample progression, upward centroid motion, stronger-strike acceleration isolated from velocity tilt, maximum-control boundedness |
+| Active cymbal energy transport | passive fixed-half-octave upward transport interpolated onto painted packets, with field-wide energy acceleration and magnitude-preserving destination phase diffusion | energy conservation, anchor-density-invariant arrival, no same-sample retransmission, upward centroid motion, stronger-strike acceleration isolated from velocity tilt, centre/sideband balance |
 | Radiation | guarded TDF2 biquad designs and a static high-pass/colour/low-pass chain | centre gain, pass/reject bands, sample-rate sweep, non-finite recovery |
 | Observation | zero-capable static fractional delay and per-source gain, polarity, delay, and radiation paths | exact zero and integer delay, source isolation, polarity, non-finite recovery |
 
@@ -82,16 +82,16 @@ STFT analysis.
 
 | Path | Current |
 | --- | ---: |
-| Unified 408-mode crash with intrinsic cascade | 1,858 ns/sample |
+| Unified 268-state pooled crash with intrinsic cascade | 1,348 ns/sample |
 | Compact FM kick | 275 ns/sample |
-| Isolated unified field, cascade, phase and exchange | 1,946 ns/sample |
+| Isolated 268-state field, cascade, phase and exchange | 1,348 ns/sample |
 | Isolated dispersion loop | 143 ns/sample |
 | Isolated 512-mode cloud | 529 ns/sample |
 
-The unified crash uses about 8.9% of one core at 48 kHz. Its measured 128-frame
-p99, including a hit in the sampled tail, is 284 microseconds inside a
-2,667-microsecond deadline (10.6%). Its measured 16-frame p99 is 44 microseconds
-inside a 333-microsecond deadline (13.3%). These figures qualify
+The unified crash uses about 6.5% of one core at 48 kHz. Its measured 128-frame
+p99, including a hit in the sampled tail, is 242 microseconds inside a
+2,667-microsecond deadline (9.1%). Its measured 16-frame p99 is 47 microseconds
+inside a 333-microsecond deadline (14.2%). These figures qualify
 one native monophonic core, not a complete Rack patch or a 96 kHz budget.
 
 The modal bank sanitizes stable hit projections once, caches safe per-mode
@@ -109,16 +109,15 @@ and exchange passes. Static packet compatibility is removed from the audio
 loop. Neighbour exchange operates on states already sanitized by propagation,
 so it does not repeat finite/subnormal classification inside a bounded
 orthogonal transform. A unified hit no longer prepares the inactive legacy
-4,096-mode projections. Together these changes reduced the same 408-state
-topology from 4,014 to 1,149 ns/sample; they change stochastic realization but
-not the fitted modal, decay, projection, diffusion, or exchange parameters.
+4,096-mode projections. The current pooled default prepares 268 of its maximum
+512 states; preparation-time allocation changes stochastic resolution without
+changing the painted centres, drive-energy normalization, or cascade speed.
 The intrinsic cascade first measured 3,844 ns/sample when it recomputed octave
 gaps and transcendental transfer/rotation functions at every packet boundary.
-Frequency gaps are now prepared once; packet energy is measured once per
-sample; all adjacent transfers are solved before one combined state update per
+Frequency routes are now prepared once; packet energy is measured once per
+sample; all stencil transfers are solved before one combined state update per
 packet; and bounded Padé/polynomial evaluations replace the hot `expm1`, `sin`,
-and `cos` calls while retaining explicit energy normalization. This reduced the
-same crash to 1,858 ns/sample without changing its energy-flow topology.
+and `cos` calls while retaining explicit energy normalization.
 
 The remaining optimization order is:
 
@@ -185,9 +184,11 @@ turbulent residual. Those primitive implementations remain available for later
 instruments, but the old graph, routing, state, and A/B selector are
 disconnected from `CrashCymbal` and the workbench.
 
-The active body is one 408-mode stochastic field derived from
-twenty-four editable anchors in a 40 Hz--15 kHz constructive design range. Each anchor expands to a coherent centre mode and
-sixteen nearby satellites. Turbulence transfers normalized excitation energy
+The active body is one stochastic field with a 512-state ceiling derived from
+zero to 32 editable centre handles in a 40 Hz--15 kHz constructive design
+range. Each active handle reserves its coherent centre; deterministic sideband
+pairs are assigned from the shared remainder during preparation. Turbulence
+transfers normalized excitation energy
 from the centre to the satellites, widens their ERB-scaled frequency packet,
 and enables energy-preserving phase diffusion. At high settings it also turns
 on alternating local Givens rotations, allowing passive energy exchange within
@@ -195,8 +196,9 @@ and between neighbouring packets. A per-anchor response scaler can keep
 selected ridges clean while the global control diffuses the rest. Pole radii
 and the external mute controller
 remain the only declared loss mechanisms. Bloom moves actual stored energy
-upward through adjacent packets; it is not a delayed signal or output layer.
-Its rate is explicitly energy-dependent, so stronger strikes progress farther
+upward through a fixed-distance stencil interpolated onto the packets; it is
+not a delayed signal or output layer. Its rate is explicitly energy-dependent,
+so stronger strikes progress farther
 upward even when the separate velocity-brightness projection is disabled. The
 field uses one body observation/radiation path.
 

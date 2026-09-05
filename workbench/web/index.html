@@ -59,7 +59,7 @@
     <label class="file subtle">Other WAVs<input id="reference-files" type="file" accept=".wav,audio/wav" multiple></label>
     <button id="play-reference">Reference</button><button id="play-synthesis">Trigger synth</button>
     <button id="stop">Stop</button>
-    <span id="calibration-trim">Corpus monitor gain 0.0 dB</span>
+    <label title="Manual source gain, shared across this corpus's velocity layers and saved with snapshots. No loudness matching. Double-click restores the corpus default.">Reference gain <input id="reference-gain" type="range" min="-120" max="120" value="0" step="0.5" disabled><output>0.0 dB</output></label>
     <label>Master <input id="master" type="range" min="-48" max="0" value="-12" step="0.5"><output>-12 dB</output></label>
     <span id="limiter">Limiter 0.0 dB</span>
   </nav>
@@ -115,10 +115,10 @@
           </details>
           <details open data-module-id="kick-click"><summary data-tooltip="A short tilted noise burst for beater contact.">Click source</summary><div id="kick-click-controls" data-kick-controls></div></details>
           <details open data-module-id="kick-observation"><summary data-tooltip="Static output radiation filtering; it does not feed the synthesis branches.">Kick observation</summary><div id="kick-observation-controls" data-kick-controls></div></details>
-          <details open data-module-id="body"><summary data-tooltip="One interpolated frequency-dependent decay curve shared by the modal body.">Body T60</summary>
+          <details open data-module-id="body"><summary data-tooltip="One interpolated frequency-dependent loss curve applied directly to every modal state.">Modal T60 curve</summary>
             <div class="decay-heading"><p class="control-help">Absolute decay curve shared by every mode. Drag the diamond to move the whole curve.</p><span id="decay-readout">2/8 knots</span></div>
             <div id="decay-editor" data-fit-controls></div>
-            <div class="decay-gesture-help">Double-click empty space to add · double-click an interior knot or press Delete to remove · endpoint frequencies stay at DC and Nyquist</div>
+            <div class="decay-gesture-help">Double-click empty space to add · double-click an interior knot or press Delete to remove · endpoint frequencies stay at 40 Hz and 15 kHz</div>
             <div id="decay-selection" class="selection-controls" data-fit-controls></div>
           </details>
           <details open data-module-id="observation"><summary data-tooltip="Broad output bandwidth and colour controls; these filters do not alter stored modal decay.">Output colour</summary>
@@ -198,13 +198,13 @@
       <section class="modal-design" data-module-id="body">
         <div class="modal-design-heading">
           <div><h2>Modal packet design</h2><p>Centre lines are coherent modes; translucent bells show their turbulence-driven packet width.</p></div>
-          <span id="modal-readout">24/24 active modes</span>
+          <span id="modal-readout">24/32 active anchors</span>
         </div>
         <div class="modal-toolbar" role="toolbar" aria-label="Modal editor tools">
           <div class="modal-tool-group" aria-label="Editing mode">
             <span>Tool</span>
             <button id="modal-tool-edit" class="active" aria-pressed="true" data-tooltip="Select and move anchors. Drag a centre for frequency and level; drag a wing or Ctrl-drag to change its local turbulence width. Shift gives fine movement.">Select &amp; shape</button>
-            <button id="modal-tool-level" aria-pressed="false" data-tooltip="Shape the levels of existing anchors with a Gaussian brush without creating new anchors.">Level brush</button>
+            <button id="modal-tool-level" aria-pressed="false" data-tooltip="Shape the observation prominence of existing anchors with a Gaussian brush without creating new anchors.">Prominence brush</button>
             <button id="modal-tool-paint" aria-pressed="false" data-tooltip="Paint modal anchors continuously. Dragging activates available anchors and shapes nearby levels; Shift narrows the brush and Ctrl widens it.">Paint modes</button>
           </div>
           <label data-tooltip="Gaussian width for the Level brush and Paint modes tools.">Brush <input id="modal-brush" type="range" min="0.15" max="5" value="1" step="0.05"><output>1.00 ERB</output></label>
@@ -222,7 +222,7 @@
           <button id="harmonic-snap-all" disabled data-tooltip="Move every active modal centre to its nearest harmonic while preserving its level, decay, and turbulence.">Snap active</button>
         </div>
         <div id="modal-editor" data-fit-controls></div>
-        <div class="modal-gesture-help">Select &amp; shape: double-click to insert/remove, wheel or wing drag changes width · Level brush: reshape existing anchors · Paint modes: drag to create and shape</div>
+        <div class="modal-gesture-help">Select &amp; shape: double-click to insert/remove, wheel or wing drag changes width · Prominence brush: reshape existing anchors · Paint modes: drag to create and shape</div>
         <div id="modal-selection" class="selection-controls" data-fit-controls></div>
       </section>
     </section>

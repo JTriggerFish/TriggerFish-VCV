@@ -103,8 +103,14 @@ def test_python_modal_grid_matches_the_native_constructive_defaults():
 
 
 def test_fit_mapping_accepts_only_current_named_fields():
-    fit = CrashFit.from_mapping({"body_tilt_db_per_octave": 2.0})
+    fit = CrashFit.from_mapping(
+        {
+            "body_tilt_db_per_octave": 2.0,
+            "body_excitation_centre_hz": 1800.0,
+        }
+    )
     assert fit.body_tilt_db_per_octave == 2.0
+    assert fit.body_excitation_centre_hz == 1800.0
     with pytest.raises(ValueError, match="unknown crash fit fields"):
         CrashFit.from_mapping({"dense_tilt_db_per_octave": 2.0})
 
@@ -156,7 +162,7 @@ def test_spectral_profile_refinement_cannot_collapse_source_balance():
     names = temporal_spectral_parameter_names()
     assert "direct_gain" not in names
     assert "bloom_rate_octaves_per_second" in names
-    assert "bloom_energy_dependence" in names
+    assert "bloom_energy_acceleration" in names
 
 
 def test_unified_fit_can_identify_intrinsic_bloom_separately_from_body_level():
@@ -164,7 +170,7 @@ def test_unified_fit_can_identify_intrinsic_bloom_separately_from_body_level():
     for name in ("unified-initial-body", "unified-bloom"):
         parameters = {item.name for item in stages[name].parameters}
         assert "bloom_rate_octaves_per_second" in parameters
-        assert "bloom_energy_dependence" in parameters
+        assert "bloom_energy_acceleration" in parameters
         assert "field_gain" in parameters or name == "unified-bloom"
 
 
@@ -547,9 +553,9 @@ def test_reference_residual_subtracts_an_explicit_persistent_mode():
     tau_seconds = 0.7
     samples = np.exp(-time / tau_seconds) * np.cos(2 * np.pi * 1000.0 * time)
     fit = CrashFit(
-        sparse_frequency_hz=(1000.0,) + (2000.0,) * 23,
+        sparse_frequency_hz=(1000.0,) + (2000.0,) * 31,
         body_decay_seconds=(np.log(1000.0) * tau_seconds,) * 8,
-        sparse_amplitude=(1.0,) + (0.0,) * 23,
+        sparse_amplitude=(1.0,) + (0.0,) * 31,
     )
     cell = CrashFitCell("synthetic", AudioBuffer(samples, sample_rate), 1.0)
     modal, residual = reference_modal_residual(cell, fit)

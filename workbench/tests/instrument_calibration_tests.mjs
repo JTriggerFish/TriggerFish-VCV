@@ -5,8 +5,9 @@ import { calibrationParameterValues, calibrationPatch } from
 
 const descriptors = [
   ["impact_width", 1, .25, 4, "logarithmic"],
-  ["bloom_energy_dependence", .35, 0, 1, "linear"],
-  ["body_brightness", 0, -24, 24, "linear"],
+  ["bloom_energy_acceleration", .35, 0, 1, "linear"],
+  ["body_brightness", 0, -72, 24, "linear"],
+  ["body_excitation_centre", 1000, 40, 15000, "logarithmic"],
   ["field_turbulence", .4, 0, 1, "linear"],
   ["body_decay_seconds_0", 3, .05, 20, "logarithmic"],
   ["body_decay_active_1", 0, 0, 1, "boolean"],
@@ -32,7 +33,8 @@ assert.throws(() => calibrationParameterValues(
 const gong = calibrationParameterValues(
   { parameter_preset: "gong-v1" }, descriptors);
 assert.deepEqual(gong, [
-  2.2, 1, -10, .72, 12, 0, 0, 128.9, -23, -35, .15, 1.7, 25, 2,
+  2.2, .8, -56, 1100, .72, 12, 0, 0, 128.9, -12.12, 0, .15,
+  1.1, 25, 2,
 ]);
 
 const membraneDescriptors = [

@@ -56,7 +56,7 @@ PrepareWireRackParameters(const float sampleRate,
     outputNormSquared += gain * gain;
   }
   const float outputScale =
-      1.25f / std::sqrt(std::max(outputNormSquared, 1.e-12f));
+      1.f / std::sqrt(std::max(outputNormSquared, 1.e-12f));
   for (std::size_t mode = 0; mode < result.activeModeCount; ++mode)
     result.modeOutputGain[mode] *= outputScale;
   const float motionHz =
@@ -66,12 +66,11 @@ PrepareWireRackParameters(const float sampleRate,
   result.attackCoefficient = std::exp(-1.f / (attack * sampleRate));
   const float release = Safe(source.releaseSeconds, .018f, .0005f, 1.f);
   result.releaseCoefficient = std::exp(-1.f / (release * sampleRate));
-  result.sensitivity = Safe(source.sensitivity, 9.f, 0.f, 64.f);
+  result.sensitivity = Safe(source.sensitivity, 1.125f, 0.f, 8.f);
   result.threshold = Safe(source.threshold, .004f, 0.f, 1.f);
   result.noiseTiltDb = 16.f * (Safe(source.brightness, .62f, 0.f, 1.f) - .5f);
   result.noiseMix = Safe(source.noiseMix, .6f, 0.f, 2.f);
   result.modalMix = Safe(source.modalMix, .75f, 0.f, 2.f);
-  result.maximumModalEnergy = Safe(source.maximumModalEnergy, 16.f, .001f, 64.f);
   result.seed = source.seed;
   return result;
 }
@@ -112,20 +111,17 @@ float WireRack::Process(float bodyMotion) noexcept {
                                (1.f - parameters_.attackCoefficient) * target
                          : parameters_.releaseCoefficient * contactEnvelope_;
   contactEnvelope_ = tfdsp::FiniteNormalOrZero(contactEnvelope_);
-  // Sensitivity is calibrated in useful UI units. The fixed scale keeps
-  // ordinary membrane motion below the emergency state-energy guard without
-  // flattening it through a clip.
-  const float linearContact = .125f * parameters_.sensitivity * contactEnvelope_;
+  const float linearContact = parameters_.sensitivity * contactEnvelope_;
   // Wire contact grows with both the number of touching strands and their
   // individual force. Squaring the normalized follower gives a smooth onset
   // without introducing a second trigger or a delayed noise burst.
   const float contact = linearContact * linearContact;
   const float noise = tilt_.Process(1.7320508075688772f * random_.Bipolar());
   const float drive = contact * noise;
+  // Continuous noise drive: contact controls sqrt(energy/second).
+  // The audible noise port stays in audio units; only modal injection uses dt.
+  const float modalDrive = drive / std::sqrt(parameters_.sampleRate);
 
-  float baseEnergy = 0.f;
-  float crossEnergy = 0.f;
-  float driveEnergy = 0.f;
   const float inputGain =
       1.f / std::sqrt(static_cast<float>(parameters_.activeModeCount));
   for (std::size_t mode = 0; mode < parameters_.activeModeCount; ++mode) {
@@ -137,19 +133,10 @@ float WireRack::Process(float bodyMotion) noexcept {
     imaginary_[mode] =
         parameters_.radius[mode] * (parameters_.sine[mode] * priorReal +
                                     parameters_.cosine[mode] * priorImaginary);
-    const float force = inputGain * drive;
-    baseEnergy +=
-        real_[mode] * real_[mode] + imaginary_[mode] * imaginary_[mode];
-    crossEnergy +=
-        force * (parameters_.inputPhaseCosine[mode] * real_[mode] +
-                 parameters_.inputPhaseSine[mode] * imaginary_[mode]);
-    driveEnergy += force * force;
   }
-  const float driveScale =
-      AvailableDriveScale(baseEnergy, crossEnergy, driveEnergy);
   float modal = 0.f;
   for (std::size_t mode = 0; mode < parameters_.activeModeCount; ++mode) {
-    const float force = driveScale * inputGain * drive;
+    const float force = inputGain * modalDrive;
     real_[mode] = tfdsp::FiniteNormalOrZero(
         real_[mode] + parameters_.inputPhaseCosine[mode] * force);
     imaginary_[mode] = tfdsp::FiniteNormalOrZero(
@@ -165,21 +152,6 @@ float WireRack::StoredEnergy() const noexcept {
   for (std::size_t mode = 0; mode < parameters_.activeModeCount; ++mode)
     result += real_[mode] * real_[mode] + imaginary_[mode] * imaginary_[mode];
   return tfdsp::FiniteNormalOrZero(result);
-}
-
-float WireRack::AvailableDriveScale(const float baseEnergy,
-                                    const float crossEnergy,
-                                    const float driveEnergy) const noexcept {
-  const float proposed = baseEnergy + 2.f * crossEnergy + driveEnergy;
-  if (proposed <= parameters_.maximumModalEnergy)
-    return 1.f;
-  if (driveEnergy <= 1.e-20f)
-    return 0.f;
-  const float discriminant =
-      crossEnergy * crossEnergy +
-      driveEnergy * std::max(0.f, parameters_.maximumModalEnergy - baseEnergy);
-  return std::clamp((-crossEnergy + std::sqrt(discriminant)) / driveEnergy, 0.f,
-                    1.f);
 }
 
 } // namespace tfdsp::percussion

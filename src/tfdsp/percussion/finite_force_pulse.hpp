@@ -1,6 +1,7 @@
 #pragma once
 
 #include "tfdsp/finite_audio.hpp"
+#include "contact_normalization.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -62,6 +63,10 @@ public:
   }
 
   bool Active() const noexcept { return sample_ < sampleCount_; }
+
+  float BodyImpulseScale() const noexcept {
+    return contact_normalization::HalfSineImpulseScale(sampleCount_);
+  }
 
 private:
   float sampleRate_{48000.f};

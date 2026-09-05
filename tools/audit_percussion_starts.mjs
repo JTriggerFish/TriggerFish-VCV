@@ -9,7 +9,7 @@ const site = resolve(process.argv[2] ?? "build/workbench-wasm/site");
 const baseUrl = new URL(process.argv[3] ?? "http://127.0.0.1:8765");
 const importFromSite = name => import(pathToFileURL(resolve(site, name)));
 const { PercussionEngine } = await importFromSite("engine.mjs");
-const { decodeWav } = await importFromSite("references.mjs");
+const { decodeWav, calibrateReference } = await importFromSite("references.mjs");
 const { centeredErrorStatistics, stft } = await importFromSite("analysis.mjs");
 const { calibrationParameterValues, calibrationPatch } =
   await importFromSite("instrument_calibrations.mjs");
@@ -39,6 +39,36 @@ function peak(samples) {
   let result = 0;
   for (const sample of samples) result = Math.max(result, Math.abs(sample));
   return result;
+}
+
+// Fixed-parameter headroom check, not normalization or reference matching.
+function repeatedHitPeakDb(engine, event) {
+  engine.reset();
+  const block = new Float32Array(Math.round(engine.sampleRate * .25));
+  let maximum = 0;
+  for (let hit = 0; hit < 8; ++hit) {
+    engine.trigger({ ...event, strength: 1, seed: 17 + hit });
+    engine.processTo(block, 0, block.length);
+    maximum = Math.max(maximum, peak(block));
+  }
+  return 20 * Math.log10(Math.max(maximum, 1e-30));
+}
+
+async function factoryLevels() {
+  const engine = await PercussionEngine.create(48000);
+  try {
+    return engine.recipes.map(recipe => {
+      engine.setRecipe(recipe.index);
+      const parameters = engine.parameters.map(item => item.defaultValue);
+      const event = { strength: .8, location: .8, implement: 1, hardness: .65 };
+      const samples = engine.render({ seconds: 2, parameters, ...event });
+      return {
+        recipe: recipe.key, modelLevelDb: parameters[0],
+        singlePeakDb: 20 * Math.log10(Math.max(peak(samples), 1e-30)),
+        repeatedPeakDb: repeatedHitPeakDb(engine, event),
+      };
+    });
+  } finally { engine.destroy(); }
 }
 
 function ratioDb(numerator, denominator) {
@@ -112,7 +142,10 @@ function compareProfiles(reference, synthesis) {
 async function loadReference(corpus, cell) {
   const response = await fetch(new URL(cell.url, baseUrl));
   if (!response.ok) throw new Error(`could not load ${cell.label}`);
-  return decodeWav(await response.arrayBuffer(), cell.label);
+  return calibrateReference(
+    await decodeWav(await response.arrayBuffer(), cell.label),
+    corpus.reference_gain_db ?? 0,
+  );
 }
 
 async function audit(corpus) {
@@ -169,6 +202,11 @@ async function audit(corpus) {
       recipe: recipe.key, reference: cell.label,
       durationSeconds: seconds,
       modelLevelDb: parameters[0],
+      referenceGainDb: reference.referenceGainDb,
+      synthesisPeakDb: 20 * Math.log10(Math.max(peak(synthesis), 1e-30)),
+      referencePeakDb: 20 * Math.log10(Math.max(peak(alignedReference), 1e-30)),
+      synthesisRmsDb: 10 * Math.log10(Math.max(energy(synthesis) / synthesis.length, 1e-30)),
+      repeatedPeakDb: repeatedHitPeakDb(engine, cell),
       levelErrorDb,
       peakErrorDb: 20 * Math.log10(
         Math.max(peak(synthesis), 1e-30) /
@@ -195,5 +233,6 @@ const starts = [];
 for (const corpus of corpora) starts.push(await audit(corpus));
 console.log(JSON.stringify({
   note: "Diagnostics only. A numerical result never promotes a listening start.",
+  factoryLevels: await factoryLevels(),
   bandEdgesHz: BandEdges, regions: Regions, starts,
 }, null, 2));

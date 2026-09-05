@@ -34,7 +34,7 @@ class BoundedParameter:
 
 TEMPORAL_PARAMETERS = (
     BoundedParameter("bloom_rate_octaves_per_second", 0.0, 16.0),
-    BoundedParameter("bloom_energy_dependence", 0.0, 1.0),
+    BoundedParameter("bloom_energy_acceleration", 0.0, 1.0),
     BoundedParameter("bloom_phase_diffusion", 0.0, 1.0),
     BoundedParameter("field_turbulence_slope_per_octave", -1.0, 1.0),
     BoundedParameter("field_turbulence_centre_hz", 40.0, 15000.0),

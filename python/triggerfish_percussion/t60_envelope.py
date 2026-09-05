@@ -14,8 +14,8 @@ from .transforms import StftConfig, stft
 
 @dataclass(frozen=True)
 class T60EnvelopeFit:
-    dc_seconds: float
-    nyquist_seconds: float
+    low_seconds: float
+    high_seconds: float
     log_rmse: float
     band_frequencies_hz: np.ndarray
     measured_seconds: np.ndarray
@@ -38,13 +38,14 @@ def interpolate_t60(
         raise ValueError("T60 point arrays must have matching shapes")
     if frequencies.ndim != 1 or frequencies.size < 2:
         raise ValueError("a T60 envelope needs at least two points")
-    frequencies[0] = 0.0
-    frequencies[-1] = 0.5 * sample_rate
+    del sample_rate
+    frequencies[0] = 40.0
+    frequencies[-1] = 15_000.0
     if not active[0] or not active[-1] or np.count_nonzero(active) < 2:
-        raise ValueError("the DC and Nyquist T60 points must be active")
+        raise ValueError("the 40 Hz and 15 kHz T60 points must be active")
     if np.any(seconds[active] <= 0.0) or not np.isfinite(seconds[active]).all():
         raise ValueError("active T60 values must be finite and positive")
-    frequencies[1:-1] = np.clip(frequencies[1:-1], 1.0, 0.5 * sample_rate - 1.0)
+    frequencies[1:-1] = np.clip(frequencies[1:-1], 40.0, 15_000.0)
     seconds = np.clip(seconds, 0.01, 30.0)
     order = np.argsort(frequencies[active])
     rates = erb_rate(frequencies[active][order])
@@ -125,7 +126,8 @@ def fit_two_point_t60(
     sample_rate: int,
     minimum_r_squared: float = 0.95,
 ) -> T60EnvelopeFit:
-    """Fit only DC and Nyquist log-T60 values to measured band slopes."""
+    """Fit the fixed 40 Hz and 15 kHz log-T60 boundary values."""
+    del sample_rate
     frequencies = np.asarray(band_frequencies_hz, dtype=np.float64)
     if frequencies.shape != (len(band_fits),):
         raise ValueError("T60 frequencies must match the band fits")
@@ -142,8 +144,13 @@ def fit_two_point_t60(
     if np.count_nonzero(valid) < 2:
         raise ValueError("fewer than two reliable T60 bands were measured")
 
-    nyquist_rate = float(erb_rate(0.5 * sample_rate))
-    positions = erb_rate(frequencies[valid]) / nyquist_rate
+    low_rate = float(erb_rate(40.0))
+    high_rate = float(erb_rate(15_000.0))
+    positions = np.clip(
+        (erb_rate(frequencies[valid]) - low_rate) / (high_rate - low_rate),
+        0.0,
+        1.0,
+    )
     design = np.column_stack((1.0 - positions, positions))
     quality = np.asarray(
         [max(item.r_squared, 0.0) * max(item.sample_count, 1) for item in band_fits]
@@ -163,8 +170,8 @@ def fit_two_point_t60(
     predicted = np.exp(design @ coefficients)
     error = np.log(predicted) - np.log(measured[valid])
     return T60EnvelopeFit(
-        dc_seconds=float(np.exp(coefficients[0])),
-        nyquist_seconds=float(np.exp(coefficients[1])),
+        low_seconds=float(np.exp(coefficients[0])),
+        high_seconds=float(np.exp(coefficients[1])),
         log_rmse=float(np.sqrt(np.mean(np.square(error)))),
         band_frequencies_hz=frequencies[valid],
         measured_seconds=measured[valid],
@@ -174,8 +181,16 @@ def fit_two_point_t60(
 
 
 def recover_two_point_t60(
-    samples: np.ndarray, sample_rate: int, **measurement_options
+    samples: np.ndarray,
+    sample_rate: int,
+    minimum_r_squared: float = 0.95,
+    **measurement_options,
 ) -> T60EnvelopeFit:
     """Measure an audio decay and recover its two production T60 endpoints."""
     frequencies, fits = measure_band_t60(samples, sample_rate, **measurement_options)
-    return fit_two_point_t60(frequencies, fits, sample_rate)
+    return fit_two_point_t60(
+        frequencies,
+        fits,
+        sample_rate,
+        minimum_r_squared=minimum_r_squared,
+    )

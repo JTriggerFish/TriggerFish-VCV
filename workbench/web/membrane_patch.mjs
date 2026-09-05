@@ -59,6 +59,7 @@ const Presets = Object.freeze({
     id: "factory.membrane.tom-01",
     name: "Open tom",
     values: {
+      model_level_db: -6,
       fundamental_hz: 105, decay_seconds: 1.15, decay_tilt: .55,
       inharmonicity: .35, body_brightness: .55, tension_octaves: .11,
       tension_decay_seconds: .13,
@@ -66,7 +67,7 @@ const Presets = Object.freeze({
       contact_duration_seconds: .004, contact_brightness: .58,
       fm_direct_level: .0144, fm_body_level: .081,
       fm_depth_hz: 260, fm_decay_seconds: .07,
-      pitch_drop_octaves: .28, direct_level: .3, body_level: 1,
+      pitch_drop_octaves: .28, direct_level: .9, body_level: 3,
       low_cut_hz: 24, high_cut_hz: 18000,
     },
   },
