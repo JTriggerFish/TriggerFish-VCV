@@ -22,6 +22,7 @@ from kick_fit_stages import refine
 from kick_fit_start import load_start
 from kick_playability import check_playability
 from kick_fit_sources import source_audit
+from kick_modal_refinement import refine_modal_alternatives
 from triggerfish_percussion.modal_fit_initialization import (
     spectral_mode_candidates,
     reference_modal_starts,
@@ -123,6 +124,8 @@ def main():
         if os.environ.get("TF_KICK_SOURCE_AUDIT") == "1":
             source_audit(renderer, search.parameters, OUTPUT / "sources")
             return
+        if os.environ.get("TF_KICK_MODAL_RESTARTS") == "1":
+            refine_modal_alternatives(search, spectral_mode_candidates(reference, rate))
         print(json.dumps(dict(baseline=loss.diagnostics(baseline))), flush=True)
         # No output-EQ variables or hidden modal templates participate in fitting.
         fine = os.environ.get("TF_KICK_FINE_ONLY") == "1"

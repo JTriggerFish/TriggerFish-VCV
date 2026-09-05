@@ -54,9 +54,9 @@ try {
   if (ready.result.value !== true) throw new Error(JSON.stringify(ready));
   const checked = await call("Runtime.evaluate", {
     expression: `(async()=>{
-      const fit=await(await fetch('candidate.fit.json')).json();
+      const fit=await(await fetch(document.querySelector('a[download]').getAttribute('href'))).json();
       const audio=await Promise.all(['reference','candidate'].map(async name=>
-        (await(await fetch(name+'.wav')).arrayBuffer()).byteLength>100000));
+        (await(await fetch(document.querySelector('[data-audio="'+name+'"]').dataset.file??name+'.wav')).arrayBuffer()).byteLength>100000));
       const active=fit.instrument.nodes.flatMap(n=>Object.entries(n.parameters))
         .filter(([k,v])=>/^body_decay_active_[1-6]$/.test(k)&&v>=.5);
       document.querySelector('[data-audio="candidate"]').click();

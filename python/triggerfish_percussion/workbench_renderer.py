@@ -16,6 +16,7 @@ class WorkbenchRenderer:
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             text=True,
+            encoding="utf-8",
         )
         try:
             self.metadata = self.request(command="initialize", id=target)

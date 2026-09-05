@@ -80,3 +80,46 @@ def reference_modal_starts(
                 (f"reference peaks: {count} modes, {falloff} dB/oct", values)
             )
     return results
+
+
+def extended_modal_starts(parameters, proposals, *, capacity=16, keep=2):
+    """Keep the best current low-body handles; add measured upper proposals.
+
+    Reuses the explicit membrane parameter schema. This is a design-time
+    starting-grid operation, never a hidden runtime frequency mapping.
+    """
+    active = [
+        i for i in range(capacity) if parameters[f"resonance_level_{i}"] > -71.999
+    ]
+    retained = sorted(
+        active, key=lambda i: parameters[f"resonance_level_{i}"], reverse=True
+    )[:keep]
+    used = [parameters[f"resonance_frequency_{i}"] for i in retained]
+    peaks = sorted(
+        (
+            p
+            for p in proposals
+            if all(abs(np.log2(p["frequency"] / f)) > 0.15 for f in used)
+        ),
+        key=lambda p: p["power_db"],
+        reverse=True,
+    )
+    available = [i for i in range(capacity) if i not in retained]
+    anchor = max((parameters[f"resonance_level_{i}"] for i in retained), default=0)
+    starts = []
+    for count in (2, 4, 8):
+        for level in (-12, -24):
+            values = dict(parameters)
+            for i in available:
+                values[f"resonance_level_{i}"] = -72
+            for i, peak in zip(available[:count], peaks):
+                values[f"resonance_frequency_{i}"] = peak["frequency"]
+                values[f"resonance_level_{i}"] = anchor + level
+                values[f"resonance_centre_{i}"] = values[f"resonance_edge_{i}"] = 1
+            starts.append(
+                (
+                    f"retain {len(retained)} handles + {min(count,len(peaks))} peaks at {level} dB",
+                    values,
+                )
+            )
+    return starts

@@ -1,0 +1,313 @@
+{
+  "schema": "triggerfish.percussion.fit/v1",
+  "id": "74e78107-9597-484c-ac58-b77844eb3eee",
+  "parentId": null,
+  "createdAt": "2026-09-05T14:32:31.705Z",
+  "name": "Acoustic kick medium centre - experimental fit (2026-09-05)",
+  "renderer": {
+    "recipe": "drum.kick.v1",
+    "api": 1,
+    "adapter": "percussion-recipe-v1"
+  },
+  "instrument": {
+    "schema": "triggerfish.percussion.patch/v1",
+    "id": "factory.kick.standard-01",
+    "name": "Kick",
+    "engineMinimum": 1,
+    "recipe": "drum.kick.v1",
+    "nodes": [
+      {
+        "id": "kick-contact",
+        "type": "exciter.contact",
+        "name": "Contact",
+        "version": 1,
+        "parameters": {
+          "contact_level": 9.8361769989281e-13,
+          "contact_width_seconds": 0.010889225063374043,
+          "contact_colour": 8.539854215853487e-11,
+          "contact_noise_level": 1.3784168419911342,
+          "contact_noise_decay_seconds": 0.2195744866394619
+        },
+        "editor": {
+          "x": 24,
+          "y": 18
+        }
+      },
+      {
+        "id": "kick-thump",
+        "type": "exciter.thump",
+        "name": "Thump",
+        "version": 1,
+        "parameters": {
+          "thump_level": 2.936898051204201,
+          "thump_pitch_hz": 26.962577532243678,
+          "thump_pitch_drop_octaves": 1.5597017944578657,
+          "thump_pitch_fall_seconds": 0.04762253231436191,
+          "thump_decay_seconds": 0.3376261804521128
+        },
+        "editor": {
+          "x": 24,
+          "y": 185
+        }
+      },
+      {
+        "id": "kick-resonance",
+        "type": "body.membrane-modal",
+        "name": "Resonance",
+        "version": 1,
+        "parameters": {
+          "resonance_level": 9.092230025667247,
+          "resonance_decay_seconds": 0.30670171824561254,
+          "resonance_decay_tilt": 0.999999971120823,
+          "resonance_frequency_0": 54.609279781326315,
+          "resonance_level_0": -18.841125790144226,
+          "resonance_centre_0": 1,
+          "resonance_edge_0": 0.18000000715255737,
+          "resonance_frequency_1": 87.25775265238008,
+          "resonance_level_1": 5.999620663672175,
+          "resonance_centre_1": -0.6299999952316284,
+          "resonance_edge_1": 0.23499999940395355,
+          "resonance_frequency_2": 30.383855051794033,
+          "resonance_level_2": -40.40959717643524,
+          "resonance_centre_2": 1,
+          "resonance_edge_2": 1,
+          "resonance_frequency_3": 141.5471003996214,
+          "resonance_level_3": -25.319818070464173,
+          "resonance_centre_3": 1,
+          "resonance_edge_3": 1,
+          "resonance_frequency_4": 586.0832277733143,
+          "resonance_level_4": -20.096462395722213,
+          "resonance_centre_4": 1,
+          "resonance_edge_4": 1,
+          "resonance_frequency_5": 816.3979492154967,
+          "resonance_level_5": -12.471982247679627,
+          "resonance_centre_5": 1,
+          "resonance_edge_5": 1,
+          "resonance_frequency_6": 166.71906276870214,
+          "resonance_level_6": -72,
+          "resonance_centre_6": 0.5329999923706055,
+          "resonance_edge_6": 0.5080000162124634,
+          "resonance_frequency_7": 199.3355686736656,
+          "resonance_level_7": -72,
+          "resonance_centre_7": -0.5139999985694885,
+          "resonance_edge_7": 0.5630000233650208,
+          "resonance_frequency_8": 190.81834061193462,
+          "resonance_level_8": -72,
+          "resonance_centre_8": 0.49399998784065247,
+          "resonance_edge_8": 0.6169999837875366,
+          "resonance_frequency_9": 191.4819126307065,
+          "resonance_level_9": -72,
+          "resonance_centre_9": -0.4749999940395355,
+          "resonance_edge_9": 0.671999990940094,
+          "resonance_frequency_10": 214.93306651341797,
+          "resonance_level_10": -72,
+          "resonance_centre_10": 0.45500001311302185,
+          "resonance_edge_10": 0.7269999980926514,
+          "resonance_frequency_11": 222.07447379634905,
+          "resonance_level_11": -72,
+          "resonance_centre_11": -0.4350000023841858,
+          "resonance_edge_11": 0.781000018119812,
+          "resonance_frequency_12": 232.0229732496984,
+          "resonance_level_12": -72,
+          "resonance_centre_12": 0.41600000858306885,
+          "resonance_edge_12": 0.8360000252723694,
+          "resonance_frequency_13": 255.70098199598036,
+          "resonance_level_13": -72,
+          "resonance_centre_13": -0.3970000147819519,
+          "resonance_edge_13": 0.890999972820282,
+          "resonance_frequency_14": 262.5370299569104,
+          "resonance_level_14": -72,
+          "resonance_centre_14": 0.37700000405311584,
+          "resonance_edge_14": 0.9449999928474426,
+          "resonance_frequency_15": 288.8913021408468,
+          "resonance_level_15": -72,
+          "resonance_centre_15": -0.3569999933242798,
+          "resonance_edge_15": 1
+        },
+        "editor": {
+          "x": 270,
+          "y": 18
+        }
+      },
+      {
+        "id": "kick-tension",
+        "type": "interaction.strike-energy",
+        "name": "Strike / tension",
+        "version": 1,
+        "parameters": {
+          "tension_octaves": 0.36285928390760946,
+          "tension_recovery_seconds": 0.005193558613591496
+        },
+        "editor": {
+          "x": 24,
+          "y": 100
+        }
+      },
+      {
+        "id": "kick-mix",
+        "type": "transform.sum3",
+        "name": "Observation mix",
+        "version": 1,
+        "parameters": {},
+        "editor": {
+          "x": 480,
+          "y": 110
+        }
+      },
+      {
+        "id": "kick-observation",
+        "type": "observation.equalizer",
+        "name": "Output EQ",
+        "version": 1,
+        "parameters": {
+          "equalizer_mode": 0,
+          "low_cut_hz": 43,
+          "high_cut_hz": 1300,
+          "colour_frequency_hz": 1040,
+          "colour_gain_db": 0,
+          "band_1_frequency_hz": 90,
+          "band_1_gain_db": 0,
+          "band_2_frequency_hz": 350,
+          "band_2_gain_db": 0,
+          "band_3_frequency_hz": 1800,
+          "band_3_gain_db": 0,
+          "band_4_frequency_hz": 7500,
+          "band_4_gain_db": 0
+        },
+        "editor": {
+          "x": 690,
+          "y": 110
+        }
+      },
+      {
+        "id": "kick-output",
+        "type": "output.mono",
+        "name": "Mono",
+        "version": 1,
+        "parameters": {
+          "model_level_db": -12
+        },
+        "editor": {
+          "x": 900,
+          "y": 110
+        }
+      }
+    ],
+    "connections": [
+      {
+        "id": "kick-route-1",
+        "from": "kick-contact.direct",
+        "to": "kick-mix.a",
+        "enabled": true,
+        "required": false
+      },
+      {
+        "id": "kick-route-2",
+        "from": "kick-thump.audio",
+        "to": "kick-mix.b",
+        "enabled": true,
+        "required": false
+      },
+      {
+        "id": "kick-route-3",
+        "from": "kick-resonance.audio",
+        "to": "kick-mix.c",
+        "enabled": true,
+        "required": false
+      },
+      {
+        "id": "kick-route-4",
+        "from": "kick-contact.body",
+        "to": "kick-resonance.drive",
+        "enabled": true,
+        "required": true
+      },
+      {
+        "id": "kick-route-5",
+        "from": "kick-contact.event",
+        "to": "kick-tension.strike",
+        "enabled": true,
+        "required": true
+      },
+      {
+        "id": "kick-route-6",
+        "from": "kick-tension.tension",
+        "to": "kick-resonance.tension",
+        "enabled": true,
+        "required": true
+      },
+      {
+        "id": "kick-route-7",
+        "from": "kick-mix.audio",
+        "to": "kick-observation.audio",
+        "enabled": true,
+        "required": true
+      },
+      {
+        "id": "kick-route-8",
+        "from": "kick-observation.audio",
+        "to": "kick-output.audio",
+        "enabled": true,
+        "required": true
+      }
+    ],
+    "outputs": {
+      "mono": "kick-output.audio"
+    },
+    "performanceControls": [
+      "strength",
+      "hardness",
+      "implement",
+      "location",
+      "contactSpread"
+    ]
+  },
+  "reference": {
+    "id": "sha256:72631be1485f64018f990e2c0b6d62969578a374d6a5a7d83059a2f0ba4b50b8",
+    "sha256": "72631be1485f64018f990e2c0b6d62969578a374d6a5a7d83059a2f0ba4b50b8",
+    "name": "Kick Yamaha Oak Custom 4 01",
+    "sampleRate": 44100,
+    "channels": 2,
+    "bits": 16,
+    "duration": 0.6124943310657597,
+    "referenceGainDb": 2,
+    "corpus": {
+      "id": "acoustic-kick-oak",
+      "name": "Acoustic kick - oak",
+      "referenceGainDb": 2
+    },
+    "cell": {
+      "label": "Kick Yamaha Oak Custom 4 01",
+      "articulation": "centre",
+      "velocity": 64,
+      "repeat": 1,
+      "strength": 0.5,
+      "location": 0.5,
+      "hardness": 0.5,
+      "implement": 0.5,
+      "contactSpread": 0.2,
+      "onset_seconds": 0.001315,
+      "seed": 1449,
+      "split": "audition",
+      "url": "http://127.0.0.1:8765/reference/acoustic-kick-oak/Kick%20Yamaha%20Oak%20Custom%204%2001.wav"
+    }
+  },
+  "controls": {
+    "event": {
+      "strength": 0.5,
+      "location": 0.5,
+      "hardness": 0.5,
+      "implement": 0.5,
+      "contactSpread": 0.2,
+      "seed": 1449,
+      "constraint": 0
+    },
+    "analysis": {
+      "size": 4096,
+      "hop": 512,
+      "window": "hann",
+      "floorDb": -160,
+      "dynamicRangeDb": 80
+    }
+  }
+}

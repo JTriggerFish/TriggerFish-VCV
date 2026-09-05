@@ -522,7 +522,8 @@ switch ($Command) {
                 tests/python/test_short_drum_fit_loss.py tests/python/test_smooth_drum_fit_loss.py `
                 tests/python/test_workbench_search.py tests/python/test_workbench_fit_baseline.py `
                   tests/python/test_workbench_global_search.py tests/python/test_fit_provenance.py `
-                  tests/python/test_modal_fit_initialization.py --basetemp build/pytest-fit-temp
+                  tests/python/test_modal_fit_initialization.py tests/python/test_power_envelope.py `
+                  --basetemp build/pytest-fit-temp
             if ($LASTEXITCODE -ne 0) { throw "Fitting tests failed with exit code $LASTEXITCODE." }
         }
         finally { Pop-Location }

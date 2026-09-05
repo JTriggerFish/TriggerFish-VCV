@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 from triggerfish_percussion.audio_io import AudioBuffer, write_wav
 from triggerfish_percussion.fit_provenance import verify_candidate
+from triggerfish_percussion.fit_publication import publish_html
 
 
 def fixture(tmp_path):
@@ -71,3 +72,20 @@ def test_ui_fit_must_reproduce_candidate(tmp_path):
     (tmp_path / "candidate.fit.json").write_text('{"gain":0}')
     with pytest.raises(ValueError, match="UI fit"):
         verify_candidate(renderer, tmp_path)
+
+
+def test_published_audio_does_not_follow_later_search_checkpoints(tmp_path):
+    import re
+
+    renderer, _ = fixture(tmp_path)
+    verify_candidate(renderer, tmp_path)
+    publish_html(
+        tmp_path,
+        '<a href="candidate.fit.json" download>Fit</a><button data-audio="candidate">Play</button>',
+    )
+    html = (tmp_path / "index.html").read_text(encoding="utf8")
+    audio_name = re.search('data-file="([^"]+)"', html).group(1)
+    original = (tmp_path / audio_name).read_bytes()
+    write_wav(tmp_path / "candidate.wav", AudioBuffer(np.zeros(2), 2))
+    assert (tmp_path / audio_name).read_bytes() == original
+    assert (tmp_path / "index.html").read_text(encoding="utf8") == html

@@ -9,6 +9,7 @@ import numpy as np
 from scipy.ndimage import gaussian_filter1d
 
 from .transforms import StftConfig, stft
+from .power_envelope import smoothed_power
 
 REGIONS = ((0, 0.03), (0.03, 0.1), (0.1, 0.25), (0.25, 0.6), (0.6, 1.2))
 REGION_WEIGHTS = np.array([0.3, 0.3, 0.25, 0.1, 0.05])
@@ -29,7 +30,7 @@ def representations(samples, rate):
         result.append((gaussian_filter1d(power, 0.6, axis=0), value.times_seconds))
     # Smooth POWER over 12 ms, sample every 2 ms. A 2 ms power window tracks
     # individual bass cycles and wrongly makes envelope matching phase-sensitive.
-    envelope = gaussian_filter1d(samples**2, 0.012 * rate)[:: round(0.002 * rate)]
+    envelope = smoothed_power(samples, 0.012 * rate)[:: round(0.002 * rate)]
     result.append(
         (envelope[None, :], np.arange(len(envelope)) * round(0.002 * rate) / rate)
     )

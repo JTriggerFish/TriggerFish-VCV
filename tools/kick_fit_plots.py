@@ -3,7 +3,7 @@
 import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from scipy.ndimage import gaussian_filter1d
+from triggerfish_percussion.power_envelope import smoothed_power
 
 from triggerfish_percussion.transforms import StftConfig, stft
 
@@ -36,7 +36,7 @@ def detail_plot(reference, candidate):
             row=1,
             col=1,
         )
-        power = gaussian_filter1d(samples**2, 0.012 * rate)
+        power = smoothed_power(samples, 0.012 * rate)
         figure.add_trace(
             go.Scatter(
                 x=time[::88],

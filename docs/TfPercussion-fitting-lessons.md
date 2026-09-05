@@ -49,6 +49,12 @@ reference, loss, duration and noise seeds as subsequent refinement. The current
 patch is always a candidate. Candidate vectors and scores are retained. A
 better initial score is not proof of the best basin: when local refinement
 stalls, separately refine plausible alternatives before discarding them.
+`workbench_multistart.refine_candidate_starts` implements that second step:
+shortlist by raw score, then independently refit and log each alternative before
+selection. `extended_modal_starts` retains the strongest current handles while
+adding reference proposals, so testing upper ringing need not discard a useful
+low-body fit. The kick enables this pass with `TF_KICK_MODAL_RESTARTS=1` and a
+current resume file.
 
 The previous kick start had every mode below 283 Hz, with local bounds ending
 at 424 Hz. That search could never place sustained upper body ringing. Always
@@ -70,6 +76,12 @@ Do not call numerical improvement a listening-approved fit. Synthetic recovery
 is necessary but insufficient: real recordings may expose missing controls,
 bad starting basins or weaknesses in the loss itself.
 
+`power_envelope.smoothed_power` evaluates the same reflected, truncated Gaussian
+as the original direct convolution using FFT convolution. A measured 44.1 kHz
+reference evaluation fell from 72 ms to 8 ms with maximum absolute difference
+1.5e-16. Regression tests cover boundary impulses, silence and decaying signals;
+this is a computational change, not a change to the loss or amplitude scales.
+
 ## Publication must fail closed
 
 `fit_provenance.verify_candidate` requires the current recipe, Wasm hash,
@@ -78,6 +90,10 @@ the saved parameter vector and independently reloads its UI fit JSON. Both must
 reproduce the candidate WAV; the report reference must match the aligned source.
 `workbench_fit_report.write_report` requires this verification, including in
 audit-only mode. Old files merely existing is never sufficient.
+`fit_publication` then pins the audio and downloadable fit to content-addressed
+copies and replaces the HTML atomically. A later search checkpoint cannot change
+the sound behind an already-open report's plots. Keep one writer per fitting
+directory; reference audio and all these artifacts remain local.
 
 After a model change, an old vector can be an explicitly identified warm start,
 but old audio cannot be presented as current output. Never replace the user's

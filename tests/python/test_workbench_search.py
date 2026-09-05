@@ -5,6 +5,30 @@ from types import SimpleNamespace
 import numpy as np
 
 from triggerfish_percussion.workbench_search import Search
+from triggerfish_percussion.workbench_multistart import refine_candidate_starts
+
+
+def test_raw_bad_start_can_win_after_short_refit(tmp_path, monkeypatch):
+    renderer = SimpleNamespace(
+        initial={"gain": 0},
+        metadata={"descriptors": [dict(key="gain", minimum=0, maximum=1)]},
+        render=lambda parameters, seconds: np.array([parameters["gain"]]),
+    )
+    loss = SimpleNamespace(
+        residual=lambda audio, regions=range(5): 10 * (audio - 0.4),
+        diagnostics=lambda audio: {},
+    )
+    search = Search(renderer, loss, tmp_path)
+    monkeypatch.setattr(Search, "save", lambda self: None)
+    records = refine_candidate_starts(
+        search,
+        [("poor raw gain", {"gain": 1})],
+        lambda values: {"gain": (0, 1)},
+        count=1,
+    )
+    assert abs(search.parameters["gain"] - 0.4) < 0.001
+    assert records[0]["raw_score"] > search.history[0]["before"]
+    assert records[0]["refined_score"] < search.history[0]["before"]
 
 
 def test_kick_fit_uses_modes_not_eq_or_individual_damping():

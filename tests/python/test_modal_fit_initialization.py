@@ -4,6 +4,7 @@ import numpy as np
 from triggerfish_percussion.modal_fit_initialization import (
     spectral_mode_candidates,
     reference_modal_starts,
+    extended_modal_starts,
 )
 
 
@@ -28,3 +29,23 @@ def test_proposals_reach_upper_ringing():
 def test_silence_creates_no_fake_modes():
     assert spectral_mode_candidates(np.zeros(48000), 48000) == []
     assert reference_modal_starts({}, []) == []
+
+
+def test_extension_preserves_existing_strong_modes():
+    values = {}
+    for i in range(16):
+        values.update(
+            {
+                f"resonance_level_{i}": -i * 2,
+                f"resonance_frequency_{i}": 50 + i * 15,
+                f"resonance_centre_{i}": 0.7,
+                f"resonance_edge_{i}": 0.2,
+            }
+        )
+    starts = extended_modal_starts(values, [dict(frequency=1200, power_db=-30)])
+    for _, candidate in starts:
+        assert candidate["resonance_frequency_0"] == 50
+        assert candidate["resonance_frequency_1"] == 65
+        assert candidate["resonance_level_0"] == 0
+        assert candidate["resonance_centre_0"] == 0.7
+        assert candidate["resonance_frequency_2"] == 1200

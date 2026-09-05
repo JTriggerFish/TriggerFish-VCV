@@ -24,7 +24,7 @@ for(const button of document.querySelectorAll('[data-audio]'))button.onclick=asy
   try{
     ready??=initialize();await ready;await context.resume();
     const name=button.dataset.audio;
-    if(!cache.has(name))cache.set(name,await context.decodeAudioData(await(await fetch(name+'.wav')).arrayBuffer()));
+    if(!cache.has(name))cache.set(name,await context.decodeAudioData(await(await fetch(button.dataset.file??name+'.wav')).arrayBuffer()));
     source?.stop();source=new AudioBufferSourceNode(context,{buffer:cache.get(name)});
     source.connect(master);source.start();status.textContent='Playing '+name+' · limiter enabled';
   }catch(error){status.textContent=String(error);}

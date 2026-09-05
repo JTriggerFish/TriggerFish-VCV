@@ -31,8 +31,8 @@ only the subset named in the stage bounds is optimized.
 
 Saved starts must have exactly the current parameter keys and reference identity.
 Old fixed-bank/EQ-assisted candidates are rejected, not silently converted.
-The old EQ-assisted report has been withdrawn; no new explicit-modal real-sample
-fit is claimed yet.
+The old EQ-assisted report has been withdrawn. The current explicit-modal
+candidate below is an experimental fit, not a listening-approved calibration.
 
 ## Loss
 
@@ -108,3 +108,32 @@ The existing server serves `/kick-review/`: one real reference versus one
 current candidate, with shared scales, downloadable full fit JSON and protected
 playback. Audio and plots are pre-limiter; browser monitoring alone uses the
 3 ms safety limiter. Generated sample audio stays outside version control.
+
+## 2026-09-05 experiment
+
+The revised factory start scored 9.187 on the fixed two-seed objective. Local
+refinement reached 6.137. Raw reference-only modal layouts initially scored
+worse, but independently refitting layouts that retained two existing handles
+and added reference peaks reached 5.451. Joint and fine refinement reached
+**5.032**. The primary-seed score is 5.018; held-out seeds score approximately
+5.40, 5.13 and 5.28. These are weighted dB discrepancies, not perceptual scores.
+
+Six handles remain active at approximately 30.38, 54.61, 87.26, 141.55, 586.08
+and 816.40 Hz. Thump settles near 26.96 Hz. Shared resonance T60 is 0.307 s at
+100 Hz with slope 1; no per-mode decay parameters exist. Model level remains
+-12 dB, source monitoring gain +2 dB, and output EQ is bypassed.
+
+I inspected the shared-scale plots. Upper ringing is now represented, and the
+early RMS envelope is substantially closer, but the 0–30 ms attack-spectrum
+error remains 9.54 dB and the 100–250 ms bass-spectrum error is 6.64 dB. The
+low tail also extends too long below about -60 dBFS. The optimizer effectively
+mutes direct contact and puts contact colour and damping slope on their bounds.
+Those are diagnostic clues for the next contact/trajectory investigation,
+not evidence that an EQ stage or extra decay knots should be added.
+
+The exact saved UI fit reloads sample-identically. Held-out-seed, source-sum,
+resonance-gain and repeated-hit checks completed; report playback/downloads
+were checked in a temporary browser tab. No factory preset was replaced.
+The parameter snapshot is versioned separately as an
+[experimental candidate](fitting-candidates/kick-oak-medium.fit.json); it contains
+no sample audio. The live report offers the same parameter vector for audition.

@@ -13,6 +13,7 @@ from triggerfish_percussion.trajectory_fit_loss import TrajectoryLoss, features,
 from triggerfish_percussion.transforms import StftConfig, stft
 from triggerfish_percussion.short_drum_fit_loss import ShortDrumLoss
 from triggerfish_percussion.fit_provenance import verify_candidate
+from triggerfish_percussion.fit_publication import publish_html
 
 
 def parameter_changes(directory):
@@ -193,7 +194,7 @@ def write_report(directory: Path, kind="gong", assets="..", *, renderer):
         html = html.replace("Gong", "Acoustic kick").replace(
             "One mallet strike", "One centre beater strike"
         )
-    (directory / "index.html").write_text(html, encoding="utf8")
+    publish_html(directory, html)
 
 
 if __name__ == "__main__":
