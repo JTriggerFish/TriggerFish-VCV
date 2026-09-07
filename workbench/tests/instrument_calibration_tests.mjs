@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 
-import { calibrationParameterValues, calibrationPatch } from
+import { calibrationParameterValues, calibrationPatch, recipeStartingValues, recipeStartingEvent } from
   "../web/instrument_calibrations.mjs";
+import KickCalibration from "../web/kick_calibration.fit.json" with { type: "json" };
 
 const descriptors = [
   ["impact_width", 1, .25, 4, "logarithmic"],
@@ -37,14 +38,20 @@ assert.deepEqual(gong, [
   1.1, 25, 2,
 ]);
 
-const kickDescriptors = [
-  {key:"model_level_db", defaultValue:-12, index:0},
-  {key:"thump_pitch_hz", defaultValue:28, index:1},
-  {key:"contact_level", defaultValue:.4, index:2},
-];
+const kickParameters = Object.assign({}, ...KickCalibration.instrument.nodes.map(n=>n.parameters));
+const kickDescriptors = Object.keys(kickParameters).map((key,index)=>({
+  key,index,defaultValue:0,minimum:-Infinity,maximum:Infinity,
+}));
 const kickValues = calibrationParameterValues({parameter_preset:"kick"}, kickDescriptors);
 const kickPatch = calibrationPatch({parameter_preset:"kick"}, kickDescriptors, kickValues, null);
 assert.equal(kickPatch.recipe, "drum.kick.v1");
-assert.equal(kickPatch.nodes.find(n=>n.id==="kick-contact").parameters.contact_level, .4);
+assert.equal(kickValues.length, 65);
+assert.deepEqual(kickValues, Object.values(kickParameters));
+assert.deepEqual(recipeStartingValues("drum.kick.v1",kickDescriptors),kickValues);
+assert.deepEqual(recipeStartingEvent("drum.kick.v1"),KickCalibration.controls.event);
+assert.deepEqual(kickPatch, KickCalibration.instrument);
+assert.throws(()=>calibrationParameterValues({parameter_preset:"kick"},kickDescriptors.slice(1)), /surface/);
+const invalidRange=kickDescriptors.map(d=>({...d,minimum:100000}));
+assert.throws(()=>calibrationParameterValues({parameter_preset:"kick"},invalidRange), /Invalid/);
 assert.throws(()=>calibrationParameterValues({parameter_preset:"acoustic-kick"},kickDescriptors), /Unknown/);
 console.log("instrument calibration tests passed");

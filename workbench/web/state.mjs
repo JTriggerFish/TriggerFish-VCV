@@ -34,7 +34,8 @@ export function snapshotState(state, name = "Snapshot", descriptors = []) {
       cell: state.reference.cell ?? null,
     } : null,
     controls: {
-      event: { ...state.event },
+      event: Object.fromEntries(Object.entries(state.event).filter(([key]) =>
+        instrument.recipe !== "drum.kick.v1" || key !== "location")),
       analysis: { ...state.analysis },
     },
   });
@@ -58,7 +59,8 @@ export function validateFit(value, descriptors = []) {
     throw new Error("invalid reference gain");
   recipeAdapter(value.instrument.recipe).validate(value.instrument);
   for (const key of [
-    "strength", "location", "hardness", "implement", "contactSpread",
+    "strength", ...(value.instrument.recipe === "drum.kick.v1" ? [] : ["location"]),
+    "hardness", "implement", "contactSpread",
     "constraint",
   ]) {
     if (!Number.isFinite(event[key]) || event[key] < 0 || event[key] > 1) {

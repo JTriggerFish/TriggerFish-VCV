@@ -82,6 +82,34 @@ reference evaluation fell from 72 ms to 8 ms with maximum absolute difference
 1.5e-16. Regression tests cover boundary impulses, silence and decaying signals;
 this is a computational change, not a change to the loss or amplitude scales.
 
+## Diagnose source balance before another joint fit
+
+A lower multi-resolution spectral loss can still select an objectionably noisy
+attack. First identify the exact patch being heard. In the acoustic kick, the
+user was hearing the older workbench preset while the fitter only updated a
+separate report. The candidate muted direct contact, but its noise still drove
+the resonator. Muting an observation route is not an excitation ablation; check
+both explicitly, and do not diagnose a different candidate from user feedback.
+
+`drum_balance_loss.DrumBalanceLoss` supplements the existing spectral loss with
+absolute-power envelopes in nine approximately octave-wide bands. Identical
+second-order Butterworth bandpass designs filter both signals causally; Gaussian
+power smoothing uses 20 ms below 90 Hz and 12 ms above, sampled every 4 ms.
+Filter delay and smoothing blur are measurement properties, not estimates of
+physical onset. One fixed floor, 60 dB below the reference's maximum band power,
+prevents extremely quiet high-frequency tails from setting their own importance.
+Spectral and band-envelope objectives have equal weight; the complete definition
+is saved with the search. Its score is not comparable to the old spectral-only
+score. Keep both component diagnostics and compare both candidates using the
+same objective. Tests reject weak bass, prolonged noise and gain changes.
+
+Listening-directed bounds are experimental priors, not recovered physical
+measurements. For example, a short-contact kick trial limits source-noise T60
+while leaving resonator damping independent. Independently optimize each trial
+before comparing it with the unchanged baseline; do not discard a new source
+balance merely because its unrefined starting point is worse. Do not silently
+turn experimental bounds into DSP restrictions or factory defaults.
+
 ## Publication must fail closed
 
 `fit_provenance.verify_candidate` requires the current recipe, Wasm hash,
@@ -99,6 +127,16 @@ After a model change, an old vector can be an explicitly identified warm start,
 but old audio cannot be presented as current output. Never replace the user's
 live preset or claim acceptance merely because an optimizer score decreased.
 
+Selected fitting iterations must reach the **main workbench calibration**, not
+remain stranded on a report page. `workbench_calibration_publication` verifies
+the candidate first, then updates source and served copies of the full fit JSON.
+That JSON is the UI preset, not a second manually copied vector. Browser tests
+export both recipe and reference-target starting sounds and check every value;
+an exact-renderer check requires the published preset to reproduce the fitting
+WAV sample-identically. Publication does not reload the user's tab or overwrite
+unsaved edits. Reports are optional internal diagnostics, not another listening
+destination the user must keep track of.
+
 ## Tests and entry points
 
 - `dev.ps1 test-percussion`: native DSP, including quiet-mode removal.
@@ -110,3 +148,19 @@ live preset or claim acceptance merely because an optimizer score decreased.
 
 Instrument-specific settings and measured results belong in the
 [kick procedure](TfPercussion-kick-fitting.md), not in these general rules.
+
+The [source-isolation investigation](TfPercussion-kick-diagnosis.md) documents
+the subsequent failed listening review. It adds independent band/region and
+spectral-shape screens: reproducibility plus an improved average is insufficient
+to replace a kick preset. Diagnostics must test inactive model capacity and
+separate source changes from observation changes before another local fit.
+
+The [controlled perceptual-loss comparison](TfPercussion-perceptual-loss-experiment.md)
+keeps the same model, starts, bounds, noise seeds and budget across region,
+mel MR-STFT, A-weighted mel and JTFS objectives. It also recovers known C++
+contact-noise settings before drawing conclusions about an acoustic sample.
+Use a scalar optimizer for a native scalar objective; do not turn one scalar
+into a rank-one least-squares problem. Compare to the published baseline as well
+as each experimental start, cross-score results, and report budget exhaustion
+separately from convergence. Calling a loss perceptual does not establish that
+its lowest-scoring candidate is a convincing fit.

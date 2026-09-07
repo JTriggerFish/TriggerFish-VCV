@@ -18,15 +18,16 @@ all three source gains creates an exact gain nullspace.
 The strongest starting modal bar is also held fixed during each local pass;
 the other levels are relative to it, avoiding a redundant common scale.
 
-Velocity, implement, hardness, location, routing, sample alignment and source
+Velocity, implement, hardness, routing, sample alignment and source
 gain are **not optimized**. Resonance uses one T60 and one damping tilt, not
 independent mode decays. Thump and contact noise have their own finite source
 envelopes; those are distinct from resonator energy loss.
 
-Spatial centre/edge couplings stay fixed for this one-location fit. Output EQ
-is not an optimization variable: the default start bypasses it. A manually
-chosen radiation response can stay fixed, but a multiband-EQ start is rejected.
-The renderer exposes 93 parameters (29 scalar controls and 16 × 4 modal values);
+Kick no longer has location or spatial centre/edge coefficients. The original
+procedure bypasses output EQ. Current diagnostic trials additionally compare
+a fitted low-pass cutoff and one broad radiation colour peak, with a fixed 5 Hz high-pass;
+they do not use a fitted multiband correction curve.
+The renderer exposes 65 parameters (33 scalar controls and 16 × 2 modal values);
 only the subset named in the stage bounds is optimized.
 
 Saved starts must have exactly the current parameter keys and reference identity.
@@ -104,10 +105,21 @@ With no resume path, fitting starts from the current reference-target preset.
 A resume path must contain the current explicit-mode parameter set.
 `TF_KICK_AUDIT_ONLY=1` rebuilds the report without fitting.
 
-The existing server serves `/kick-review/`: one real reference versus one
-current candidate, with shared scales, downloadable full fit JSON and protected
-playback. Audio and plots are pre-limiter; browser monitoring alone uses the
-3 ms safety limiter. Generated sample audio stays outside version control.
+The selected fit is published directly to the **main workbench**. Choose
+**Acoustic kick — medium centre** in the reference-target selector; this loads
+both the current audition candidate and its reference. First selecting the Kick recipe
+uses the same calibration. Existing edits are preserved when switching recipes.
+The versioned source is `workbench/web/kick_calibration.fit.json`; the build
+copies that same file into the served site. No manually maintained second vector
+or additional report-page audition is required. Audio and plots are pre-limiter;
+browser monitoring alone uses the 3 ms safety limiter. Samples stay local.
+
+Publication verifies the saved parameter render and fit-file reload before
+replacing the source/served JSON. `TF_KICK_VERIFY_PRESET=1` then checks that the
+actual reference-target preset renders sample-identically. Browser tests export
+the current sound and compare all current parameters for both entry points. Refresh
+an already-open page to load updated modules; never overwrite unsaved browser
+state remotely. Debug reports remain optional (`TF_KICK_AUDIT_ONLY=1`).
 
 ## 2026-09-05 experiment
 
@@ -133,7 +145,62 @@ not evidence that an EQ stage or extra decay knots should be added.
 
 The exact saved UI fit reloads sample-identically. Held-out-seed, source-sum,
 resonance-gain and repeated-hit checks completed; report playback/downloads
-were checked in a temporary browser tab. No factory preset was replaced.
-The parameter snapshot is versioned separately as an
-[experimental candidate](fitting-candidates/kick-oak-medium.fit.json); it contains
-no sample audio. The live report offers the same parameter vector for audition.
+were checked in a temporary browser tab. At this stage the workbench preset was
+not replaced, which meant the user was hearing the older sound. This workflow
+error is corrected below.
+
+## Workbench correction and band-balance refinement
+
+The user's snare-like attack / weak thump feedback concerned the **workbench
+preset**, not the separately rendered candidate. Short-noise constrained trials
+were started against that wrong baseline and not selected. In particular,
+limiting noise T60 to 70 ms improved some band envelopes but worsened the overall
+spectral match. Do not present those trials as an accepted improvement or infer
+a required exciter redesign from them.
+
+The selected refinement warm-starts the existing six-mode candidate, adds
+`DrumBalanceLoss` (see reusable lessons), and retains the ordinary parameter
+bounds. It improves the two-seed combined objective from 4.12 to 3.97. Those
+numbers are **not comparable** to the earlier spectral-only score of 5.03.
+Primary-seed spectral discrepancy changes from 5.02 to 5.17 while band-envelope
+discrepancy improves from 2.59 to 2.35; this is a measured tradeoff, not listening
+approval. No EQ, per-mode damping or additional DSP was introduced.
+
+Compared with the older workbench preset, direct contact observation is nearly
+muted and clean thump gain rises from 1.77 to 3.21 (about 5.2 dB). Its settled
+pitch stays near 27 Hz, consistent with the reference's low tail. The body uses
+six active modes and shared T60 of 0.309 s at 100 Hz, slope 1. Source noise still
+excites the body: its base T60 is 0.221 s, not a newly shortened excitation.
+Model gain remains -12 dB and reference gain +2 dB.
+
+```powershell
+$env:TF_KICK_FIT_RESUME = 'build/workbench-wasm/site/kick-review/search.json'
+$env:TF_KICK_BALANCE_REFINEMENT = '1'
+$env:TF_KICK_JOINT_ONLY = '1'
+.\dev.ps1 fit-kick-start
+# Publishes the verified selected fit to the workbench automatically.
+```
+
+The current full editable [workbench calibration](../workbench/web/kick_calibration.fit.json)
+contains the reference identity and fixed performance inputs, but no sample audio.
+
+The subsequent listening review rejected this fit. See the
+[source-isolation diagnosis](TfPercussion-kick-diagnosis.md): this candidate
+fails the new independent shape/decay checks. The diagnostic trials do not
+replace it merely for improving an aggregate score; publication now requires
+those necessary checks in addition to reproducibility.
+
+The subsequent [matched perceptual-loss experiment](TfPercussion-perceptual-loss-experiment.md)
+tests established mel MR-STFT and JTFS objectives on the unchanged C++ voice.
+All eight bounded real-reference trials are rejected; known contact-noise
+recovery succeeds for each objective. No new workbench preset is published.
+
+## Current audition (2026-09-07)
+
+The standard workbench Kick now uses the pulse-driven-body / noise-only-direct
+candidate documented in [body-envelope experiments](TfPercussion-kick-body-envelope.md).
+It is explicitly **audition-unapproved**, not a full-match calibration. Its exact
+saved-fit reload and repeated-hit checks pass; the independent full-match gate
+still fails. This is a manually staged listening experiment, not a weakening of
+the automatic calibration publication gate. Older results above are history,
+not the parameters currently served.

@@ -322,9 +322,93 @@ void TestIndependentContactNoise() {
             "noise duration does not change membrane damping");
 }
 
-void TestUnifiedKickSurface() {
+void TestKickObservationPaths() {
+  using namespace tfdsp::percussion;
+  {
+    ContactExciter full, noise;
+    full.Prepare(48000.f); noise.Prepare(48000.f);
+    auto contact = DefaultKickVoiceParameters().contact;
+    contact.noise.amplitude = 0.f;
+    full.Trigger(contact); noise.Trigger(contact);
+    double difference = 0.;
+    for (int i = 0; i < 2400; ++i) {
+      const auto a = full.Process(), b = noise.Process(true);
+      CheckNear(a.bodyDrive, b.bodyDrive, 0.,
+                "noise observation selection leaves body excitation identical");
+      CheckNear(b.directRadiation, 0., 0.,
+                "noise-only observation excludes pulse/chirp/grains");
+      difference += std::abs(a.directRadiation - b.directRadiation);
+    }
+    Check(difference > .1, "observation selection actually changes the direct signal");
+    EnvelopedNoiseBurst expected;
+    expected.Prepare(48000.f);
+    contact.noise.amplitude = .7f;
+    noise.Reset(); noise.Trigger(contact); expected.Trigger(contact.noise);
+    double noiseEnergy = 0.;
+    for (int i = 0; i < 2400; ++i) {
+      const float sample = noise.Process(true).directRadiation;
+      CheckNear(sample, expected.Process(), 0., "noise observation is the exact noise primitive");
+      noiseEnergy += sample * sample;
+    }
+    Check(noiseEnergy > .01, "noise observation remains audible when noise is enabled");
+    noise.Reset(); noise.Trigger(contact);
+    double laterNoise = 0.;
+    for (int i = 0; i < 2400; ++i) {
+      const auto sample = noise.Process(true, true);
+      if (i > static_cast<int>(48000.f * contact.pulseDurationSeconds) + 2) {
+        CheckNear(sample.bodyDrive, 0., 0.,
+                  "pulse-only drive ends independently of the observed noise tail");
+        laterNoise += sample.directRadiation * sample.directRadiation;
+      }
+    }
+    Check(laterNoise > .001, "direct noise can continue after body excitation stops");
+  }
+}
+
+void TestKickDecayShapes() {
   using namespace tfdsp::percussion;
   KickVoiceControls controls;
+  for (float rate : {44100.f, 48000.f, 96000.f}) {
+    for (float shape : {0.f, .5f, 1.f}) {
+      controls.thumpDecaySeconds = .2f;
+      controls.thumpDecayShape = shape;
+      const auto shaped = DefaultKickVoiceParameters(controls);
+      BreakpointTrajectory<CorrelatedFmMaximumSegments> envelope;
+      envelope.Prepare(rate);
+      envelope.Start(shaped.fm.amplitude.initialValue,
+                     shaped.fm.amplitude.segments, shaped.fm.amplitude.segmentCount);
+      float previous = 1.f;
+      const int attack = static_cast<int>(std::lround(.0004f * rate));
+      for (int i = 0; i < attack + static_cast<int>(std::lround(.2f * rate)); ++i) {
+        const float value = envelope.Process();
+        if (i >= attack) {
+          Check(value <= previous + 1.e-6f, "shaped thump never adds decay energy");
+          previous = value;
+        }
+      }
+      CheckNear(envelope.Value(), .001, 3.e-6,
+                "curved thump preserves T60 across shapes and sample rates");
+    }
+  }
+}
+
+void TestUnifiedKickSurface() {
+  using namespace tfdsp::percussion;
+  TestKickObservationPaths();
+  TestKickDecayShapes();
+  KickVoiceControls controls;
+  controls.thumpHoldSeconds = .025f;
+  const auto held = DefaultKickVoiceParameters(controls);
+  Check(held.fm.amplitude.segmentCount == 4, "hold adds one source segment");
+  CheckNear(held.fm.amplitude.segments[1].targetValue, 1., 1.e-6,
+            "hold keeps full amplitude without clipping the waveform");
+  CheckNear(held.fm.amplitude.segments[1].durationSeconds, .025, 1.e-6,
+            "hold duration follows the explicit control");
+  for (const auto &mode : held.membrane) {
+    CheckNear(mode.centerProjection, 1., 1.e-6, "fixed kick projection");
+    CheckNear(mode.edgeProjection, 1., 1.e-6, "kick projection is position independent");
+  }
+  controls.thumpHoldSeconds = 0.f;
   controls.thumpPitchHz = 20.f;
   controls.thumpDecaySeconds = .3f;
   controls.modes[0].frequencyHz = 40.f;
@@ -381,8 +465,8 @@ void TestKickQuietModeRemovalIsContinuous() {
   using namespace tfdsp::percussion;
   KickVoiceControls controls;
   controls.contactLevel = controls.thumpLevel = controls.tensionOctaves = 0.f;
-  for (auto &mode : controls.modes) mode = {110.f, -72.f, 1.f, 1.f};
-  controls.modes[0] = {55.f, 0.f, 1.f, 1.f};
+  for (auto &mode : controls.modes) mode = {110.f, -72.f};
+  controls.modes[0] = {55.f, 0.f};
   controls.modes[1].levelDb = -71.99f;
   const auto near = Render(48000.f, {.5f, 0.f, .5f, .5f, .2f, 1449},
                             DefaultKickVoiceParameters(controls));

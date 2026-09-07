@@ -115,7 +115,6 @@ def extended_modal_starts(parameters, proposals, *, capacity=16, keep=2):
             for i, peak in zip(available[:count], peaks):
                 values[f"resonance_frequency_{i}"] = peak["frequency"]
                 values[f"resonance_level_{i}"] = anchor + level
-                values[f"resonance_centre_{i}"] = values[f"resonance_edge_{i}"] = 1
             starts.append(
                 (
                     f"retain {len(retained)} handles + {min(count,len(peaks))} peaks at {level} dB",

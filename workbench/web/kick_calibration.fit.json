@@ -1,9 +1,9 @@
 {
   "schema": "triggerfish.percussion.fit/v1",
-  "id": "74e78107-9597-484c-ac58-b77844eb3eee",
+  "id": "1ac13ed2-80ea-4fbb-9fe5-432fb5820572",
   "parentId": null,
-  "createdAt": "2026-09-05T14:32:31.705Z",
-  "name": "Acoustic kick medium centre - experimental fit (2026-09-05)",
+  "createdAt": "2026-09-07T09:58:13.011Z",
+  "name": "Kick — oak medium (audition)",
   "renderer": {
     "recipe": "drum.kick.v1",
     "api": 1,
@@ -22,11 +22,13 @@
         "name": "Contact",
         "version": 1,
         "parameters": {
-          "contact_level": 9.8361769989281e-13,
-          "contact_width_seconds": 0.010889225063374043,
-          "contact_colour": 8.539854215853487e-11,
-          "contact_noise_level": 1.3784168419911342,
-          "contact_noise_decay_seconds": 0.2195744866394619
+          "contact_level": 1.8929848218022185,
+          "contact_observation": 1,
+          "contact_body_drive": 1,
+          "contact_width_seconds": 0.002687114726397186,
+          "contact_colour": 0.000006239534185800526,
+          "contact_noise_level": 1,
+          "contact_noise_decay_seconds": 0.23343574430694375
         },
         "editor": {
           "x": 24,
@@ -39,11 +41,13 @@
         "name": "Thump",
         "version": 1,
         "parameters": {
-          "thump_level": 2.936898051204201,
-          "thump_pitch_hz": 26.962577532243678,
-          "thump_pitch_drop_octaves": 1.5597017944578657,
-          "thump_pitch_fall_seconds": 0.04762253231436191,
-          "thump_decay_seconds": 0.3376261804521128
+          "thump_hold_seconds": 0.02627668330484667,
+          "thump_decay_shape": 8.451597541970947e-7,
+          "thump_level": 2.4561765499939954,
+          "thump_pitch_hz": 24.1499053783539,
+          "thump_pitch_drop_octaves": 1.5665162754311877,
+          "thump_pitch_fall_seconds": 0.06980459995892355,
+          "thump_decay_seconds": 0.16444218538098765
         },
         "editor": {
           "x": 24,
@@ -56,73 +60,41 @@
         "name": "Resonance",
         "version": 1,
         "parameters": {
-          "resonance_level": 9.092230025667247,
-          "resonance_decay_seconds": 0.30670171824561254,
-          "resonance_decay_tilt": 0.999999971120823,
-          "resonance_frequency_0": 54.609279781326315,
-          "resonance_level_0": -18.841125790144226,
-          "resonance_centre_0": 1,
-          "resonance_edge_0": 0.18000000715255737,
-          "resonance_frequency_1": 87.25775265238008,
-          "resonance_level_1": 5.999620663672175,
-          "resonance_centre_1": -0.6299999952316284,
-          "resonance_edge_1": 0.23499999940395355,
-          "resonance_frequency_2": 30.383855051794033,
-          "resonance_level_2": -40.40959717643524,
-          "resonance_centre_2": 1,
-          "resonance_edge_2": 1,
-          "resonance_frequency_3": 141.5471003996214,
-          "resonance_level_3": -25.319818070464173,
-          "resonance_centre_3": 1,
-          "resonance_edge_3": 1,
-          "resonance_frequency_4": 586.0832277733143,
-          "resonance_level_4": -20.096462395722213,
-          "resonance_centre_4": 1,
-          "resonance_edge_4": 1,
-          "resonance_frequency_5": 816.3979492154967,
-          "resonance_level_5": -12.471982247679627,
-          "resonance_centre_5": 1,
-          "resonance_edge_5": 1,
-          "resonance_frequency_6": 166.71906276870214,
-          "resonance_level_6": -72,
-          "resonance_centre_6": 0.5329999923706055,
-          "resonance_edge_6": 0.5080000162124634,
-          "resonance_frequency_7": 199.3355686736656,
-          "resonance_level_7": -72,
-          "resonance_centre_7": -0.5139999985694885,
-          "resonance_edge_7": 0.5630000233650208,
+          "resonance_level": 3.0711587056443554,
+          "resonance_decay_seconds": 0.39700442586957296,
+          "resonance_decay_tilt": 0.4010361323302827,
+          "resonance_frequency_0": 56.983519950220966,
+          "resonance_level_0": -13.905738034728877,
+          "resonance_frequency_1": 87.26199193725971,
+          "resonance_level_1": -11.209376327864248,
+          "resonance_frequency_2": 25.000000000004402,
+          "resonance_level_2": -14.902392163299538,
+          "resonance_frequency_3": 137.9459575395091,
+          "resonance_level_3": -13.883568704396225,
+          "resonance_frequency_4": 574.2762912213827,
+          "resonance_level_4": -72,
+          "resonance_frequency_5": 807.6259772557923,
+          "resonance_level_5": -72,
+          "resonance_frequency_6": 164.23058548157647,
+          "resonance_level_6": -22.960039416884804,
+          "resonance_frequency_7": 118.13186586552314,
+          "resonance_level_7": -21.885014440037523,
           "resonance_frequency_8": 190.81834061193462,
           "resonance_level_8": -72,
-          "resonance_centre_8": 0.49399998784065247,
-          "resonance_edge_8": 0.6169999837875366,
           "resonance_frequency_9": 191.4819126307065,
           "resonance_level_9": -72,
-          "resonance_centre_9": -0.4749999940395355,
-          "resonance_edge_9": 0.671999990940094,
           "resonance_frequency_10": 214.93306651341797,
           "resonance_level_10": -72,
-          "resonance_centre_10": 0.45500001311302185,
-          "resonance_edge_10": 0.7269999980926514,
           "resonance_frequency_11": 222.07447379634905,
           "resonance_level_11": -72,
-          "resonance_centre_11": -0.4350000023841858,
-          "resonance_edge_11": 0.781000018119812,
           "resonance_frequency_12": 232.0229732496984,
           "resonance_level_12": -72,
-          "resonance_centre_12": 0.41600000858306885,
-          "resonance_edge_12": 0.8360000252723694,
           "resonance_frequency_13": 255.70098199598036,
           "resonance_level_13": -72,
-          "resonance_centre_13": -0.3970000147819519,
-          "resonance_edge_13": 0.890999972820282,
           "resonance_frequency_14": 262.5370299569104,
           "resonance_level_14": -72,
-          "resonance_centre_14": 0.37700000405311584,
-          "resonance_edge_14": 0.9449999928474426,
           "resonance_frequency_15": 288.8913021408468,
-          "resonance_level_15": -72,
-          "resonance_centre_15": -0.3569999933242798,
-          "resonance_edge_15": 1
+          "resonance_level_15": -72
         },
         "editor": {
           "x": 270,
@@ -135,8 +107,8 @@
         "name": "Strike / tension",
         "version": 1,
         "parameters": {
-          "tension_octaves": 0.36285928390760946,
-          "tension_recovery_seconds": 0.005193558613591496
+          "tension_octaves": 0.5017114047223066,
+          "tension_recovery_seconds": 0.007474432859212621
         },
         "editor": {
           "x": 24,
@@ -160,11 +132,11 @@
         "name": "Output EQ",
         "version": 1,
         "parameters": {
-          "equalizer_mode": 0,
-          "low_cut_hz": 43,
-          "high_cut_hz": 1300,
-          "colour_frequency_hz": 1040,
-          "colour_gain_db": 0,
+          "equalizer_mode": 1,
+          "low_cut_hz": 5,
+          "high_cut_hz": 832.8606050821793,
+          "colour_frequency_hz": 963.6154709520429,
+          "colour_gain_db": 7.108660165949413,
           "band_1_frequency_hz": 90,
           "band_1_gain_db": 0,
           "band_2_frequency_hz": 350,
@@ -258,7 +230,6 @@
       "strength",
       "hardness",
       "implement",
-      "location",
       "contactSpread"
     ]
   },
@@ -273,7 +244,7 @@
     "referenceGainDb": 2,
     "corpus": {
       "id": "acoustic-kick-oak",
-      "name": "Acoustic kick - oak",
+      "name": "Acoustic kick — oak",
       "referenceGainDb": 2
     },
     "cell": {
@@ -295,7 +266,6 @@
   "controls": {
     "event": {
       "strength": 0.5,
-      "location": 0.5,
       "hardness": 0.5,
       "implement": 0.5,
       "contactSpread": 0.2,
@@ -309,5 +279,7 @@
       "floorDb": -160,
       "dynamicRangeDb": 80
     }
-  }
+  },
+  "reviewStatus": "audition-unapproved",
+  "reviewNote": "Exact renderer reload and repeated-hit checks pass. Full-match checks do not pass; broad 540–650 Hz energy remains deficient. Not listening-approved."
 }

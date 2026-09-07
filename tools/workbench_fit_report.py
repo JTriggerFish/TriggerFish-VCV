@@ -12,6 +12,7 @@ from triggerfish_percussion.audio_io import read_wav
 from triggerfish_percussion.trajectory_fit_loss import TrajectoryLoss, features, to_db
 from triggerfish_percussion.transforms import StftConfig, stft
 from triggerfish_percussion.short_drum_fit_loss import ShortDrumLoss
+from triggerfish_percussion.drum_balance_loss import DrumBalanceLoss
 from triggerfish_percussion.fit_provenance import verify_candidate
 from triggerfish_percussion.fit_publication import publish_html
 
@@ -52,6 +53,8 @@ def write_report(directory: Path, kind="gong", assets="..", *, renderer):
         f'onset {1000 * cell.get("onset_seconds", 0):.3f} ms.</p>'
     )
     loss_type = ShortDrumLoss if kind == "kick" else TrajectoryLoss
+    if saved.get("objective") == "DrumBalanceLoss":
+        loss_type = DrumBalanceLoss
     loss = loss_type(reference.samples, reference.sample_rate)
     metrics = {
         name: loss.diagnostics(audio.samples)
@@ -180,6 +183,10 @@ def write_report(directory: Path, kind="gong", assets="..", *, renderer):
         from kick_fit_plots import detail_plot
 
         html += detail_plot(reference, candidate)
+        if isinstance(loss, DrumBalanceLoss):
+            from kick_balance_plots import balance_plot
+
+            html += balance_plot(loss, candidate.samples)
         sequence_buttons = []
         for name, label in (
             ("hits-0.5s-strength-0.5", "Quarter notes · medium"),

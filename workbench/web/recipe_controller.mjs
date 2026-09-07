@@ -1,4 +1,5 @@
 import { recipeAdapter } from "./recipe_adapter.mjs";
+import { recipeStartingValues, recipeStartingEvent, calibrationPatch } from "./instrument_calibrations.mjs";
 
 const byId = id => document.getElementById(id);
 
@@ -55,11 +56,13 @@ export class RecipeController {
     this.state.recipeKey = recipe.key;
     byId("instrument-recipe").value = recipeIndex;
     const values = saved?.macros ??
-      this.engine.parameters.map(item => item.defaultValue);
+      recipeStartingValues(recipe.key, this.engine.parameters);
     this.state.macros.splice(0, this.state.macros.length, ...values);
-    this.state.patch = structuredClone(saved?.patch ??
-      recipeAdapter(recipe.key).create(this.engine.parameters, values));
-    if (saved?.event) Object.assign(this.state.event, saved.event);
+    const startingPatch = recipeAdapter(recipe.key).create(this.engine.parameters, values);
+    this.state.patch = structuredClone(saved?.patch ?? calibrationPatch(
+      { parameter_preset: recipe.key === "drum.kick.v1" ? "kick" : null },
+      this.engine.parameters, values, startingPatch));
+    Object.assign(this.state.event, saved?.event ?? recipeStartingEvent(recipe.key) ?? {});
     this.buildControls(false);
     const routing = this.getRoutingController();
     routing?.setPatch(this.state.patch);

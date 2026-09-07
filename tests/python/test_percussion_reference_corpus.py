@@ -84,8 +84,8 @@ def test_curated_reference_catalog_is_small_and_allow_listed(tmp_path: Path) -> 
         "velocity": 82,
         "repeat": 1,
     }
-    assert calibrations["kick-standard"]["recipe"] == "drum.membrane.v1"
-    assert calibrations["kick-standard"]["parameter_preset"] == "acoustic-kick"
+    assert calibrations["kick-standard"]["recipe"] == "drum.kick.v1"
+    assert calibrations["kick-standard"]["parameter_preset"] == "kick"
     gong = next(corpus for corpus in corpora if corpus["id"] == "gong-dresden")
     assert all(cell["implement"] == 0.5 for cell in gong["cells"])
     assert all(cell["contactSpread"] == 0.3 for cell in gong["cells"])

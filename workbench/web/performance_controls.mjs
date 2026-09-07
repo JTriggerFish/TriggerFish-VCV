@@ -73,7 +73,6 @@ export class PerformanceControls {
   }
 
   #bindKickControls() {
-    this.#bindSlider("kick-location", "location", () => this.state.eventDefaults.location);
     this.#bindSlider("kick-spread", "contactSpread", () => this.state.eventDefaults.contactSpread);
     byId("kick-implement").onchange = event => {
       this.state.event.implement = Number(event.currentTarget.value);
@@ -159,7 +158,6 @@ export class PerformanceControls {
 
   #paintKick() {
     this.#paintSlider("kick-hardness", this.state.event.hardness);
-    this.#paintSlider("kick-location", this.state.event.location);
     this.#paintSlider("kick-spread", this.state.event.contactSpread);
     byId("kick-implement").value = selectedImplement(this.state.event.implement).value;
   }

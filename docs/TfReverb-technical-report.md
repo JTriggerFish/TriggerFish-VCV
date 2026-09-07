@@ -1085,6 +1085,22 @@ The principal implementation files are:
 | `python/triggerfish_reverb/objectives.py` | Multi-scale resonance loss used for coefficient optimization |
 | `tools/optimize_velvet_reverb.py` | Gradient-descent search, validation, and coefficient-artifact export |
 
+### Static analysis parity
+
+The PyTorch reference includes the diffusion-dependent butterfly angle, not
+just diffusion-dependent delay lengths. At maximum diffusion the transform
+reduces to signed Hadamard mixing. Short-delay room scaling uses the current
+`reverb_defaults::RoomDimensionsMetres` (MediumHall), not Space's midpoint.
+These two stale assumptions were corrected in the analysis model on 2026-09-07;
+the production DSP and its coefficients were unchanged.
+
+`tests/python/test_velvet_reverb.py` compares base and optimized C++ wall-impulse
+responses with the static model at the original tolerances, checks orthogonality
+at several diffusion settings, and checks the room-scale constant against the
+C++ header. These optional tests require PyTorch; ordinary plugin builds do not.
+Historical optimization scores from the old analysis model should not be
+interpreted as scores for the corrected model without recomputation.
+
 ## 18. References
 
 1. J. B. Allen and D. A. Berkley, [“Image method for efficiently simulating

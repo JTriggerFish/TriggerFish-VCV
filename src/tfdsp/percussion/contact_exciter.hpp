@@ -55,15 +55,18 @@ public:
     microBodyScale_ = microContacts_.BodyImpulseScale();
   }
 
-  ContactExciterSample Process() noexcept {
+  ContactExciterSample Process(const bool noiseObservationOnly = false,
+                              const bool pulseDriveOnly = false) noexcept {
     const float pulse = pulse_.Process();
     const float chirp = chirp_.Process();
     const float noise = noise_.Process();
     const float micro = microContacts_.Process();
     ContactExciterSample output;
-    output.directRadiation = pulse + chirp + noise + micro;
-    output.bodyDrive = pulseBodyScale_ * pulse + chirpBodyScale_ * chirp +
-        noiseBodyScale_ * noise + microBodyScale_ * micro;
+    output.directRadiation = noiseObservationOnly ? noise : pulse + chirp + noise + micro;
+    output.bodyDrive = pulseBodyScale_ * pulse;
+    if (!pulseDriveOnly)
+      output.bodyDrive += chirpBodyScale_ * chirp + noiseBodyScale_ * noise +
+          microBodyScale_ * micro;
     if (!std::isfinite(output.directRadiation))
       output.directRadiation = 0.f;
     if (!std::isfinite(output.bodyDrive))

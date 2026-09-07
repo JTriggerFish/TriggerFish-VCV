@@ -30,16 +30,17 @@ are their only individual volume factors. EQ and master then affect the sum.
 
 | Section | Controls | Meaning |
 | --- | --- | --- |
-| Contact | Level, width, colour, noise amount, noise T60 | Direct beater articulation and the force that excites resonance |
-| Thump | Level, pitch, drop, fall time, T60 | Stable low-frequency weight with an independently timed pitch fall |
+| Contact | Observation choice, body drive choice, level, width, colour, noise amount, noise T60 | Independently select full/noise-only observation and full/pulse-only body drive |
+| Thump | Level, pitch, drop, fall time, hold, T60, decay shape | Low-frequency weight with independent pitch and amplitude trajectories |
 | Resonance | Level, editable modes, T60 at 100 Hz, damping slope | Persistent acoustic ringing, from absent to prominent |
 | Strike/tension (advanced) | Energy pitch lift, recovery | Temporary membrane detuning proportional to stored strike energy |
 | Output | EQ mode and its controls, model level | Common observation; no automatic gain matching |
 
 Thump pitch is its settled frequency, independent of resonance frequencies.
-Each of the 16 resonance slots explicitly stores frequency, relative prominence
-level, and signed centre/edge strike couplings. All four are editable in the
-modal panel and serialized one-to-one through the Wasm API into C++.
+Each of the 16 resonance slots explicitly stores frequency and relative prominence
+level. Both are editable in the modal panel and serialized one-to-one through
+the Wasm API into C++. Kick has a fixed beater: no location input or centre/edge
+coefficients. The common trigger ABI ignores location for this recipe.
 A level of −72 dB disables that slot's excitation and observation.
 Prominence is split equally between excitation and observation: each receives
 the square root of the linear bar weight minus the -72 dB off-floor. Both
@@ -51,9 +52,8 @@ resonance level controls overall amplitude.
 The modal editor's **Generate editable modes** menu supplies circular-membrane
 root-ratio and harmonic-series starting layouts. Fundamental, count, level and
 dB/octave falloff generate ordinary values. No formula remains active afterward.
-Generated spatial couplings are constructive starting weights, not measured
-membrane eigenfunctions; they remain visible and editable. The same generator
-is available in the metallic-body editor. It does not replace the damping curve.
+The same generator is available in the metallic-body editor. It does not
+replace the damping curve or create hidden spatial coefficients for kick.
 
 Shared damping is frequency-based, independent of slot order or active count:
 
@@ -65,8 +65,9 @@ $$
 
 Here $s$ is the displayed damping slope: +1 halves T60 each frequency octave;
 zero is flat. There are **no individual mode decay controls or fitted
-multipliers**. Output EQ is bypassed by default and excluded from kick fitting.
-Optional manual radiation/multiband observation remains available.
+multipliers**. Output EQ is bypassed by default. Optional radiation/multiband
+observation remains available; current diagnostic trials also test the existing
+low-pass as a noise-bandwidth constraint, not a multiband correction curve.
 
 The thump uses the existing `CorrelatedFmBurst` with zero deviation and zero
 pitch jitter. Its name describes its function, not its reusable oscillator
@@ -75,8 +76,27 @@ implementation. No second FM carrier or hidden roughness control is fitted.
 Contact uses the existing pulse/chirp/noise/micro-contact ingredients and
 implement response. Noise T60 describes the base envelope before implement
 and contact-spread shaping; the UI tooltip states that distinction.
-Finite noise and thump envelopes close after an 80 dB fade, so their internal
-fade duration is 4/3 of the displayed T60.
+The direct observation selector excludes pulse/chirp/grains in Noise only mode;
+it does not alter their body excitation. The separate Body drive selector can
+feed only the finite contact pulse to the membrane, excluding the long noise
+tail from that input. It introduces no extra gain: both choices use the same
+existing impulse normalization. Other drum recipes retain their full-contact
+drive by default. Finite noise closes after an 80 dB fade,
+so its internal fade duration is 4/3 of base T60.
+
+After its 0.4 ms rise and optional hold, the thump amplitude is
+
+$$
+A(t)=\exp\left[-\ln(1000)\left((1-q)u+qu^2\right)\right],
+\qquad u=t/T_{60},\quad 0\le q\le1.
+$$
+
+Here $t$ starts after hold and $q$ is the displayed decay shape. Zero gives an
+exponential; one gives a rounded shoulder and an increasingly steep finish.
+The -60 dB point stays at T60. The finite trajectory reaches -80 dB and then
+closes to zero over 1 ms. This shapes amplitude, not waveform saturation.
+Geometric curvature uses a recursively updated multiplier; no per-sample exp
+is needed. Uncurved trajectories retain the existing float-multiply path.
 
 ## Energy, retriggers and levels
 

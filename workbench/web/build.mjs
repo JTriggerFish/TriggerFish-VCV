@@ -20,6 +20,7 @@ for (const name of [
   "metallic_plate_patch.mjs", "kick_patch.mjs", "membrane_patch.mjs",
   "snare_patch.mjs",
   "instrument_calibrations.mjs", "metallic_calibrations.mjs",
+  "kick_calibration.fit.json",
   "recipe_adapter.mjs", "routing_view.mjs", "kick_controls.mjs",
   "membrane_controls.mjs", "snare_controls.mjs",
   "routing_controller.mjs", "performance_controls.mjs",

@@ -201,11 +201,12 @@ def test_exporter_requires_current_architecture_and_separate_namespace():
         exporter.validate_artifact(artifact)
 
 
-def test_fixed_signed_hadamard_transforms_are_orthogonal():
+@pytest.mark.parametrize("diffusion", [0.0, 0.5, 1.0])
+def test_signed_butterfly_transforms_are_orthogonal(diffusion):
     model = DifferentiableVelvetReverb(sample_rate=PRODUCTION_SAMPLE_RATE)
     identity = torch.eye(16)
     for transform in range(3):
-        matrix = model.transform(transform)
+        matrix = model.transform(transform, diffusion)
         assert torch.allclose(matrix.T @ matrix, identity, atol=2.0e-6)
 
 
@@ -217,6 +218,22 @@ def test_wall_projection_is_an_energy_preserving_embedding():
     )
 
 
+def test_vfm_scale_reference_matches_current_cpp_defaults():
+    header = Path("src/tfdsp/reverb_defaults.hpp").read_text(encoding="utf8")
+    dimensions = _numbers_between(header, "RoomDimensionsMetres{", "};")
+    assert list(REFERENCE_ROOM_DIMENSIONS_METRES) == pytest.approx(dimensions)
+
+
+def test_diffusion_changes_mixing_not_only_delay_lengths():
+    model = DifferentiableVelvetReverb(sample_rate=PRODUCTION_SAMPLE_RATE)
+    assert not torch.allclose(model.transform(0, 0), model.transform(0, 1))
+    assert torch.allclose(
+        model.transform(0, 1),
+        model.signs[0].unsqueeze(-1) * model.hadamard[model.permutations[0]],
+        atol=1.0e-7,
+    )
+
+
 def test_room_geometry_and_mean_free_time_match_the_cpp_control_law():
     space = torch.tensor([0.0, 0.5, 1.0])
     aspect = torch.full_like(space, 0.5)
@@ -225,7 +242,7 @@ def test_room_geometry_and_mean_free_time_match_the_cpp_control_law():
     assert torch.allclose(dimensions[-1], torch.tensor((18.0, 25.0, 8.0)))
     assert torch.allclose(
         dimensions[1],
-        torch.tensor(REFERENCE_ROOM_DIMENSIONS_METRES),
+        torch.tensor((7.09929574, 9.35414347, 4.38178046)),
         rtol=2.0e-6,
         atol=2.0e-6,
     )

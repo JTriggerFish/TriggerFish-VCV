@@ -21,10 +21,10 @@ void Check(const bool condition, const char *message) {
 }
 
 std::vector<float> Render(const std::uint32_t handle, const std::uint32_t seed,
-                          const std::size_t blockSize) {
+                          const std::size_t blockSize, const float location = .5f) {
   std::vector<float> result(24000);
   Check(tf_percussion_reset(handle), "recipe reset succeeds");
-  Check(tf_percussion_trigger(handle, .8f, .5f, .6f, 1.f, .2f, seed),
+  Check(tf_percussion_trigger(handle, .8f, location, .6f, 1.f, .2f, seed),
         "recipe trigger succeeds");
   for (std::size_t first = 0; first < result.size(); first += blockSize) {
     const auto count = std::min(blockSize, result.size() - first);
@@ -129,13 +129,14 @@ int main() {
   const auto kick = tf_percussion_create(1, 48000.f);
   Check(kick != 0 && tf_percussion_recipe(kick) == 1,
         "kick session can be created");
-  Check(tf_percussion_parameter_count(kick) == 93,
+  Check(tf_percussion_parameter_count(kick) == 65,
         "kick exposes its bounded control surface");
   Check(tf_percussion_route_count(kick) == 3,
         "kick exposes three source routes");
   const auto level = ParameterIndex(kick, "model_level_db");
   const auto pitch = ParameterIndex(kick, "thump_pitch_hz");
-  Check(level < 93 && pitch < 93,
+  Check(level < tf_percussion_parameter_count(kick) &&
+            pitch < tf_percussion_parameter_count(kick),
         "kick parameters have stable identifiers");
   Check(tf_percussion_parameter_scale(kick, pitch) == 1,
         "kick pitch declares logarithmic control scaling");
@@ -145,6 +146,8 @@ int main() {
   const auto whole = Render(kick, 17, first.size());
   const auto variation = Render(kick, 18, 128);
   Check(first == repeated, "kick API is deterministic");
+  Check(Render(kick, 17, 128, 0.f) == Render(kick, 17, 128, 1.f),
+        "common ABI location cannot alter a fixed-beater kick");
   Check(first == whole, "kick API is host-block independent");
   Check(Difference(first, variation) > 1.e-7,
         "kick API forwards event seeds");

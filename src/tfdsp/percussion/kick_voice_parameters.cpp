@@ -1,4 +1,5 @@
 #include "kick_voice_parameters.hpp"
+#include "kick_thump_envelope.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -13,14 +14,14 @@ float Safe(float value, float fallback, float low, float high) noexcept {
 std::array<KickModeControl, MembraneModeCount> DefaultKickModes() noexcept {
   // Factory data, not a constraint on the sounding bank. Editor templates can
   // replace this entire list; no runtime harmonic/membrane interpolation remains.
-  return {{{55.f, 0.f, 1.f, .18f}, {87.615f, -4.03f, -.63f, .235f},
-           {117.48f, -6.57f, .611f, .289f}, {126.28f, -7.19f, -.592f, .344f},
-           {145.915f, -8.44f, .572f, .399f}, {160.49f, -9.27f, -.552f, .453f},
-           {173.58f, -9.95f, .533f, .508f}, {192.555f, -10.85f, -.514f, .563f},
-           {198.f, -11.09f, .494f, .617f}, {200.86f, -11.21f, -.475f, .672f},
-           {223.3f, -12.13f, .455f, .727f}, {228.47f, -12.33f, -.435f, .781f},
-           {236.005f, -12.61f, .416f, .836f}, {253.055f, -13.21f, -.397f, .891f},
-           {265.705f, -13.63f, .377f, .945f}, {282.48f, -14.15f, -.357f, 1.f}}};
+  return {{{55.f, 0.f}, {87.615f, -4.03f},
+           {117.48f, -6.57f}, {126.28f, -7.19f},
+           {145.915f, -8.44f}, {160.49f, -9.27f},
+           {173.58f, -9.95f}, {192.555f, -10.85f},
+           {198.f, -11.09f}, {200.86f, -11.21f},
+           {223.3f, -12.13f}, {228.47f, -12.33f},
+           {236.005f, -12.61f}, {253.055f, -13.21f},
+           {265.705f, -13.63f}, {282.48f, -14.15f}}};
 }
 
 MembraneDrumParameters
@@ -48,9 +49,10 @@ DefaultKickVoiceParameters(const KickVoiceControls &source) noexcept {
   body.equalizerMode = ObservationEqualizerMode::Bypass;
   body.outputGain = Safe(source.outputGain, .25f, 0.f, 1.f);
   auto result = DefaultMembraneDrumParameters(body);
-  // T60 means -60 dB amplitude. The finite source closes after -80 dB.
-  result.fm.amplitude.segments[1].durationSeconds =
-      4.f / 3.f * Safe(source.thumpDecaySeconds, .306f, .005f, 3.f);
+  result.contactNoiseObservationOnly = source.contactNoiseObservationOnly;
+  result.contactPulseDriveOnly = source.contactPulseDriveOnly;
+  ShapeKickThump(result.fm.amplitude, source.thumpDecaySeconds,
+                 source.thumpHoldSeconds, source.thumpDecayShape);
   result.fm.carrierFrequencyHz.initialValue =
       body.fundamentalHz *
       std::exp2(Safe(source.thumpPitchDropOctaves, 1.47f, 0.f, 4.f));
@@ -71,8 +73,9 @@ DefaultKickVoiceParameters(const KickVoiceControls &source) noexcept {
     const float prominence = std::max(
         0.f, std::pow(10.f, level / 20.f) - std::pow(10.f, -72.f / 20.f));
     mode.inputGain = mode.outputGain = std::sqrt(prominence);
-    mode.centerProjection = Safe(control.centreCoupling, 1.f, -1.f, 1.f);
-    mode.edgeProjection = Safe(control.edgeCoupling, 1.f, -1.f, 1.f);
+    // Fixed beater: modal prominence is the complete excitation/observation
+    // weight. The shared membrane primitive's spatial projection is identity.
+    mode.centerProjection = mode.edgeProjection = 1.f;
     // One frequency-based damping law, independent of slot/order/mode count.
     mode.decaySeconds = std::clamp(
         decay * std::pow(mode.frequencyHz / 100.f, -slope), .002f, 30.f);

@@ -17,6 +17,7 @@ struct TrajectorySegment {
   float targetValue{};
   float durationSeconds{};
   TrajectoryCurve curve{TrajectoryCurve::Linear};
+  float logCurvature{}; // geometric only: 0 exponential, 1 quadratic log decay
 };
 
 // Fixed-capacity breakpoint trajectory for fitted audio-rate controls. Segment
@@ -39,6 +40,9 @@ public:
     segmentIndex_ = segmentSample_ = segmentSamples_ = segmentCount_ = 0;
     linearStep_ = 0.f;
     geometricRatio_ = 1.f;
+    curvedRatio_ = 1.;
+    ratioStep_ = 1.f;
+    curved_ = false;
     geometric_ = false;
   }
 
@@ -57,9 +61,14 @@ public:
     if (!Active())
       return value_;
     ++segmentSample_;
-    if (geometric_)
-      value_ *= geometricRatio_;
-    else
+    if (geometric_) {
+      if (curved_) {
+        value_ = static_cast<float>(value_ * curvedRatio_);
+        curvedRatio_ *= ratioStep_;
+      } else {
+        value_ *= geometricRatio_;
+      }
+    } else
       value_ = static_cast<float>(
           static_cast<double>(segmentStart_) +
           static_cast<double>(linearStep_) * segmentSample_);
@@ -81,6 +90,8 @@ private:
     segment.durationSeconds = std::clamp(
         std::isfinite(segment.durationSeconds) ? segment.durationSeconds : 0.f,
         0.f, 60.f);
+    segment.logCurvature = std::clamp(
+        tfdsp::FiniteNormalOrZero(segment.logCurvature), 0.f, 1.f);
     return segment;
   }
 
@@ -116,16 +127,23 @@ private:
                  segmentStart_ != 0.f && target != 0.f &&
                  std::signbit(segmentStart_) == std::signbit(target);
     geometricRatio_ = 1.f;
+    ratioStep_ = 1.f;
+    curved_ = false;
     if (geometric_) {
-      const double ratio = std::exp(
-          (std::log(std::abs(static_cast<double>(target))) -
-           std::log(std::abs(static_cast<double>(segmentStart_)))) /
-          segmentSamples_);
+      const double logarithm = std::log(std::abs(static_cast<double>(target))) -
+          std::log(std::abs(static_cast<double>(segmentStart_)));
+      const double curvature = segments_[segmentIndex_].logCurvature;
+      curved_ = curvature > 0.;
+      const double count = static_cast<double>(segmentSamples_);
+      const double ratio = std::exp(logarithm *
+          ((1. - curvature) / count + curvature / (count * count)));
+      ratioStep_ = std::exp(2. * logarithm * curvature / (count * count));
       geometric_ = std::isfinite(ratio) &&
                    ratio >= std::numeric_limits<float>::min() &&
                    ratio <= std::numeric_limits<float>::max();
       if (geometric_)
         geometricRatio_ = static_cast<float>(ratio);
+      curvedRatio_ = ratio;
     }
   }
 
@@ -135,6 +153,9 @@ private:
   float segmentStart_{};
   float linearStep_{};
   float geometricRatio_{1.f};
+  double curvedRatio_{1.};
+  double ratioStep_{1.};
+  bool curved_{};
   std::size_t segmentIndex_{};
   std::size_t segmentSample_{};
   std::size_t segmentSamples_{};

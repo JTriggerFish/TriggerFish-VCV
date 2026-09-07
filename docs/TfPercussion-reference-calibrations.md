@@ -30,11 +30,12 @@ None of these entries is an accepted synthesis calibration. In particular, a
 parameter vector produced by an optimizer is not promoted merely because it
 improves a relative or aggregate score.
 
-The [kick fitting procedure](TfPercussion-kick-fitting.md) uses a separate
-`/kick-review/` report. The previous EQ-assisted candidate has been withdrawn
-after switching to explicit editable modes. A new six-mode experimental kick
-fit is available in that report, but is not listening-approved; the toolbar
-entry remains an uncalibrated starting point.
+The [kick fitting procedure](TfPercussion-kick-fitting.md) publishes its selected
+fit directly to the main workbench, not a separate audition page. Both the Kick
+recipe's initial sound and the reference-target entry read the same versioned
+`workbench/web/kick_calibration.fit.json`. The current six-mode fit is available
+for listening review; publishing it does not claim perceptual acceptance. The
+JSON retains its exact reference and event, and is verified against the render.
 
 Each factory model level can be checked against its named reference without changing
 either waveform. It is not a per-hit normalizer and it is not evidence that the

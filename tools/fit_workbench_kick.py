@@ -23,6 +23,11 @@ from kick_fit_start import load_start
 from kick_playability import check_playability
 from kick_fit_sources import source_audit
 from kick_modal_refinement import refine_modal_alternatives
+from kick_attack_refinement import refine_attack
+from triggerfish_percussion.drum_balance_loss import DrumBalanceLoss
+from triggerfish_percussion.workbench_calibration_publication import (
+    publish_workbench_calibration,
+)
 from triggerfish_percussion.modal_fit_initialization import (
     spectral_mode_candidates,
     reference_modal_starts,
@@ -64,6 +69,14 @@ def main():
         if os.environ.get("TF_KICK_AUDIT_ONLY") == "1":
             write_report(OUTPUT, kind="kick", renderer=renderer)
             return
+        if os.environ.get("TF_KICK_PUBLISH_ONLY") == "1":
+            publish_workbench_calibration(
+                renderer,
+                OUTPUT,
+                ROOT / "workbench/web/kick_calibration.fit.json",
+                OUTPUT.parent / "kick_calibration.fit.json",
+            )
+            return
         if os.environ.get("TF_KICK_VERIFY_PRESET") == "1":
             saved = json.loads((OUTPUT / "search.json").read_text())
             check_reference(saved["metadata"], renderer.metadata)
@@ -100,7 +113,11 @@ def main():
             ),
             flush=True,
         )
-        loss = ShortDrumLoss(reference, rate)
+        attack_refinement = os.environ.get("TF_KICK_ATTACK_REFINEMENT") == "1"
+        balanced = (
+            attack_refinement or os.environ.get("TF_KICK_BALANCE_REFINEMENT") == "1"
+        )
+        loss = (DrumBalanceLoss if balanced else ShortDrumLoss)(reference, rate)
         search = Search(
             renderer,
             loss,
@@ -129,16 +146,26 @@ def main():
         print(json.dumps(dict(baseline=loss.diagnostics(baseline))), flush=True)
         # No output-EQ variables or hidden modal templates participate in fitting.
         fine = os.environ.get("TF_KICK_FINE_ONLY") == "1"
-        refine(
-            search,
-            joint_only=fine or os.environ.get("TF_KICK_JOINT_ONLY") == "1",
-            fine_only=fine,
-        )
+        if attack_refinement:
+            refine_attack(
+                search, impact_starts=os.environ.get("TF_KICK_IMPACT_STARTS") == "1"
+            )
+        else:
+            refine(
+                search,
+                joint_only=fine or os.environ.get("TF_KICK_JOINT_ONLY") == "1",
+                fine_only=fine,
+            )
         search.save()
         restored = validate_candidate(renderer, search, loss, OUTPUT, SECONDS)
         check_playability(renderer, search.parameters, OUTPUT)
         source_audit(renderer, search.parameters, OUTPUT / "sources")
-        write_report(OUTPUT, kind="kick", renderer=renderer)
+        publish_workbench_calibration(
+            renderer,
+            OUTPUT,
+            ROOT / "workbench/web/kick_calibration.fit.json",
+            OUTPUT.parent / "kick_calibration.fit.json",
+        )
         print(
             json.dumps(
                 dict(candidate=inspect(restored, rate), round_trip="sample-identical")

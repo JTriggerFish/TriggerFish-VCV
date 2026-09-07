@@ -56,6 +56,8 @@ private:
     float Activity() const noexcept { return activity; }
 
     ContactExciter contact{};
+    bool contactNoiseObservationOnly{};
+    bool contactPulseDriveOnly{};
     CorrelatedFmBurst fm{};
     float location{.5f};
     float directAmplitude{};

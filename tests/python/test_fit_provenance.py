@@ -8,6 +8,9 @@ import pytest
 from triggerfish_percussion.audio_io import AudioBuffer, write_wav
 from triggerfish_percussion.fit_provenance import verify_candidate
 from triggerfish_percussion.fit_publication import publish_html
+from triggerfish_percussion.workbench_calibration_publication import (
+    publish_workbench_calibration,
+)
 
 
 def fixture(tmp_path):
@@ -89,3 +92,41 @@ def test_published_audio_does_not_follow_later_search_checkpoints(tmp_path):
     write_wav(tmp_path / "candidate.wav", AudioBuffer(np.zeros(2), 2))
     assert (tmp_path / audio_name).read_bytes() == original
     assert (tmp_path / "index.html").read_text(encoding="utf8") == html
+
+
+def test_workbench_publication_updates_source_and_served_preset(tmp_path):
+    renderer, _ = fixture(tmp_path)
+    source, served = tmp_path / "source.json", tmp_path / "served.json"
+    publish_workbench_calibration(renderer, tmp_path, source, served)
+    assert source.read_bytes() == served.read_bytes()
+    assert json.loads(source.read_text())["gain"] == 1
+    assert not list(tmp_path.glob("*.pending"))
+
+
+def test_invalid_fit_cannot_replace_workbench_preset(tmp_path):
+    renderer, _ = fixture(tmp_path)
+    source, served = tmp_path / "source.json", tmp_path / "served.json"
+    source.write_text("existing source")
+    served.write_text("existing served")
+    (tmp_path / "candidate.fit.json").write_text('{"gain":0}')
+    with pytest.raises(ValueError):
+        publish_workbench_calibration(renderer, tmp_path, source, served)
+    assert source.read_text() == "existing source"
+    assert served.read_text() == "existing served"
+
+
+def test_reproducible_but_bad_kick_cannot_replace_preset(tmp_path, monkeypatch):
+    renderer, saved = fixture(tmp_path)
+    renderer.metadata["recipeKey"] = saved["metadata"]["recipeKey"] = "drum.kick.v1"
+    (tmp_path / "search.json").write_text(json.dumps(saved))
+    monkeypatch.setattr(
+        "triggerfish_percussion.kick_quality_checks.check_kick_candidate",
+        lambda directory, **kwargs: {"eligible": False},
+    )
+    source, served = tmp_path / "source.json", tmp_path / "served.json"
+    source.write_text("existing source")
+    served.write_text("existing served")
+    with pytest.raises(ValueError, match="shape/decay"):
+        publish_workbench_calibration(renderer, tmp_path, source, served)
+    assert source.read_text() == "existing source"
+    assert served.read_text() == "existing served"

@@ -20,6 +20,11 @@ dev = [
     "scipy>=1.14",
 ]
 reverb = ["scipy>=1.14", "torch>=2.7"]
+# Explicit opt-in experiments only; not installed for ordinary Rack builds.
+perceptual-fit = [
+    "torch>=2.8", "auraloss==0.4.0", "librosa==0.11.0",
+    "wavespin @ git+https://github.com/OverLordGoldDragon/wavespin.git@5ff1b72785703cd09d4b1bf4b5f52ffcc8a926ae",
+]
 
 [project.optional-dependencies]
 # Offline fitting and reporting only; never a dependency of the Rack plugin.

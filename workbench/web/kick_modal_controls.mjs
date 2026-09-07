@@ -1,7 +1,7 @@
 import {ModalEditor} from "./modal_editor.mjs";
 import {mountModalTemplates} from "./modal_templates.mjs";
 
-const Fields = ["frequency", "level", "centre", "edge"];
+const Fields = ["frequency", "level"];
 const key = (field, index) => `resonance_${field}_${index}`;
 
 // Same editor as the metallic body; this resonator has no stochastic widths.
@@ -18,7 +18,7 @@ export class KickModalControls {
       insert:(frequency, level)=>{
         const points=this.points(), index=points.findIndex(point=>!point.active);
         if(index<0)return null;
-        points[index]={frequency,level,centre:1,edge:1,turbulence:0,active:true};
+        points[index]={frequency,level,turbulence:0,active:true};
         this.replace(points); return index;
       },
       remove:index=>{
@@ -52,9 +52,7 @@ export class KickModalControls {
   replace(points) {
     points.forEach((point,i)=>Fields.forEach(field=>{
       const descriptor=this.owner.byKey.get(key(field,i));
-      // Painting can create a point without spatial data. Start with unit
-      // coupling rather than deriving new coefficients from its slot index.
-      const value=point[field] ?? (field==="centre" || field==="edge" ? 1 : descriptor.defaultValue);
+      const value=point[field] ?? descriptor.defaultValue;
       this.owner.state.macros[descriptor.index]=Math.max(descriptor.minimum,
         Math.min(descriptor.maximum, value));
     }));
@@ -69,7 +67,7 @@ export class KickModalControls {
     const title=document.createElement("b");
     title.textContent=index===null ? "No mode selected" : `Mode ${index+1}`;
     parent.append(title);
-    const names=["Frequency","Relative prominence","Centre strike coupling","Edge strike coupling"];
+    const names=["Frequency","Relative prominence"];
     Fields.forEach((field,j)=>{
       this.owner.addSlider("kick-mode-selection",key(field,index??0));
       const row=parent.lastElementChild;
@@ -80,8 +78,6 @@ export class KickModalControls {
       input.oninput=()=>{handler();this.editor.refresh();};
       const reset=input.ondblclick;
       input.ondblclick=event=>{reset(event);this.editor.refresh();};
-      if(field==="centre" || field==="edge")
-        row.dataset.tooltip="Signed strike coupling at this location endpoint. Negative values invert polarity; the body normalizes the combined excitation energy.";
       if(index===null)row.querySelector("output").textContent="—";
     });
   }

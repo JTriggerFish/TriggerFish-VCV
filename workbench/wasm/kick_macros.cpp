@@ -7,6 +7,8 @@ using Scale = ParameterScale;
 const std::array<ParameterDescriptor, static_cast<std::size_t>(KickParameter::Count)> Descriptors{{
     {"model_level_db", "Model level", "dB", -60.f, 0.f, -12.f},
     {"contact_level", "Contact level", "x", 0.f, 4.f, 0.4f},
+    {"contact_observation", "Contact observation", "mode", 0.f, 1.f, 0.f, Scale::Choice},
+    {"contact_body_drive", "Body drive", "mode", 0.f, 1.f, 0.f, Scale::Choice},
     {"contact_width_seconds", "Contact width", "s", 0.0002f, 0.08f, 0.011f,
      Scale::Logarithmic},
     {"contact_colour", "Contact colour", "", 0.f, 1.f, 0.33f},
@@ -21,6 +23,8 @@ const std::array<ParameterDescriptor, static_cast<std::size_t>(KickParameter::Co
      Scale::Logarithmic},
     {"thump_decay_seconds", "Thump decay (T60)", "s", 0.005f, 3.f, 0.306f,
      Scale::Logarithmic},
+    {"thump_hold_seconds", "Thump hold", "s", 0.f, .08f, 0.f},
+    {"thump_decay_shape", "Thump decay shape", "", 0.f, 1.f, 0.f},
     {"resonance_level", "Resonance prominence", "x", 0.f, 12.f, 4.72f},
     {"resonance_decay_seconds", "Resonance T60 at 100 Hz", "s", 0.03f, 8.f, 0.6f,
      Scale::Logarithmic},
@@ -68,6 +72,8 @@ ApplyKickParameters(const KickParameterValues &values) noexcept {
   const auto get = [&](P p) { return values[static_cast<std::size_t>(p)]; };
   tfdsp::percussion::KickVoiceControls controls;
   controls.contactLevel = get(P::ContactLevel);
+  controls.contactNoiseObservationOnly = get(P::ContactObservation) >= .5f;
+  controls.contactPulseDriveOnly = get(P::ContactBodyDrive) >= .5f;
   controls.contactWidthSeconds = get(P::ContactWidth);
   controls.contactColour = get(P::ContactColour);
   controls.contactNoiseLevel = get(P::ContactNoise);
@@ -77,6 +83,8 @@ ApplyKickParameters(const KickParameterValues &values) noexcept {
   controls.thumpPitchDropOctaves = get(P::ThumpDrop);
   controls.thumpPitchFallSeconds = get(P::ThumpFall);
   controls.thumpDecaySeconds = get(P::ThumpDecay);
+  controls.thumpHoldSeconds = get(P::ThumpHold);
+  controls.thumpDecayShape = get(P::ThumpDecayShape);
   controls.resonanceLevel = get(P::ResonanceLevel);
   controls.resonanceDecaySeconds = get(P::ResonanceDecay);
   controls.resonanceDecayTilt = get(P::ResonanceDecayTilt);
@@ -84,9 +92,8 @@ ApplyKickParameters(const KickParameterValues &values) noexcept {
   controls.tensionRecoverySeconds = get(P::TensionRecovery);
   controls.outputGain = std::pow(10.f, get(P::ModelLevelDb) / 20.f);
   for (std::size_t i = 0; i < controls.modes.size(); ++i) {
-    const auto offset = static_cast<std::size_t>(P::Count) + 4 * i;
-    controls.modes[i] = {values[offset], values[offset + 1],
-                         values[offset + 2], values[offset + 3]};
+    const auto offset = static_cast<std::size_t>(P::Count) + 2 * i;
+    controls.modes[i] = {values[offset], values[offset + 1]};
   }
   auto result = tfdsp::percussion::DefaultKickVoiceParameters(controls);
   auto &eq = result.equalizer;

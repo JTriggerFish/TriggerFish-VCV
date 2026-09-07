@@ -67,7 +67,8 @@ def check_resonance_mix(renderer, parameters, output):
         error = float(np.max(np.abs(audio - (dry + level * wet))))
         if error > 2e-4 * max(1.0, float(np.max(np.abs(audio)))):
             raise RuntimeError(
-                "Resonance prominence changed more than its observation gain"
+                f"Resonance observation affine error {error:g} at gain {level:g} "
+                f"(peak {np.max(np.abs(audio)):g})"
             )
         results.append(dict(resonance_level=level, affine_error=error))
         write_wav(

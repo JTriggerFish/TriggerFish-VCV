@@ -97,7 +97,8 @@ int tf_percussion_trigger(
         {strength, location, hardness, seed, implement, contactSpread});
     break;
   case Recipe::Kick:
-    session->kick.Trigger({strength, location, hardness, implement, contactSpread, seed});
+    // The common ABI carries location for other recipes; a pedal kick does not.
+    session->kick.Trigger({strength, 0.f, hardness, implement, contactSpread, seed});
     break;
   case Recipe::MembraneDrum:
     session->membrane.Trigger(

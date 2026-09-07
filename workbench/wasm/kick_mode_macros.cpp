@@ -12,19 +12,19 @@ struct ModeDescriptions {
 
   ModeDescriptions() {
     const auto defaults = tfdsp::percussion::DefaultKickModes();
-    constexpr const char *suffix[] = {"frequency", "level", "centre", "edge"};
-    constexpr const char *labels[] = {"frequency", "prominence", "centre coupling", "edge coupling"};
+    constexpr const char *suffix[] = {"frequency", "level"};
+    constexpr const char *labels[] = {"frequency", "prominence"};
     for (std::size_t mode = 0; mode < defaults.size(); ++mode) {
       const auto &source = defaults[mode];
-      const float initial[] = {source.frequencyHz, source.levelDb, source.centreCoupling, source.edgeCoupling};
-      for (std::size_t field = 0; field < 4; ++field) {
-        const auto index = 4 * mode + field;
+      const float initial[] = {source.frequencyHz, source.levelDb};
+      for (std::size_t field = 0; field < 2; ++field) {
+        const auto index = 2 * mode + field;
         std::snprintf(keys[index].data(), 48, "resonance_%s_%zu", suffix[field], mode);
         std::snprintf(names[index].data(), 48, "Mode %zu %s", mode + 1, labels[field]);
         values[index] = {keys[index].data(), names[index].data(),
-          field == 0 ? "Hz" : field == 1 ? "dB" : "x",
-          field == 0 ? 20.f : field == 1 ? -72.f : -1.f,
-          field == 0 ? 15000.f : field == 1 ? 6.f : 1.f, initial[field],
+          field == 0 ? "Hz" : "dB",
+          field == 0 ? 20.f : -72.f,
+          field == 0 ? 15000.f : 6.f, initial[field],
           field == 0 ? ParameterScale::Logarithmic : ParameterScale::Linear};
       }
     }

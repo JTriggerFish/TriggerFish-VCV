@@ -49,7 +49,7 @@ export function createKickPatch(descriptors, values) {
       required: index >= 3,
     })),
     outputs: { mono: "kick-output.audio" },
-    performanceControls: ["strength", "hardness", "implement", "location", "contactSpread"],
+    performanceControls: ["strength", "hardness", "implement", "contactSpread"],
   };
   return patchWithKickValues(patch, descriptors, values);
 }
@@ -76,6 +76,9 @@ export function kickValuesFromPatch(patch, descriptors) {
 }
 
 export function validateKickPatch(patch) {
+  if (patch.performanceControls?.includes("location") || patch.nodes.some(node =>
+      Object.keys(node.parameters ?? {}).some(key => /^resonance_(centre|edge)_/.test(key))))
+    throw new Error("kick uses a fixed beater, not spatial strike controls");
   if (patch.recipe !== "drum.kick.v1" || patch.nodes.length !== Nodes.length ||
       patch.connections.length !== Connections.length ||
       patch.outputs?.mono !== "kick-output.audio") {

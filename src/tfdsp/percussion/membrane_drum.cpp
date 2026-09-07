@@ -90,6 +90,8 @@ void MembraneDrum::EventVoice::Trigger(
   fmParameters.seed = hit.seed;
   fmParameters.frequencyDeviationHz.initialValue *= .35f + .9f * strength;
   contact.Trigger(contactParameters);
+  contactNoiseObservationOnly = parameters.contactNoiseObservationOnly;
+  contactPulseDriveOnly = parameters.contactPulseDriveOnly;
   fm.Trigger(fmParameters);
   location = Unit(hit.location, .5f);
   directAmplitude = strength;
@@ -99,7 +101,7 @@ void MembraneDrum::EventVoice::Trigger(
 }
 
 MembraneDrum::EventVoice::Sample MembraneDrum::EventVoice::Process() noexcept {
-  const auto contactSample = contact.Process();
+  const auto contactSample = contact.Process(contactNoiseObservationOnly, contactPulseDriveOnly);
   const float fmAudio = bodyAmplitude * fm.Process();
   Sample result{directAmplitude * contactSample.directRadiation,
                 bodyAmplitude * contactSample.bodyDrive,

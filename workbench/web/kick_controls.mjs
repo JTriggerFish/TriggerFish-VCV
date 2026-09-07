@@ -31,12 +31,12 @@ const Groups = new Map([
   ["kick-output-controls", ["model_level_db"]],
   ["kick-thump-controls", [
     "thump_level", "thump_pitch_hz", "thump_pitch_drop_octaves",
-    "thump_pitch_fall_seconds", "thump_decay_seconds",
+    "thump_pitch_fall_seconds", "thump_hold_seconds", "thump_decay_seconds", "thump_decay_shape",
   ]],
   ["kick-resonance-controls", ["resonance_level", "resonance_decay_seconds", "resonance_decay_tilt"]],
   ["kick-tension-controls", ["tension_octaves", "tension_recovery_seconds"]],
   ["kick-contact-controls", [
-    "contact_level", "contact_width_seconds", "contact_colour", "contact_noise_level", "contact_noise_decay_seconds",
+    "contact_observation", "contact_body_drive", "contact_level", "contact_width_seconds", "contact_colour", "contact_noise_level", "contact_noise_decay_seconds",
   ]],
   ["kick-observation-controls", ["equalizer_mode"]],
   ["kick-radiation-controls", ["low_cut_hz", "high_cut_hz", "colour_frequency_hz", "colour_gain_db"]],
@@ -71,7 +71,7 @@ export class KickControls {
     const row = document.querySelector(`[data-kick-key="${key}"]`);
     if (!descriptor || !row) return;
     const value = this.state.macros[descriptor.index];
-    if (key === "equalizer_mode") {
+    if (key === "equalizer_mode" || key === "contact_observation" || key === "contact_body_drive") {
       row.querySelector("select").value = value;
       this.#paintEq();
       return;
@@ -84,6 +84,7 @@ export class KickControls {
     const descriptor = this.byKey.get(key);
     if (!descriptor) throw new Error(`missing kick parameter ${key}`);
     if (key === "equalizer_mode") { this.#eqChoice(parentId, descriptor); return; }
+    if (key === "contact_observation" || key === "contact_body_drive") { this.#contactChoice(parentId, descriptor); return; }
     const row = document.createElement("label");
     row.className = "slider-row";
     row.dataset.kickKey = key;
@@ -98,6 +99,10 @@ export class KickControls {
       row.dataset.tooltip = "Octaves of T60 lost per frequency octave. +1 halves T60 each octave; 0 is flat. Independent of how many modes exist or their editor slots. Safety bounds: 2 ms to 30 s.";
     if (key === "thump_pitch_fall_seconds")
       row.dataset.tooltip = "Time to reach the settled thump pitch, independent of amplitude decay. Double-click resets.";
+    if (key === "thump_hold_seconds")
+      row.dataset.tooltip = "Full-level thump plateau before decay. Pitch continues falling; contact and modal damping are unchanged. Zero gives immediate decay.";
+    if (key === "thump_decay_shape")
+      row.dataset.tooltip = "0: exponential decay. 1: rounded full-level shoulder then steeper decay. T60 remains the -60 dB time after hold; this is envelope shaping, not waveform clipping.";
     const title = document.createElement("span");
     title.textContent = descriptor.name;
     const input = document.createElement("input");
@@ -141,6 +146,28 @@ export class KickControls {
     for (const key of ["colour_frequency_hz", "colour_gain_db"])
       document.querySelector(`[data-kick-key="${key}"]`).hidden = mode !== 1;
     document.getElementById("kick-multiband-controls").hidden = mode !== 2;
+  }
+
+  #contactChoice(parentId, descriptor) {
+    const row = document.createElement("label");
+    row.dataset.kickKey = descriptor.key;
+    const body = descriptor.key === "contact_body_drive";
+    row.dataset.tooltip = body ? "Pulse only excites body modes with the finite contact pulse. Noise/chirp/grains cannot keep driving their tails. Direct observation is unchanged." : "Direct contact observation only. Noise only excludes pulse, chirp and grains from this output. Body drive is chosen separately.";
+    row.textContent = body ? "Body drive " : "Contact observation ";
+    const select = document.createElement("select");
+    ["Full contact", body ? "Pulse only" : "Noise only"].forEach((label, value) => {
+      const option = document.createElement("option");
+      option.value = value; option.textContent = label; select.append(option);
+    });
+    select.value = this.state.macros[descriptor.index];
+    select.onchange = () => {
+      this.state.macros[descriptor.index] = Number(select.value);
+      this.onChange(descriptor.key);
+    };
+    select.ondblclick = e => {
+      e.preventDefault(); select.value = descriptor.defaultValue; select.onchange();
+    };
+    row.append(select); document.getElementById(parentId).append(row);
   }
 
   #eqChoice(parentId, descriptor) {

@@ -64,6 +64,8 @@ struct MembraneDrumControls {
 };
 
 struct MembraneDrumParameters {
+  bool contactNoiseObservationOnly{}; // selection changes observation, never drive
+  bool contactPulseDriveOnly{};
   ContactExciterParameters contact{};
   CorrelatedFmBurstParameters fm{};
   MembraneResonator<MembraneModeCount>::Parameters membrane{};

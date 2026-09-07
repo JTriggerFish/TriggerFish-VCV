@@ -10,6 +10,8 @@ namespace tfworkbench {
 enum class KickParameter : std::size_t {
   ModelLevelDb,
   ContactLevel,
+  ContactObservation,
+  ContactBodyDrive,
   ContactWidth,
   ContactColour,
   ContactNoise,
@@ -19,6 +21,8 @@ enum class KickParameter : std::size_t {
   ThumpDrop,
   ThumpFall,
   ThumpDecay,
+  ThumpHold,
+  ThumpDecayShape,
   ResonanceLevel,
   ResonanceDecay,
   ResonanceDecayTilt,

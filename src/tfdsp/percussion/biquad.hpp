@@ -4,19 +4,22 @@
 
 #include <cmath>
 #include <cstddef>
+#include <limits>
 
 namespace tfdsp::percussion {
 
 struct BiquadCoefficients {
-  float b0{1.f};
-  float b1{};
-  float b2{};
-  float a1{};
-  float a2{};
+  double b0{1.};
+  double b1{};
+  double b2{};
+  double a1{};
+  double a2{};
 };
 
 // Transposed-direct-form-II biquad. Invalid or unstable coefficient sets fall
 // back to identity instead of placing unsafe state on the audio thread.
+// Double coefficients/state avoid cancellation near DC (e.g. 5 Hz at 192 kHz).
+// The public audio stream remains float; there is no audio-level clipping.
 class Biquad {
 public:
   void Reset() noexcept { state1_ = state2_ = 0.f; }
@@ -46,16 +49,16 @@ public:
   float Process(float input) noexcept {
     AdvanceCoefficients();
     input = tfdsp::FiniteNormalOrZero(input);
-    const float output = coefficients_.b0 * input + state1_;
+    const double output = coefficients_.b0 * input + state1_;
     state1_ = coefficients_.b1 * input - coefficients_.a1 * output + state2_;
     state2_ = coefficients_.b2 * input - coefficients_.a2 * output;
-    if (!std::isfinite(output)) {
+    if (!std::isfinite(output) || std::abs(output) > std::numeric_limits<float>::max()) {
       Reset();
       return 0.f;
     }
     state1_ = tfdsp::FiniteNormalOrZero(state1_);
     state2_ = tfdsp::FiniteNormalOrZero(state2_);
-    return tfdsp::FiniteNormalOrZero(output);
+    return tfdsp::FiniteNormalOrZero(static_cast<float>(output));
   }
 
 private:
@@ -93,8 +96,8 @@ private:
   BiquadCoefficients coefficients_{};
   BiquadCoefficients targetCoefficients_{};
   BiquadCoefficients coefficientStep_{};
-  float state1_{};
-  float state2_{};
+  double state1_{};
+  double state2_{};
   std::size_t transitionSamplesRemaining_{};
 };
 

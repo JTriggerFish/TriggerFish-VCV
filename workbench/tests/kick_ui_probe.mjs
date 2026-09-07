@@ -38,10 +38,45 @@ try {
     };poll();
   })`);
   await evaluate(`(async()=>{
+    const recipe=document.getElementById('instrument-recipe');
+    recipe.value=[...recipe.options].find(o=>o.textContent==='Kick').value;
+    recipe.onchange();
+    return true;
+  })()`);
+  const checkCalibration = async () => evaluate(`(async()=>{
+    const expected=await(await fetch('./kick_calibration.fit.json',{cache:'no-store'})).json();
+    let captured;
+    const create=URL.createObjectURL, click=HTMLAnchorElement.prototype.click;
+    URL.createObjectURL=blob=>{captured=blob;return create.call(URL,blob);};
+    HTMLAnchorElement.prototype.click=function(){if(!this.download)click.call(this);};
+    try { document.getElementById('save-fit').click(); }
+    finally { URL.createObjectURL=create; HTMLAnchorElement.prototype.click=click; }
+    if(!captured)throw Error('Workbench did not serialize its current sound');
+    const actual=JSON.parse(await captured.text());
+    const values=fit=>Object.assign({},...fit.instrument.nodes.map(n=>n.parameters));
+    const want=values(expected), got=values(actual);
+    if(Object.keys(want).length!==Object.keys(got).length ||
+       Object.keys(want).some(key=>want[key]!==got[key]))
+      throw Error('Workbench sound differs from the published calibration');
+    return {parameters:Object.keys(got).length,calibration:expected.id};
+  })()`);
+  await checkCalibration();
+  await evaluate(`(async()=>{
     const target=document.getElementById('instrument-calibration');
     target.value='kick-standard'; await target.onchange();
     return true;
   })()`);
+  const publishedCalibration = await checkCalibration();
+  await evaluate(`new Promise((resolve,reject)=>{
+    const deadline=performance.now()+20000;
+    const poll=()=>{
+      if(document.getElementById('status').textContent==='Ready')resolve(true);
+      else if(performance.now()>deadline)reject(Error('Calibration render did not finish'));
+      else setTimeout(poll,100);
+    };poll();
+  })`);
+  const calibrationShot = await call("Page.captureScreenshot", {format:"png", captureBeyondViewport:true});
+  await writeFile("build/kick-calibration.png", Buffer.from(calibrationShot.data, "base64"));
   const result = await evaluate(`(async()=>{
     const {PercussionEngine}=await import('./engine.mjs');
     const engine=await PercussionEngine.create(44100);
@@ -49,9 +84,9 @@ try {
     const keys=engine.parameters.map(d=>d.key).sort();
     const rows=[...document.querySelectorAll('[data-kick-key]')];
     const actual=rows.map(r=>r.dataset.kickKey).sort();
-    const base=keys.filter(k=>!/^resonance_(frequency|level|centre|edge)_[0-9]+$/.test(k));
+    const base=keys.filter(k=>!/^resonance_(frequency|level)_[0-9]+$/.test(k));
     if(!base.every(k=>actual.includes(k)) ||
-       keys.filter(k=>/^resonance_(frequency|level|centre|edge)_[0-9]+$/.test(k)).length!==64)
+       keys.filter(k=>/^resonance_(frequency|level)_[0-9]+$/.test(k)).length!==32)
       throw Error('UI/DSP control mismatch');
     const generator=document.querySelector('#kick-modal-templates button');
     generator.click();
@@ -61,7 +96,13 @@ try {
     if(document.querySelectorAll('#kick-modal-editor .modal-bar').length) throw Error('Clear did not remove modes');
     generator.click();
     const eq=document.querySelector('[data-kick-key="equalizer_mode"] select');
-    if(eq.value!=='0') throw Error('Kick reference start must bypass EQ');
+    const expected=await(await fetch('./kick_calibration.fit.json',{cache:'no-store'})).json();
+    const published=Object.assign({},...expected.instrument.nodes.map(n=>n.parameters));
+    if(Number(eq.value)!==published.equalizer_mode)
+      throw Error('Kick observation EQ differs from its saved preset');
+    for(const key of ['contact_observation','contact_body_drive'])
+      if(Number(document.querySelector('[data-kick-key="'+key+'"] select').value)!==published[key])
+        throw Error('Kick contact routing differs from its saved preset');
     for(const mode of [2,1,0]){
       eq.value=mode; eq.dispatchEvent(new Event('change'));
       if(document.getElementById('kick-radiation-controls').hidden!==(mode===0) ||
@@ -100,7 +141,7 @@ try {
       throw Error('Delete removed an unselected generated mode');
     controls.resolvedEditor.resizeObserver.disconnect(); engine.destroy();
   })()`);
-  console.log(JSON.stringify(result));
+  console.log(JSON.stringify({...result,publishedCalibration}));
   const shot = await call("Page.captureScreenshot", {format:"png", captureBeyondViewport:true});
   await writeFile("build/kick-workbench.png", Buffer.from(shot.data, "base64"));
 } finally {

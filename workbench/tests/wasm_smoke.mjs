@@ -123,7 +123,7 @@ if (!(quietEnergy / energy > 0.24 && quietEnergy / energy < 0.26)) {
 wasm._tf_crash_destroy(handle);
 
 const kick = wasm._tf_percussion_create(1, 48000);
-if (!kick || wasm._tf_percussion_parameter_count(kick) !== 93 ||
+if (!kick || wasm._tf_percussion_parameter_count(kick) !== 65 ||
     wasm._tf_percussion_route_count(kick) !== 3) {
   throw new Error("kick recipe allocation failed");
 }

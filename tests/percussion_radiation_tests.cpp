@@ -4,6 +4,7 @@
 #include "tfdsp/percussion/biquad_design.hpp"
 #include "tfdsp/percussion/radiation_filter.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <limits>
@@ -47,6 +48,29 @@ void TestBiquadResponses() {
   }
 }
 
+// Low cutoff TDF-II cancellation must not turn a linear filter into a
+// level-dependent processor, including at high host sample rates.
+void TestLowCutoffLinearity() {
+  for (const float sampleRate : {44100.f, 192000.f}) {
+    tfdsp::percussion::Biquad full, scaled;
+    const auto coefficients = tfdsp::percussion::biquad_design::Highpass(
+        5.f, .70710678f, sampleRate);
+    full.SetCoefficients(coefficients);
+    scaled.SetCoefficients(coefficients);
+    double maximumError = 0.;
+    for (std::size_t sample = 0; sample < 192000; ++sample) {
+      const float input = .6f * percussion_test::Sine(sample, 27.f, sampleRate)
+          + .2f * percussion_test::Sine(sample, 117.f, sampleRate);
+      const float output = full.Process(input);
+      const float attenuated = scaled.Process(.3f * input);
+      maximumError = std::max(maximumError,
+          std::abs(static_cast<double>(attenuated) - .3 * output));
+    }
+    Check(maximumError < 1.e-6,
+          "5 Hz high-pass preserves gain linearity without cancellation drift");
+  }
+}
+
 void TestRadiationChain() {
   tfdsp::percussion::RadiationFilter filter;
   tfdsp::percussion::RadiationFilterParameters parameters;
@@ -70,6 +94,7 @@ void TestRadiationChain() {
 
 int main() {
   TestBiquadResponses();
+  TestLowCutoffLinearity();
   TestRadiationChain();
   if (percussion_test::failures == 0)
     std::cout << "All percussion radiation tests passed\n";

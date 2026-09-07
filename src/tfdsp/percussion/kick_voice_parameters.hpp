@@ -9,8 +9,6 @@ namespace tfdsp::percussion {
 struct KickModeControl {
   float frequencyHz{55.f};
   float levelDb{-72.f}; // relative observation; -72 disables this mode
-  float centreCoupling{1.f};
-  float edgeCoupling{1.f};
 };
 
 std::array<KickModeControl, MembraneModeCount> DefaultKickModes() noexcept;
@@ -18,6 +16,8 @@ std::array<KickModeControl, MembraneModeCount> DefaultKickModes() noexcept;
 // Functional kick surface. Levels are observation gains, not extra drive
 // stages. One unit contact drives the passive body; thump never drives it.
 struct KickVoiceControls {
+  bool contactNoiseObservationOnly{};
+  bool contactPulseDriveOnly{};
   float contactLevel{.4f};
   float contactWidthSeconds{.011f};
   float contactColour{.33f};
@@ -28,6 +28,8 @@ struct KickVoiceControls {
   float thumpPitchDropOctaves{1.47f};
   float thumpPitchFallSeconds{.059f};
   float thumpDecaySeconds{.306f}; // amplitude T60
+  float thumpHoldSeconds{0.f}; // full-amplitude plateau before decay
+  float thumpDecayShape{0.f}; // 0 exponential, 1 rounded shoulder/steeper finish
   float resonanceLevel{4.72f};
   float resonanceDecaySeconds{.6f}; // T60 at 100 Hz
   float resonanceDecayTilt{.5f}; // T60 octaves lost per frequency octave

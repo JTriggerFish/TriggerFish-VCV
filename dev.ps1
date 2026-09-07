@@ -30,6 +30,9 @@ param(
         "fit-crash-start",
         "fit-gong-start",
         "fit-kick-start",
+        "diagnose-kick",
+        "compare-kick-losses",
+        "test-perceptual-losses",
         "test-gong-report",
         "test-fit-report",
         "build-workbench",
@@ -419,7 +422,7 @@ switch ($Command) {
             Pop-Location
         }
     }
-    { $_ -in "fit-gong-start", "fit-kick-start", "test-kick-architecture" } {
+    { $_ -in "fit-gong-start", "fit-kick-start", "test-kick-architecture", "diagnose-kick", "compare-kick-losses" } {
         & $PSCommandPath -Command build-workbench -Jobs $Jobs
         if ($LASTEXITCODE -ne 0) { throw "Workbench build failed." }
         $emsdkEnvironment = Join-Path $emsdkRoot "emsdk_env.ps1"
@@ -431,6 +434,8 @@ switch ($Command) {
         try {
             $fitScript = switch ($Command) {
                 "fit-kick-start" { "tools/fit_workbench_kick.py" }
+                "diagnose-kick" { "tools/diagnose_workbench_kick.py" }
+                "compare-kick-losses" { "tools/compare_kick_losses.py" }
                 "test-kick-architecture" { "tools/test_kick_architecture.py" }
                 default { "tools/fit_workbench_gong.py" }
             }
@@ -513,6 +518,15 @@ switch ($Command) {
             Pop-Location
         }
     }
+    "test-perceptual-losses" {
+        $python = Join-Path $repoRoot ".venv\Scripts\python.exe"
+        Assert-Path $python "Optional analysis Python environment"
+        & $python -c "import torch, auraloss, librosa, wavespin"
+        if ($LASTEXITCODE -ne 0) { throw "Install the optional perceptual-fit dependency group first." }
+        & $python -m pytest tests/python/test_perceptual_fit_losses.py `
+            tests/python/test_scalar_fit_search.py --basetemp build/pytest-perceptual-temp
+        if ($LASTEXITCODE -ne 0) { throw "Perceptual loss tests failed." }
+    }
     "test-fitting-tools" {
         $python = Join-Path $repoRoot ".venv\Scripts\python.exe"
         Assert-Path $python "Development Python environment; run dev.ps1 python-test first"
@@ -520,6 +534,11 @@ switch ($Command) {
         try {
             & $python -m pytest tests/python/test_trajectory_fit_loss.py `
                 tests/python/test_short_drum_fit_loss.py tests/python/test_smooth_drum_fit_loss.py `
+                tests/python/test_drum_balance_loss.py `
+                tests/python/test_band_region_audit.py `
+                tests/python/test_region_spectrum_audit.py `
+                tests/python/test_ridge_balance_loss.py tests/python/test_fit_rerender.py `
+                tests/python/test_scalar_fit_search.py `
                 tests/python/test_workbench_search.py tests/python/test_workbench_fit_baseline.py `
                   tests/python/test_workbench_global_search.py tests/python/test_fit_provenance.py `
                   tests/python/test_modal_fit_initialization.py tests/python/test_power_envelope.py `
@@ -540,9 +559,11 @@ switch ($Command) {
             $env:CMAKE_GENERATOR = "Ninja"
             $env:CMAKE_C_COMPILER = Join-Path $mingwBin "gcc.exe"
             $env:CMAKE_CXX_COMPILER = Join-Path $mingwBin "g++.exe"
-            & uv sync --group dev --python 3.13 --reinstall-package triggerfish-vcv-dsp
+            # Rebuild the native bindings without removing optional analysis
+            # packages: otherwise installed integration tests silently disappear.
+            & uv sync --inexact --group dev --python 3.13 --reinstall-package triggerfish-vcv-dsp
             if ($LASTEXITCODE -ne 0) { throw "uv sync failed with exit code $LASTEXITCODE." }
-            & uv run pytest --basetemp build/pytest-temp
+            & uv run --no-sync pytest --basetemp build/pytest-temp
             if ($LASTEXITCODE -ne 0) { throw "pytest failed with exit code $LASTEXITCODE." }
         }
         finally {
