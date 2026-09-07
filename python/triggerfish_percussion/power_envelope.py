@@ -2,7 +2,7 @@
 
 from functools import lru_cache
 import numpy as np
-from scipy.signal import fftconvolve
+from scipy.signal import oaconvolve
 
 
 @lru_cache(maxsize=32)
@@ -22,4 +22,4 @@ def smoothed_power(samples, sigma_samples):
         raise ValueError("Gaussian sigma must be positive")
     radius, kernel = _kernel(float(sigma_samples))
     padded = np.pad(samples**2, (radius, radius), mode="symmetric")
-    return np.maximum(0, fftconvolve(padded, kernel, mode="valid"))
+    return np.maximum(0, oaconvolve(padded, kernel, mode="valid"))

@@ -1,6 +1,8 @@
 import { patchWithKickValues } from "./kick_patch.mjs";
 import { metallicCalibrationValues } from "./metallic_calibrations.mjs";
 import KickCalibration from "./kick_calibration.fit.json" with { type: "json" };
+import { checkedCalibrationValues, referenceCalibration, recipeReferenceCalibration } from "./reference_calibration_library.mjs";
+import { recipeAdapter } from "./recipe_adapter.mjs";
 
 export function kickCalibrationValues(descriptors) {
   const values = Object.assign({}, ...KickCalibration.instrument.nodes.map(node => node.parameters));
@@ -15,15 +17,25 @@ export function kickCalibrationValues(descriptors) {
 }
 
 export function recipeStartingValues(recipe, descriptors) {
+  const fitted = recipeReferenceCalibration(recipe);
+  if (fitted) return checkedCalibrationValues(fitted, descriptors);
   return recipe === "drum.kick.v1" ? kickCalibrationValues(descriptors)
     : descriptors.map(item => item.defaultValue);
 }
 
 export function recipeStartingEvent(recipe) {
+  const fitted = recipeReferenceCalibration(recipe);
+  if (fitted) return { ...fitted.controls.event };
   return recipe === "drum.kick.v1" ? { ...KickCalibration.controls.event } : null;
 }
 
 export function calibrationParameterValues(calibration, descriptors) {
+  const fitted = referenceCalibration(calibration.id);
+  if (fitted) {
+    if (fitted.instrument.recipe !== calibration.recipe)
+      throw new Error("Calibration recipe differs from the selected target");
+    return checkedCalibrationValues(fitted, descriptors);
+  }
   if (calibration.parameter_preset === "kick")
     return kickCalibrationValues(descriptors);
   const metallic = metallicCalibrationValues(
@@ -38,6 +50,12 @@ export function calibrationParameterValues(calibration, descriptors) {
 export function calibrationPatch(
   calibration, descriptors, values, fallbackPatch,
 ) {
+  const fitted = referenceCalibration(calibration.id);
+  if (fitted) {
+    if (fitted.instrument.recipe !== calibration.recipe)
+      throw new Error("Calibration recipe differs from the selected target");
+    return recipeAdapter(fitted.instrument.recipe).withValues(fitted.instrument, descriptors, values);
+  }
   if (calibration.parameter_preset !== "kick") return fallbackPatch;
   return patchWithKickValues(KickCalibration.instrument, descriptors, values);
 }

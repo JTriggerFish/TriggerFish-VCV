@@ -88,6 +88,30 @@ def test_fit_recovers_active_control_and_freezes_dead_direction(tmp_path, monkey
     assert search.parameters["dead"] == 0.7
 
 
+def test_quiet_observation_is_recovered_in_amplitude_coordinates(tmp_path, monkeypatch):
+    renderer = SimpleNamespace(
+        initial={"level": -44},
+        metadata={"descriptors": [dict(key="level", minimum=-72, maximum=6)]},
+        render=lambda parameters, seconds: np.array([10 ** (parameters["level"] / 20)]),
+    )
+    loss = SimpleNamespace(
+        residual=lambda audio, regions=range(5): 10 * (audio - 0.7),
+        diagnostics=lambda audio: {},
+    )
+    search = Search(renderer, loss, tmp_path)
+    monkeypatch.setattr(search, "save", lambda: None)
+    search.stage(
+        "quiet bar",
+        {"level": (-45, 6)},
+        12,
+        parameter_scales={"level": "amplitude_db"},
+        influence_threshold=0,
+    )
+    assert abs(10 ** (search.parameters["level"] / 20) - 0.7) < 0.001
+    assert search.history[-1]["bounds"]["level"] == (-45, 6)
+    assert search.history[-1]["parameter_scales"]["level"] == "amplitude_db"
+
+
 def test_narrow_bounds_cannot_accept_regression_from_actual_patch(
     tmp_path, monkeypatch
 ):

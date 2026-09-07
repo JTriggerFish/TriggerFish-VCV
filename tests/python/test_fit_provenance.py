@@ -29,13 +29,21 @@ def fixture(tmp_path):
         reference=audio,
         render=lambda p, seconds: audio,
         decode=lambda value: value,
-        request=lambda **kw: dict(pcm=audio * kw["fit"]["gain"]),
+        request=lambda **kw: dict(
+            pcm=audio * kw["fit"]["instrument"]["nodes"][0]["parameters"]["gain"]
+        ),
     )
     saved = dict(
         metadata=deepcopy(metadata), parameters={"gain": 1}, duration_seconds=1
     )
     (tmp_path / "search.json").write_text(json.dumps(saved))
-    (tmp_path / "candidate.fit.json").write_text('{"gain":1}')
+    fit = dict(
+        schema="triggerfish.percussion.fit/v1",
+        instrument=dict(recipe="fixture", nodes=[dict(parameters=dict(gain=1))]),
+        reference=metadata["reference"],
+        controls=dict(event=metadata["event"]),
+    )
+    (tmp_path / "candidate.fit.json").write_text(json.dumps(fit))
     for name in ("reference", "candidate"):
         write_wav(tmp_path / f"{name}.wav", AudioBuffer(audio, 2))
     return renderer, saved
@@ -44,6 +52,26 @@ def fixture(tmp_path):
 def test_verified_report_fixture(tmp_path):
     renderer, saved = fixture(tmp_path)
     assert verify_candidate(renderer, tmp_path) == saved
+
+
+@pytest.mark.parametrize(
+    "change", ["reference", "event", "duplicate", "silent_parameter"]
+)
+def test_identical_audio_cannot_hide_snapshot_metadata_changes(tmp_path, change):
+    renderer, _ = fixture(tmp_path)
+    path = tmp_path / "candidate.fit.json"
+    fit = json.loads(path.read_text())
+    if change == "reference":
+        fit["reference"]["sha256"] = "another recording"
+    elif change == "event":
+        fit["controls"]["event"]["seed"] = 2
+    elif change == "duplicate":
+        fit["instrument"]["nodes"].append(dict(parameters=dict(gain=1)))
+    else:
+        fit["instrument"]["nodes"][0]["parameters"]["silent_control"] = 3
+    path.write_text(json.dumps(fit))
+    with pytest.raises(ValueError):
+        verify_candidate(renderer, tmp_path)
 
 
 @pytest.mark.parametrize(
@@ -72,7 +100,9 @@ def test_changed_audio_is_rejected(tmp_path, name):
 
 def test_ui_fit_must_reproduce_candidate(tmp_path):
     renderer, _ = fixture(tmp_path)
-    (tmp_path / "candidate.fit.json").write_text('{"gain":0}')
+    fit = json.loads((tmp_path / "candidate.fit.json").read_text())
+    fit["instrument"]["nodes"][0]["parameters"]["gain"] = 0
+    (tmp_path / "candidate.fit.json").write_text(json.dumps(fit))
     with pytest.raises(ValueError, match="UI fit"):
         verify_candidate(renderer, tmp_path)
 
@@ -99,7 +129,10 @@ def test_workbench_publication_updates_source_and_served_preset(tmp_path):
     source, served = tmp_path / "source.json", tmp_path / "served.json"
     publish_workbench_calibration(renderer, tmp_path, source, served)
     assert source.read_bytes() == served.read_bytes()
-    assert json.loads(source.read_text())["gain"] == 1
+    assert (
+        json.loads(source.read_text())["instrument"]["nodes"][0]["parameters"]["gain"]
+        == 1
+    )
     assert not list(tmp_path.glob("*.pending"))
 
 
@@ -108,7 +141,9 @@ def test_invalid_fit_cannot_replace_workbench_preset(tmp_path):
     source, served = tmp_path / "source.json", tmp_path / "served.json"
     source.write_text("existing source")
     served.write_text("existing served")
-    (tmp_path / "candidate.fit.json").write_text('{"gain":0}')
+    fit = json.loads((tmp_path / "candidate.fit.json").read_text())
+    fit["instrument"]["nodes"][0]["parameters"]["gain"] = 0
+    (tmp_path / "candidate.fit.json").write_text(json.dumps(fit))
     with pytest.raises(ValueError):
         publish_workbench_calibration(renderer, tmp_path, source, served)
     assert source.read_text() == "existing source"
@@ -118,6 +153,9 @@ def test_invalid_fit_cannot_replace_workbench_preset(tmp_path):
 def test_reproducible_but_bad_kick_cannot_replace_preset(tmp_path, monkeypatch):
     renderer, saved = fixture(tmp_path)
     renderer.metadata["recipeKey"] = saved["metadata"]["recipeKey"] = "drum.kick.v1"
+    fit = json.loads((tmp_path / "candidate.fit.json").read_text())
+    fit["instrument"]["recipe"] = "drum.kick.v1"
+    (tmp_path / "candidate.fit.json").write_text(json.dumps(fit))
     (tmp_path / "search.json").write_text(json.dumps(saved))
     monkeypatch.setattr(
         "triggerfish_percussion.kick_quality_checks.check_kick_candidate",

@@ -41,11 +41,20 @@ class Search:
             ]
         ) / np.sqrt(len(self.seeds))
 
-    def stage(self, name, bounds, iterations, regions=range(5), difference_step=0.005):
+    def stage(
+        self,
+        name,
+        bounds,
+        iterations,
+        regions=range(5),
+        difference_step=0.005,
+        parameter_scales=None,
+        influence_threshold=None,
+    ):
         if not 0 < difference_step <= 0.1:
             raise ValueError("Finite-difference step must be in (0, .1]")
         keys = list(bounds)
-        low, high = np.array(list(bounds.values())).T
+        low, high = np.array(list(bounds.values()), dtype=float).T
         descriptors = {
             item["key"]: item for item in self.renderer.metadata["descriptors"]
         }
@@ -56,12 +65,24 @@ class Search:
                 "Search bounds must overlap the UI range with positive width"
             )
         seed = dict(self.parameters)
-        x = np.array([seed[key] for key in keys])
-        x = np.clip((x - low) / (high - low), 0, 1)
         effective_bounds = dict(zip(keys, zip(low.tolist(), high.tolist())))
+        scales = [dict(parameter_scales or {}).get(key, "linear") for key in keys]
+        if any(scale not in ("linear", "amplitude_db") for scale in scales):
+            raise ValueError("Unknown search parameter scale")
+        # Exposed dB observation levels remain dB in every saved patch. Only
+        # solver coordinates change: a quiet bar must receive a meaningful
+        # amplitude probe rather than being declared dead at its current level.
+        amplitude = np.array([scale == "amplitude_db" for scale in scales])
+        raw = np.array([seed[key] for key in keys], dtype=float)
+        low[amplitude] = 10 ** (low[amplitude] / 20)
+        high[amplitude] = 10 ** (high[amplitude] / 20)
+        raw[amplitude] = 10 ** (raw[amplitude] / 20)
+        x = np.clip((raw - low) / (high - low), 0, 1)
 
         def unpack(values):
-            return dict(seed, **dict(zip(keys, (low + values * (high - low)).tolist())))
+            physical = low + values * (high - low)
+            physical[amplitude] = 20 * np.log10(physical[amplitude])
+            return dict(seed, **dict(zip(keys, physical.tolist())))
 
         def residual(values):
             return self.residual(unpack(values), regions)
@@ -80,7 +101,7 @@ class Search:
                     residual_change=float(
                         np.linalg.norm(residual(plus) - residual(minus))
                     ),
-                    step=(high[index] - low[index]) * 0.02,
+                    step=(unpack(plus)[key] - unpack(minus)[key]) / 2,
                 )
             )
         print(
@@ -97,7 +118,11 @@ class Search:
             index
             for index, item in enumerate(influence)
             if item["residual_change"]
-            >= getattr(self.loss, "influence_threshold", 0.05)
+            >= (
+                getattr(self.loss, "influence_threshold", 0.05)
+                if influence_threshold is None
+                else influence_threshold
+            )
         ]
         if not active:
             return
@@ -105,8 +130,30 @@ class Search:
         # boundary values to appear in an otherwise equivalent fit.
         keys = [keys[index] for index in active]
         low, high, x = low[active], high[active], x[active]
+        amplitude = amplitude[active]
+        iteration = 0
 
         def jacobian(values):
+            nonlocal iteration
+            iteration += 1
+            progress = dict(
+                stage=name,
+                iteration=iteration,
+                score=float(np.linalg.norm(residual(values))),
+                parameters=unpack(values),
+                metadata=self.renderer.metadata,
+                duration_seconds=self.seconds,
+                training_seeds=self.seeds,
+                status="iteration-checkpoint-not-reviewed",
+            )
+            self.output.mkdir(parents=True, exist_ok=True)
+            pending = self.output / "stage-progress.pending.json"
+            pending.write_text(json.dumps(progress, indent=2), encoding="utf8")
+            pending.replace(self.output / "stage-progress.json")
+            print(
+                json.dumps({k: progress[k] for k in ("stage", "iteration", "score")}),
+                flush=True,
+            )
             columns = []
             for index in range(len(keys)):
                 minus, plus = values.copy(), values.copy()
@@ -117,17 +164,20 @@ class Search:
                 )
             return np.array(columns).T
 
+        # TRF's initial radius depends on ||x0||. Offset amplitude coordinates
+        # so a bank starting near silence doesn't get a near-zero trust radius.
+        offset = 1 if amplitude.any() else 0
         result = least_squares(
-            residual,
-            x,
-            jac=jacobian,
-            bounds=(0, 1),
+            lambda values: residual(values - offset),
+            x + offset,
+            jac=lambda values: jacobian(values - offset),
+            bounds=(offset, 1 + offset),
             max_nfev=iterations,
-            ftol=0.002,
-            xtol=0.002,
+            ftol=1e-7 if amplitude.any() else 0.002,
+            xtol=1e-6 if amplitude.any() else 0.002,
             gtol=0.002,
         )
-        candidate = unpack(result.x)
+        candidate = unpack(result.x - offset)
         last = self.residual(candidate, regions)
         # Only select a search step here; this is never a listening approval.
         improved = np.linalg.norm(last) < np.linalg.norm(first)
@@ -139,6 +189,7 @@ class Search:
             objective_specification=getattr(self.loss, "specification", None),
             objective_units=getattr(self.loss, "units", "dB"),
             jacobian_step_fraction=difference_step,
+            parameter_scales=dict(zip(list(bounds), scales)),
             bounds=effective_bounds,
             active_parameters=list(keys),
             fixed_parameters={

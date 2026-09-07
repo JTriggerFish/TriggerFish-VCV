@@ -1,0 +1,307 @@
+{
+  "schema": "triggerfish.percussion.fit/v1",
+  "id": "5ebc1622-6863-4e70-82aa-8e6701609505",
+  "parentId": null,
+  "createdAt": "2026-09-07T15:17:29.784Z",
+  "name": "Crash — measured starting fit",
+  "renderer": {
+    "recipe": "metal.cymbal.v1",
+    "api": 1,
+    "adapter": "percussion-recipe-v1"
+  },
+  "instrument": {
+    "schema": "triggerfish.percussion.patch/v1",
+    "id": "factory.crash.experimental-01",
+    "name": "Crash",
+    "engineMinimum": 1,
+    "recipe": "metal.cymbal.v1",
+    "nodes": [
+      {
+        "id": "contact",
+        "type": "exciter.contact",
+        "version": 1,
+        "parameters": {
+          "impact_tone_noise": 0.7874555688446517,
+          "impact_width": 0.6779193897338947,
+          "impact_chirp_pitch": 1,
+          "impact_noise_tilt": 9.549414686279349,
+          "impact_micro_density": 1,
+          "velocity_brightness": 4
+        },
+        "editor": {
+          "x": 24,
+          "y": 92
+        }
+      },
+      {
+        "id": "body",
+        "type": "body.stochastic-modal-field",
+        "version": 1,
+        "parameters": {
+          "bloom_rate": 0.5616154402227821,
+          "bloom_energy_acceleration": 0.699999988079071,
+          "bloom_phase_diffusion": 0.6914906135752313,
+          "body_brightness": -4.587907061541358,
+          "body_excitation_centre": 9998.860460951155,
+          "field_turbulence": 0.650915730816419,
+          "field_turbulence_slope": 0.001129084169618988,
+          "field_turbulence_centre": 4000,
+          "field_packet_spread": 6.005948563500954,
+          "field_satellite_density": 0.5,
+          "field_phase_bandwidth": 0.8016789363876536,
+          "field_exchange": 0.24549757027469404,
+          "body_excitation": 1,
+          "body_decay_frequency_1": 500,
+          "body_decay_frequency_2": 1500,
+          "body_decay_frequency_3": 5000,
+          "body_decay_frequency_4": 8000,
+          "body_decay_frequency_5": 12000,
+          "body_decay_frequency_6": 14000,
+          "body_decay_seconds_0": 18.198610600127214,
+          "body_decay_seconds_1": 2.9657819271087646,
+          "body_decay_seconds_2": 2.3728408813476562,
+          "body_decay_seconds_3": 1.7829840183258057,
+          "body_decay_seconds_4": 1.585960030555725,
+          "body_decay_seconds_5": 1.431738018989563,
+          "body_decay_seconds_6": 1.330839991569519,
+          "body_decay_seconds_7": 1.8160526139154125,
+          "body_decay_active_1": 0,
+          "body_decay_active_2": 0,
+          "body_decay_active_3": 0,
+          "body_decay_active_4": 0,
+          "body_decay_active_5": 0,
+          "body_decay_active_6": 0,
+          "resolved_frequency_0": 421.169766872809,
+          "resolved_frequency_1": 522,
+          "resolved_frequency_2": 689,
+          "resolved_frequency_3": 1096.046679024364,
+          "resolved_frequency_4": 1517.578125,
+          "resolved_frequency_5": 2009.3812180424934,
+          "resolved_frequency_6": 2091.796875,
+          "resolved_frequency_7": 2573.184996856411,
+          "resolved_frequency_8": 2882.8125,
+          "resolved_frequency_9": 3720.703125,
+          "resolved_frequency_10": 4428,
+          "resolved_frequency_11": 5707,
+          "resolved_frequency_12": 6500,
+          "resolved_frequency_13": 7350,
+          "resolved_frequency_14": 8250,
+          "resolved_frequency_15": 9200,
+          "resolved_frequency_16": 10250,
+          "resolved_frequency_17": 11350,
+          "resolved_frequency_18": 12000,
+          "resolved_frequency_19": 12750,
+          "resolved_frequency_20": 13500,
+          "resolved_frequency_21": 14100,
+          "resolved_frequency_22": 14600,
+          "resolved_frequency_23": 15000,
+          "resolved_frequency_24": 410.3261979529568,
+          "resolved_frequency_25": 122.90904837059983,
+          "resolved_frequency_26": 15000,
+          "resolved_frequency_27": 15000,
+          "resolved_frequency_28": 15000,
+          "resolved_frequency_29": 15000,
+          "resolved_frequency_30": 15000,
+          "resolved_frequency_31": 15000,
+          "resolved_level_0": -3.4025264939526165,
+          "resolved_level_1": -17.658782805496024,
+          "resolved_level_2": -33.247222454631796,
+          "resolved_level_3": -45,
+          "resolved_level_4": -5.122161213394143,
+          "resolved_level_5": -45,
+          "resolved_level_6": -3.527676709706606,
+          "resolved_level_7": -19.11400442169253,
+          "resolved_level_8": -0.020766537085391574,
+          "resolved_level_9": -4.318847440718667,
+          "resolved_level_10": -2.3531574756780675,
+          "resolved_level_11": -0.43091561812448287,
+          "resolved_level_12": -15.924216664026895,
+          "resolved_level_13": -13.137745940139027,
+          "resolved_level_14": -4.856404729751411,
+          "resolved_level_15": -12.68061605657417,
+          "resolved_level_16": -6.383797241461502,
+          "resolved_level_17": -6.950135070041018,
+          "resolved_level_18": -7.604200562940603,
+          "resolved_level_19": -4.228211219496597,
+          "resolved_level_20": -12.791471362791695,
+          "resolved_level_21": -6.368639196524724,
+          "resolved_level_22": -13.58440662673116,
+          "resolved_level_23": -45,
+          "resolved_level_24": -17.224524025995272,
+          "resolved_level_25": -15.171110020196782,
+          "resolved_level_26": -72,
+          "resolved_level_27": -72,
+          "resolved_level_28": -72,
+          "resolved_level_29": -72,
+          "resolved_level_30": -72,
+          "resolved_level_31": -72,
+          "resolved_turbulence_0": 1,
+          "resolved_turbulence_1": 1,
+          "resolved_turbulence_2": 1,
+          "resolved_turbulence_3": 1,
+          "resolved_turbulence_4": 1,
+          "resolved_turbulence_5": 1,
+          "resolved_turbulence_6": 1,
+          "resolved_turbulence_7": 1,
+          "resolved_turbulence_8": 1,
+          "resolved_turbulence_9": 1,
+          "resolved_turbulence_10": 1,
+          "resolved_turbulence_11": 1,
+          "resolved_turbulence_12": 1,
+          "resolved_turbulence_13": 1,
+          "resolved_turbulence_14": 1,
+          "resolved_turbulence_15": 1,
+          "resolved_turbulence_16": 1,
+          "resolved_turbulence_17": 1,
+          "resolved_turbulence_18": 1,
+          "resolved_turbulence_19": 1,
+          "resolved_turbulence_20": 1,
+          "resolved_turbulence_21": 1,
+          "resolved_turbulence_22": 1,
+          "resolved_turbulence_23": 1,
+          "resolved_turbulence_24": 0,
+          "resolved_turbulence_25": 0,
+          "resolved_turbulence_26": 1,
+          "resolved_turbulence_27": 1,
+          "resolved_turbulence_28": 1,
+          "resolved_turbulence_29": 1,
+          "resolved_turbulence_30": 1,
+          "resolved_turbulence_31": 1,
+          "body_tune": 1
+        },
+        "editor": {
+          "x": 230,
+          "y": 92
+        }
+      },
+      {
+        "id": "observation",
+        "type": "observation.dual-source",
+        "version": 1,
+        "parameters": {
+          "field_gain": 1.072389039457445,
+          "direct_gain": 0.28401863431668145,
+          "direct_radiation_enabled": 1,
+          "direct_low_cut": 40,
+          "direct_colour_frequency": 7200,
+          "direct_colour_gain": 1,
+          "direct_high_cut": 20000,
+          "body_radiation_enabled": 1,
+          "body_low_cut": 40,
+          "body_colour_frequency": 7200,
+          "body_colour_gain": 0.5,
+          "body_high_cut": 15324.812484698276
+        },
+        "editor": {
+          "x": 440,
+          "y": 92
+        }
+      },
+      {
+        "id": "output",
+        "type": "output.mono",
+        "version": 1,
+        "parameters": {
+          "model_level_db": -0.7622423886456886
+        },
+        "editor": {
+          "x": 650,
+          "y": 92
+        }
+      }
+    ],
+    "connections": [
+      {
+        "id": "route-1",
+        "from": "contact.body",
+        "to": "body.primary",
+        "enabled": true,
+        "required": false
+      },
+      {
+        "id": "route-2",
+        "from": "contact.direct",
+        "to": "observation.direct",
+        "enabled": true,
+        "required": false,
+        "editor": {
+          "viaY": 184
+        }
+      },
+      {
+        "id": "route-3",
+        "from": "body.audio",
+        "to": "observation.body",
+        "enabled": true,
+        "required": false
+      },
+      {
+        "id": "route-4",
+        "from": "observation.audio",
+        "to": "output.audio",
+        "enabled": true,
+        "required": true
+      }
+    ],
+    "outputs": {
+      "mono": "output.audio"
+    },
+    "performanceControls": [
+      "strength",
+      "location",
+      "hardness",
+      "implement",
+      "contactSpread"
+    ]
+  },
+  "reference": {
+    "id": "sha256:0446d07f06eea71428183a1e8a3507dfee8552734926e5b91c0bd4b9a10ed8c6",
+    "sha256": "0446d07f06eea71428183a1e8a3507dfee8552734926e5b91c0bd4b9a10ed8c6",
+    "name": "edge v072 r01",
+    "sampleRate": 48000,
+    "channels": 1,
+    "bits": 32,
+    "duration": 10,
+    "referenceGainDb": 42,
+    "corpus": {
+      "id": "private-crash-a",
+      "name": "Private crash A",
+      "referenceGainDb": 42
+    },
+    "cell": {
+      "label": "edge v072 r01",
+      "articulation": "edge",
+      "velocity": 72,
+      "repeat": 1,
+      "strength": 0.5669291338582677,
+      "location": 1,
+      "hardness": 0.6,
+      "implement": 1,
+      "contactSpread": 0.2,
+      "onset_seconds": 0.05,
+      "seed": 1396978464,
+      "split": "fit",
+      "url": "http://127.0.0.1:8765/reference/private-crash-a/032-edge-v072-r01.wav"
+    }
+  },
+  "controls": {
+    "event": {
+      "strength": 0.5669291338582677,
+      "location": 1,
+      "hardness": 0.6,
+      "implement": 1,
+      "contactSpread": 0.2,
+      "seed": 1396978464,
+      "constraint": 0
+    },
+    "analysis": {
+      "size": 4096,
+      "hop": 512,
+      "window": "hann",
+      "floorDb": -160,
+      "dynamicRangeDb": 80
+    }
+  },
+  "reviewStatus": "measurement-reviewed-audition-pending",
+  "reviewNote": "Exact C++ snapshot, full 10-second decay and repeated strikes checked. Four measured midrange centres, observation amplitudes and two-endpoint damping refined using shared ERB/attack analysis. Improvement survives three fresh seeds, but ringing is still too diffuse and 1–4 kHz energy remains low during the early body. Listening approval pending."
+}

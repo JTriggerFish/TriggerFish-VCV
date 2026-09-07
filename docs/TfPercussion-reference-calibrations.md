@@ -8,12 +8,12 @@ or retained.
 
 | Toolbar entry | Recipe | Reference target | Parameter state |
 | --- | --- | --- | --- |
-| Crash — medium edge | `metal.cymbal.v1` | edge, velocity 72, take 1 | current factory defaults |
-| Snare — medium standard hit | `drum.snare.v1` | main, velocity 82, take 1 | current factory defaults |
-| Acoustic kick — medium centre | `drum.kick.v1` | centre, velocity 64, take 1 | -12 dB; contact, thump, editable resonance modes; output EQ bypassed |
-| Gong — representative mallet | `metal.cymbal.v1` | mallet, velocity 96, take 3 | measured `gong-v1` start |
-| Ride — medium bow | `metal.cymbal.v1` | bow, velocity 82, take 1 | current factory defaults |
-| Hi-hat — medium half-open | `metal.cymbal.v1` | half-open, velocity 96, take 1 | current factory defaults plus passive pedal constraint |
+| Crash — medium edge | `metal.cymbal.v1` | edge, velocity 72, take 1 | refined centres/damping; midrange still too diffuse |
+| Snare — medium standard hit | `drum.snare.v1` | main, velocity 82, take 1 | saved reference-specific candidate; listening review pending |
+| Acoustic kick — medium centre | `drum.kick.v1` | centre, velocity 64, take 1 | saved kick fit; user accepted 2026-09-07 |
+| Gong — representative mallet | `metal.cymbal.v1` | mallet, velocity 96, take 3 | low strike and rising bloom improved; onset/low tail still differ |
+| Ride — medium bow | `metal.cymbal.v1` | bow, velocity 82, take 1 | corrected onset, stronger attack and longer ringing; one measured damping knot |
+| Hi-hat — medium half-open | `metal.cymbal.v1` | half-open, velocity 96, take 1 | saved candidate with fixed passive pedal constraint |
 
 The highlighted **Reference targets** chooser is kept in the persistent top toolbar,
 next to the recipe selector. Loading an entry performs one atomic user action:
@@ -26,15 +26,23 @@ next to the recipe selector. Loading an entry performs one atomic user action:
    the performance controls; and
 5. preserve the collection-level reference monitoring calibration.
 
-None of these entries is an accepted synthesis calibration. In particular, a
+The kick was accepted by the user on 2026-09-07 and is preserved during the
+[other-instrument refitting pass](TfPercussion-instrument-refitting.md). The other
+entries still require listening review. In particular, a
 parameter vector produced by an optimizer is not promoted merely because it
 improves a relative or aggregate score.
+
+The [shared metallic fitting review](TfPercussion-metallic-fitting-v2.md) records
+the current crash, ride and gong choices, rejected trials and remaining gaps.
+These are measured starting fits for audition, not accepted matches. The ride's
+reference-only onset is now 84.125 ms; comparisons made with the older 70.104 ms
+marker are not current timing evidence. Loading its Reference target restores
+the same onset, event and parameters used by the verified render.
 
 The [kick fitting procedure](TfPercussion-kick-fitting.md) publishes its selected
 fit directly to the main workbench, not a separate audition page. Both the Kick
 recipe's initial sound and the reference-target entry read the same versioned
-`workbench/web/kick_calibration.fit.json`. The current six-mode fit is available
-for listening review; publishing it does not claim perceptual acceptance. The
+`workbench/web/kick_calibration.fit.json`. The
 JSON retains its exact reference and event, and is verified against the render.
 
 Each factory model level can be checked against its named reference without changing

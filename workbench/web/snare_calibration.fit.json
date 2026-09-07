@@ -1,0 +1,347 @@
+{
+  "schema": "triggerfish.percussion.fit/v1",
+  "id": "dc280d23-d001-453c-a932-1504bc488f74",
+  "parentId": null,
+  "createdAt": "2026-09-07T12:52:06.635Z",
+  "name": "Snare — medium standard (fitted candidate)",
+  "renderer": {
+    "recipe": "drum.snare.v1",
+    "api": 1,
+    "adapter": "percussion-recipe-v1"
+  },
+  "instrument": {
+    "schema": "triggerfish.percussion.patch/v1",
+    "id": "factory.snare.acoustic-01",
+    "name": "Snare",
+    "engineMinimum": 1,
+    "recipe": "drum.snare.v1",
+    "nodes": [
+      {
+        "id": "membrane-contact",
+        "type": "exciter.contact",
+        "name": "Contact",
+        "version": 1,
+        "parameters": {
+          "contact_duration_seconds": 0.001095612259428453,
+          "contact_brightness": 0.9877375749277696,
+          "contact_noise_level": 0.07403668551637031,
+          "contact_noise_decay_seconds": 0.0035990153512766155
+        },
+        "editor": {
+          "x": 20,
+          "y": 18
+        }
+      },
+      {
+        "id": "membrane-fm",
+        "type": "exciter.correlated-fm",
+        "name": "FM supplement",
+        "version": 1,
+        "parameters": {
+          "fm_depth_hz": 180,
+          "fm_decay_seconds": 0.03500000014901161,
+          "pitch_drop_octaves": 0.11999999731779099,
+          "fm_pitch_decay_seconds": 0.02449999935925007
+        },
+        "editor": {
+          "x": 20,
+          "y": 142
+        }
+      },
+      {
+        "id": "membrane-direct-mix",
+        "type": "transform.sum2",
+        "name": "Direct mix",
+        "version": 1,
+        "parameters": {
+          "contact_direct_level": 1.4975317251173492,
+          "fm_direct_level": 0.004000000189989805
+        },
+        "editor": {
+          "x": 220,
+          "y": 18
+        }
+      },
+      {
+        "id": "membrane-body-mix",
+        "type": "transform.sum2",
+        "name": "Body drive",
+        "version": 1,
+        "parameters": {
+          "contact_body_level": 0.6727334101591533,
+          "fm_body_level": 0.025599999353289604
+        },
+        "editor": {
+          "x": 220,
+          "y": 142
+        }
+      },
+      {
+        "id": "membrane-tension",
+        "type": "interaction.strike-energy",
+        "name": "Strike / tension",
+        "version": 1,
+        "parameters": {
+          "tension_octaves": 0.042412424402530034,
+          "tension_decay_seconds": 0.09000000357627869
+        },
+        "editor": {
+          "x": 420,
+          "y": 202
+        }
+      },
+      {
+        "id": "membrane-body",
+        "type": "body.membrane-modal",
+        "name": "Membrane",
+        "version": 1,
+        "parameters": {
+          "fundamental_hz": 192.37033498707805,
+          "decay_seconds": 0.27131778057330236,
+          "decay_tilt": -1,
+          "inharmonicity": 0.7900047342803953,
+          "body_brightness": 3.696710545550728e-7,
+          "ring_frequency_hz": 664.9098598138341,
+          "ring_decay_seconds": 1.4999999999862432,
+          "ring_level": 0.5568649356893549
+        },
+        "editor": {
+          "x": 420,
+          "y": 108
+        }
+      },
+      {
+        "id": "snare-wires",
+        "type": "interaction.wire-rack",
+        "name": "Snare wires",
+        "version": 1,
+        "parameters": {
+          "wire_level": 4.999997983843448,
+          "wire_sensitivity": 1.5,
+          "wire_threshold": 0.001500000013038516,
+          "wire_motion_highpass_hz": 292.7639905433583,
+          "wire_attack_seconds": 0.001500000013038516,
+          "wire_release_seconds": 0.1175564619445069,
+          "wire_minimum_hz": 396.94490579785736,
+          "wire_maximum_hz": 14000,
+          "wire_decay_seconds": 0.3499999940395355,
+          "wire_decay_tilt": 0.800000011920929,
+          "wire_density": 0.8999999761581421,
+          "wire_brightness": 1.303252019264713e-13,
+          "wire_noise_mix": 1.7121734235801975,
+          "wire_modal_mix": 0.44999998807907104
+        },
+        "editor": {
+          "x": 620,
+          "y": 174
+        }
+      },
+      {
+        "id": "membrane-observation",
+        "type": "observation.three-source",
+        "name": "Observation",
+        "version": 1,
+        "parameters": {
+          "direct_level": 0.23999999463558197,
+          "body_level": 2.8499999046325684,
+          "direct_delay_ms": 0
+        },
+        "editor": {
+          "x": 800,
+          "y": 74
+        }
+      },
+      {
+        "id": "membrane-eq",
+        "type": "observation.equalizer",
+        "name": "Output EQ",
+        "version": 1,
+        "parameters": {
+          "equalizer_mode": 1,
+          "low_cut_hz": 38,
+          "high_cut_hz": 8639.29383993364,
+          "colour_frequency_hz": 210,
+          "colour_gain_db": 0,
+          "band_1_frequency_hz": 90,
+          "band_1_gain_db": 0,
+          "band_2_frequency_hz": 350,
+          "band_2_gain_db": 0,
+          "band_3_frequency_hz": 1800,
+          "band_3_gain_db": 0,
+          "band_4_frequency_hz": 7500,
+          "band_4_gain_db": 0
+        },
+        "editor": {
+          "x": 994,
+          "y": 74
+        }
+      },
+      {
+        "id": "membrane-output",
+        "type": "output.mono",
+        "name": "Mono",
+        "version": 1,
+        "parameters": {
+          "model_level_db": -0.7830353265607073
+        },
+        "editor": {
+          "x": 1170,
+          "y": 74
+        }
+      }
+    ],
+    "connections": [
+      {
+        "id": "snare-route-0",
+        "from": "membrane-contact.direct",
+        "to": "membrane-direct-mix.a",
+        "enabled": true,
+        "required": false
+      },
+      {
+        "id": "snare-route-1",
+        "from": "membrane-contact.body",
+        "to": "membrane-body-mix.a",
+        "enabled": true,
+        "required": false
+      },
+      {
+        "id": "snare-route-2",
+        "from": "membrane-fm.audio",
+        "to": "membrane-direct-mix.b",
+        "enabled": true,
+        "required": false
+      },
+      {
+        "id": "snare-route-3",
+        "from": "membrane-fm.audio",
+        "to": "membrane-body-mix.b",
+        "enabled": true,
+        "required": false
+      },
+      {
+        "id": "snare-route-4",
+        "from": "membrane-body.audio",
+        "to": "membrane-observation.body",
+        "enabled": true,
+        "required": false
+      },
+      {
+        "id": "snare-route-5",
+        "from": "membrane-body.audio",
+        "to": "snare-wires.motion",
+        "enabled": true,
+        "required": false
+      },
+      {
+        "id": "snare-route-6",
+        "from": "snare-wires.audio",
+        "to": "membrane-observation.wires",
+        "enabled": true,
+        "required": false
+      },
+      {
+        "id": "snare-route-7",
+        "from": "membrane-contact.event",
+        "to": "membrane-tension.strike",
+        "enabled": true,
+        "required": true
+      },
+      {
+        "id": "snare-route-8",
+        "from": "membrane-body-mix.audio",
+        "to": "membrane-body.drive",
+        "enabled": true,
+        "required": true
+      },
+      {
+        "id": "snare-route-9",
+        "from": "membrane-tension.tension",
+        "to": "membrane-body.tension",
+        "enabled": true,
+        "required": true
+      },
+      {
+        "id": "snare-route-10",
+        "from": "membrane-direct-mix.audio",
+        "to": "membrane-observation.direct",
+        "enabled": true,
+        "required": true
+      },
+      {
+        "id": "snare-route-11",
+        "from": "membrane-observation.audio",
+        "to": "membrane-eq.audio",
+        "enabled": true,
+        "required": true
+      },
+      {
+        "id": "snare-route-12",
+        "from": "membrane-eq.audio",
+        "to": "membrane-output.audio",
+        "enabled": true,
+        "required": true
+      }
+    ],
+    "outputs": {
+      "mono": "membrane-output.audio"
+    },
+    "performanceControls": [
+      "strength",
+      "location",
+      "hardness",
+      "implement",
+      "contactSpread"
+    ]
+  },
+  "reference": {
+    "id": "sha256:6313c66e16d32ab4475315293759d8fe386cc79d573fa3b84906bb4f91c5191f",
+    "sha256": "6313c66e16d32ab4475315293759d8fe386cc79d573fa3b84906bb4f91c5191f",
+    "name": "Snare YMCA 1 B 01",
+    "sampleRate": 44100,
+    "channels": 2,
+    "bits": 16,
+    "duration": 1.733809523809524,
+    "referenceGainDb": 5,
+    "corpus": {
+      "id": "acoustic-snare-maple",
+      "name": "Acoustic snare — maple",
+      "referenceGainDb": 5
+    },
+    "cell": {
+      "label": "Snare YMCA 1 B 01",
+      "articulation": "main",
+      "velocity": 82,
+      "repeat": 1,
+      "strength": 0.65,
+      "location": 0.3,
+      "hardness": 0.65,
+      "implement": 1,
+      "contactSpread": 0.2,
+      "onset_seconds": 0.000975,
+      "seed": 1575,
+      "split": "audition",
+      "url": "http://127.0.0.1:8765/reference/acoustic-snare-maple/Snare%20YMCA%201%20B%2001.wav"
+    }
+  },
+  "controls": {
+    "event": {
+      "strength": 0.65,
+      "location": 0.3,
+      "hardness": 0.65,
+      "implement": 1,
+      "contactSpread": 0.2,
+      "seed": 1575,
+      "constraint": 0
+    },
+    "analysis": {
+      "size": 4096,
+      "hop": 512,
+      "window": "hann",
+      "floorDb": -160,
+      "dynamicRangeDb": 80
+    }
+  },
+  "reviewStatus": "measurement-reviewed-audition-pending",
+  "reviewNote": "Fixed source/event. Two training seeds, three held-out seeds; exact WAV and snapshot reload checked. Body/ring detail still differs; not a claim of perceptual equivalence."
+}

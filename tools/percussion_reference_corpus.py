@@ -324,7 +324,9 @@ def _ride(reference_root: Path):
             "21ride.stick.bell.mf.stereo.wav": 0.000479,
             "21ride.stick.bell.ff.stereo.wav": 0.033063,
             "21ride.stick.normal.pp.stereo.wav": 0.0,
-            "21ride.stick.normal.mf.stereo.wav": 0.070104,
+            # First definite strike rise, not the preceding ~14 ms noise floor.
+            # Reference-only audit: sample 4038 at 48 kHz (-40 dB relative peak).
+            "21ride.stick.normal.mf.stereo.wav": 0.084125,
             "21ride.stick.normal.ff.stereo.wav": 0.026437,
             "21ride.stick.shoulder.pp.stereo.wav": 0.0,
             "21ride.stick.shoulder.mf.stereo.wav": 0.041146,

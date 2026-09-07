@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { calibrationParameterValues, calibrationPatch, recipeStartingValues, recipeStartingEvent } from
   "../web/instrument_calibrations.mjs";
 import KickCalibration from "../web/kick_calibration.fit.json" with { type: "json" };
+import {referenceCalibration, checkedCalibrationValues} from "../web/reference_calibration_library.mjs";
 
 const descriptors = [
   ["impact_width", 1, .25, 4, "logarithmic"],
@@ -54,4 +55,42 @@ assert.throws(()=>calibrationParameterValues({parameter_preset:"kick"},kickDescr
 const invalidRange=kickDescriptors.map(d=>({...d,minimum:100000}));
 assert.throws(()=>calibrationParameterValues({parameter_preset:"kick"},invalidRange), /Invalid/);
 assert.throws(()=>calibrationParameterValues({parameter_preset:"acoustic-kick"},kickDescriptors), /Unknown/);
+
+const snareFit = referenceCalibration("snare-standard");
+const snareParameters = Object.assign({}, ...snareFit.instrument.nodes.map(n=>n.parameters));
+const snareDescriptors = Object.keys(snareParameters).map((key,index)=>({
+  key,index,defaultValue:0,minimum:-Infinity,maximum:Infinity,
+}));
+const snareTarget = {id:"snare-standard",recipe:"drum.snare.v1"};
+const snareValues = calibrationParameterValues(snareTarget,snareDescriptors);
+assert.deepEqual(snareValues,Object.values(snareParameters));
+assert.deepEqual(recipeStartingValues("drum.snare.v1",snareDescriptors),snareValues);
+assert.deepEqual(recipeStartingEvent("drum.snare.v1"),snareFit.controls.event);
+assert.deepEqual(calibrationPatch(snareTarget,snareDescriptors,snareValues,null),snareFit.instrument);
+assert.throws(()=>calibrationParameterValues({...snareTarget,recipe:"drum.kick.v1"},snareDescriptors),/recipe/);
+assert.throws(()=>checkedCalibrationValues(snareFit,snareDescriptors.slice(1)),/surface/);
+assert.throws(()=>checkedCalibrationValues(snareFit,snareDescriptors.map(d=>({...d,minimum:1e9}))),/Invalid/);
+const duplicateFit = structuredClone(snareFit);
+duplicateFit.instrument.nodes.push(structuredClone(duplicateFit.instrument.nodes[0]));
+assert.throws(()=>checkedCalibrationValues(duplicateFit,snareDescriptors),/Duplicate/);
+assert.equal(referenceCalibration("unknown"),null);
+
+for (const id of ["crash-standard", "ride-standard", "gong-standard", "hihat-standard"]) {
+  const fit = referenceCalibration(id);
+  const parameters = Object.assign({}, ...fit.instrument.nodes.map(n=>n.parameters));
+  const surface = Object.keys(parameters).map((key,index)=>({
+    key,index,defaultValue:0,minimum:-Infinity,maximum:Infinity,
+  }));
+  const target = {id,recipe:fit.instrument.recipe};
+  const values = calibrationParameterValues(target,surface);
+  assert.deepEqual(values,Object.values(parameters));
+  assert.deepEqual(calibrationPatch(target,surface,values,null),fit.instrument);
+  for (let knot=1;knot<=6;++knot) {
+    // One measured ride-only bend, not a default for other fits.
+    const measuredRideKnot = id === "ride-standard" && knot === 1;
+    assert.equal(parameters[`body_decay_active_${knot}`],Number(measuredRideKnot),
+      `${id}: only the reviewed ride damping knot may be active`);
+    if (measuredRideKnot) assert.equal(parameters.body_decay_frequency_1,700);
+  }
+}
 console.log("instrument calibration tests passed");

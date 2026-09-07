@@ -85,6 +85,13 @@ def population_stage(search, bounds, generations=18):
     search.history.append(
         dict(
             stage="population exploration with two-seed selection",
+            bounds=dict(zip(keys, zip(low.tolist(), high.tolist()))),
+            fixed_parameters={
+                key: value for key, value in initial.items() if key not in keys
+            },
+            generations=generations,
+            population_size=len(population),
+            training_seeds=search.seeds,
             before=before,
             after=best,
             evaluations=search.evaluations,

@@ -1,0 +1,307 @@
+{
+  "schema": "triggerfish.percussion.fit/v1",
+  "id": "15110dbe-5e32-4b22-89a7-19a948797c96",
+  "parentId": null,
+  "createdAt": "2026-09-07T15:20:01.707Z",
+  "name": "Gong — measured starting fit",
+  "renderer": {
+    "recipe": "metal.cymbal.v1",
+    "api": 1,
+    "adapter": "percussion-recipe-v1"
+  },
+  "instrument": {
+    "schema": "triggerfish.percussion.patch/v1",
+    "id": "factory.crash.experimental-01",
+    "name": "Gong",
+    "engineMinimum": 1,
+    "recipe": "metal.cymbal.v1",
+    "nodes": [
+      {
+        "id": "contact",
+        "type": "exciter.contact",
+        "version": 1,
+        "parameters": {
+          "impact_tone_noise": 0.10887393576606325,
+          "impact_width": 1,
+          "impact_chirp_pitch": 0.16305436653444355,
+          "impact_noise_tilt": -8.764519790758424,
+          "impact_micro_density": 1,
+          "velocity_brightness": 5
+        },
+        "editor": {
+          "x": 24,
+          "y": 92
+        }
+      },
+      {
+        "id": "body",
+        "type": "body.stochastic-modal-field",
+        "version": 1,
+        "parameters": {
+          "bloom_rate": 2.1451053361918033,
+          "bloom_energy_acceleration": 0.9999999999999857,
+          "bloom_phase_diffusion": 0.8309808961793429,
+          "body_brightness": -35.99948101632088,
+          "body_excitation_centre": 510.6181905665402,
+          "field_turbulence": 0.647098842870961,
+          "field_turbulence_slope": 0.30097056951088663,
+          "field_turbulence_centre": 1203.2870615503869,
+          "field_packet_spread": 3.9935636487775543,
+          "field_satellite_density": 0.65,
+          "field_phase_bandwidth": 0.7994763020313217,
+          "field_exchange": 0.5406310883269394,
+          "body_excitation": 2.990243386396835,
+          "body_decay_frequency_1": 500,
+          "body_decay_frequency_2": 1500,
+          "body_decay_frequency_3": 5000,
+          "body_decay_frequency_4": 8000,
+          "body_decay_frequency_5": 12000,
+          "body_decay_frequency_6": 14000,
+          "body_decay_seconds_0": 29.90695394183208,
+          "body_decay_seconds_1": 2.9657819271087646,
+          "body_decay_seconds_2": 2.3728408813476562,
+          "body_decay_seconds_3": 1.7829840183258057,
+          "body_decay_seconds_4": 1.585960030555725,
+          "body_decay_seconds_5": 1.431738018989563,
+          "body_decay_seconds_6": 1.330839991569519,
+          "body_decay_seconds_7": 2.6347206780117096,
+          "body_decay_active_1": 0,
+          "body_decay_active_2": 0,
+          "body_decay_active_3": 0,
+          "body_decay_active_4": 0,
+          "body_decay_active_5": 0,
+          "body_decay_active_6": 0,
+          "resolved_frequency_0": 123.99040159502592,
+          "resolved_frequency_1": 247.6051626820156,
+          "resolved_frequency_2": 302.62680934793093,
+          "resolved_frequency_3": 344.6940013962905,
+          "resolved_frequency_4": 371.57792353555317,
+          "resolved_frequency_5": 420.0626619661785,
+          "resolved_frequency_6": 548.0209218938734,
+          "resolved_frequency_7": 618.0838650760912,
+          "resolved_frequency_8": 726.74560546875,
+          "resolved_frequency_9": 764.4287109375,
+          "resolved_frequency_10": 882.861328125,
+          "resolved_frequency_11": 1388.8916015625,
+          "resolved_frequency_12": 1970.2880859375,
+          "resolved_frequency_13": 2427.86865234375,
+          "resolved_frequency_14": 2449.40185546875,
+          "resolved_frequency_15": 3940.576171875,
+          "resolved_frequency_16": 4000,
+          "resolved_frequency_17": 6500,
+          "resolved_frequency_18": 10000,
+          "resolved_frequency_19": 14000,
+          "resolved_frequency_20": 15000,
+          "resolved_frequency_21": 15000,
+          "resolved_frequency_22": 15000,
+          "resolved_frequency_23": 15000,
+          "resolved_frequency_24": 15000,
+          "resolved_frequency_25": 15000,
+          "resolved_frequency_26": 15000,
+          "resolved_frequency_27": 15000,
+          "resolved_frequency_28": 15000,
+          "resolved_frequency_29": 15000,
+          "resolved_frequency_30": 15000,
+          "resolved_frequency_31": 15000,
+          "resolved_level_0": -21.284033366732057,
+          "resolved_level_1": -25.417433958311413,
+          "resolved_level_2": -3.1328664718202943,
+          "resolved_level_3": -12.273836293788417,
+          "resolved_level_4": -9.208902618688743,
+          "resolved_level_5": -14.87822435063464,
+          "resolved_level_6": -13.915239721053158,
+          "resolved_level_7": -22.03331061650922,
+          "resolved_level_8": 6,
+          "resolved_level_9": -16.54413938984092,
+          "resolved_level_10": -23.08981188355596,
+          "resolved_level_11": -19.56300626520918,
+          "resolved_level_12": -15.802052121729087,
+          "resolved_level_13": -45,
+          "resolved_level_14": -17.830843206454134,
+          "resolved_level_15": -23.81992177529174,
+          "resolved_level_16": -34.300009385270144,
+          "resolved_level_17": -20.715706017539716,
+          "resolved_level_18": -23.86720461092983,
+          "resolved_level_19": -45,
+          "resolved_level_20": -72,
+          "resolved_level_21": -72,
+          "resolved_level_22": -72,
+          "resolved_level_23": -72,
+          "resolved_level_24": -72,
+          "resolved_level_25": -72,
+          "resolved_level_26": -72,
+          "resolved_level_27": -72,
+          "resolved_level_28": -72,
+          "resolved_level_29": -72,
+          "resolved_level_30": -72,
+          "resolved_level_31": -72,
+          "resolved_turbulence_0": 1,
+          "resolved_turbulence_1": 1,
+          "resolved_turbulence_2": 1,
+          "resolved_turbulence_3": 1,
+          "resolved_turbulence_4": 1,
+          "resolved_turbulence_5": 1,
+          "resolved_turbulence_6": 1,
+          "resolved_turbulence_7": 1,
+          "resolved_turbulence_8": 1,
+          "resolved_turbulence_9": 1,
+          "resolved_turbulence_10": 1,
+          "resolved_turbulence_11": 1,
+          "resolved_turbulence_12": 1,
+          "resolved_turbulence_13": 1,
+          "resolved_turbulence_14": 1,
+          "resolved_turbulence_15": 1,
+          "resolved_turbulence_16": 1,
+          "resolved_turbulence_17": 1,
+          "resolved_turbulence_18": 1,
+          "resolved_turbulence_19": 1,
+          "resolved_turbulence_20": 1,
+          "resolved_turbulence_21": 1,
+          "resolved_turbulence_22": 1,
+          "resolved_turbulence_23": 1,
+          "resolved_turbulence_24": 1,
+          "resolved_turbulence_25": 1,
+          "resolved_turbulence_26": 1,
+          "resolved_turbulence_27": 1,
+          "resolved_turbulence_28": 1,
+          "resolved_turbulence_29": 1,
+          "resolved_turbulence_30": 1,
+          "resolved_turbulence_31": 1,
+          "body_tune": 1
+        },
+        "editor": {
+          "x": 230,
+          "y": 92
+        }
+      },
+      {
+        "id": "observation",
+        "type": "observation.dual-source",
+        "version": 1,
+        "parameters": {
+          "field_gain": 1.7171085286793504,
+          "direct_gain": 8.123765251448399e-11,
+          "direct_radiation_enabled": 1,
+          "direct_low_cut": 40,
+          "direct_colour_frequency": 7200,
+          "direct_colour_gain": 1,
+          "direct_high_cut": 3000,
+          "body_radiation_enabled": 1,
+          "body_low_cut": 25,
+          "body_colour_frequency": 8500,
+          "body_colour_gain": 2,
+          "body_high_cut": 11656.894819054009
+        },
+        "editor": {
+          "x": 440,
+          "y": 92
+        }
+      },
+      {
+        "id": "output",
+        "type": "output.mono",
+        "version": 1,
+        "parameters": {
+          "model_level_db": 0
+        },
+        "editor": {
+          "x": 650,
+          "y": 92
+        }
+      }
+    ],
+    "connections": [
+      {
+        "id": "route-1",
+        "from": "contact.body",
+        "to": "body.primary",
+        "enabled": true,
+        "required": false
+      },
+      {
+        "id": "route-2",
+        "from": "contact.direct",
+        "to": "observation.direct",
+        "enabled": true,
+        "required": false,
+        "editor": {
+          "viaY": 184
+        }
+      },
+      {
+        "id": "route-3",
+        "from": "body.audio",
+        "to": "observation.body",
+        "enabled": true,
+        "required": false
+      },
+      {
+        "id": "route-4",
+        "from": "observation.audio",
+        "to": "output.audio",
+        "enabled": true,
+        "required": true
+      }
+    ],
+    "outputs": {
+      "mono": "output.audio"
+    },
+    "performanceControls": [
+      "strength",
+      "location",
+      "hardness",
+      "implement",
+      "contactSpread"
+    ]
+  },
+  "reference": {
+    "id": "sha256:a36721cff1f77c22484ac026330aa4da953826ff0e92376d7fb756e27d945147",
+    "sha256": "a36721cff1f77c22484ac026330aa4da953826ff0e92376d7fb756e27d945147",
+    "name": "Gong Dresden 03",
+    "sampleRate": 44100,
+    "channels": 2,
+    "bits": 24,
+    "duration": 7.68485260770975,
+    "referenceGainDb": -6,
+    "corpus": {
+      "id": "gong-dresden",
+      "name": "Dresden gong",
+      "referenceGainDb": -6
+    },
+    "cell": {
+      "label": "Gong Dresden 03",
+      "articulation": "mallet",
+      "velocity": 96,
+      "repeat": 3,
+      "strength": 0.76,
+      "location": 0.55,
+      "hardness": 0.35,
+      "implement": 0.5,
+      "contactSpread": 0.3,
+      "onset_seconds": 0,
+      "seed": 1675,
+      "split": "audition",
+      "url": "http://127.0.0.1:8765/reference/gong-dresden/Gong%20Dresden%2003.wav"
+    }
+  },
+  "controls": {
+    "event": {
+      "strength": 0.76,
+      "location": 0.55,
+      "hardness": 0.35,
+      "implement": 0.5,
+      "contactSpread": 0.3,
+      "seed": 1675,
+      "constraint": 0
+    },
+    "analysis": {
+      "size": 4096,
+      "hop": 512,
+      "window": "hann",
+      "floorDb": -160,
+      "dynamicRangeDb": 80
+    }
+  },
+  "reviewStatus": "measurement-reviewed-audition-pending",
+  "reviewNote": "Exact C++ snapshot, full reference duration and repeated strikes checked. Shorter contact, lower-fed energy travel and modal observations substantially improve the low strike and rising upper bloom. Two damping endpoints; no per-mode decay fitting. Initial noise is still too spiky and seed-sensitive; late low-frequency decay is too short. One of three fresh audit seeds regresses in the composite score. Listening approval pending."
+}

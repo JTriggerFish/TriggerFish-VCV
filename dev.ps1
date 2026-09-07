@@ -30,6 +30,8 @@ param(
         "fit-crash-start",
         "fit-gong-start",
         "fit-kick-start",
+        "fit-instruments",
+        "polish-instruments",
         "diagnose-kick",
         "compare-kick-losses",
         "test-perceptual-losses",
@@ -422,7 +424,7 @@ switch ($Command) {
             Pop-Location
         }
     }
-    { $_ -in "fit-gong-start", "fit-kick-start", "test-kick-architecture", "diagnose-kick", "compare-kick-losses" } {
+    { $_ -in "fit-gong-start", "fit-kick-start", "fit-instruments", "polish-instruments", "test-kick-architecture", "diagnose-kick", "compare-kick-losses" } {
         & $PSCommandPath -Command build-workbench -Jobs $Jobs
         if ($LASTEXITCODE -ne 0) { throw "Workbench build failed." }
         $emsdkEnvironment = Join-Path $emsdkRoot "emsdk_env.ps1"
@@ -434,6 +436,8 @@ switch ($Command) {
         try {
             $fitScript = switch ($Command) {
                 "fit-kick-start" { "tools/fit_workbench_kick.py" }
+                "fit-instruments" { "tools/fit_workbench_instruments.py" }
+                "polish-instruments" { "tools/polish_workbench_fit.py" }
                 "diagnose-kick" { "tools/diagnose_workbench_kick.py" }
                 "compare-kick-losses" { "tools/compare_kick_losses.py" }
                 "test-kick-architecture" { "tools/test_kick_architecture.py" }
@@ -540,9 +544,15 @@ switch ($Command) {
                 tests/python/test_ridge_balance_loss.py tests/python/test_fit_rerender.py `
                 tests/python/test_scalar_fit_search.py `
                 tests/python/test_workbench_search.py tests/python/test_workbench_fit_baseline.py `
-                  tests/python/test_workbench_global_search.py tests/python/test_fit_provenance.py `
-                  tests/python/test_modal_fit_initialization.py tests/python/test_power_envelope.py `
-                  --basetemp build/pytest-fit-temp
+                tests/python/test_workbench_global_search.py tests/python/test_fit_provenance.py `
+                tests/python/test_modal_fit_initialization.py tests/python/test_power_envelope.py `
+                tests/python/test_metallic_fit_loss.py tests/python/test_metallic_balance_loss.py `
+                tests/python/test_observation_fit_basis.py tests/python/test_torch_metallic_loss.py `
+                tests/python/test_observation_energy_gate.py `
+                tests/python/test_fit_reference.py tests/python/test_reference_onset_audit.py `
+                tests/python/test_metallic_candidate_audit.py `
+                tests/python/test_fit_objective.py tests/python/test_instrument_fit_plots.py `
+                --basetemp build/pytest-fit-temp
             if ($LASTEXITCODE -ne 0) { throw "Fitting tests failed with exit code $LASTEXITCODE." }
         }
         finally { Pop-Location }

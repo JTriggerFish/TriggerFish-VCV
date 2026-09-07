@@ -89,6 +89,9 @@ def test_curated_reference_catalog_is_small_and_allow_listed(tmp_path: Path) -> 
     gong = next(corpus for corpus in corpora if corpus["id"] == "gong-dresden")
     assert all(cell["implement"] == 0.5 for cell in gong["cells"])
     assert all(cell["contactSpread"] == 0.3 for cell in gong["cells"])
+    ride = next(corpus for corpus in corpora if corpus["id"] == "ride-21-reference")
+    standard_ride = next(cell for cell in ride["cells"] if "normal.mf" in cell["url"])
+    assert standard_ride["onset_seconds"] == 0.084125
     hihat = next(corpus for corpus in corpora if corpus["id"] == "hihat-14-reference")
     constraints = {cell["articulation"]: cell["constraint"] for cell in hihat["cells"]}
     assert constraints == {
