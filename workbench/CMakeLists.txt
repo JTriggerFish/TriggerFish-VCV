@@ -121,6 +121,17 @@ if(EMSCRIPTEN)
       COMMAND ${NODE_EXECUTABLE}
         ${CMAKE_CURRENT_LIST_DIR}/tests/instrument_calibration_tests.mjs
     )
+    add_test(NAME triggerfish_workbench_calibration_surface_tests
+      COMMAND ${NODE_EXECUTABLE}
+        ${CMAKE_CURRENT_LIST_DIR}/tests/calibration_surface_tests.mjs
+        $<TARGET_FILE:triggerfish_percussion_wasm>
+    )
+    add_test(NAME triggerfish_workbench_turbulence_profile_tests
+      COMMAND ${NODE_EXECUTABLE} ${CMAKE_CURRENT_LIST_DIR}/tests/turbulence_profile_tests.mjs)
+    add_test(NAME triggerfish_workbench_decay_curve_geometry_tests
+      COMMAND ${NODE_EXECUTABLE} ${CMAKE_CURRENT_LIST_DIR}/tests/decay_curve_geometry_tests.mjs)
+    add_test(NAME triggerfish_workbench_diagnostic_audition_tests
+      COMMAND ${NODE_EXECUTABLE} ${CMAKE_CURRENT_LIST_DIR}/tests/diagnostic_audition_tests.mjs)
     add_test(NAME triggerfish_workbench_state_tests
       COMMAND ${NODE_EXECUTABLE}
         ${CMAKE_CURRENT_LIST_DIR}/tests/state_tests.mjs

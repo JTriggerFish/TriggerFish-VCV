@@ -13,7 +13,9 @@ namespace tfdsp::percussion {
 
 inline constexpr std::size_t CrashModalAnchorCapacity = 32;
 inline constexpr std::size_t CrashModalFieldModeCount = 512;
-inline constexpr float CrashModalMinimumFrequencyHz = 40.f;
+inline constexpr float CrashModalMinimumFrequencyHz = 1.f;
+// Keep the existing decay curve's coordinate; its low value extends below it.
+inline constexpr float CrashDecayMinimumFrequencyHz = 40.f;
 inline constexpr float CrashModalMaximumFrequencyHz = 15000.f;
 inline constexpr std::size_t CrashBodyDecayPointCount = 8;
 inline constexpr std::size_t CrashBodyDecayInteriorPointCount =
@@ -53,6 +55,7 @@ struct CrashCymbalFitParameters {
   float bloomRateOctavesPerSecond{2.f};
   float bloomEnergyAcceleration{.7f};
   float bloomPhaseDiffusion{.7f};
+  bool bloomSpectralDiffusion{};
   // Visible gain between the contact body port and the nonlinear modal field.
   float bodyExcitationGain{1.f};
   float fieldGain{1.f};
@@ -62,6 +65,9 @@ struct CrashCymbalFitParameters {
   float fieldPacketSpreadErb{6.f};
   float fieldSatelliteDensity{.5f};
   float fieldPhaseBandwidthErb{1.f};
+  bool fieldRelaxedTurbulence{};
+  float fieldDriftDepthPercent{};
+  float fieldDriftKnotsPerSecond{8.f};
   float fieldExchange{.35f};
   float contactDurationScale{1.f};
   float contactPulseGain{1.f};

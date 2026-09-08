@@ -66,14 +66,21 @@ class Search:
             )
         seed = dict(self.parameters)
         effective_bounds = dict(zip(keys, zip(low.tolist(), high.tolist())))
+        physical_low, physical_high = low.copy(), high.copy()
         scales = [dict(parameter_scales or {}).get(key, "linear") for key in keys]
-        if any(scale not in ("linear", "amplitude_db") for scale in scales):
+        if any(scale not in ("linear", "amplitude_db", "log") for scale in scales):
             raise ValueError("Unknown search parameter scale")
         # Exposed dB observation levels remain dB in every saved patch. Only
         # solver coordinates change: a quiet bar must receive a meaningful
         # amplitude probe rather than being declared dead at its current level.
         amplitude = np.array([scale == "amplitude_db" for scale in scales])
+        logarithmic = np.array([scale == "log" for scale in scales])
         raw = np.array([seed[key] for key in keys], dtype=float)
+        if np.any(low[logarithmic] <= 0):
+            raise ValueError("Log search bounds must be strictly positive")
+        raw[logarithmic] = np.log(np.maximum(raw[logarithmic], low[logarithmic]))
+        low[logarithmic] = np.log(low[logarithmic])
+        high[logarithmic] = np.log(high[logarithmic])
         low[amplitude] = 10 ** (low[amplitude] / 20)
         high[amplitude] = 10 ** (high[amplitude] / 20)
         raw[amplitude] = 10 ** (raw[amplitude] / 20)
@@ -82,6 +89,9 @@ class Search:
         def unpack(values):
             physical = low + values * (high - low)
             physical[amplitude] = 20 * np.log10(physical[amplitude])
+            physical[logarithmic] = np.exp(physical[logarithmic])
+            # exp(log(maximum)) may round one ULP beyond a strict API bound.
+            physical = np.clip(physical, physical_low, physical_high)
             return dict(seed, **dict(zip(keys, physical.tolist())))
 
         def residual(values):
@@ -131,6 +141,8 @@ class Search:
         keys = [keys[index] for index in active]
         low, high, x = low[active], high[active], x[active]
         amplitude = amplitude[active]
+        logarithmic = logarithmic[active]
+        physical_low, physical_high = physical_low[active], physical_high[active]
         iteration = 0
 
         def jacobian(values):

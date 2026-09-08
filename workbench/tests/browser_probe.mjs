@@ -333,7 +333,7 @@ if (testControls) {
       harmonicGuide.dispatchEvent(new Event("change"));
       const harmonicGuideWorks =
         modal.querySelectorAll(".harmonic-grid").length > 1 &&
-        !document.getElementById("harmonic-note").disabled &&
+        !!document.querySelector('#modal-templates [aria-label="Generator base note"]') &&
         !document.getElementById("harmonic-snap").disabled &&
         !document.getElementById("harmonic-snap-all").disabled;
       const decayEditor = document.querySelector("#decay-editor svg");
@@ -418,8 +418,8 @@ if (testControls) {
               fieldTurbulence instanceof HTMLInputElement,
             noLegacyBodyUi: !document.getElementById("body-ui-mode") &&
               !document.querySelector('[data-ui-mode="legacy"]'),
-            bloomDiffusionControl: Boolean(document.querySelector(
-              '[data-fit-key="bloom_phase_diffusion"] input')),
+            bloomDiffusionControl: !document.querySelector(
+              '[data-fit-key="bloom_phase_diffusion"] input'),
             independentBloomControls: Boolean(document.querySelector(
               '[data-fit-key="bloom_rate"] input')) &&
               Boolean(document.querySelector(

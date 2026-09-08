@@ -40,7 +40,6 @@
         "parameters": {
           "bloom_rate": 1.0178304908770037,
           "bloom_energy_acceleration": 0.699999988079071,
-          "bloom_phase_diffusion": 0.699999988079071,
           "body_brightness": 5.743436532787797,
           "body_excitation_centre": 2980.1598867947705,
           "field_turbulence": 0.6499999761581421,
@@ -49,7 +48,8 @@
           "field_packet_spread": 6,
           "field_satellite_density": 0.5,
           "field_phase_bandwidth": 1,
-          "field_exchange": 0.3499999940395355,
+          "field_drift_depth": 0,
+          "field_drift_rate": 8,
           "body_excitation": 1,
           "body_decay_frequency_1": 500,
           "body_decay_frequency_2": 1500,

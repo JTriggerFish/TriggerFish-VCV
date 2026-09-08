@@ -24,7 +24,6 @@ enum class CrashMacro : std::size_t {
   ImpactWidth,
   BloomRate,
   BloomEnergyAcceleration,
-  BloomPhaseDiffusion,
   BodyBrightness,
   BodyExcitationCentre,
   FieldTurbulence,
@@ -33,7 +32,6 @@ enum class CrashMacro : std::size_t {
   FieldPacketSpread,
   FieldSatelliteDensity,
   FieldPhaseBandwidth,
-  FieldExchange,
   BodyExcitation,
   FieldGain,
   DirectGain,
@@ -61,6 +59,8 @@ enum class CrashMacro : std::size_t {
   ImpactMicroDensity,
   VelocityBrightness,
   BodyTune,
+  FieldDriftDepth,
+  FieldDriftRate,
   Count
 };
 

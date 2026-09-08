@@ -29,6 +29,14 @@ export function recipeStartingEvent(recipe) {
   return recipe === "drum.kick.v1" ? { ...KickCalibration.controls.event } : null;
 }
 
+// A fitted gesture may differ from the source sample's metadata. Restore it
+// after selecting that reference, whose normal browser action sets the event.
+export function calibrationEvent(calibration) {
+  const fit = referenceCalibration(calibration.id) ??
+    (calibration.parameter_preset === "kick" ? KickCalibration : null);
+  return fit ? { ...fit.controls.event } : null;
+}
+
 export function calibrationParameterValues(calibration, descriptors) {
   const fitted = referenceCalibration(calibration.id);
   if (fitted) {

@@ -1,5 +1,5 @@
 import {ModalEditor} from "./modal_editor.mjs";
-import {mountModalTemplates} from "./modal_templates.mjs";
+import {mountModalTemplates} from "./modal_template_controls.mjs";
 
 const Fields = ["frequency", "level"];
 const key = (field, index) => `resonance_${field}_${index}`;

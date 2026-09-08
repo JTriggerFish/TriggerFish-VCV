@@ -21,12 +21,17 @@ struct StochasticModalModeParameters {
   float phaseBandwidthHz{};
   std::uint16_t packet{};
   float exchangeAmount{1.f};
+  // Routing coordinate of the painted packet, independent of its sidebands.
+  // Zero means use this mode's frequency (generic, ungrouped resonators).
+  float transportFrequencyHz{};
 };
 
 struct StochasticModalFieldControls {
   float exchangeAngleRadians{};
   std::uint32_t seed{0x4649454cu};
   ModalEnergyCascadeParameters cascade{};
+  float driftDepthPercent{};
+  float driftKnotsPerSecond{8.f};
 };
 
 template <std::size_t ModeCount> struct PreparedStochasticModalField {
@@ -43,6 +48,7 @@ template <std::size_t ModeCount> struct PreparedStochasticModalField {
   std::array<float, ModeCount> exchangeSine{};
   std::array<float, ModeCount> exchangeAmount{};
   std::array<float, ModeCount> frequencyHz{};
+  std::array<float, ModeCount> transportFrequencyHz{};
   std::array<std::uint32_t, ModeCount> sourceIndex{};
   std::array<std::uint16_t, ModeCount> packet{};
   std::array<std::uint8_t, ModeCount> band{};
@@ -53,6 +59,8 @@ template <std::size_t ModeCount> struct PreparedStochasticModalField {
   std::uint32_t seed{0x4649454cu};
   ModalEnergyCascadeParameters cascade{};
   std::uint32_t activeModeCount{};
+  float driftDepthPercent{};
+  float driftKnotsPerSecond{8.f};
 };
 
 namespace detail {
@@ -61,7 +69,16 @@ inline void NormalizeModalRotation(float &cosine, float &sine) noexcept {
   const float inverseLength = 1.f / std::sqrt(cosine * cosine + sine * sine);
   cosine *= inverseLength;
   sine *= inverseLength;
-  if (std::abs(cosine) >= std::abs(sine)) {
+  // Near an axis, subtracting the large component's square from one loses
+  // the small component's precision (and can turn a 1-Hz rotation into DC).
+  // Preserve that component in this cancellation-sensitive numeric regime.
+  if (std::abs(sine) < .01f) {
+    cosine = std::copysign(
+        std::sqrt(std::max(0.f, 1.f - sine * sine)), cosine);
+  } else if (std::abs(cosine) < .01f) {
+    sine = std::copysign(
+        std::sqrt(std::max(0.f, 1.f - cosine * cosine)), sine);
+  } else if (std::abs(cosine) >= std::abs(sine)) {
     sine = std::copysign(
         std::sqrt(std::max(0.f, 1.f - cosine * cosine)), sine);
   } else {
@@ -103,6 +120,8 @@ PreparedStochasticModalField<ModeCount> PrepareStochasticModalField(
       tfdsp::FiniteNormalOrZero(controls.exchangeAngleRadians), 0.f, .05f);
   result.seed = controls.seed;
   result.cascade = controls.cascade;
+  result.driftDepthPercent = controls.driftDepthPercent;
+  result.driftKnotsPerSecond = controls.driftKnotsPerSecond;
   constexpr float TwoPi = 6.28318530717958647692f;
   for (std::size_t source = 0; source < ModeCount; ++source) {
     const float inputGain = detail::ModalInputGain(parameters[source].inputGain);
@@ -130,6 +149,9 @@ PreparedStochasticModalField<ModeCount> PrepareStochasticModalField(
         60.f);
     const float angle = TwoPi * frequency / sampleRate;
     result.frequencyHz[mode] = frequency;
+    const float transport = tfdsp::FiniteNormalOrZero(parameters[source].transportFrequencyHz);
+    result.transportFrequencyHz[mode] = transport > 0.f
+        ? std::clamp(transport, 1.f, .49f * sampleRate) : frequency;
     const float oscillatorCosine = std::cos(angle);
     const float oscillatorSine = std::sin(angle);
     result.radius[mode] = std::exp(std::log(.001f) / (decay * sampleRate));

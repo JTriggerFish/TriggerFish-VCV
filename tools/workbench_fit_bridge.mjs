@@ -15,17 +15,22 @@ const { readRemoteReference } = await load("references.mjs");
 const { calibrationParameterValues, calibrationPatch } = await load("instrument_calibrations.mjs");
 const { recipeAdapter } = await load("recipe_adapter.mjs");
 const { snapshotState, fitMacroValues, validateFit } = await load("state.mjs");
+const { modalTemplate, modalTemplateStretch } = await load("modal_templates.mjs");
 const pcm = samples => Buffer.from(samples.buffer, samples.byteOffset, samples.byteLength).toString("base64");
 let engine, reference, event, defaults, patch;
 
-async function initialize(id) {
+async function initialize(id, selection = {}) {
   engine?.destroy();
   const catalog = await (await fetch(`${base}/api/reference-corpora`)).json();
   const corpus = catalog.corpora.find(item => item.calibration?.id === id);
   if (!corpus) throw new Error(`Unknown reference start: ${id}`);
   const calibration = corpus.calibration;
+  if (Object.keys(selection).some(key => !["articulation", "velocity", "repeat"].includes(key)))
+    throw Error("Unknown reference-cell selector");
+  const chosen = { ...calibration, ...selection };
   const cell = corpus.cells.find(item => ["articulation", "velocity", "repeat"]
-    .every(key => item[key] === calibration[key]));
+    .every(key => item[key] === chosen[key]));
+  if (!cell) throw Error("Reference cell unavailable");
   reference = await readRemoteReference(corpus, { ...cell, url: new URL(cell.url, base).href });
   engine = await PercussionEngine.create(reference.sampleRate);
   engine.setRecipe(engine.recipes.find(item => item.key === calibration.recipe).index);
@@ -111,7 +116,9 @@ function renderSnapshot(request) {
 for await (const line of createInterface({ input: process.stdin })) {
   try {
     const request = JSON.parse(line);
-    const result = request.command === "initialize" ? await initialize(request.id)
+    const result = request.command === "initialize" ? await initialize(request.id, request.cell)
+      : request.command === "modalTemplate" ? {points:modalTemplate(request.settings)}
+      : request.command === "modalTemplateStretch" ? {stretch:modalTemplateStretch(request.settings)}
       : request.command === "snapshot" ? snapshot(request)
         : request.command === "renderSnapshot" ? renderSnapshot(request)
           : request.command === "renderSequence" ? renderSequence(request) : render(request);

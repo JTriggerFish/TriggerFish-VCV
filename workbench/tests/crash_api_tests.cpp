@@ -116,7 +116,6 @@ int main() {
   std::size_t firstLevel = painted.size();
   std::size_t secondLevel = painted.size();
   std::size_t fieldTurbulence = painted.size();
-  std::size_t bloomDiffusion = painted.size();
   std::size_t bloomRate = painted.size();
   std::size_t bloomEnergyAcceleration = painted.size();
   std::size_t bodyExcitation = painted.size();
@@ -128,7 +127,6 @@ int main() {
     else if (key == "resolved_level_0") firstLevel = index;
     else if (key == "resolved_level_1") secondLevel = index;
     else if (key == "field_turbulence") fieldTurbulence = index;
-    else if (key == "bloom_phase_diffusion") bloomDiffusion = index;
     else if (key == "bloom_rate") bloomRate = index;
     else if (key == "bloom_energy_acceleration")
       bloomEnergyAcceleration = index;
@@ -138,7 +136,7 @@ int main() {
   }
   Check(firstFrequency < painted.size() && firstLevel < painted.size() &&
             secondLevel < painted.size() &&
-            fieldTurbulence < painted.size() && bloomDiffusion < painted.size() &&
+            fieldTurbulence < painted.size() &&
             bloomRate < painted.size() &&
             bloomEnergyAcceleration < painted.size() &&
             bodyExcitation < painted.size() &&
@@ -161,6 +159,9 @@ int main() {
   Check(std::abs(paintedFit.sparseFrequencyHz[0] - 177.f) < 1.e-5f &&
             paintedFit.sparseAmplitude[0] > paintedFit.sparseAmplitude[1],
         "resolved editor directly places and levels resolved modes");
+  Check(defaultFit.bloomSpectralDiffusion && defaultFit.fieldRelaxedTurbulence &&
+            defaultFit.fieldExchange == 0.f && defaultFit.bloomPhaseDiffusion == 0.f,
+        "workbench recipe uses diffusion without secondary exchange or arrival phase kicks");
   Check(paintedFit.fieldTurbulenceScale[0] == 0.f,
         "each modal anchor owns a turbulence-response scaler");
   Check(std::abs(paintedFit.bodyExcitationGain - .2f) < 1.e-6f,
@@ -295,18 +296,19 @@ int main() {
       Difference(coherent, std::vector<float>(coherent.size()));
   Check(Difference(coherent, diffuse) > 1.e-4 * coherentEnergy,
         "unified turbulence materially changes the body response");
-  Check(tf_crash_macro_set(handle, bloomDiffusion, 0.f) &&
+  Check(tf_crash_macro_set(handle, bloomEnergyAcceleration, 0.f) &&
+            tf_crash_macro_set(handle, bloomRate, 0.f) &&
             tf_crash_macro_commit(handle),
-        "bloom transfer phase diffusion can be disabled");
+        "spectral energy transfer can be disabled");
   const auto focusedBloom = Render(handle, 17, .8f, 256);
-  Check(tf_crash_macro_set(handle, bloomDiffusion, 1.f) &&
+  Check(tf_crash_macro_set(handle, bloomRate, 4.f) &&
             tf_crash_macro_commit(handle),
-        "bloom transfer can restore full phase diffusion");
+        "spectral energy transfer can be restored");
   const auto diffuseBloom = Render(handle, 17, .8f, 256);
   const double bloomEnergy =
       Difference(focusedBloom, std::vector<float>(focusedBloom.size()));
   Check(Difference(focusedBloom, diffuseBloom) > 1.e-4 * bloomEnergy,
-        "bloom diffusion materially changes the body excitation");
+        "linear-limit spectral diffusion changes the short test render");
   for (std::size_t index = 0; index < tf_crash_macro_count(); ++index)
     Check(tf_crash_macro_set(handle, index, tf_crash_macro_default(index)),
           "factory controls can be restored after ablation");

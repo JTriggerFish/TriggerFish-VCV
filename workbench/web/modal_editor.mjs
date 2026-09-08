@@ -181,7 +181,7 @@ export class ModalEditor {
   }
 
   effectiveSpread(point) {
-    const turbulence = clamp(
+    const turbulence = this.options.effectiveTurbulence?.(point) ?? clamp(
       this.options.globalTurbulence() * point.turbulence, 0, 1,
     );
     return turbulence * this.options.packetSpread();
@@ -295,7 +295,8 @@ export class ModalEditor {
       const distance = Math.abs(erb(this.frequency(position.x)) -
         erb(this.drag.point.frequency));
       const global = Math.max(
-        .05, this.options.globalTurbulence() * this.options.packetSpread(),
+        .05, (this.options.spectralTurbulence?.(this.drag.point.frequency) ??
+          this.options.globalTurbulence()) * this.options.packetSpread(),
       );
       point.turbulence = clamp(distance / global, 0, 2);
     } else {
@@ -402,7 +403,8 @@ export class ModalEditor {
     this.paintHarmonicGrid();
     const points = this.options.points();
     points.forEach((point, index) => {
-      if (point.active) this.paintPacket(point, index);
+      if (point.active && point.frequency >= this.options.minimumFrequency &&
+          point.frequency <= this.options.maximumFrequency) this.paintPacket(point, index);
     });
     if (this.hover && this.tool !== "edit") this.paintBrushPreview();
     const count = points.filter(point => point.active).length;
@@ -413,7 +415,8 @@ export class ModalEditor {
   }
 
   paintGrid() {
-    for (const frequency of [50, 100, 300, 1000, 3000, 6000, 10000, 15000]) {
+    for (const frequency of [1, 2, 5, 10, 20, 50, 100, 300, 1000, 3000, 6000, 10000, 15000]) {
+      if (frequency < this.options.minimumFrequency || frequency > this.options.maximumFrequency) continue;
       const x = this.x(frequency);
       this.svg.append(element("line", {
         x1: x, y1: Plot.top, x2: x, y2: Height - Plot.bottom,

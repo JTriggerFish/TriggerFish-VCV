@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 
-import { calibrationParameterValues, calibrationPatch, recipeStartingValues, recipeStartingEvent } from
+import { calibrationParameterValues, calibrationPatch, calibrationEvent, recipeStartingValues, recipeStartingEvent } from
   "../web/instrument_calibrations.mjs";
 import KickCalibration from "../web/kick_calibration.fit.json" with { type: "json" };
 import {referenceCalibration, checkedCalibrationValues} from "../web/reference_calibration_library.mjs";
@@ -85,12 +85,22 @@ for (const id of ["crash-standard", "ride-standard", "gong-standard", "hihat-sta
   const values = calibrationParameterValues(target,surface);
   assert.deepEqual(values,Object.values(parameters));
   assert.deepEqual(calibrationPatch(target,surface,values,null),fit.instrument);
+  // Reviewed shared curves may have interior points; this is not a DSP limit.
+  const reviewedKnots = id === "crash-standard" ? []
+    : id === "ride-standard" ? [700] : [];
   for (let knot=1;knot<=6;++knot) {
-    // One measured ride-only bend, not a default for other fits.
-    const measuredRideKnot = id === "ride-standard" && knot === 1;
-    assert.equal(parameters[`body_decay_active_${knot}`],Number(measuredRideKnot),
-      `${id}: only the reviewed ride damping knot may be active`);
-    if (measuredRideKnot) assert.equal(parameters.body_decay_frequency_1,700);
+    const active = knot <= reviewedKnots.length;
+    assert.equal(parameters[`body_decay_active_${knot}`],Number(active),
+      `${id}: shared damping curve must match the reviewed preset`);
+    if (active) assert.equal(parameters[`body_decay_frequency_${knot}`],reviewedKnots[knot-1]);
   }
 }
+const rideEvent = calibrationEvent({id:"ride-standard"});
+assert.equal(rideEvent.strength, 0.5506513756876121);
+assert.equal(rideEvent.location, 0.4904862153154393);
+assert.equal(rideEvent.seed, 1944);
+rideEvent.strength = 0;
+assert.notEqual(calibrationEvent({id:"ride-standard"}).strength, 0,
+  "loading an event must not mutate the saved calibration");
+assert.equal(calibrationEvent({}), null);
 console.log("instrument calibration tests passed");

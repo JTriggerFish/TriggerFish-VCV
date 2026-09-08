@@ -103,6 +103,35 @@ if (!restored || !wasm._tf_percussion_apply_prepared(
 if (!equal(renderShared(handle, 63, 128), renderShared(restored, 63, 128))) {
   throw new Error("prepared Wasm recipe differs from the configured recipe");
 }
+// New drift controls must also survive the prepared/audio-worklet path.
+const driftIndex = Array.from({length: wasm._tf_crash_macro_count()}, (_, i) => i)
+  .find(i => wasm.UTF8ToString(wasm._tf_crash_macro_key(i)) === "field_drift_depth");
+if (driftIndex === undefined || !wasm._tf_crash_macro_set(handle, driftIndex, 6) ||
+    !wasm._tf_crash_macro_commit(handle) ||
+    !wasm._tf_percussion_export_prepared(handle, preparedPointer, preparedSize) ||
+    !wasm._tf_percussion_apply_prepared(restored, preparedPointer, preparedSize)) {
+  throw new Error("drift preparation failed");
+}
+if (!equal(renderShared(handle, 63, 128), renderShared(restored, 63, 512))) {
+  throw new Error("drift differs after prepared replay/block size change");
+}
+wasm._tf_crash_macro_set(handle, driftIndex, 0);
+wasm._tf_crash_macro_commit(handle);
+const keys = Array.from({length:wasm._tf_crash_macro_count()}, (_,i) =>
+  wasm.UTF8ToString(wasm._tf_crash_macro_key(i)));
+for (const removed of ["field_relaxed_turbulence","field_exchange",
+    "bloom_spectral_diffusion","bloom_phase_diffusion"]) {
+  if(keys.includes(removed)) throw Error("Obsolete control exposed: "+removed);
+}
+const rateIndex=keys.indexOf("bloom_rate");
+const rateDefault=wasm._tf_crash_macro_default(rateIndex);
+const originalTransport=renderShared(handle,63,128);
+wasm._tf_crash_macro_set(handle,rateIndex,0);
+wasm._tf_crash_macro_commit(handle);
+if(equal(originalTransport,renderShared(handle,63,128)))
+  throw Error("Diffusion strength has no effect");
+wasm._tf_crash_macro_set(handle,rateIndex,rateDefault);
+wasm._tf_crash_macro_commit(handle);
 wasm.HEAPU8[preparedPointer] ^= 0xff;
 if (wasm._tf_percussion_apply_prepared(
   restored, preparedPointer, preparedSize,

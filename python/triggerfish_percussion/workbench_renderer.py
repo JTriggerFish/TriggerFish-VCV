@@ -9,7 +9,7 @@ import numpy as np
 
 
 class WorkbenchRenderer:
-    def __init__(self, node: str, target: str, root: Path):
+    def __init__(self, node: str, target: str, root: Path, cell=None):
         self.process = subprocess.Popen(
             [node, str(root / "tools/workbench_fit_bridge.mjs")],
             cwd=root,
@@ -19,7 +19,8 @@ class WorkbenchRenderer:
             encoding="utf-8",
         )
         try:
-            self.metadata = self.request(command="initialize", id=target)
+            selection = {} if cell is None else {"cell": cell}
+            self.metadata = self.request(command="initialize", id=target, **selection)
         except Exception:
             self.close()
             raise

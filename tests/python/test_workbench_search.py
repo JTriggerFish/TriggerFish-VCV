@@ -128,3 +128,52 @@ def test_narrow_bounds_cannot_accept_regression_from_actual_patch(
     search.stage("narrower box", {"active": (0, 0.5)}, 10)
     assert search.parameters["active"] == 0.9
     assert not search.history[-1]["selected"]
+
+
+def test_log_coordinates_recover_small_bandwidth_and_freeze_dead_control(
+    tmp_path, monkeypatch
+):
+    renderer = SimpleNamespace(
+        initial={"width": 0.8, "dead": 0.4},
+        metadata={
+            "descriptors": [
+                dict(key=k, minimum=0, maximum=1) for k in ("width", "dead")
+            ]
+        },
+        render=lambda parameters, seconds: np.array([np.log(parameters["width"])]),
+    )
+    loss = SimpleNamespace(
+        residual=lambda audio, regions: audio - np.log(0.0003),
+        diagnostics=lambda audio: {},
+    )
+    search = Search(renderer, loss, tmp_path)
+    monkeypatch.setattr(search, "save", lambda: None)
+    search.stage(
+        "log bandwidth",
+        {"width": (0.00001, 1), "dead": (0.00001, 1)},
+        15,
+        parameter_scales={"width": "log", "dead": "log"},
+    )
+    assert abs(search.parameters["width"] / 0.0003 - 1) < 0.001
+    assert search.parameters["dead"] == 0.4
+
+
+def test_log_upper_boundary_never_exceeds_public_maximum(tmp_path, monkeypatch):
+    def render(parameters, seconds):
+        assert 1 <= parameters["seconds"] <= 30
+        return np.array([parameters["seconds"]])
+
+    renderer = SimpleNamespace(
+        initial={"seconds": 29.9},
+        render=render,
+        metadata={"descriptors": [dict(key="seconds", minimum=1, maximum=30)]},
+    )
+    loss = SimpleNamespace(
+        residual=lambda audio, regions: audio - 40, diagnostics=lambda audio: {}
+    )
+    search = Search(renderer, loss, tmp_path)
+    monkeypatch.setattr(search, "save", lambda: None)
+    search.stage(
+        "maximum T60", {"seconds": (1, 30)}, 15, parameter_scales={"seconds": "log"}
+    )
+    assert search.parameters["seconds"] > 29.99

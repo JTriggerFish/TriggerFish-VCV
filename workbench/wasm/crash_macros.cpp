@@ -10,6 +10,7 @@ namespace tfworkbench {
 namespace {
 
 using tfdsp::percussion::CrashCymbalFitParameters;
+using tfdsp::percussion::CrashModalMinimumFrequencyHz;
 constexpr float PiOverTwo = 1.57079632679489661923f;
 constexpr float DefaultImpactWidth = .65f;
 
@@ -47,29 +48,26 @@ std::array<CrashMacroDescriptor, CrashMacroCount> BuildDescriptors() {
       Logarithmic("impact_width", "Contact width", "x", .25f, 4.f,
                   DefaultImpactWidth));
   set(CrashMacro::BloomRate,
-      Linear("bloom_rate", "Upward cascade rate", "oct/s", 0.f, 16.f,
+      Linear("bloom_rate", "Diffusion strength", "", 0.f, 16.f,
              fit.bloomRateOctavesPerSecond));
   set(CrashMacro::BloomEnergyAcceleration,
-      Linear("bloom_energy_acceleration", "Energy acceleration", "", 0.f,
+      Linear("bloom_energy_acceleration", "Diffusion nonlinearity", "", 0.f,
              1.f, fit.bloomEnergyAcceleration));
-  set(CrashMacro::BloomPhaseDiffusion,
-      Linear("bloom_phase_diffusion", "Transfer diffusion", "", 0.f, 1.f,
-             fit.bloomPhaseDiffusion));
   set(CrashMacro::BodyBrightness,
       Linear("body_brightness", "Initial excitation tilt", "dB/oct", -72.f, 24.f,
              fit.bodyTiltDbPerOctave));
   set(CrashMacro::BodyExcitationCentre,
       Logarithmic("body_excitation_centre", "Excitation centre", "Hz",
-                  40.f, 15000.f, fit.bodyExcitationCentreHz));
+                  CrashModalMinimumFrequencyHz, 15000.f, fit.bodyExcitationCentreHz));
   set(CrashMacro::FieldTurbulence,
-      Linear("field_turbulence", "Turbulence", "", 0.f, 1.f,
+      Linear("field_turbulence", "Packet noisiness", "", 0.f, 4.f,
              fit.fieldTurbulence));
   set(CrashMacro::FieldTurbulenceSlope,
-      Linear("field_turbulence_slope", "Turbulence slope", "/oct", -1.f,
+      Linear("field_turbulence_slope", "Noisiness slope", "/oct", -1.f,
              1.f, fit.fieldTurbulenceSlopePerOctave));
   set(CrashMacro::FieldTurbulenceCentre,
-      Logarithmic("field_turbulence_centre", "Turbulence centre", "Hz",
-                  40.f, 15000.f, fit.fieldTurbulenceCentreHz));
+      Logarithmic("field_turbulence_centre", "Noisiness centre", "Hz",
+                  CrashModalMinimumFrequencyHz, 15000.f, fit.fieldTurbulenceCentreHz));
   set(CrashMacro::FieldPacketSpread,
       Linear("field_packet_spread", "Packet spread", "ERB", 0.f, 12.f,
              fit.fieldPacketSpreadErb));
@@ -77,11 +75,14 @@ std::array<CrashMacroDescriptor, CrashMacroCount> BuildDescriptors() {
       Linear("field_satellite_density", "Satellite density", "", 0.f, 1.f,
              fit.fieldSatelliteDensity));
   set(CrashMacro::FieldPhaseBandwidth,
-      Linear("field_phase_bandwidth", "Phase diffusion", "ERB", 0.f, 4.f,
+      Linear("field_phase_bandwidth", "Stochastic bandwidth", "ERB", 0.f, 4.f,
              fit.fieldPhaseBandwidthErb));
-  set(CrashMacro::FieldExchange,
-      Linear("field_exchange", "Neighbour exchange", "", 0.f, 1.f,
-             fit.fieldExchange));
+  set(CrashMacro::FieldDriftDepth,
+      Linear("field_drift_depth", "Smooth drift depth (experimental)", "%",
+             0.f, 10.f, fit.fieldDriftDepthPercent));
+  set(CrashMacro::FieldDriftRate,
+      Logarithmic("field_drift_rate", "Smooth drift speed", "knots/s",
+                  .1f, 40.f, fit.fieldDriftKnotsPerSecond));
   set(CrashMacro::BodyExcitation,
       Logarithmic("body_excitation", "Body excitation", "x", .001f, 4.f,
                   fit.bodyExcitationGain));
@@ -148,7 +149,7 @@ std::array<CrashMacroDescriptor, CrashMacroCount> BuildDescriptors() {
   for (std::size_t point = 0; point < ResolvedModePointCount; ++point) {
     result[Index(CrashMacro::ResolvedFrequencyFirst) + point] = Logarithmic(
         "resolved_frequency_" + std::to_string(point),
-        "Resolved mode " + std::to_string(point + 1), "Hz", 40.f, 15000.f,
+        "Resolved mode " + std::to_string(point + 1), "Hz", CrashModalMinimumFrequencyHz, 15000.f,
         fit.sparseFrequencyHz[point]);
     const float levelDb = 20.f * std::log10(
         std::max(fit.sparseAmplitude[point], 1.e-8f));
@@ -246,6 +247,11 @@ CrashCymbalFitParameters MetallicWorkbenchBaseFit() noexcept {
   // Instrument presets start from the documented DSP defaults. No fitted
   // crash, gong, ride, or hat state is allowed to leak into another preset.
   CrashCymbalFitParameters fit{};
+  fit.bloomSpectralDiffusion = true;
+  fit.fieldRelaxedTurbulence = true;
+  fit.bloomPhaseDiffusion = 0.f;
+  fit.fieldExchange = 0.f;
+  fit.bloomEnergyAcceleration = 1.f;
   return fit;
 }
 
@@ -253,6 +259,11 @@ CrashCymbalFitParameters ApplyCrashMacros(
     const CrashCymbalFitParameters &base,
     const CrashMacroValues &values) noexcept {
   auto fit = base;
+  // This recipe has one transfer law and no secondary random energy exchange.
+  fit.bloomSpectralDiffusion = true;
+  fit.fieldRelaxedTurbulence = true;
+  fit.bloomPhaseDiffusion = 0.f;
+  fit.fieldExchange = 0.f;
   fit.outputGain = std::pow(10.f, Value(values, CrashMacro::ModelLevelDb) / 20.f);
 
   const float impact = Value(values, CrashMacro::ImpactToneNoise);
@@ -277,7 +288,6 @@ CrashCymbalFitParameters ApplyCrashMacros(
   fit.bloomRateOctavesPerSecond = Value(values, CrashMacro::BloomRate);
   fit.bloomEnergyAcceleration = Value(
       values, CrashMacro::BloomEnergyAcceleration);
-  fit.bloomPhaseDiffusion = Value(values, CrashMacro::BloomPhaseDiffusion);
 
   fit.bodyTiltDbPerOctave = Value(values, CrashMacro::BodyBrightness);
   fit.bodyExcitationCentreHz = Value(
@@ -292,7 +302,8 @@ CrashCymbalFitParameters ApplyCrashMacros(
       values, CrashMacro::FieldSatelliteDensity);
   fit.fieldPhaseBandwidthErb =
       Value(values, CrashMacro::FieldPhaseBandwidth);
-  fit.fieldExchange = Value(values, CrashMacro::FieldExchange);
+  fit.fieldDriftDepthPercent = Value(values, CrashMacro::FieldDriftDepth);
+  fit.fieldDriftKnotsPerSecond = Value(values, CrashMacro::FieldDriftRate);
   fit.bodyExcitationGain = Value(values, CrashMacro::BodyExcitation);
   fit.fieldGain = Value(values, CrashMacro::FieldGain);
   fit.directGain = Value(values, CrashMacro::DirectGain);

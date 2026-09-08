@@ -1,17 +1,54 @@
 import assert from "node:assert/strict";
-import {modalTemplate, MembraneRatios} from "../web/modal_templates.mjs";
+import {modalTemplate, modalTemplateLimit, modalTemplateStretch, MembraneRatios} from "../web/modal_templates.mjs";
+import {noteFrequency} from "../web/modal_template_note.mjs";
+
+assert.equal(noteFrequency(9, 4), 440);
+assert.equal(noteFrequency(9, 1), 55);
+assert.ok(Math.abs(noteFrequency(11, 2) - 123.470825314) < 1e-8);
 
 const harmonicModes = modalTemplate({family:"harmonic", fundamental:100, count:3});
 assert.deepEqual(harmonicModes.map(point=>point.frequency), [100,200,300]);
 assert.equal(harmonicModes[1].level, -6);
-assert.equal(modalTemplate({count:32}).length, 16);
+assert.throws(()=>modalTemplate({count:32}), /Only 16/);
 assert.equal(modalTemplate()[1].frequency, 55 * MembraneRatios[1]);
-assert.equal(modalTemplate({fundamental:10000}).length, 1);
+assert.equal(modalTemplate({fundamental:10000, count:1}).length, 1);
+assert.throws(()=>modalTemplate({fundamental:10000}), /Only 1/);
 assert.equal(modalTemplate({family:"harmonic", count:32}).length, 32);
+assert.equal(modalTemplateLimit({family:"harmonic",fundamental:1000}),15);
+assert.equal(modalTemplateLimit({family:"harmonic",fundamental:55,capacity:16}),16);
+assert.equal(modalTemplateLimit({family:"harmonic",fundamental:0}),0);
+assert.equal(modalTemplate()[0].turbulence,1);
+assert.equal(modalTemplate({turbulence:0})[0].turbulence,0);
+assert.deepEqual(modalTemplate({family:"harmonic",fundamental:10,count:4,minimumFrequency:1})
+  .map(p=>p.frequency),[10,20,30,40]);
+const stretched=modalTemplate({family:"harmonic",fundamental:100,count:16,stretch:.5});
+assert.deepEqual(stretched.slice(0,4).map(p=>p.frequency),[100,200,300,400]);
+assert.ok(Math.abs(stretched[7].frequency-800*Math.sqrt(1.25))<1e-8);
+assert.ok(stretched[15].frequency/1600 > stretched[7].frequency/800);
+assert.equal(modalTemplateLimit({family:"harmonic",fundamental:100,stretch:1}),26);
+assert.throws(()=>modalTemplate({family:"harmonic",fundamental:100,count:27,stretch:1}),/Only 26/);
+for (const family of ["harmonic","membrane"]) {
+  for (const harmonicCore of [1,4,8]) {
+    const options={family,fundamental:55,count:16,stretch:.7,harmonicCore};
+    const points=modalTemplate(options), plain=modalTemplate({...options,stretch:0});
+    assert.deepEqual(points.slice(0,harmonicCore).map(p=>p.frequency),
+      plain.slice(0,harmonicCore).map(p=>p.frequency));
+    assert.deepEqual(modalTemplate({...options,count:8}).map(p=>p.frequency),
+      points.slice(0,8).map(p=>p.frequency));
+    assert.ok(points.every((p,i)=>!i || p.frequency>points[i-1].frequency));
+    assert.ok(Math.abs(modalTemplateStretch({...options,topFrequency:points.at(-1).frequency})-.7)<1e-12);
+    assert.equal(modalTemplateStretch({...options,topFrequency:plain.at(-1).frequency}),0);
+  }
+}
+assert.throws(()=>modalTemplateStretch({fundamental:100,count:4,topFrequency:800}),/outside/);
+assert.throws(()=>modalTemplateStretch({fundamental:100,count:16,topFrequency:100000}),/outside/);
+assert.ok(modalTemplate({family:"harmonic",count:32,rolloff:-12}).every(p=>p.level<=6));
+assert.ok(modalTemplate({family:"harmonic",count:32,rolloff:24}).every(p=>p.level>=-72));
 harmonicModes[1].frequency = 211;
 assert.equal(harmonicModes[1].frequency, 211); // No persistent formula constraint.
 assert.equal(modalTemplate({family:"harmonic", fundamental:100, count:3})[1].frequency, 200);
 for (const invalid of [{count:0}, {count:1.5}, {family:"unknown"},
+  {harmonicCore:0}, {harmonicCore:1.5}, {harmonicCore:9}, {stretch:NaN},
   {fundamental:NaN}, {minimumFrequency:0}, {minimumFrequency:100, maximumFrequency:50}])
   assert.throws(()=>modalTemplate(invalid), /Invalid/);
 

@@ -100,7 +100,7 @@
               <label data-tooltip="Temporal distribution of one contact gesture. This is most audible for a brush sweep; ordinary taps can remain near the default.">Gesture spread <input id="contact-spread" type="range" min="0" max="1" value="0.2" step="0.01"><output>0.20</output></label>
             </details>
           </details>
-          <details open data-module-id="body"><summary data-tooltip="Passive upward transport of energy already stored in the modal body.">Nonlinear bloom</summary><div id="bloom-controls" data-fit-controls></div></details>
+          <details open data-module-id="body"><summary data-tooltip="Conservative spectral-energy diffusion. The only inter-packet transfer mechanism in this workbench recipe.">Spectral energy diffusion</summary><div id="bloom-controls" data-fit-controls></div></details>
           <details open data-module-id="body"><summary data-tooltip="High-level controls for the single stored stochastic modal field.">Modal body</summary>
             <div id="field-turbulence-controls" data-fit-controls></div>
             <details><summary data-tooltip="Technical controls for the trajectory from coherent ridges to diffuse packets.">Advanced trajectory</summary><div id="field-advanced-controls" data-fit-controls></div></details>
@@ -119,7 +119,7 @@
           <details open data-module-id="body"><summary data-tooltip="One interpolated frequency-dependent loss curve applied directly to every modal state.">Modal T60 curve</summary>
             <div class="decay-heading"><p class="control-help">Absolute decay curve shared by every mode. Drag the diamond to move the whole curve.</p><span id="decay-readout">2/8 knots</span></div>
             <div id="decay-editor" data-fit-controls></div>
-            <div class="decay-gesture-help">Double-click empty space to add · double-click an interior knot or press Delete to remove · endpoint frequencies stay at 40 Hz and 15 kHz</div>
+            <div class="decay-gesture-help">Shift-drag: 10× finer · double-click empty space to add · double-click an interior knot or press Delete to remove · endpoints: 40 Hz and 15 kHz; decay stays flat below 40 Hz</div>
             <div id="decay-selection" class="selection-controls" data-fit-controls></div>
           </details>
           <details open data-module-id="observation"><summary data-tooltip="Broad output bandwidth and colour controls; these filters do not alter stored modal decay.">Output colour</summary>
@@ -204,27 +204,23 @@
       </section>
       <section class="modal-design" data-module-id="body">
         <div class="modal-design-heading">
-          <div><h2>Modal packet design</h2><p>Centre lines are coherent modes; translucent bells show their turbulence-driven packet width.</p></div>
+          <div><h2>Modal packet design</h2><p>Centre lines are coherent modes; translucent bells show their noisiness-driven packet width.</p></div>
           <span id="modal-readout">24/32 active anchors</span>
         </div>
         <div class="modal-toolbar" role="toolbar" aria-label="Modal editor tools">
           <div class="modal-tool-group" aria-label="Editing mode">
             <span>Tool</span>
-            <button id="modal-tool-edit" class="active" aria-pressed="true" data-tooltip="Select and move anchors. Drag a centre for frequency and level; drag a wing or Ctrl-drag to change its local turbulence width. Shift gives fine movement.">Select &amp; shape</button>
+            <button id="modal-tool-edit" class="active" aria-pressed="true" data-tooltip="Select and move anchors. Drag a centre for frequency and level; drag a wing or Ctrl-drag to change its local noisiness width. Shift gives fine movement.">Select &amp; shape</button>
             <button id="modal-tool-level" aria-pressed="false" data-tooltip="Shape the observation prominence of existing anchors with a Gaussian brush without creating new anchors.">Prominence brush</button>
             <button id="modal-tool-paint" aria-pressed="false" data-tooltip="Paint modal anchors continuously. Dragging activates available anchors and shapes nearby levels; Shift narrows the brush and Ctrl widens it.">Paint modes</button>
           </div>
           <label data-tooltip="Gaussian width for the Level brush and Paint modes tools.">Brush <input id="modal-brush" type="range" min="0.15" max="5" value="1" step="0.05"><output>1.00 ERB</output></label>
-          <label data-tooltip="Seeds only the modal centres, energies, and local turbulence widths.">Preset <select id="modal-preset"><option value="">Choose…</option><option value="fitted">Fitted start</option><option value="even">Even ERB field</option><option value="low">Low cluster</option><option value="shimmer">High shimmer</option></select></label>
+          <label data-tooltip="Immediately replace the modal layout with an alternative starting shape. For a harmonic or membrane layout, choose Series and a base pitch, then Replace modes.">Quick shape <select id="modal-preset"><option value="">Choose…</option><option value="fitted">Model default modes</option><option value="even">Even ERB field</option><option value="low">Low cluster</option><option value="shimmer">High shimmer</option></select></label>
           <button id="modal-clear" data-tooltip="Deactivate every modal anchor. Double-click empty space to insert modes again.">Clear modes</button>
         </div>
         <div class="harmonic-toolbar" aria-label="Optional harmonic reference">
           <label data-tooltip="Show a design-only harmonic-series reference. This does not pitch or retune the sounding model by itself."><input id="harmonic-guide" type="checkbox"> Harmonic guide</label>
-          <label>Root
-            <select id="harmonic-note" aria-label="Harmonic guide root note" disabled><option value="0">C</option><option value="1">C♯</option><option value="2">D</option><option value="3">D♯</option><option value="4">E</option><option value="5">F</option><option value="6">F♯</option><option value="7">G</option><option value="8">G♯</option><option value="9" selected>A</option><option value="10">A♯</option><option value="11">B</option></select>
-            <select id="harmonic-octave" aria-label="Harmonic guide root octave" disabled><option>0</option><option>1</option><option selected>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select>
-            <output id="harmonic-frequency">110.00 Hz</output>
-          </label>
+          <output id="harmonic-frequency" data-tooltip="Uses the same base pitch as the mode generator. This is a design grid, not a runtime pitch constraint.">55.00 Hz</output>
           <label data-tooltip="Quantize newly painted, inserted, or moved modal centres to the nearest harmonic."><input id="harmonic-snap" type="checkbox" disabled> Snap edits</label>
           <button id="harmonic-snap-all" disabled data-tooltip="Move every active modal centre to its nearest harmonic while preserving its level, decay, and turbulence.">Snap active</button>
         </div>
@@ -250,9 +246,10 @@
   </main>
 
   <footer>
+    <div id="error-banner" role="alert" hidden><strong id="error-count">Error</strong><span id="error-message"></span><button id="dismiss-error" type="button">Dismiss</button></div>
     <div class="snapshot-actions"><input id="snapshot-name" value="Candidate"><button id="snapshot">Snapshot</button><button id="save-fit">Save fit</button><label class="file">Load fit<input id="load-fit" type="file" accept="application/json,.json"></label></div>
     <div id="snapshots" class="snapshots"></div>
   </footer>
-  <script type="module" src="app.mjs"></script>
+  <script type="module" src="bootstrap.mjs"></script>
 </body>
 </html>

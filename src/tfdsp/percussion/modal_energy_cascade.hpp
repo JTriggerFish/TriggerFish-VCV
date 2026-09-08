@@ -1,6 +1,7 @@
 #pragma once
 
 #include "deterministic_random.hpp"
+#include "modal_spectral_diffusion.hpp"
 #include "tfdsp/finite_audio.hpp"
 
 #include <algorithm>
@@ -16,9 +17,11 @@ struct ModalEnergyCascadeParameters {
   float energyAcceleration{};
   float phaseDiffusion{};
   std::uint32_t seed{0x43415343u};
+  bool spectralDiffusion{};
 };
 
-// Passive, one-way transport between frequency-ordered modal packets. Members
+// Passive transport between frequency-ordered modal packets: the original
+// one-way stencil or experimental nonlinear spectral diffusion. Members
 // of each packet are supplied as one contiguous run; the stochastic-field
 // preparation API validates that contract. A fixed half-octave transport
 // stencil is interpolated onto the painted packets, so adding intermediate
@@ -42,7 +45,9 @@ public:
     phaseDiffusion_ = std::clamp(
         tfdsp::FiniteNormalOrZero(parameters.phaseDiffusion), 0.f, 1.f);
     seed_ = parameters.seed;
+    spectralDiffusion_ = parameters.spectralDiffusion;
     BuildPackets(frequencyHz, inputGain, packet);
+    if (spectralDiffusion_) PrepareDiffusion(inputGain);
     Reset();
   }
 
@@ -61,9 +66,13 @@ public:
       finalEnergy_[packet] = originalEnergy_[packet];
       receivedFraction_[packet] = 0.f;
     }
-    const float activation = EnergyActivation();
-    for (std::size_t source = 0; source + 1 < packetCount_; ++source)
-      TransferEnergy(source, activation);
+    if (spectralDiffusion_) {
+      DiffuseEnergy();
+    } else {
+      const float activation = EnergyActivation();
+      for (std::size_t source = 0; source + 1 < packetCount_; ++source)
+        TransferEnergy(source, activation);
+    }
     for (std::size_t packet = 0; packet < packetCount_; ++packet)
       ApplyPacketUpdate(packet, real, imaginary);
     return lastTransferredEnergy_;
@@ -93,6 +102,28 @@ private:
 
   static constexpr float TransportStepOctaves = .5f;
 
+  void PrepareDiffusion(const std::array<float, ModeCount> &inputGain) noexcept {
+    std::array<float, ModeCount> centres{};
+    std::array<double, ModeCount> weights{};
+    for (std::size_t i = 0; i < packetCount_; ++i) {
+      centres[i] = upward_[i].centreFrequencyHz;
+      for (std::size_t mode = upward_[i].begin; mode < upward_[i].end; ++mode)
+        weights[i] += double(inputGain[mode]) * inputGain[mode];
+    }
+    diffusion_.Prepare(centres, weights, packetCount_, sampleRate_);
+  }
+
+  void DiffuseEnergy() noexcept {
+    diffusion_.Process(originalEnergy_, finalEnergy_, totalReferenceEnergy_,
+        double(rateOctavesPerSecond_) / sampleRate_, energyAcceleration_);
+    for (std::size_t i = 0; i < packetCount_; ++i) {
+      const float arrival = std::max(0.f, finalEnergy_[i] - originalEnergy_[i]);
+      receivedFraction_[i] = arrival / std::max(finalEnergy_[i], 1.e-20f);
+      // Net relocated energy, not the sum of gross internal face fluxes.
+      lastTransferredEnergy_ += arrival;
+    }
+  }
+
   void BuildPackets(const std::array<float, ModeCount> &frequencyHz,
                     const std::array<float, ModeCount> &inputGain,
                     const std::array<std::uint16_t, ModeCount> &packet) noexcept {
@@ -113,12 +144,13 @@ private:
       }
       upward_[packetCount_++] = {
           begin, end,
-          static_cast<float>(weightedFrequency / std::max(weight, 1.e-20))};
+          weight > 0 ? static_cast<float>(weightedFrequency / weight)
+                     : std::max(frequencyHz[begin], 1.f)};
       totalReferenceEnergy_ += static_cast<float>(weight);
       for (std::size_t mode = begin; mode < end; ++mode) {
-        const float gain = inputGain[mode];
-        seedEnergyWeight_[mode] = gain * gain /
-            static_cast<float>(std::max(weight, 1.e-20));
+        const double gain = inputGain[mode];
+        seedEnergyWeight_[mode] = weight > 0
+            ? static_cast<float>(gain * gain / weight) : 0.f;
       }
       begin = end;
     }
@@ -235,11 +267,17 @@ private:
     const Packet &packet = upward_[packetIndex];
     const float original = originalEnergy_[packetIndex];
     const float target = finalEnergy_[packetIndex];
-    if (!(target > 1.e-20f)) return;
-    if (!(original > 1.e-20f)) {
+    if (!(target > 0.f)) {
+      for (std::size_t mode = packet.begin; mode < packet.end; ++mode)
+        real[mode] = imaginary[mode] = 0.f;
+      return;
+    }
+    if (!(original > 0.f)) {
       SeedSilentPacket(packet, target, real, imaginary);
     } else {
-      const float scale = std::sqrt(target / original);
+      // Preserve quiet stored states and their phase; only zero energy needs
+      // seeding. Double division avoids overflow for a tiny receiving state.
+      const float scale = static_cast<float>(std::sqrt(double(target) / original));
       for (std::size_t mode = packet.begin; mode < packet.end; ++mode) {
         real[mode] *= scale;
         imaginary[mode] *= scale;
@@ -266,10 +304,11 @@ private:
         std::sqrt(transferFraction);
     if (!(angle > 0.f)) return;
     const float squared = angle * angle;
-    // The maximum angle is pi/4. This fifth-order sine approximation remains
-    // within 4e-5 there; deriving cosine restores exact unit magnitude.
-    const float sine = angle *
-        (1.f - squared / 6.f + squared * squared / 120.f);
+    // Legacy arrivals are at most pi/4; their fifth-order sine approximation
+    // stays within 4e-5. Diffusion may fill a silent cell in one step, requiring
+    // angles up to pi/2 and the exact sine. Cosine restores unit magnitude.
+    const float sine = transferFraction <= .25f ? angle *
+        (1.f - squared / 6.f + squared * squared / 120.f) : std::sin(angle);
     const float cosine = std::sqrt(std::max(0.f, 1.f - sine * sine));
     for (std::size_t mode = packet.begin; mode < packet.end; ++mode) {
       const float signedSine = random_.Bipolar() >= 0.f ? sine : -sine;
@@ -286,6 +325,8 @@ private:
   std::array<float, ModeCount> receivedFraction_{};
   std::array<float, ModeCount> seedEnergyWeight_{};
   DeterministicRandom random_{};
+  ModalSpectralDiffusion<ModeCount> diffusion_{};
+  bool spectralDiffusion_{};
   float sampleRate_{48000.f};
   float rateOctavesPerSecond_{};
   float energyAcceleration_{};

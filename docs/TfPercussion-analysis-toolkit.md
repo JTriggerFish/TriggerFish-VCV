@@ -46,6 +46,34 @@ Losses and future plots share the `StftResult`, `ErbFilterbank`, and
 `Comparison` data structures. A visual report must never apply different
 normalization, alignment, masking, or transforms from the numerical objective.
 
+## Signed spectrogram inspection
+
+For focused build-up/decay fitting, `RegionalEnergyLoss` measures absolute
+causal-filter energy in explicit band/time cells. `RegionalEnergyBasis` caches
+exact quadratic powers (including interference) from validated C++ observation
+renders; `RegionalEnergyGuard` supplies cheap analytic constraints for spectral
+polishing. These are subproblem tools, not perceptual acceptance criteria.
+See the [crash dynamics experiments and reusable CLI](TfPercussion-crash-dynamics-review.md)
+for the measurements, bounds, failures and validation procedure.
+
+`tools/plot_spectral_difference.py <candidate-directory>` compares the aligned
+`reference.wav` and `candidate.wav` without level matching or time warping.
+It writes `difference.plotly.json`: reference and model on one reference-derived
+colour scale, followed by model-minus-reference dB (red excess, blue missing).
+Both-quiet pixels are suppressed, but candidate-only ringing remains visible.
+The title states window and hop durations. For an isolated attack view, use
+`--window 512 --hop 64 --seconds .12`; both signals are cropped **before** the
+transform so later energy cannot leak into that view.
+With the development browser's debug endpoint available, render it offline with
+`node tools/capture_fit_plot.mjs <candidate-directory> difference`.
+This leaves the ordinary `inspection` plot intact. Listening stays in the main
+workbench; this does not create another report server.
+
+Inspect resonance placement/width, spaces between resonances, and late-tail
+energy as well as the attack. Random-phase pixel differences are not themselves
+perceptual errors: corroborate them with regional spectra and band envelopes.
+An aggregate fitting score is not a substitute for inspecting these views.
+
 ## ERB representation
 
 The current ERB transform is an energy-conserving aggregation of STFT power,
@@ -58,6 +86,29 @@ A Hohmann reconstructing gammatone bank, for example through `pyfar`, remains
 a useful independent auditory cross-check. It should not silently replace the
 canonical loss transform: the two representations have different delay,
 overlap, and energy conventions and must be named separately.
+
+## Decay-shape fitting subproblem
+
+`BandDecayShapeLoss` is an optional damping-only stage, not the default
+whole-instrument objective. It compares STFT band-power trajectories from
+0.2 seconds onward, subtracting each band's mean dB level over 0.2–0.5 seconds.
+That subtraction belongs to the **measurement only**: audio gains, performance
+inputs and saved patches are untouched. The purpose is to prevent a lower modal
+bar from substituting for faster damping during this stage.
+
+It uses 4096-sample windows, 512-sample hops and six bands from 100 Hz to 16 kHz.
+Reference-only masks exclude points more than 40 dB below their band maximum or
+less than 10 dB above the terminal reference power. The terminal estimate is
+conservative: an unfinished tail can exclude otherwise usable data. Silence or
+insufficient usable decay is rejected, rather than assigned a successful score.
+
+Fit only shared damping endpoints and, where applicable, the existing energy
+travel rate against this subproblem. Then hold those settings while fitting
+observation amplitudes against the ordinary absolute-level spectral/envelope
+objective. Recheck attack, fixed-scale differences, full tails and fresh seeds.
+The shape score alone cannot approve a candidate, and no per-mode damping is
+introduced. Tests recover known two-endpoint damping on coloured noise and
+verify that a constant gain change leaves the shape measurement unchanged.
 
 ## What the tests prove
 

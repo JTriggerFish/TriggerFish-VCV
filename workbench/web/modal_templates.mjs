@@ -9,72 +9,69 @@ export const MembraneRatios = Object.freeze([
   4.230439128, 4.601044534, 4.610051645, 4.831885263,
 ]);
 
+// C1-continuous bend above a protected low core. Independent of total count:
+// adding more modes must not retune existing centres. Not a physical gong law.
+function stretchedRatio(family, index, stretch, harmonicCore) {
+  const ratio = family === "membrane" ? MembraneRatios[index] : index + 1;
+  const upper = Math.max(0, (index + 1 - harmonicCore) / harmonicCore);
+  return ratio * Math.hypot(1, stretch * upper);
+}
+
+// Inverse used by offline fitting to request a top frequency using the SAME law.
+export function modalTemplateStretch({family = "harmonic", fundamental, count,
+  topFrequency, harmonicCore = 4}) {
+  if (![fundamental, count, topFrequency, harmonicCore].every(Number.isFinite) ||
+      !["harmonic", "membrane"].includes(family) || fundamental <= 0 ||
+      !Number.isInteger(count) || count < 1 || count > (family === "membrane" ? 16 : 32) ||
+      !Number.isInteger(harmonicCore) || harmonicCore < 1 || harmonicCore > 8)
+    throw Error("Invalid stretch endpoint settings");
+  const base = fundamental * stretchedRatio(family, count - 1, 0, harmonicCore);
+  const upper = Math.max(0, (count - harmonicCore) / harmonicCore);
+  if (Math.abs(topFrequency - base) < base * 1e-12) return 0;
+  const stretch = Math.sqrt((topFrequency / base) ** 2 - 1) / upper;
+  if (topFrequency < base || !Number.isFinite(stretch) || stretch > 1 + 1e-12)
+    throw Error("Top frequency is outside this harmonic core/stretch range");
+  return Math.min(1, stretch);
+}
+
 export function modalTemplate({
   family = "membrane", fundamental = 55, count = 16,
-  level = 0, rolloff = 6, minimumFrequency = 20, maximumFrequency = 15000,
+  level = 0, rolloff = 6, turbulence = 1, stretch = 0, harmonicCore = 4,
+  minimumFrequency = 20, maximumFrequency = 15000,
 } = {}) {
   if (!["membrane", "harmonic"].includes(family) ||
-      ![fundamental, count, level, rolloff, minimumFrequency, maximumFrequency].every(Number.isFinite) ||
+      ![fundamental, count, level, rolloff, turbulence, stretch, harmonicCore, minimumFrequency, maximumFrequency].every(Number.isFinite) ||
       fundamental <= 0 || minimumFrequency <= 0 || maximumFrequency < minimumFrequency ||
+      turbulence < 0 || turbulence > 2 || stretch < 0 || stretch > 1 ||
+      !Number.isInteger(harmonicCore) || harmonicCore < 1 || harmonicCore > 8 ||
       count < 1 || count > 32 || !Number.isInteger(count))
     throw Error("Invalid modal template settings");
-  // No invented continuation of the root-ratio list beyond its 16 entries.
-  const length = family === "membrane" ? Math.min(count, MembraneRatios.length) : count;
+  const limit = modalTemplateLimit({family, fundamental, stretch, harmonicCore, minimumFrequency, maximumFrequency});
+  if (count > limit) throw Error(`Only ${limit} modes fit this formula and frequency range`);
+  const length = count;
   return Array.from({length}, (_, index) => {
-    const ratio = family === "membrane" ? MembraneRatios[index] : index + 1;
+    const ratio = stretchedRatio(family, index, stretch, harmonicCore);
     const position = length > 1 ? index / (length - 1) : 0;
     return {
       frequency: fundamental * ratio,
-      level: level - rolloff * Math.log2(ratio),
+      level: Math.max(-72, Math.min(6, level - rolloff * Math.log2(ratio))),
       centre: index === 0 ? 1 : .65 * (index % 2 ? -1 : 1) * (1 - .45 * position),
       edge: .18 + .82 * position,
-      turbulence: 0, active: true,
+      turbulence, active: level - rolloff * Math.log2(ratio) > -72,
     };
-  }).filter(point => point.frequency >= minimumFrequency && point.frequency <= maximumFrequency);
+  });
 }
 
-export function mountModalTemplates(parent, {capacity, minimumFrequency, maximumFrequency, apply}) {
-  parent.replaceChildren();
-  const details = document.createElement("details");
-  const summary = document.createElement("summary");
-  summary.textContent = "Generate editable modes";
-  details.append(summary);
-  const controls = document.createElement("div");
-  controls.className = "modal-toolbar";
-  const fields = {};
-  for (const [key, label, initial, min, max, step] of [
-    ["fundamental", "Fundamental (Hz)", 55, minimumFrequency, maximumFrequency, .1],
-    ["count", "Modes", Math.min(16, capacity), 1, capacity, 1],
-    ["level", "Top level (dB)", 0, -60, 6, .5],
-    ["rolloff", "Falloff (dB/oct)", 6, -12, 24, .5],
-  ]) {
-    const row = document.createElement("label");
-    row.textContent = label + " ";
-    const input = document.createElement("input");
-    Object.assign(input, {type:"number", value:initial, min, max, step});
-    input.style.width = "6em";
-    input.ondblclick = () => { input.value = initial; };
-    row.append(input); controls.append(row); fields[key] = input;
-  }
-  const family = document.createElement("select");
-  family.setAttribute("aria-label", "Modal formula");
-  family.append(new Option("Circular membrane", "membrane"), new Option("Harmonic series", "harmonic"));
-  controls.prepend(family);
-  const button = document.createElement("button");
-  button.textContent = "Replace modes";
-  const status = document.createElement("span");
-  button.onclick = () => {
-    try {
-      const values = Object.fromEntries(Object.entries(fields).map(([key, input]) => [key, Number(input.value)]));
-      if (Object.values(fields).some(input => !input.checkValidity())) throw Error("Check the input ranges");
-      const points = modalTemplate({...values, family:family.value, minimumFrequency, maximumFrequency});
-      if (!points.length) throw Error("No modes fall inside the editor frequency range");
-      apply(points); status.textContent = points.length + " editable modes written";
-    } catch (error) { status.textContent = error.message; }
-  };
-  controls.append(button, status);
-  const note = document.createElement("p");
-  note.className = "control-help";
-  note.textContent = "Replaces the mode list, not the damping curve. Membrane uses up to 16 root ratios. The formula stops here: every resulting mode stays independently editable and is saved in the patch.";
-  details.append(controls, note); parent.append(details);
+// Limits are shared by the UI preview and the pure generator. Never truncate.
+export function modalTemplateLimit({family, fundamental, stretch = 0, harmonicCore = 4, minimumFrequency = 20,
+  maximumFrequency = 15000, capacity = 32}) {
+  if (![fundamental, stretch, harmonicCore, minimumFrequency, maximumFrequency, capacity].every(Number.isFinite) ||
+      !["harmonic", "membrane"].includes(family) || stretch < 0 || stretch > 1 ||
+      !Number.isInteger(harmonicCore) || harmonicCore < 1 || harmonicCore > 8 ||
+      minimumFrequency <= 0 || fundamental < minimumFrequency || fundamental > maximumFrequency ||
+      !Number.isInteger(capacity) || capacity < 1 || capacity > 32) return 0;
+  // Evaluate the same expression as generation, including boundary rounding.
+  const ratios = family === "membrane" ? MembraneRatios : Array.from({length:32},(_,i)=>i+1);
+  return Math.min(capacity, ratios.filter((_, index) =>
+    fundamental * stretchedRatio(family, index, stretch, harmonicCore) <= maximumFrequency).length);
 }

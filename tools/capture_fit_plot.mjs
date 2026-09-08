@@ -2,7 +2,9 @@
 import {readFile, writeFile} from "node:fs/promises";
 import {resolve} from "node:path";
 const directory = resolve(process.argv[2]);
-const figure = JSON.parse(await readFile(resolve(directory,"inspection.plotly.json"),"utf8"));
+const basename = process.argv[3] ?? "inspection";
+if (!/^[a-zA-Z0-9_-]+$/.test(basename)) throw Error("Invalid plot basename");
+const figure = JSON.parse(await readFile(resolve(directory,`${basename}.plotly.json`),"utf8"));
 const script = await readFile("build/workbench-wasm/site/vendor/plotly.min.js","utf8");
 const endpoint = "http://127.0.0.1:9223";
 const page = await (await fetch(endpoint+"/json/new?about:blank",{method:"PUT"})).json();
@@ -26,7 +28,7 @@ try {
     "document.fonts.ready.then(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))",
     awaitPromise:true});
   const image=await call("Page.captureScreenshot",{format:"png"});
-  await writeFile(resolve(directory,"inspection.png"),Buffer.from(image.data,"base64"));
+  await writeFile(resolve(directory,`${basename}.png`),Buffer.from(image.data,"base64"));
 } finally {
   socket.close();await fetch(endpoint+"/json/close/"+page.id);
 }

@@ -1,10 +1,11 @@
 import { MidiInputs } from "./midi_input.mjs";
+import {reportError} from "./error_banner.mjs";
 
 const StorageKey = "tf-workbench-settings-v1";
 
 function loadSettings() {
   try { return JSON.parse(localStorage.getItem(StorageKey)) ?? {}; }
-  catch { return {}; }
+  catch (error) { reportError(error, "Could not restore browser settings; using defaults"); return {}; }
 }
 
 export class SettingsController {
@@ -58,12 +59,20 @@ export class SettingsController {
   async enableMidi(button, activateAudio = true) {
     button.disabled = true;
     document.getElementById("midi-status").textContent = "Requesting access…";
+    let midiGranted = false;
     try {
       await this.midi.enable();
+      midiGranted = true;
       if (activateAudio) await this.audition.activate();
       button.textContent = "MIDI enabled";
     } catch (error) {
       button.disabled = false;
+      if (!midiGranted && error?.name === "NotAllowedError") {
+        const message = "MIDI access was not granted. Click Enable MIDI; if blocked, allow MIDI for this site in your browser's site permissions. Mouse triggering still works.";
+        document.getElementById("midi-status").textContent = message;
+        if (activateAudio) this.onStatus(new Error(message));
+        return;
+      }
       document.getElementById("midi-status").textContent = String(error);
       this.onStatus(String(error));
     }

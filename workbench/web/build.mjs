@@ -15,7 +15,7 @@ if (!options.module || !options["audio-module"] || !options.output) {
 const output = resolve(options.output);
 await mkdir(output, { recursive: true });
 for (const name of [
-  "index.html", "styles.css", "app.mjs", "fit_controls.mjs", "point_editor.mjs",
+  "index.html", "styles.css", "app.mjs", "bootstrap.mjs", "error_banner.mjs", "fit_controls.mjs", "point_editor.mjs",
   "percussion_patch.mjs", "percussion_registry.mjs",
   "metallic_plate_patch.mjs", "kick_patch.mjs", "membrane_patch.mjs",
   "snare_patch.mjs",
@@ -29,10 +29,11 @@ for (const name of [
   "membrane_controls.mjs", "snare_controls.mjs",
   "routing_controller.mjs", "performance_controls.mjs",
   "analysis_controls.mjs", "recipe_controller.mjs", "waveform_view.mjs",
-  "modal_editor.mjs", "modal_templates.mjs", "kick_modal_controls.mjs",
-  "decay_curve_editor.mjs", "tooltips.mjs",
+  "modal_editor.mjs", "modal_templates.mjs", "modal_template_note.mjs",
+  "modal_template_controls.mjs", "modal_template_fields.mjs", "kick_modal_controls.mjs", "turbulence_profile.mjs",
+  "decay_curve_editor.mjs", "decay_curve_geometry.mjs", "tooltips.mjs",
   "size_meta.mjs", "engine.mjs", "wasm_engine_core.mjs", "audio.mjs",
-  "standby_renderer.mjs", "configuration_preparer.mjs",
+  "standby_renderer.mjs", "configuration_preparer.mjs", "diagnostic_audition.mjs",
   "limiter_config.mjs", "true_peak_detector.mjs", "midi_input.mjs", "settings.mjs",
   "references.mjs", "analysis.mjs", "analysis_worker.mjs",
   "render_worker.mjs", "preparation_worker.mjs",

@@ -2,6 +2,7 @@
 
 #include "deterministic_random.hpp"
 #include "modal_constraint.hpp"
+#include "smooth_modal_drift.hpp"
 #include "stochastic_modal_field_parameters.hpp"
 #include "tfdsp/finite_audio.hpp"
 
@@ -74,6 +75,10 @@ public:
     packet_ = prepared.packet;
     frequencyHz_ = prepared.frequencyHz;
     band_ = prepared.band;
+    driftDepthPercent_ = prepared.driftDepthPercent;
+    driftKnotsPerSecond_ = prepared.driftKnotsPerSecond;
+    drift_.Prepare(sampleRate_, frequencyHz_, exchangeAmount_,
+                   driftDepthPercent_, driftKnotsPerSecond_, seed_ ^ 0x44524946u);
     excitationProjection_.fill(1.f);
     secondaryExcitationProjection_.fill(1.f);
     primaryProjectionEnergyNormalized_ = false;
@@ -83,7 +88,7 @@ public:
       secondaryDriveGain_[mode] = inputGain_[mode];
     }
     cascadeParameters_ = prepared.cascade;
-    cascade_.Prepare(sampleRate_, frequencyHz_, inputGain_, packet_,
+    cascade_.Prepare(sampleRate_, prepared.transportFrequencyHz, inputGain_, packet_,
                      activeModeCount_, cascadeParameters_);
     damping_ = {};
     Reset();
@@ -95,6 +100,7 @@ public:
     random_.Seed(seed_);
     oddExchange_ = false;
     cascade_.Reset();
+    drift_.Reset();
   }
 
   void SetExcitationProjection(const Projection &projection) noexcept {
@@ -124,7 +130,8 @@ public:
     primaryInput = tfdsp::FiniteNormalOrZero(primaryInput);
     secondaryInput = tfdsp::FiniteNormalOrZero(secondaryInput);
     UpdateDamping(damping);
-    Propagate(primaryInput, secondaryInput);
+    if (drift_.Enabled()) Propagate<true>(primaryInput, secondaryInput);
+    else Propagate<false>(primaryInput, secondaryInput);
     cascade_.Process(real_, imaginary_);
     return ExchangeNeighboursAndSum();
   }
@@ -159,7 +166,8 @@ public:
 
 private:
   StochasticModalFieldControls CurrentControls() const noexcept {
-    return {maximumExchangeAngle_, seed_, cascadeParameters_};
+    return {maximumExchangeAngle_, seed_, cascadeParameters_,
+            driftDepthPercent_, driftKnotsPerSecond_};
   }
 
   static float SafeProjection(const float value) noexcept {
@@ -222,16 +230,17 @@ private:
     damping_ = safe;
   }
 
-  void Propagate(const float primaryInput,
+  template <bool Drift> void Propagate(const float primaryInput,
                  const float secondaryInput) noexcept {
     PrepareRandomSigns();
     for (std::size_t mode = 0; mode < activeModeCount_; ++mode) {
       const float priorReal = real_[mode];
       const float priorImaginary = imaginary_[mode];
-      const float cosine = cosineCentre_[mode] +
+      float cosine = cosineCentre_[mode] +
           randomSign_[mode] * cosineSpread_[mode];
-      const float sine = sineCentre_[mode] +
+      float sine = sineCentre_[mode] +
           randomSign_[mode] * sineSpread_[mode];
+      if constexpr (Drift) drift_.RotateCoefficients(mode, cosine, sine);
       const float rotatedReal = cosine * priorReal - sine * priorImaginary;
       const float rotatedImaginary = sine * priorReal + cosine * priorImaginary;
       const float drive = primaryDriveGain_[mode] * primaryInput +
@@ -336,6 +345,9 @@ private:
   ModalEnergyCascade<ModeCount> cascade_{};
   ModalEnergyCascadeParameters cascadeParameters_{};
   DeterministicRandom random_{};
+  SmoothModalDrift<ModeCount> drift_{};
+  float driftDepthPercent_{};
+  float driftKnotsPerSecond_{8.f};
   ModalDampingGains damping_{};
   float sampleRate_{48000.f};
   float lowCrossoverHz_{700.f};

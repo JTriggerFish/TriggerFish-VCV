@@ -2,6 +2,8 @@
 
 #include "erb_scale.hpp"
 #include "modal_packet_allocator.hpp"
+#include "modal_spectral_diffusion.hpp"
+#include "turbulence_profile.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -22,14 +24,14 @@ public:
                     const CrashCymbalFitParameters &fit) noexcept {
     const float maximumFrequency = std::min(
         CrashModalMaximumFrequencyHz, .48f * sampleRate);
-    points_[count_++] = {ErbRate(CrashModalMinimumFrequencyHz),
+    points_[count_++] = {ErbRate(CrashDecayMinimumFrequencyHz),
         std::log(std::clamp(
             Positive(fit.bodyDecaySeconds.front(), 1.f), .02f, 30.f))};
     for (std::size_t index = 0; index < CrashBodyDecayInteriorPointCount;
          ++index) {
       if (!fit.bodyDecayActive[index]) continue;
       const float frequency = std::clamp(tfdsp::FiniteNormalOrZero(
-          fit.bodyDecayFrequencyHz[index]), CrashModalMinimumFrequencyHz,
+          fit.bodyDecayFrequencyHz[index]), CrashDecayMinimumFrequencyHz,
           maximumFrequency);
       const float seconds = std::clamp(
           Positive(fit.bodyDecaySeconds[index + 1], 1.f), .02f, 30.f);
@@ -80,6 +82,8 @@ struct ModalAnchor {
   float amplitude{};
   float turbulence{};
   float spreadErb{};
+  float diffuseEnergy{};
+  float exchangeAmount{};
 };
 
 float NestedRadius(std::size_t index) noexcept {
@@ -96,8 +100,8 @@ float NestedRadius(std::size_t index) noexcept {
 
 float ExcitationTiltGain(const float frequencyHz, const float centreHz,
                          const float tiltDbPerOctave) noexcept {
-  const float ratio = std::max(frequencyHz, 20.f) /
-      std::max(centreHz, 20.f);
+  const float ratio = std::max(frequencyHz, CrashModalMinimumFrequencyHz) /
+      std::max(centreHz, CrashModalMinimumFrequencyHz);
   // Smooth shelving knee: flat below the centre and asymptotically equal to
   // tiltDbPerOctave above it. Unlike a pivoted power law, the centre remains
   // meaningful after the complete excitation vector is energy-normalized.
@@ -114,7 +118,7 @@ std::size_t BuildActiveAnchors(
   for (std::size_t index = 0; index < anchors.size(); ++index) {
     if (!(fit.sparseAmplitude[index] > 0.f)) continue;
     anchors[count++] = {
-        fit.sparseFrequencyHz[index], fit.sparseAmplitude[index],
+        Positive(fit.sparseFrequencyHz[index], 1000.f), fit.sparseAmplitude[index],
         fit.fieldTurbulenceScale[index], 0.f};
   }
   std::sort(anchors.begin(), anchors.begin() + count,
@@ -137,18 +141,31 @@ CrashModalField::Parameters ModalField(
   if (anchorCount == 0) return result;
   DeterministicRandom random;
   random.Seed(ModalFieldSeed ^ 0x4649454cu);
-  const float globalTurbulence = std::clamp(fit.fieldTurbulence, 0.f, 1.f);
   const float turbulenceSlope = std::clamp(
       fit.fieldTurbulenceSlopePerOctave, -1.f, 1.f);
   const float turbulenceCentre = std::clamp(
-      Positive(fit.fieldTurbulenceCentreHz, 4000.f), 20.f, .48f * sampleRate);
+      Positive(fit.fieldTurbulenceCentreHz, 4000.f), CrashModalMinimumFrequencyHz, .48f * sampleRate);
   std::array<float, CrashModalAnchorCapacity> anchorGains{};
   std::array<float, CrashModalAnchorCapacity> anchorOutputGains{};
   std::array<ModalPacketRequest, CrashModalAnchorCapacity> requests{};
-  float anchorSquaredGain = 0.f;
+  double anchorSquaredGain = 0.0;
   const float excitationCentreHz = std::clamp(
-      Positive(fit.bodyExcitationCentreHz, 1000.f), 40.f,
+      Positive(fit.bodyExcitationCentreHz, 1000.f), CrashModalMinimumFrequencyHz,
       .48f * sampleRate);
+  // The diffusion state is energy per frequency cell. Sample the excitation
+  // density with those same quadrature masses; equal energy per handle would
+  // invent large density spikes wherever the editor has closely spaced bars.
+  ModalSpectralDiffusion<CrashModalAnchorCapacity> excitationGrid;
+  if (fit.bloomSpectralDiffusion) {
+    std::array<float, CrashModalAnchorCapacity> centres{}, weights{};
+    for (std::size_t i = 0; i < anchorCount; ++i) {
+      centres[i] = std::clamp(anchors[i].frequencyHz *
+          std::clamp(Positive(fit.sparseTune, 1.f), .5f, 2.f),
+          CrashModalMinimumFrequencyHz, .48f * sampleRate);
+      weights[i] = 1.f;
+    }
+    excitationGrid.Prepare(centres, weights, anchorCount, sampleRate);
+  }
   for (std::size_t anchor = 0; anchor < anchorCount; ++anchor) {
     const float frequency = Positive(anchors[anchor].frequencyHz, 1000.f);
     const float tilt = ExcitationTiltGain(
@@ -158,21 +175,26 @@ CrashModalField::Parameters ModalField(
     // Painted levels describe observation prominence. The excitation curve is
     // deliberately independent: a unit-norm spatial input distributes the
     // contact impulse. Delivered energy also depends on time and phase.
-    anchorGains[anchor] = tilt;
+    const float cellAmplitude = fit.bloomSpectralDiffusion
+        ? float(std::sqrt(excitationGrid.ExcitationCellWeight(anchor))) : 1.f;
+    anchorGains[anchor] = tilt * cellAmplitude;
     anchorOutputGains[anchor] = level;
-    anchorSquaredGain += tilt * tilt;
-    const float spectralTurbulence = std::clamp(
-        globalTurbulence + turbulenceSlope * std::log2(
-            std::max(frequency, 20.f) / turbulenceCentre), 0.f, 1.f);
-    anchors[anchor].turbulence = std::clamp(
-        spectralTurbulence * anchors[anchor].turbulence, 0.f, 1.f);
+    anchorSquaredGain += double(anchorGains[anchor]) * anchorGains[anchor];
+    const auto response = EvaluateTurbulence(frequency, fit.fieldTurbulence,
+        turbulenceSlope, turbulenceCentre, anchors[anchor].turbulence,
+        fit.fieldRelaxedTurbulence);
+    anchors[anchor].turbulence = response.intensity;
+    anchors[anchor].diffuseEnergy = response.diffuseEnergy;
+    anchors[anchor].exchangeAmount = response.exchangeAmount;
     anchors[anchor].spreadErb = anchors[anchor].turbulence * std::clamp(
         fit.fieldPacketSpreadErb, 0.f, 12.f);
     requests[anchor] = {
         ErbRate(frequency), anchors[anchor].spreadErb, true};
   }
-  const float anchorNormalization =
-      1.f / std::sqrt(std::max(anchorSquaredGain, 1.e-12f));
+  // A very dark shelf must redistribute energy, not secretly turn the body
+  // down when all its unnormalized weights fall below an arbitrary floor.
+  const double anchorNormalization = anchorSquaredGain > 0
+      ? 1.0 / std::sqrt(anchorSquaredGain) : 0.0;
   const auto allocation = AllocateModalPackets(
       requests, CrashModalFieldModeCount, fit.fieldSatelliteDensity);
   constexpr float Pi = 3.14159265358979323846f;
@@ -181,7 +203,7 @@ CrashModalField::Parameters ModalField(
     const float turbulence = anchors[anchor].turbulence;
     const std::size_t pairCount = allocation.sidebandPairs[anchor];
     const float diffuseEnergy = pairCount > 0
-        ? .9f * turbulence * turbulence : 0.f;
+        ? anchors[anchor].diffuseEnergy : 0.f;
     const float coreWeight = std::sqrt(1.f - diffuseEnergy);
     const float satelliteWeight = pairCount > 0 ? std::sqrt(
         diffuseEnergy / static_cast<float>(2 * pairCount)) : 0.f;
@@ -191,7 +213,7 @@ CrashModalField::Parameters ModalField(
     const float centre = std::clamp(
         Positive(anchors[anchor].frequencyHz, 1000.f) *
             std::clamp(Positive(fit.sparseTune, 1.f), .5f, 2.f),
-        20.f, .48f * sampleRate);
+        CrashModalMinimumFrequencyHz, .48f * sampleRate);
     const float anchorGain = anchorNormalization * anchorGains[anchor];
     // Bars are actual observation amplitudes, not a second input budget.
     // Replicating a packet's observation over its states preserves expected
@@ -200,7 +222,7 @@ CrashModalField::Parameters ModalField(
     const float anchorOutputGain = anchorOutputGains[anchor];
     const auto makeMode = [&](const float frequency, const float weight,
                               const float phase, const float bandwidthScale) {
-      const float safeFrequency = std::clamp(frequency, 20.f,
+      const float safeFrequency = std::clamp(frequency, CrashModalMinimumFrequencyHz,
                                               .48f * sampleRate);
       result[modeIndex++] = {
           safeFrequency,
@@ -210,7 +232,8 @@ CrashModalField::Parameters ModalField(
           phase,
           bandwidthErb * ErbBandwidth(safeFrequency) * bandwidthScale,
           static_cast<std::uint16_t>(anchor),
-          turbulence * turbulence};
+          anchors[anchor].exchangeAmount,
+          centre};
     };
 
     makeMode(centre, coreWeight, 0.f, .35f);
@@ -219,7 +242,7 @@ CrashModalField::Parameters ModalField(
     for (std::size_t pair = 0; pair < pairCount; ++pair) {
       const float jitter = .92f + .08f * random.Uniform();
       const float offset = spreadErb * NestedRadius(pair) * jitter;
-      const float low = InverseErbRate(std::max(ErbRate(20.f),
+      const float low = InverseErbRate(std::max(ErbRate(CrashModalMinimumFrequencyHz),
                                                 centreErb - offset));
       const float high = InverseErbRate(std::min(ErbRate(.48f * sampleRate),
                                                  centreErb + offset));
@@ -304,11 +327,13 @@ CrashCymbalParameters DefaultCrashCymbalParameters(
   result.modalFieldControls.exchangeAngleRadians =
       .012f * std::clamp(fit.fieldExchange, 0.f, 1.f);
   result.modalFieldControls.seed = ModalFieldSeed ^ 0x4649454cu;
+  result.modalFieldControls.driftDepthPercent = fit.fieldDriftDepthPercent;
+  result.modalFieldControls.driftKnotsPerSecond = fit.fieldDriftKnotsPerSecond;
   result.modalFieldControls.cascade = {
       std::clamp(fit.bloomRateOctavesPerSecond, 0.f, 32.f),
       std::clamp(fit.bloomEnergyAcceleration, 0.f, 1.f),
       std::clamp(fit.bloomPhaseDiffusion, 0.f, 1.f),
-      ModalFieldSeed ^ 0x43415343u};
+      ModalFieldSeed ^ 0x43415343u, fit.bloomSpectralDiffusion};
   result.observation = Observation(fit);
   return result;
 }

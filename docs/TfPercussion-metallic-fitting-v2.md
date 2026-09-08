@@ -1,5 +1,11 @@
 # Shared crash, ride and gong fitting
 
+This document records the earlier fitting passes and their subsequent audits;
+its opening DSP and objective descriptions are **not the current recipe**.
+For the current transfer model see [spectral diffusion](TfPercussion-spectral-diffusion.md).
+For the latest restricted gong procedure and its limitations see
+[the coarse gong fit](TfPercussion-gong-coarse-fit.md).
+
 This pass starts from the saved workbench candidates and changes the fitting
 method, not the instrument DSP. The kick, snare and hi-hat are left alone. Each
 metallic target keeps its own fixed reference, source gain, onset and performance
@@ -254,3 +260,52 @@ STFT, so later energy cannot leak into a panel labelled "Initial 120 ms". This
 plotting correction does not change the recorded fitting objective or the audio.
 Torch-dependent optimizer tests skip when the optional package is absent;
 ordinary analysis tests continue to run in development CI.
+
+## Crash difference-plot review — 2026-09-08
+
+The user's audition rejects the previous crash starting point. This pass does
+**not publish a replacement**. C++ DSP, performance inputs, reference identity,
+playback gain and all other instrument presets remain unchanged.
+
+Fixed-reference-scale signed plots show excessive diffuse low-mid energy,
+missing narrow reference ridges and too much late upper-frequency energy.
+Descriptive band EDCs also show the 3–4.5 kHz decay at approximately 7.3 seconds
+in the old candidate versus 4.4 seconds in the reference. These are effective
+band decays, not direct estimates of individual mode damping. The reference's
+10–14 kHz raw EDC has poor fit quality (R² about .27); do not use that result
+as a damping target without noise correction.
+
+The exact-Wasm trials tested:
+
+- narrower phase linewidth, zero local exchange and less transfer diffusion;
+- 32-handle proposals from regional reference peaks, with two packet spreads;
+- reallocation of redundant neighbouring handles to the missing 700–1400 Hz band;
+- bounded global texture, energy travel and **two-endpoint-only** damping fits;
+- validated affine observation-amplitude optimization on two training seeds;
+- a separate reference-masked decay-shape stage, then absolute-level observation
+  fitting, and a final contact-duration/mixture/observation trial.
+
+The best standard aggregate score changes only 9.47 → 9.41. Its three fresh
+audit seeds (offsets 7013/8017/9011) also improve the aggregate score and contrast,
+but their absolute band-envelope errors worsen in every case. This is **not**
+an acceptable joint improvement in tuning, texture and decay. The separate shape
+trial improves its relative decay-shape error from 3.49 → 2.62 dB, but still does
+not improve the full match. Lowering linewidth alone likewise exposes missing
+resonances rather than solving them. No extra damping knots or per-mode damping
+coefficients were introduced.
+
+Private reproducibility records are under `build/crash-review-v4/`: each trial
+has explicit parameter vectors, bounds, solver history, exact snapshot/WAV
+verification and named diagnostic plots. `measured-3.0-0.1/fresh-seed-audit.json`
+records the rejected finalist. The reusable additions are
+`spectral_difference.py`, `BandDecayShapeLoss` and the offline difference-plot
+tool, documented in the analysis toolkit. The next search must preserve decay
+and absolute envelope constraints while refining resonance centres and widths;
+an unconstrained amplitude polish must not silently trade those improvements
+away. These experiments do not establish that the DSP architecture needs
+replacement.
+
+The subsequent [crash perceptual-loss and recoverability review](TfPercussion-crash-perceptual-review.md)
+tests mel MR-STFT and JTFS, demonstrates full-model synthetic recovery improving
+with staged damping fitting, and records why the new real-reference candidates
+are not promoted despite lower individual objective scores.

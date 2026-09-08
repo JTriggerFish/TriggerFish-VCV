@@ -12,26 +12,57 @@ import torch
 from .metallic_balance_loss import MetallicBalanceLoss
 from .observation_fit_basis import ObservationBasis
 from .torch_metallic_loss import TorchMetallicLoss
+from .perceptual_fit_losses import AuralossMel
 
 
-def polish_observation_autograd(search, iterations=40):
-    if not isinstance(search.loss, MetallicBalanceLoss):
+def _comparison_score(search, parameters):
+    score = float(np.linalg.norm(search.residual(parameters)))
+    # ScalarAudioLoss exposes sqrt(score) only as a residual adapter. Reports
+    # for the library objective must retain its native units, not their root.
+    return score * score if isinstance(search.loss, AuralossMel) else score
+
+
+def _observation_keys(parameters, fixed_keys):
+    if not set(fixed_keys).issubset(parameters) or any(
+        not key.startswith("resolved_level_") for key in fixed_keys
+    ):
+        raise ValueError("Only observation-bar keys can be held fixed here")
+    return [
+        key
+        for key, value in parameters.items()
+        if key.startswith("resolved_level_")
+        and value > -71.99
+        and key not in fixed_keys
+    ]
+
+
+def polish_observation_autograd(
+    search, iterations=40, constraint_factory=None, bounds_db=(-45, 6), fixed_keys=()
+):
+    minimum_db, maximum_db = bounds_db
+    if not np.isfinite(bounds_db).all() or not -71.99 < minimum_db < maximum_db <= 6:
         raise ValueError(
-            "Analysis autograd requires the validated metallic balance loss"
+            "Observation bounds must retain positive active modes inside the UI range"
+        )
+    if isinstance(search.loss, MetallicBalanceLoss):
+        measurement = TorchMetallicLoss(search.loss)
+    elif isinstance(search.loss, AuralossMel):
+        from .perceptual_observation_loss import TorchAuralossMel
+
+        measurement = TorchAuralossMel(search.loss)
+    else:
+        raise ValueError(
+            "Analysis autograd requires the metallic balance or auraloss mel loss"
         )
     torch.set_num_threads(1)
-    keys = [
-        key
-        for key, value in search.parameters.items()
-        if key.startswith("resolved_level_") and value > -71.99
-    ]
+    keys = _observation_keys(search.parameters, fixed_keys)
     if not keys:
         return
-    before = float(np.linalg.norm(search.residual(search.parameters)))
+    before = _comparison_score(search, search.parameters)
     basis = ObservationBasis(
         search.renderer, search.parameters, keys, search.seconds, search.seeds
     )
-    measurement = TorchMetallicLoss(search.loss)
+    guard = constraint_factory(basis) if constraint_factory is not None else None
     validation = [
         measurement.validate(basis.render(search.parameters, search.seconds, seed))
         for seed in search.seeds
@@ -41,6 +72,7 @@ def polish_observation_autograd(search, iterations=40):
         for seed, (audio, columns) in basis.bases.items()
     }
     initial = torch.tensor(basis.amplitudes)
+    evaluated = []
 
     def objective(amplitudes):
         weights = torch.tensor(amplitudes, requires_grad=True)
@@ -52,9 +84,11 @@ def polish_observation_autograd(search, iterations=40):
         gradient = weights.grad.numpy().copy()
         if not np.isfinite(total) or not np.isfinite(gradient).all():
             raise ValueError("Nonfinite observation objective or gradient")
+        if guard is not None:
+            evaluated.append((total, np.asarray(amplitudes).copy()))
         return total, gradient
 
-    low, high = 10 ** (-45 / 20), 10 ** (6 / 20)
+    low, high = 10 ** (minimum_db / 20), 10 ** (maximum_db / 20)
     start = np.clip(basis.amplitudes, low, high)
     # Check the actual objective gradient, not only feature values.
     direction = np.random.default_rng(731).normal(size=len(keys))
@@ -93,20 +127,45 @@ def polish_observation_autograd(search, iterations=40):
         temporary.replace(search.output / "autograd-progress.json")
         print(json.dumps(dict(stage=record["stage"], iteration=iteration)), flush=True)
 
+    constraints = (
+        []
+        if guard is None
+        else [
+            dict(
+                type="ineq",
+                fun=lambda x: guard.evaluate(x)[0],
+                jac=lambda x: guard.evaluate(x)[1],
+            )
+        ]
+    )
+    options = dict(maxiter=iterations, ftol=1e-8)
+    if guard is None:
+        options.update(gtol=1e-5, maxls=20)
+    evaluated.clear()  # Validation probes are not solver iterates.
     result = minimize(
         objective,
         start,
         jac=True,
-        method="L-BFGS-B",
+        method="L-BFGS-B" if guard is None else "SLSQP",
         bounds=[(low, high)] * len(keys),
         callback=progress,
-        options=dict(maxiter=iterations, ftol=1e-8, gtol=1e-5, maxls=20),
+        constraints=constraints,
+        options=options,
     )
+    chosen = result.x
+    # SLSQP may finish on an infeasible line-search step. Retain the best actual
+    # feasible evaluation instead of discarding earlier valid improvements.
+    if guard is not None:
+        for _, point in sorted(evaluated, key=lambda row: row[0]):
+            if np.min(guard.values(point)) >= -1e-5:
+                chosen = point
+                break
     candidate = dict(
-        search.parameters, **dict(zip(keys, (20 * np.log10(result.x)).tolist()))
+        search.parameters, **dict(zip(keys, (20 * np.log10(chosen)).tolist()))
     )
-    after = float(np.linalg.norm(search.residual(candidate)))
-    selected = after < before
+    after = _comparison_score(search, candidate)
+    feasible = guard is None or bool(np.min(guard.values(chosen)) >= -1e-5)
+    selected = after < before and feasible
     if selected:
         search.parameters = candidate
     search.history.append(
@@ -114,13 +173,16 @@ def polish_observation_autograd(search, iterations=40):
             stage="exact-render autograd observation polish",
             before=before,
             after=after,
+            score_units=getattr(search.loss, "units", "dB"),
             selected=selected,
+            constraint_feasible=feasible,
+            constraints=None if guard is None else guard.specification,
             measurement_validation=validation,
             basis_validation=basis.validation,
             iterations=int(result.nit),
             evaluations=int(result.nfev),
             solver_message=str(result.message),
-            bounds_db={key: (-45, 6) for key in keys},
+            bounds_db={key: (minimum_db, maximum_db) for key in keys},
             coordinate_scale="linear amplitude",
             fixed_parameters={
                 key: value for key, value in basis.initial.items() if key not in keys

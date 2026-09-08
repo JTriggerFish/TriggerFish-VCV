@@ -1,9 +1,11 @@
 import { SafeAudition } from "./audio.mjs";
+import { reportError } from "./error_banner.mjs";
+import { mountDiagnosticAudition } from "./diagnostic_audition.mjs";
 import { bindAnalysisControls } from "./analysis_controls.mjs";
 import { PercussionEngine } from "./engine.mjs";
 import { FitControls } from "./fit_controls.mjs";
 import {
-  calibrationParameterValues, calibrationPatch,
+  calibrationParameterValues, calibrationPatch, calibrationEvent,
 } from "./instrument_calibrations.mjs";
 import { KickControls } from "./kick_controls.mjs";
 import { MembraneControls } from "./membrane_controls.mjs";
@@ -52,6 +54,7 @@ view.setSettings({
   dynamicRangeDb: state.analysis.dynamicRangeDb,
 });
 const audition = new SafeAudition(setStatus);
+mountDiagnosticAudition(audition, setStatus);
 let midiTriggerSeed = 0;
 const settings = new SettingsController({
   audition,
@@ -83,7 +86,10 @@ let recipeController;
 let routingController;
 let restoringReference = false;
 
-function setStatus(message) { byId("status").textContent = message; }
+function setStatus(message) {
+  byId("status").textContent = String(message);
+  if (message instanceof Error || /^(?:\w*Error:)/.test(String(message))) reportError(message);
+}
 function setReadyIfIdle() {
   if (!pendingAnalysis.size && !renderInFlight && !renderTimer) {
     setStatus("Ready");
@@ -180,7 +186,7 @@ function analyzeReference() {
 worker.onmessage = ({ data }) => {
   if (data.generation !== generations[data.kind]) return;
   pendingAnalysis.delete(data.kind);
-  if (data.error) { setStatus(data.error); return; }
+  if (data.error) { setStatus(new Error(data.error)); return; }
   view.setData(data.kind, data.result);
   state[`${data.kind}Spectrum`] = data.result;
   if (data.kind === "reference" && data.cacheKey) {
@@ -226,7 +232,7 @@ renderWorker.onmessage = ({ data }) => {
   renderInFlight = false;
   if (data.generation === renderGeneration) {
     if (data.error) {
-      setStatus(data.error);
+      setStatus(new Error(data.error));
     }
     else {
       state.synthesis = data.samples;
@@ -242,10 +248,21 @@ renderWorker.onmessage = ({ data }) => {
   } else setReadyIfIdle();
 };
 
-renderWorker.onerror = event => {
+function renderWorkerFailed(message) {
   renderInFlight = false;
-  setStatus(event.message);
-};
+  queuedRender = null;
+  setStatus(new Error(message));
+}
+function spectrumWorkerFailed(message) {
+  pendingAnalysis.clear();
+  setStatus(new Error(message));
+}
+renderWorker.onerror = event => renderWorkerFailed(event.message);
+worker.onerror = event => spectrumWorkerFailed(`Spectrogram worker: ${event.message}`);
+worker.addEventListener("messageerror", () =>
+  spectrumWorkerFailed("Could not decode the spectrogram worker response"));
+renderWorker.addEventListener("messageerror", () =>
+  renderWorkerFailed("Could not decode the render worker response"));
 
 function setReference(reference) {
   const firstReference = !state.reference;
@@ -484,6 +501,7 @@ async function initialize() {
 }
 
 function bindCalibrationPresets() {
+  let selectionGeneration = 0;
   const select = byId("instrument-calibration");
   const calibrations = referenceBrowser.calibrationPresets();
   select.replaceChildren(
@@ -491,6 +509,7 @@ function bindCalibrationPresets() {
     ...calibrations.map(item => new Option(item.name, item.id)),
   );
   select.onchange = async () => {
+    const generation = ++selectionGeneration;
     const calibration = calibrations.find(item => item.id === select.value);
     if (!calibration) return;
     try {
@@ -517,12 +536,23 @@ function bindCalibrationPresets() {
         state.recipeIndex, state.macros,
         recipeAdapter(state.recipeKey).routing(state.patch),
       );
-      const loaded = await referenceBrowser.selectSavedReference({
+      const loading = referenceBrowser.selectSavedReference({
         corpus: { id: calibration.corpusId }, cell: calibration,
       });
+      const referenceGeneration = referenceBrowser.generation;
+      const loaded = await loading;
+      if (generation !== selectionGeneration ||
+          referenceGeneration !== referenceBrowser.generation ||
+          state.recipeKey !== calibration.recipe) return;
       if (!loaded) throw new Error(`reference is unavailable: ${calibration.name}`);
+      const fittedEvent = calibrationEvent(calibration);
+      if (fittedEvent) {
+        Object.assign(state.event, fittedEvent);
+        performanceControls.paint();
+        scheduleRender();
+      }
     } catch (error) {
-      setStatus(String(error));
+      if (generation === selectionGeneration) setStatus(error);
     }
   };
 }
