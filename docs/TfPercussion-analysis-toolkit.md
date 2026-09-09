@@ -1,5 +1,9 @@
 # Percussion analysis toolkit
 
+The [low-ring beating investigation](TfPercussion-low-ring-beating.md) adds
+slow low-band modulation checks to crash audits. Upper-band texture scores
+alone do not assess slow modal beating.
+
 ## Scope
 
 `python/triggerfish_percussion/` is the numerical layer used by fitting,
@@ -73,6 +77,14 @@ Inspect resonance placement/width, spaces between resonances, and late-tail
 energy as well as the attack. Random-phase pixel differences are not themselves
 perceptual errors: corroborate them with regional spectra and band envelopes.
 An aggregate fitting score is not a substitute for inspecting these views.
+
+For long metallic tails, do not use unbounded log-Mel error as the sole fitting
+criterion: it can value quiet late hiss more than a much louder attack error.
+`ReferenceFloorMel` provides a reference-fixed dynamic range per FFT resolution,
+compatible with the exact-render observation autograd adapter. Use the
+50/60/70-dB sensitivity audit and retain the independent decay/texture views.
+See the [controlled failure test and crash refinement methodology](TfPercussion-crash-low-blur-fit.md).
+This changes only numerical comparison, never reference audio or heatmap levels.
 
 ## ERB representation
 

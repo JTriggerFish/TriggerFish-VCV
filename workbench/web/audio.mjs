@@ -1,6 +1,7 @@
 import { limiterLookaheadSeconds } from "./limiter_config.mjs";
 import { ConfigurationPreparer } from "./configuration_preparer.mjs";
 import { StandbyRenderer } from "./standby_renderer.mjs";
+import { LiveOutputSpectrum } from "./live_output_spectrum.mjs";
 
 export class SafeAudition {
   constructor(onStatus = () => {}) {
@@ -49,6 +50,8 @@ export class SafeAudition {
       this.inputPeakDb = event.data.inputPeakDb;
     };
     this.master = new GainNode(this.context);
+    this.spectrum = new LiveOutputSpectrum(this.context);
+    this.spectrum.node.connect(this.master);
     this.meter = new AnalyserNode(this.context, {
       fftSize: 256, smoothingTimeConstant: 0,
     });
@@ -59,7 +62,7 @@ export class SafeAudition {
     );
     this.renderer = new StandbyRenderer({
       context: this.context,
-      destination: this.master,
+      destination: this.spectrum.node,
       onApplied: configuration => this.#configurationApplied(configuration),
       onTriggered: () => { ++this.triggerCount; },
       onError: error => this.onStatus(String(error)),
@@ -145,7 +148,7 @@ export class SafeAudition {
     });
     buffer.copyToChannel(samples, 0);
     this.source = new AudioBufferSourceNode(this.context, { buffer });
-    this.source.connect(this.master);
+    this.source.connect(this.spectrum.node);
     this.source.onended = () => {
       this.source = null;
       this.renderer.setMuted(false);
@@ -168,6 +171,7 @@ export class SafeAudition {
   }
 
   get reduction() { return this.reductionDb; }
+  readOutputSpectrum() { return this.spectrum?.read() ?? null; }
   get state() { return this.context?.state ?? "off"; }
   get underflows() { return 0; }
   get outputDb() {

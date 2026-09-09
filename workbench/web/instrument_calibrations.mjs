@@ -4,6 +4,11 @@ import KickCalibration from "./kick_calibration.fit.json" with { type: "json" };
 import { checkedCalibrationValues, referenceCalibration, recipeReferenceCalibration } from "./reference_calibration_library.mjs";
 import { recipeAdapter } from "./recipe_adapter.mjs";
 
+export function calibrationDisplayName(calibration) {
+  const fit = calibration.id === "kick-standard" ? KickCalibration : referenceCalibration(calibration.id);
+  return fit?.name ?? calibration.name;
+}
+
 export function kickCalibrationValues(descriptors) {
   const values = Object.assign({}, ...KickCalibration.instrument.nodes.map(node => node.parameters));
   if (Object.keys(values).length !== descriptors.length)

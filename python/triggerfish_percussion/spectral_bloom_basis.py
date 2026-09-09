@@ -77,11 +77,26 @@ class SpectralBloomBasis:
 class SpectralBloomGuard:
     """Permit spectral polishing without giving back the fitted rise/decay."""
 
-    def __init__(self, basis, loss, tolerance_db=1.0):
+    def __init__(self, basis, loss, tolerance_db=1.0, baseline_audio=None):
         if not np.isfinite(tolerance_db) or tolerance_db < 0:
             raise ValueError("Expected nonnegative finite guard tolerance")
         self.cache = SpectralBloomBasis(basis, loss)
         baseline = self.cache.evaluate(basis.amplitudes)[0]
+        if baseline_audio is not None:
+            # A reduced curve need not represent the incoming modal bars.
+            # Protect the actual incoming audio, not its coarse projection.
+            errors = np.array(
+                [
+                    (loss.db(loss.power(audio)) - loss.target)[loss.active]
+                    for audio in baseline_audio
+                ]
+            )
+            if (
+                errors.shape != self.cache.matrices.shape[:3]
+                or not np.isfinite(errors).all()
+            ):
+                raise ValueError("Guard baseline must match the seed/band/time grid")
+            baseline = self.cache.pack(errors)
         seeds, bands, regions = self.cache.matrices.shape[:3]
         envelope_count, rise_count = seeds * bands * regions, seeds * bands * 7
         self.limits = (

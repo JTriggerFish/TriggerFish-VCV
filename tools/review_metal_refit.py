@@ -16,9 +16,12 @@ from triggerfish_percussion.fit_reference import aligned_reference
 from triggerfish_percussion.metallic_balance_loss import MetallicBalanceLoss
 from triggerfish_percussion.perceptual_fit_losses import AuralossMel
 from triggerfish_percussion.workbench_renderer import WorkbenchRenderer
+from triggerfish_percussion.modal_texture_loss import ModalTextureLoss
+from triggerfish_percussion.reference_floor_mel import ReferenceFloorMel
+from triggerfish_percussion.low_mode_beating import LowModeBeating
 
 
-def review(target, directory, baseline_path, offsets):
+def review(target, directory, baseline_path, offsets, jtfs=False, floor_audit=False):
     torch.set_num_threads(1)
     renderer = WorkbenchRenderer(
         os.environ["EMSDK_NODE"], f"{target}-standard", Path.cwd()
@@ -42,14 +45,28 @@ def review(target, directory, baseline_path, offsets):
         mel = AuralossMel(reference, rate)
         attack_frames = round(0.4 * rate)
         attack_mel = AuralossMel(reference[:attack_frames], rate)
+        bounded_mel = (
+            {db: ReferenceFloorMel(reference, rate, db) for db in (50, 60, 70)}
+            if floor_audit
+            else {}
+        )
         attack_ridges = AttackRidgeLoss(reference, rate)
         balance = MetallicBalanceLoss(reference, rate, "erb", True)
         decay = BandDecayShapeLoss(reference, rate)
+        texture = ModalTextureLoss(reference, rate)
+        low_beating = LowModeBeating(reference, rate) if target == "crash" else None
+        scattering = None
+        if jtfs:
+            from triggerfish_percussion.perceptual_fit_losses import JtfsLoss
+
+            scattering = JtfsLoss(reference, rate)
         seed = renderer.metadata["event"]["seed"]
         rows = []
         for offset in (0, *offsets):
             actual = (seed + offset) & 0xFFFFFFFF
-            row = dict(seed=actual, role="standard" if not offset else "validation")
+            # An extra seed may have been used during fitting. Do not label it
+            # held-out validation without checking the run's training provenance.
+            row = dict(seed=actual, role="standard" if not offset else "additional")
             for label, parameters in (
                 ("baseline", baseline),
                 ("candidate", saved["parameters"]),
@@ -61,8 +78,33 @@ def review(target, directory, baseline_path, offsets):
                     attack_ridge_mrstft=attack_ridges.score(samples),
                     balance=balance.diagnostics(samples),
                     decay=decay.diagnostics(samples),
+                    texture=texture.score(samples),
                     peak_db=float(20 * np.log10(max(1e-15, abs(samples).max()))),
                 )
+                if scattering is not None:
+                    row[label]["jtfs_below_8khz"] = scattering.score(samples)
+                if low_beating is not None:
+                    bands = low_beating.analyze(samples)
+                    row[label]["low_beating"] = dict(
+                        score=low_beating.score_rows(bands),
+                        bands=[
+                            {
+                                k: band[k]
+                                for k in (
+                                    "band_hz",
+                                    "power",
+                                    "dominant_hz",
+                                    "fast_fraction",
+                                    "band_rms",
+                                )
+                            }
+                            for band in bands
+                        ],
+                    )
+                if bounded_mel:
+                    row[label]["reference_floor_mel"] = {
+                        db: loss.score(samples) for db, loss in bounded_mel.items()
+                    }
             rows.append(row)
         repeated = {}
         for label, interval, strength in (
@@ -113,6 +155,29 @@ def review(target, directory, baseline_path, offsets):
             baseline_parameters=baseline,
             reference=renderer.metadata["reference"],
             attack_ridge_objective=attack_ridges.specification,
+            texture_objective=texture.specification,
+            low_beating_diagnostic=low_beating.specification if low_beating else None,
+            reference_low_beating=(
+                [
+                    {
+                        k: band[k]
+                        for k in (
+                            "band_hz",
+                            "power",
+                            "dominant_hz",
+                            "fast_fraction",
+                            "band_rms",
+                        )
+                    }
+                    for band in low_beating.target
+                ]
+                if low_beating
+                else None
+            ),
+            scattering_objective=scattering.specification if scattering else None,
+            reference_floor_objectives={
+                db: loss.specification for db, loss in bounded_mel.items()
+            },
             seeds=rows,
             repeated=repeated,
             listening_approved=False,
@@ -129,9 +194,26 @@ if __name__ == "__main__":
     parser.add_argument("directory", type=Path)
     parser.add_argument("--baseline", type=Path, required=True)
     parser.add_argument("--seed-offsets", nargs=3, type=int, required=True)
+    parser.add_argument(
+        "--jtfs",
+        action="store_true",
+        help="Optional independent WaveSpin audit (16-kHz analysis, excludes highs above 8 kHz)",
+    )
+    parser.add_argument(
+        "--floor-audit",
+        action="store_true",
+        help="Compare reference-fixed Mel floors at 50, 60 and 70 dB",
+    )
     args = parser.parse_args()
     if len(set(args.seed_offsets)) != 3 or any(
         not 0 < n < 2**32 for n in args.seed_offsets
     ):
         parser.error("Seed offsets must be distinct, nonzero 32-bit integers")
-    review(args.target, args.directory, args.baseline, args.seed_offsets)
+    review(
+        args.target,
+        args.directory,
+        args.baseline,
+        args.seed_offsets,
+        args.jtfs,
+        args.floor_audit,
+    )

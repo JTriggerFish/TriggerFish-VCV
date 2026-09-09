@@ -2,7 +2,8 @@
 
 #include "contact_exciter.hpp"
 #include "metallic_plate_routing.hpp"
-#include "observation_model.hpp"
+#include "modal_packet_distribution.hpp"
+#include "radiation_filter.hpp"
 #include "stochastic_modal_field.hpp"
 
 #include <array>
@@ -42,6 +43,15 @@ struct CrashCymbalFitParameters {
       1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f,
       1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f};
   float sparseTune{1.f};
+  std::array<float, CrashModalAnchorCapacity> fieldAllocationWeight = [] {
+    std::array<float, CrashModalAnchorCapacity> weights{};
+    weights.fill(1.f);
+    return weights;
+  }();
+  ModalPacketDistribution fieldDistribution{ModalPacketDistribution::Scattered};
+  float fieldDoubletSplitHz{1.25f};
+  float fieldBeatDepth{.3f}; // weaker/stronger centre amplitude ratio
+  float fieldBeatRateTilt{.25f}; // octaves of rate per frequency octave, at 125 Hz
   std::array<float, CrashBodyDecayInteriorPointCount> bodyDecayFrequencyHz{
       500.f, 1500.f, 5000.f, 8000.f, 12000.f, 14000.f};
   std::array<float, CrashBodyDecayPointCount> bodyDecaySeconds{
@@ -61,13 +71,13 @@ struct CrashCymbalFitParameters {
   float fieldGain{1.f};
   float fieldTurbulence{.65f};
   float fieldTurbulenceSlopePerOctave{0.f};
-  float fieldTurbulenceCentreHz{4000.f};
   float fieldPacketSpreadErb{6.f};
   float fieldSatelliteDensity{.5f};
   float fieldPhaseBandwidthErb{1.f};
+  float fieldPhaseTilt{}; // blur bandwidth octaves/octave, pivot 1 kHz
   bool fieldRelaxedTurbulence{};
-  float fieldDriftDepthPercent{};
-  float fieldDriftKnotsPerSecond{8.f};
+  float fieldWanderDepthHz{};
+  float fieldWanderKnotsPerSecond{.5f};
   float fieldExchange{.35f};
   float contactDurationScale{1.f};
   float contactPulseGain{1.f};
@@ -81,16 +91,11 @@ struct CrashCymbalFitParameters {
   float contactMicroDensityScale{1.f};
   float directGain{.18f};
   float outputGain{1.f};
-  bool directRadiationEnabled{true};
-  float directLowCutHz{40.f};
-  float directColourFrequencyHz{7200.f};
-  float directColourGainDb{1.f};
-  float directHighCutHz{20000.f};
-  bool bodyRadiationEnabled{true};
-  float bodyLowCutHz{40.f};
-  float bodyColourFrequencyHz{7200.f};
-  float bodyColourGainDb{.5f};
-  float bodyHighCutHz{19000.f};
+  bool outputEqEnabled{true};
+  float outputLowCutHz{40.f};
+  float outputColourFrequencyHz{7200.f};
+  float outputColourGainDb{.5f};
+  float outputHighCutHz{19000.f};
   float velocityBrightnessDbPerOctave{4.f};
 };
 
@@ -100,7 +105,7 @@ struct CrashCymbalParameters {
   CrashModalField::Projection fieldBowProjection{};
   CrashModalField::Projection fieldEdgeProjection{};
   StochasticModalFieldControls modalFieldControls{};
-  ObservationModel<2>::Parameters observation{};
+  RadiationFilterParameters outputEq{};
   MetallicPlateRouting routing{};
   CrashCymbalFitParameters fit{};
 };

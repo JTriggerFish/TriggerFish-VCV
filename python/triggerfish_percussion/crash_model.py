@@ -115,9 +115,18 @@ class CrashFit:
     bloom_phase_diffusion: float = 0.7
     body_excitation_gain: float = 1.0
     field_gain: float = 1.0
+    field_allocation_weight: tuple[float, ...] = (1.0,) * 32
+    field_distribution: int = 0
+    field_doublet_split_hz: float = 1.25
+    field_beat_depth: float = 0.3
+    field_beat_rate_tilt: float = 0.25
+    field_phase_tilt: float = 0.0
+    field_wander_depth_hz: float = 0.0
+    field_wander_knots_per_second: float = 0.5
+    field_relaxed_turbulence: bool = False
+    bloom_spectral_diffusion: bool = False
     field_turbulence: float = 0.65
     field_turbulence_slope_per_octave: float = 0.0
-    field_turbulence_centre_hz: float = 4000.0
     field_packet_spread_erb: float = 6.0
     field_satellite_density: float = 0.5
     field_phase_bandwidth_erb: float = 1.0
@@ -134,16 +143,11 @@ class CrashFit:
     contact_micro_density_scale: float = 1.0
     direct_gain: float = 0.18
     output_gain: float = 1.0
-    direct_radiation_enabled: bool = True
-    direct_low_cut_hz: float = 40.0
-    direct_colour_frequency_hz: float = 7200.0
-    direct_colour_gain_db: float = 1.0
-    direct_high_cut_hz: float = 20000.0
-    body_radiation_enabled: bool = True
-    body_low_cut_hz: float = 40.0
-    body_colour_frequency_hz: float = 7200.0
-    body_colour_gain_db: float = 0.5
-    body_high_cut_hz: float = 19000.0
+    output_eq_enabled: bool = True
+    output_low_cut_hz: float = 40.0
+    output_colour_frequency_hz: float = 7200.0
+    output_colour_gain_db: float = 0.5
+    output_high_cut_hz: float = 19000.0
     velocity_brightness_db_per_octave: float = 4.0
 
     def __post_init__(self):

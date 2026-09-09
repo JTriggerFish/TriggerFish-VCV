@@ -68,7 +68,11 @@ void CrashCymbal::PrepareComponents(
   sampleRate_ = sampleRate;
   parameters_ = parameters;
   contact_.Prepare(sampleRate);
-  observation_.Prepare(sampleRate, .01f, parameters.observation);
+  outputEq_.Prepare(sampleRate, parameters.outputEq);
+  contactLevel_ = std::clamp(
+      tfdsp::FiniteNormalOrZero(parameters.fit.directGain), 0.f, 2.f);
+  bodyLevel_ = std::clamp(
+      tfdsp::FiniteNormalOrZero(parameters.fit.fieldGain), 0.f, 4.f);
   routing_ = parameters.routing;
   bodyExcitationGain_ = std::clamp(
       tfdsp::FiniteNormalOrZero(parameters.fit.bodyExcitationGain), 0.f, 4.f);
@@ -78,7 +82,7 @@ void CrashCymbal::PrepareComponents(
 void CrashCymbal::Reset() noexcept {
   contact_.Reset();
   modalField_.Reset();
-  observation_.Reset();
+  outputEq_.Reset();
   modalConstraint_.Reset();
   SetExcitationProjection(1.f, .8f);
   hasProcessedSinceReset_ = false;
@@ -102,17 +106,20 @@ CrashCymbalFrame CrashCymbal::ProcessFrame() noexcept {
       (routing_.Enabled(MetallicPlateRoute::ContactToBody) ? 1.f : 0.f) *
           bodyDrive,
       0.f, modalLoss);
-  const ObservationModel<2>::SourceFrame sources{
-      (routing_.Enabled(MetallicPlateRoute::ContactToObservation) ? 1.f : 0.f) *
-          contact.directRadiation,
-      (routing_.Enabled(MetallicPlateRoute::BodyToObservation) ? 1.f : 0.f) *
-          body};
+  // One observation EQ shapes the complete mix; neither source has a hidden EQ.
+  const float mix =
+      (routing_.Enabled(MetallicPlateRoute::ContactToObservation)
+           ? contactLevel_ * contact.directRadiation : 0.f) +
+      (routing_.Enabled(MetallicPlateRoute::BodyToObservation)
+           ? bodyLevel_ * body : 0.f);
+  const float output = parameters_.fit.outputEqEnabled
+      ? outputEq_.Process(mix) : mix;
   return {
       contact.directRadiation,
       modalField_.LastCascadeTransferEnergy(),
       body,
       tfdsp::FiniteNormalOrZero(
-          parameters_.fit.outputGain * observation_.Process(sources))};
+          parameters_.fit.outputGain * output)};
 }
 
 float CrashCymbal::Process() noexcept {

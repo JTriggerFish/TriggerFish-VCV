@@ -9,6 +9,7 @@ class ParameterBox:
         if not self.keys:
             raise ValueError("At least one parameter is required")
         limits = np.array(list(bounds.values()), dtype=float)
+        self.physical_limits = limits.copy()
         metadata = {d["key"]: d for d in descriptors}
         for key, (lo, hi) in zip(self.keys, limits):
             d = metadata[key]
@@ -30,4 +31,6 @@ class ParameterBox:
     def unpack(self, coordinates):
         values = self.low + coordinates * (self.high - self.low)
         values[self.logarithmic] = np.exp(values[self.logarithmic])
+        # exp(log(bound)) can exceed a strict DSP/API boundary by one ULP.
+        values = np.clip(values, self.physical_limits[:, 0], self.physical_limits[:, 1])
         return dict(self.start, **dict(zip(self.keys, values.tolist())))

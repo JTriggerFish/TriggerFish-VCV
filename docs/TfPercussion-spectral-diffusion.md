@@ -1,5 +1,11 @@
 # Experimental nonlinear spectral-energy diffusion
 
+The September 2026 [beating-packet refinement](TfPercussion-beating-packets.md)
+updates oscillator allocation/distributions and adds regional texture checks.
+The diffusion equation below is unchanged; the nonlinearity slider now has
+finer near-zero resolution. Historical calibration results below are not
+acceptance evidence for the changed packet allocator.
+
 Status: the **only metallic transfer law exposed by the workbench** while we
 test it. The oscillator bank remains. The previous transport primitives remain
 available in C++, but the workbench recipe has no legacy switches, random
@@ -43,7 +49,7 @@ Modal states ◄── repeated strikes add to existing states
         ◄────────┘ rescale states / seed previously silent packets
         │
         ├── shared frequency-dependent T60 damping
-        └── painted prominence → body observation EQ → output
+        └── painted prominence → contact/body mix → final EQ → output
 ```
 
 This diagram separates responsibilities, not individual instruction order.

@@ -16,6 +16,7 @@ const { calibrationParameterValues, calibrationPatch } = await load("instrument_
 const { recipeAdapter } = await load("recipe_adapter.mjs");
 const { snapshotState, fitMacroValues, validateFit } = await load("state.mjs");
 const { modalTemplate, modalTemplateStretch } = await load("modal_templates.mjs");
+const { bloomTimingValues } = await load("bloom_timing_meta.mjs");
 const pcm = samples => Buffer.from(samples.buffer, samples.byteOffset, samples.byteLength).toString("base64");
 let engine, reference, event, defaults, patch;
 
@@ -110,7 +111,7 @@ function renderSnapshot(request) {
     parameters: fitMacroValues(fit, engine.parameters),
     routing: recipeAdapter(fit.instrument.recipe).routing(fit.instrument),
   });
-  return { pcm: pcm(samples) };
+  return { pcm: pcm(samples), fit };
 }
 
 for await (const line of createInterface({ input: process.stdin })) {
@@ -119,6 +120,7 @@ for await (const line of createInterface({ input: process.stdin })) {
     const result = request.command === "initialize" ? await initialize(request.id, request.cell)
       : request.command === "modalTemplate" ? {points:modalTemplate(request.settings)}
       : request.command === "modalTemplateStretch" ? {stretch:modalTemplateStretch(request.settings)}
+      : request.command === "bloomTiming" ? bloomTimingValues(request.parameters, request.position, engine.parameters)
       : request.command === "snapshot" ? snapshot(request)
         : request.command === "renderSnapshot" ? renderSnapshot(request)
           : request.command === "renderSequence" ? renderSequence(request) : render(request);

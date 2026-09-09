@@ -19,8 +19,8 @@ const descriptors = [
   ["model_level_db", -36, -60, 0, "linear"],
   ["impact_chirp_pitch", 1, .05, 4, "logarithmic"],
   ["body_decay_seconds_7", 1.2, .02, 20, "logarithmic"],
-  ["body_low_cut", 40, 10, 1000, "logarithmic"],
-  ["body_colour_gain", .5, -18, 18, "linear"],
+  ["output_low_cut", 40, 10, 1000, "logarithmic"],
+  ["output_colour_gain", .5, -18, 18, "linear"],
 ].map(([key, defaultValue, minimum, maximum, scale], index) => ({
   key, defaultValue, minimum, maximum, scale, index,
 }));
@@ -35,7 +35,7 @@ assert.throws(() => calibrationParameterValues(
 const gong = calibrationParameterValues(
   { parameter_preset: "gong-v1" }, descriptors);
 assert.deepEqual(gong, [
-  2.2, .8, -56, 1100, .72, 12, 0, 0, 128.9, -12.12, 0, .15,
+  2.2, .8, -56, 1100, .72*(1000/1200)**.6, 12, 0, 0, 128.9, -12.12, 0, .15,
   1.1, 25, 2,
 ]);
 

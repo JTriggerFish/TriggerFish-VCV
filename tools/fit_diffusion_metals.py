@@ -53,7 +53,7 @@ def run(args):
         else:
             # Visible starting controls, stored in every checkpoint. No hidden
             # recipe coefficients or restored random neighbour exchange.
-            search.parameters.update(bloom_energy_acceleration=1, field_drift_depth=0)
+            search.parameters.update(bloom_energy_acceleration=1, field_wander_hz=0)
             for knot in range(1, 7):
                 search.parameters[f"body_decay_active_{knot}"] = 0
         checkpoint(search, "start", baseline, mel)

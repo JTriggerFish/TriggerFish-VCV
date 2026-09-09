@@ -15,6 +15,24 @@ namespace tfdsp::percussion {
 // fractional frequency deviation, not linewidth or a change to the pole radius.
 template <std::size_t Count> class SmoothModalDrift {
 public:
+  // Absolute-Hz movement for narrow, irregular ringing. Unlike fractional
+  // drift it neither suppresses clean modes nor widens the treble in proportion
+  // to pitch. Boundary compression keeps every instantaneous pole frequency safe.
+  void PrepareHz(float sampleRate, const std::array<float, Count> &frequency,
+                 float depthHz, float knotsPerSecond, std::uint32_t seed) {
+    std::array<float, Count> amount{};
+    amount.fill(1.f);
+    Prepare(sampleRate, frequency, amount, 0.f, knotsPerSecond, seed);
+    const float depth = std::clamp(tfdsp::FiniteNormalOrZero(depthHz), 0.f, 100.f);
+    enabled_ = depth > 0.f;
+    for (std::size_t i = 0; i < Count; ++i) {
+      const float centre = std::clamp(tfdsp::FiniteNormalOrZero(frequency[i]),
+                                     0.f, .499f * sampleRate);
+      const float excursion = std::min({depth, centre, .499f * sampleRate-centre});
+      angleDepth_[i] = 6.28318530718f * excursion / sampleRate;
+    }
+  }
+
   void Prepare(float sampleRate, const std::array<float, Count> &frequency,
                const std::array<float, Count> &amount, float depthPercent,
                float knotsPerSecond, std::uint32_t seed) {

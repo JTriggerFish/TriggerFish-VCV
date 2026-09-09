@@ -84,19 +84,8 @@ struct ModalAnchor {
   float spreadErb{};
   float diffuseEnergy{};
   float exchangeAmount{};
+  float allocationWeight{1.f};
 };
-
-float NestedRadius(std::size_t index) noexcept {
-  if (index == 0) return 1.f;
-  float result = 0.f;
-  float place = .5f;
-  while (index > 0) {
-    result += place * static_cast<float>(index & 1u);
-    index >>= 1u;
-    place *= .5f;
-  }
-  return result;
-}
 
 float ExcitationTiltGain(const float frequencyHz, const float centreHz,
                          const float tiltDbPerOctave) noexcept {
@@ -119,7 +108,8 @@ std::size_t BuildActiveAnchors(
     if (!(fit.sparseAmplitude[index] > 0.f)) continue;
     anchors[count++] = {
         Positive(fit.sparseFrequencyHz[index], 1000.f), fit.sparseAmplitude[index],
-        fit.fieldTurbulenceScale[index], 0.f};
+        fit.fieldTurbulenceScale[index], 0.f, 0.f, 0.f,
+        fit.fieldAllocationWeight[index]};
   }
   std::sort(anchors.begin(), anchors.begin() + count,
             [](const auto &left, const auto &right) {
@@ -143,8 +133,7 @@ CrashModalField::Parameters ModalField(
   random.Seed(ModalFieldSeed ^ 0x4649454cu);
   const float turbulenceSlope = std::clamp(
       fit.fieldTurbulenceSlopePerOctave, -1.f, 1.f);
-  const float turbulenceCentre = std::clamp(
-      Positive(fit.fieldTurbulenceCentreHz, 4000.f), CrashModalMinimumFrequencyHz, .48f * sampleRate);
+  constexpr float turbulenceCentre = 1000.f; // Noisiness is defined at 1 kHz.
   std::array<float, CrashModalAnchorCapacity> anchorGains{};
   std::array<float, CrashModalAnchorCapacity> anchorOutputGains{};
   std::array<ModalPacketRequest, CrashModalAnchorCapacity> requests{};
@@ -189,17 +178,21 @@ CrashModalField::Parameters ModalField(
     anchors[anchor].spreadErb = anchors[anchor].turbulence * std::clamp(
         fit.fieldPacketSpreadErb, 0.f, 12.f);
     requests[anchor] = {
-        ErbRate(frequency), anchors[anchor].spreadErb, true};
+        ErbRate(frequency), anchors[anchor].spreadErb, true,
+        anchors[anchor].allocationWeight};
   }
   // A very dark shelf must redistribute energy, not secretly turn the body
   // down when all its unnormalized weights fall below an arbitrary floor.
   const double anchorNormalization = anchorSquaredGain > 0
       ? 1.0 / std::sqrt(anchorSquaredGain) : 0.0;
+  const bool pairedRing = HasPairedRing(fit.fieldDistribution, fit.fieldDoubletSplitHz);
   const auto allocation = AllocateModalPackets(
-      requests, CrashModalFieldModeCount, fit.fieldSatelliteDensity);
+      requests, CrashModalFieldModeCount, fit.fieldSatelliteDensity, pairedRing);
   constexpr float Pi = 3.14159265358979323846f;
   std::size_t modeIndex = 0;
   for (std::size_t anchor = 0; anchor < anchorCount; ++anchor) {
+    // Another packet gaining states must not randomize this packet's phases.
+    random.Seed(ModalFieldSeed ^ (0x9e3779b9u * std::uint32_t(anchor + 1)));
     const float turbulence = anchors[anchor].turbulence;
     const std::size_t pairCount = allocation.sidebandPairs[anchor];
     const float diffuseEnergy = pairCount > 0
@@ -224,30 +217,52 @@ CrashModalField::Parameters ModalField(
                               const float phase, const float bandwidthScale) {
       const float safeFrequency = std::clamp(frequency, CrashModalMinimumFrequencyHz,
                                               .48f * sampleRate);
+      // A preparation-only colour control: phase coherence can vary without
+      // changing packet allocation, excitation energy or ordinary damping.
+      const float blurTilt = std::clamp(
+          tfdsp::FiniteNormalOrZero(fit.fieldPhaseTilt), -2.f, 2.f);
+      const float blurColour = std::pow(safeFrequency / 1000.f, blurTilt);
       result[modeIndex++] = {
           safeFrequency,
           std::clamp(decay.At(safeFrequency), .02f, 30.f),
           anchorGain * weight,
           anchorOutputGain,
           phase,
-          bandwidthErb * ErbBandwidth(safeFrequency) * bandwidthScale,
+          bandwidthErb * ErbBandwidth(safeFrequency) * bandwidthScale * blurColour,
           static_cast<std::uint16_t>(anchor),
           anchors[anchor].exchangeAmount,
           centre};
     };
 
-    makeMode(centre, coreWeight, 0.f, .35f);
-    const float centreErb = ErbRate(centre);
-    const std::size_t packetBegin = modeIndex - 1;
+    const std::size_t packetBegin = modeIndex;
+    if (pairedRing) {
+      const float depth = std::clamp(fit.fieldBeatDepth, 0.f, 1.f);
+      const float rate = RingBeatRate(centre, fit.fieldDoubletSplitHz, fit.fieldBeatRateTilt);
+      const float halfSplit = depth > 0.f ? RingHalfSplit(centre, rate, .48f * sampleRate) : 0.f;
+      // Orthogonal launch: complex coefficients sum to one and their squared
+      // norms sum to one at every depth. Zero depth is one unsplit oscillator;
+      // reserve its unused partner to avoid reallocating the surrounding cloud.
+      const float normalization = 1.f / std::sqrt(1.f + depth * depth);
+      const float angle = std::atan(depth);
+      makeMode(centre - halfSplit, coreWeight * depth * normalization, Pi * .5f - angle, .35f);
+      makeMode(centre + halfSplit, coreWeight * normalization, -angle, .35f);
+    } else {
+      makeMode(centre, coreWeight, 0.f, .35f);
+    }
     for (std::size_t pair = 0; pair < pairCount; ++pair) {
       const float jitter = .92f + .08f * random.Uniform();
-      const float offset = spreadErb * NestedRadius(pair) * jitter;
-      const float low = InverseErbRate(std::max(ErbRate(CrashModalMinimumFrequencyHz),
-                                                centreErb - offset));
-      const float high = InverseErbRate(std::min(ErbRate(.48f * sampleRate),
-                                                 centreErb + offset));
-      makeMode(low, satelliteWeight, Pi * random.Bipolar(), 1.f);
-      makeMode(high, satelliteWeight, Pi * random.Bipolar(), 1.f);
+      const bool doublets = fit.fieldDistribution == ModalPacketDistribution::Doublets;
+      const float pairRate = doublets ? RingBeatRate(centre,
+          fit.fieldDoubletSplitHz, fit.fieldBeatRateTilt) : fit.fieldDoubletSplitHz;
+      const float weight = satelliteWeight * (doublets
+          ? DoubletWeightScale(pair, pairCount, fit.fieldBeatDepth) : 1.f);
+      const auto sideFrequency = [&](float side) {
+        return PacketSideFrequency(centre, spreadErb, pair, side,
+            fit.fieldDistribution, pairRate, jitter, .48f * sampleRate);
+      };
+      const float low = sideFrequency(-1.f), high = sideFrequency(1.f);
+      makeMode(low, weight, Pi * random.Bipolar(), 1.f);
+      makeMode(high, weight, Pi * random.Bipolar(), 1.f);
     }
     auto first = result.begin() + packetBegin;
     std::sort(first, result.begin() + modeIndex,
@@ -281,35 +296,20 @@ void SetLocationProjections(const Parameters &modes,
   }
 }
 
-ObservationModel<2>::Parameters Observation(
+RadiationFilterParameters OutputEq(
     const CrashCymbalFitParameters &fit) noexcept {
-  ObservationModel<2>::Parameters result{};
-  result[0].gain = std::clamp(fit.directGain, 0.f, 4.f);
-  result[0].radiationEnabled = fit.directRadiationEnabled;
-  result[0].radiation.lowCutHz =
-      std::clamp(fit.directLowCutHz, 10.f, 1000.f);
-  result[0].radiation.lowCutQ = .70710678f;
-  result[0].radiation.colourFrequencyHz =
-      std::clamp(fit.directColourFrequencyHz, 100.f, 18000.f);
-  result[0].radiation.colourGainDb =
-      std::clamp(fit.directColourGainDb, -18.f, 18.f);
-  result[0].radiation.colourQ = .8f;
-  result[0].radiation.highCutHz =
-      std::clamp(fit.directHighCutHz, 1000.f, 22000.f);
-  result[0].radiation.highCutQ = .70710678f;
-  result[1].gain = std::clamp(fit.fieldGain, 0.f, 4.f);
-  result[1].radiationEnabled = fit.bodyRadiationEnabled;
-  result[1].radiation.lowCutHz =
-      std::clamp(fit.bodyLowCutHz, 10.f, 1000.f);
-  result[1].radiation.lowCutQ = .70710678f;
-  result[1].radiation.colourFrequencyHz =
-      std::clamp(fit.bodyColourFrequencyHz, 100.f, 18000.f);
-  result[1].radiation.colourGainDb =
-      std::clamp(fit.bodyColourGainDb, -18.f, 18.f);
-  result[1].radiation.colourQ = .8f;
-  result[1].radiation.highCutHz =
-      std::clamp(fit.bodyHighCutHz, 1000.f, 22000.f);
-  result[1].radiation.highCutQ = .70710678f;
+  RadiationFilterParameters result{};
+  result.lowCutHz =
+      std::clamp(fit.outputLowCutHz, 10.f, 1000.f);
+  result.lowCutQ = .70710678f;
+  result.colourFrequencyHz =
+      std::clamp(fit.outputColourFrequencyHz, 100.f, 18000.f);
+  result.colourGainDb =
+      std::clamp(fit.outputColourGainDb, -18.f, 18.f);
+  result.colourQ = .8f;
+  result.highCutHz =
+      std::clamp(fit.outputHighCutHz, 1000.f, 22000.f);
+  result.highCutQ = .70710678f;
   return result;
 }
 
@@ -327,14 +327,14 @@ CrashCymbalParameters DefaultCrashCymbalParameters(
   result.modalFieldControls.exchangeAngleRadians =
       .012f * std::clamp(fit.fieldExchange, 0.f, 1.f);
   result.modalFieldControls.seed = ModalFieldSeed ^ 0x4649454cu;
-  result.modalFieldControls.driftDepthPercent = fit.fieldDriftDepthPercent;
-  result.modalFieldControls.driftKnotsPerSecond = fit.fieldDriftKnotsPerSecond;
+  result.modalFieldControls.driftDepthHz = fit.fieldWanderDepthHz;
+  result.modalFieldControls.driftKnotsPerSecond = fit.fieldWanderKnotsPerSecond;
   result.modalFieldControls.cascade = {
       std::clamp(fit.bloomRateOctavesPerSecond, 0.f, 32.f),
       std::clamp(fit.bloomEnergyAcceleration, 0.f, 1.f),
       std::clamp(fit.bloomPhaseDiffusion, 0.f, 1.f),
       ModalFieldSeed ^ 0x43415343u, fit.bloomSpectralDiffusion};
-  result.observation = Observation(fit);
+  result.outputEq = OutputEq(fit);
   return result;
 }
 

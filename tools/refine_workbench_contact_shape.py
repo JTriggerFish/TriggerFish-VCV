@@ -21,9 +21,6 @@ from triggerfish_percussion.workbench_search import Search
 
 BOUNDS = {
     "direct_gain": (0.5, 2.0),
-    "direct_low_cut": (400.0, 1000.0),
-    "direct_colour_frequency": (1500.0, 12000.0),
-    "direct_colour_gain": (-8.0, 12.0),
 }
 
 

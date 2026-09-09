@@ -532,12 +532,27 @@ void TestModalPacketAllocationUsesOneSharedBoundedPool() {
     requests[index] = {5.f + static_cast<float>(index), 6.f, true};
   const auto centresOnly = AllocateModalPackets(requests, 512, 0.f);
   const auto dense = AllocateModalPackets(requests, 512, 1.f);
+  const auto paired = AllocateModalPackets(requests, 512, 0.f, true);
+  const auto pairedDense = AllocateModalPackets(requests, 512, 1.f, true);
+  Check(paired.stateCount == 24 && pairedDense.stateCount == 512,
+        "paired centres reserve two states without exceeding the shared pool");
   Check(centresOnly.activeHandleCount == 12 &&
             centresOnly.stateCount == 12,
         "zero satellite density retains only painted centre handles");
   Check(dense.activeHandleCount == 12 && dense.stateCount <= 512 &&
             dense.stateCount > centresOnly.stateCount,
         "satellites share one bounded modal-state pool");
+  Check(dense.stateCount == 512, "full density uses the shared pool");
+  for (auto &request : requests) request.spreadErb = .02f;
+  const auto narrow = AllocateModalPackets(requests, 512, 1.f);
+  Check(narrow.stateCount == 512, "narrow stable packets are not forced sparse");
+  requests[0].allocationWeight = 0;
+  requests[1].allocationWeight = 4;
+  const auto weighted = AllocateModalPackets(requests, 512, 1.f);
+  Check(weighted.sidebandPairs[0] == 0 && weighted.stateCount == 512,
+        "zero local weight reallocates without wasting the pool");
+  Check(weighted.sidebandPairs[1] >= 3 * weighted.sidebandPairs[2],
+        "local weights give controllable relative allocation");
   for (std::size_t index = 12; index < requests.size(); ++index)
     Check(dense.sidebandPairs[index] == 0,
           "inactive handles never consume sideband states");

@@ -113,22 +113,17 @@ def polish(target, directory):
                 )
             search.screen_candidates("low-fed energy travel regimes", starts)
         if os.environ.get("TF_FIT_TEXTURE_SCREEN") == "1":
-            # Jointly cross the coherent/diffuse boundary. Independent tiny
-            # perturbations cannot find a clean bank if other diffusers remain on.
+            # Screen the visible phase coherence and packet width together.
             starts = []
-            for (phase, exchange, transfer), spread in product(
-                ((0, 0, 0), (0.01, 0.02, 0.1), (0.05, 0.05, 0.3)), (1.0, 3.0, 6.0)
-            ):
+            for phase, spread in product((0, 0.01, 0.05), (1.0, 3.0, 6.0)):
                 values = dict(
                     search.parameters,
                     field_phase_bandwidth=phase,
-                    field_exchange=exchange,
-                    bloom_phase_diffusion=transfer,
                     field_packet_spread=spread,
                 )
                 starts.append(
                     (
-                        f"phase {phase}, exchange {exchange}, transfer {transfer}, spread {spread}",
+                        f"phase {phase}, spread {spread}",
                         values,
                     )
                 )

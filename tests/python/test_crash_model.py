@@ -87,6 +87,39 @@ def test_native_crash_parameters_round_trip_and_render():
     assert np.max(np.abs(first)) > 0
 
 
+def test_native_packet_surface_round_trip():
+    fit = CrashFit(
+        field_distribution=3,
+        field_beat_depth=0.2,
+        field_doublet_split_hz=0.8,
+        field_beat_rate_tilt=-0.1,
+        field_phase_tilt=-0.5,
+        field_wander_depth_hz=0.65,
+        field_wander_knots_per_second=0.5,
+        field_relaxed_turbulence=True,
+        bloom_spectral_diffusion=True,
+        field_allocation_weight=(0.5,) * 32,
+    )
+    parameters = fit.native()
+    for key in (
+        "field_distribution",
+        "field_beat_depth",
+        "field_doublet_split_hz",
+        "field_beat_rate_tilt",
+        "field_phase_tilt",
+        "field_wander_depth_hz",
+        "field_wander_knots_per_second",
+        "field_relaxed_turbulence",
+        "bloom_spectral_diffusion",
+        "field_allocation_weight",
+    ):
+        np.testing.assert_allclose(getattr(parameters, key), getattr(fit, key))
+    with pytest.raises(ValueError, match="distribution"):
+        CrashFit(field_distribution=4).native()
+    audio = render_crash(fit, 0.1)
+    assert np.isfinite(audio).all() and np.max(np.abs(audio)) > 0
+
+
 def test_python_modal_grid_matches_the_native_constructive_defaults():
     fit = CrashFit()
     parameters = native.CrashCymbalFitParameters()

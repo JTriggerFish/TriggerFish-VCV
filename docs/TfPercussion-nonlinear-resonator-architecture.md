@@ -7,6 +7,17 @@ model and it does not claim that each control is a measurable physical property.
 Its controls are intended to be audible, reasonably orthogonal, and fit-able to
 recordings.
 
+For the current oscillator allocation, stable/doublet layouts, phase-blur
+controls and regional texture fitting, see [Beating packets](TfPercussion-beating-packets.md).
+The [control-surface review](TfPercussion-visible-controls-and-slow-beating.md)
+records visible-by-default grouping, a proposed noisiness-parameter reduction,
+and the slower gong-beating audit.
+The current [modal-wander and EQ refinement](TfPercussion-modal-wander-and-eq.md)
+covers fixed-pivot noisiness, irregular narrowband ringing, graphical EQ and
+the live full-output spectrum.
+That refinement supersedes the earlier width-limited allocator; the mono energy
+path and spectral-diffusion law described here are unchanged.
+
 Signal units and all gain stages are defined in
 [the gain-staging contract](TfPercussion-gain-staging.md).
 
@@ -25,11 +36,11 @@ hit event
    v
 contact exciter -----------------------> direct radiation --+
    |                                                        |
-   `---- body force ---> unified stochastic modal field ----+--> mono output
+   `---- body force ---> unified stochastic modal field ----+--> mix --> final EQ --> mono output
                               |       |       |
-                              |       |       `-- local passive exchange
-                              |       `---------- phase diffusion
-                              `------------------ upward energy cascade
+                              |       |       `-- smooth pitch wander
+                              |       `---------- phase blur
+                              `------------------ spectral-energy diffusion
 
 mute/constraint ----------------------> additional modal loss only
 ```
@@ -40,11 +51,12 @@ sample then executes, in this order:
 ```text
 contact = ContactExciter::Process()
 body = StochasticModalField::ProcessExcitedPair(contact.bodyDrive, 0, muteLoss)
-output = ObservationModel::Process({contact.directRadiation, body})
+mix = contactLevel * contact.directRadiation + bodyLevel * body
+output = modelLevel * (eqEnabled ? RadiationFilter::Process(mix) : mix)
 ```
 
-Inside the modal field, recurrence happens before the upward cascade and local
-exchange. The entire audio loop is fixed C++; it performs no graph traversal,
+Inside the modal field, recurrence happens before spectral-energy diffusion.
+The entire audio loop is fixed C++; it performs no graph traversal,
 allocation, or JSON processing.
 
 ## Contact excitation
@@ -118,130 +130,56 @@ not affect $q_m$, stored energy, or cascade activation. A handle at the editor's
 silence boundary is absent from both vectors. With no drive or constraint, the
 pole radius is the only loss in this recurrence.
 
-Global turbulence and its per-anchor multiplier control a normalized
-centre-to-satellite trajectory. Increasing turbulence:
+Global noisiness and its per-anchor multiplier distribute excitation energy
+between the coherent centre (or pair) and surrounding modes. Packet spread
+sets their frequency range, density/local allocation sets the number of
+oscillators, and phase blur sets stochastic coherence loss. No random neighbour
+exchange is enabled in the current workbench recipe.
 
-1. transfers excitation weight from the centre to its satellites;
-2. widens their spread on the ERB-rate axis;
-3. increases magnitude-preserving phase diffusion; and
-4. increases passive exchange with compatible neighbours.
-
-The squared excitation weights are normalized, so turbulence is not an
-unlabelled gain control. A frequency-dependent turbulence field is
+The noisiness field is defined at a fixed 1 kHz pivot:
 
 $$
-t(f)=\operatorname{clamp}\!\left(
-  t_c+s\log_2\!\frac{f}{f_c},\;0,\;1
-\right)t_{\mathrm{local}},
+t(f)=t_{1\mathrm{kHz}}\left(\frac{f}{1000\,\mathrm{Hz}}\right)^s
+t_{\mathrm{local}}.
 $$
 
-where $t_c$ is `Turbulence`, $s$ is `Turbulence slope`, and $f_c$ is
-`Turbulence centre`. Positive slope keeps low packets more defined while making
-high packets progressively wash-like. This is deliberately independent of the
-painted modal prominence.
+The relaxed response maps this smoothly to a bounded satellite-energy fraction;
+it does not add energy. See [the packet design](TfPercussion-beating-packets.md)
+and [current movement controls](TfPercussion-modal-wander-and-eq.md) for
+allocation, paired-ring coefficients, phase blur and independent Hz wander.
 
-## Intrinsic bloom: stored-energy transport
+## Intrinsic bloom: spectral-energy diffusion
 
-Bloom is passive, one-way transport between frequency-ordered packets. It acts
-directly on their complex states. A fixed half-octave transport stencil is
-interpolated onto the available painted anchors. Adding an anchor between two
-existing frequencies therefore refines the audible modal field; it does not
-insert another serial bloom stage or change the meaning of the rate control.
-For source energy $E_l$, one sample computes a bounded transfer fraction
+The current workbench uses **bidirectional diffusion down the spectral-energy
+density gradient**, not a prescribed upward velocity. A low-heavy strike
+usually drives energy upward initially; direction follows the state and can
+reverse. The old one-way cascade remains a generic library primitive, not the
+active recipe's transfer law.
 
-$$
-q = 1-\exp\!\left(-\frac{R\,a(E_l)}{F_s\,\Delta o}\right),
-$$
-
-where $R$ is `Bloom rate` in octaves per second, $\Delta o$ is the half-octave
-stencil distance (shortened only at the upper field boundary), and $F_s$ is
-sample rate. `Energy acceleration` controls
+With normalized coordinate $x=f/(1000\,\mathrm{Hz})$, packet cell width $w_i$,
+stored energy $e_i$ and reference input energy $E_{\mathrm{ref}}$:
 
 $$
-a(E)=1+7d\frac{E}{E+E_{\mathrm{ref}}}.
+\rho_i=\frac{e_i}{E_{\mathrm{ref}}w_i}.
 $$
 
-Here $E$ and $E_{\mathrm{ref}}$ are totals for the whole field, rather than
-per-packet values. Consequently the activation does not change when an artist
-inserts an intermediate anchor. At $d=0$, transport rate is level-independent.
-At $d>0$, stored energy accelerates transport from the declared baseline $R$
-toward $8R$. This deliberately broad range allows a forceful onset to bloom
-quickly while a quiet late tail travels slowly. The cascade may therefore drain
-lower packets upward; the shared
-frequency-dependent T60 curve remains the final decay shaper. This is in
-addition to, and testable
-separately from, the visible velocity-brightness excitation tilt.
-With the factory mapping, every increase in strike strength therefore both
-injects more total energy and increases high-frequency excitation; it cannot
-become darker merely because the input became stronger.
+A semi-implicit tridiagonal solve redistributes these densities using
+nonnegative, energy-dependent conductances. Closed boundary fluxes preserve
+total stored energy and keep it nonnegative. Packet amplitudes are rescaled;
+previously silent packets receive exactly their allocated energy through the
+same normalized centre/satellite weights used for excitation. There is no
+separate noise signal or timed high-frequency injection.
 
-The event energy is deposited into the one or two anchors bracketing the target
-log-frequency. Linear interpolation in octaves preserves the requested mean
-travel distance. If a field is sparser than the stencil, part of the event
-remains at the source and the rest enters the next available anchor. The state
-update is therefore, schematically,
+The complete conductivity, boundary and discretization equations are maintained
+in [spectral-energy diffusion](TfPercussion-spectral-diffusion.md).
+Diffusion strength is a coefficient, **not octaves per second**. Nonlinearity
+sets the energy dependence: zero is linear diffusion; positive values reduce
+conductivity as energy fades. It is not a guarantee of a fixed bloom time.
 
-$$
-E_l'=(1-q)E_l+w_lqE_l, \qquad
-E_u'=E_u+w_uqE_l, \qquad w_l+w_u=1.
-$$
-
-It is implemented by magnitude scaling of the actual complex packet states, so
-apart from floating-point error,
-
-$$
-E_l'+E_u'=E_l+E_u.
-$$
-
-No signal is added to the output. If the upper packet was silent it is seeded
-with exactly the transferred energy, distributed between its coherent centre
-and stochastic satellites using the same normalized weights as a direct hit;
-otherwise its existing state is scaled.
-`Bloom phase diffusion` then rotates destination phasors by deterministic
-signed angles. Rotation changes correlation and texture but preserves
-magnitude.
-
-All transfers use packet energies captured at the beginning of the sample.
-Newly received energy therefore cannot cascade again in that sample. The bloom
-is continuous from the beginning of a strike and progresses upward at a
-declared rate; it cannot suddenly appear after an arbitrary timer. Repeated
-hits add force to the state already present, so a crash can build and swell.
-
-This mechanism is a constructive approximation to nonlinear energy transfer,
-not a solver for thin-shell equations. It intentionally models the perceptual
-property the control names: low-frequency stored energy progressively populates
-higher, denser modal regions.
-
-## Local diffusion and exchange
-
-Two separate energy-neutral processes control density:
-
-- phase diffusion rotates individual complex modal states;
-- local exchange applies signed Givens rotations to neighbouring state pairs.
-
-For two real state components,
-
-$$
-\begin{bmatrix}x_a'\\x_b'\end{bmatrix}=
-\begin{bmatrix}\cos\theta&-\sin\theta\\
-                \sin\theta& \cos\theta\end{bmatrix}
-\begin{bmatrix}x_a\\x_b\end{bmatrix}.
-$$
-
-The same rotation is applied to the imaginary components, so paired energy is
-unchanged. Unlike the upward cascade, local exchange is symmetric and does not
-create a preferred spectral direction.
-
-These operations have distinct jobs:
-
-| Control | Changes |
-| --- | --- |
-| Packet spread | prepared satellite frequencies |
-| Phase bandwidth | time-varying coherence/linewidth |
-| Local exchange | passive short-range state mixing |
-| Bloom rate | directed upward state-energy travel |
-| Energy acceleration | how strongly travel accelerates with stored strike energy |
-| Bloom phase diffusion | correlation of newly populated upper states |
+Phase blur rotates modal states without changing their energy. Smooth pitch
+wander changes instantaneous frequency without changing the pole radius.
+Neither replaces diffusion or T60 damping. Random neighbour exchange and
+arrival-phase randomization are disconnected in this recipe.
 
 ## Decay and mute
 
@@ -300,10 +238,11 @@ spectral amplitude. Body tune scales modal centre frequencies, while contact
 chirp pitch changes only the impact. Neither is a global audio-domain pitch
 shifter.
 
-The final observation has independent direct and body gains and static
-radiation filters. Observation filtering changes recorded colour without
-changing the body's stored energy or T60. An optional relative propagation
-delay exists for future presentation work and is off by default. Stereo remains
+The final observation mixes independent direct and body levels, then applies
+one shared high-pass/colour/low-pass EQ. Observation filtering changes recorded
+colour without changing the body's stored energy or T60. The reusable observation
+delay primitive remains available for future presentation work; this voice does
+not instantiate it or any per-path EQ. Stereo remains
 an output-presentation extension; the synthesized object is mono.
 
 ## Explicit non-features
@@ -329,12 +268,10 @@ They cover:
 - deterministic rendering and finite state at supported sample rates;
 - monotonic output energy across a velocity sweep;
 - increased high-frequency response for stronger strikes;
-- stronger energy-dependent upward transport with velocity brightness disabled;
-- exact passivity of an isolated cascade within tolerance;
-- invariant high-band arrival after inserting intermediate painted anchors;
-- preservation of a packet's centre-to-sideband energy ratio on cascade entry;
-- no same-sample retransmission of newly arrived cascade energy;
-- energy-preserving phase diffusion and Givens exchange;
+- passive diffusion with nonnegative energy and closed boundaries;
+- packet-coordinate and coincident-anchor consistency;
+- preservation of normalized centre/satellite excitation weights;
+- bounded phase blur and smooth frequency movement;
 - passive mute and zero-strength no-op;
 - additive restrikes when nonlinear transport is disabled; and
 - bounded long rendering at maximum bloom settings.
@@ -390,7 +327,7 @@ invariants and listening results, not attributed to any single source.
 | Unified recurrence and local exchange | `src/tfdsp/percussion/stochastic_modal_field.hpp` |
 | Directed state-energy transport | `src/tfdsp/percussion/modal_energy_cascade.hpp` |
 | Passive live damping | `src/tfdsp/percussion/passive_constraint.hpp` |
-| Observation | `src/tfdsp/percussion/observation_model.hpp` |
+| Final output EQ | `src/tfdsp/percussion/radiation_filter.hpp` |
 
 Related documents:
 

@@ -270,7 +270,9 @@ class Search:
             product((400, 700, 1000, 1400), (0.15, 0.35, 0.6), (0.12, 0.5, 1))
         ):
             candidate = dict(
-                initial, field_turbulence_centre=centre, field_turbulence_slope=slope
+                initial,
+                field_turbulence=initial["field_turbulence"] * (1000 / centre) ** slope,
+                field_turbulence_slope=slope,
             )
             candidate.update({f"resolved_turbulence_{i}": low_scale for i in range(9)})
             score = float(np.linalg.norm(self.loss.residual(self.audio(candidate))))

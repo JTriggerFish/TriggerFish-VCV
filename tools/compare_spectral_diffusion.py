@@ -59,12 +59,10 @@ def run(args):
         perceptual = AuralossMel(reference, rate)
         base = dict(renderer.initial)
         variants = {
-            "cascade": {},
-            "diffusion-same-controls": {"bloom_spectral_diffusion": 1},
+            "current-diffusion": {},
         }
         for strength in (0.25, 1, 4, 16):
             variants[f"quadratic-{strength:g}"] = dict(
-                bloom_spectral_diffusion=1,
                 bloom_rate=strength,
                 bloom_energy_acceleration=1,
             )

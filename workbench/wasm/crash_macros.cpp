@@ -60,14 +60,11 @@ std::array<CrashMacroDescriptor, CrashMacroCount> BuildDescriptors() {
       Logarithmic("body_excitation_centre", "Excitation centre", "Hz",
                   CrashModalMinimumFrequencyHz, 15000.f, fit.bodyExcitationCentreHz));
   set(CrashMacro::FieldTurbulence,
-      Linear("field_turbulence", "Packet noisiness", "", 0.f, 4.f,
+      Linear("field_turbulence", "Noisiness at 1 kHz", "", 0.f, 4000.f,
              fit.fieldTurbulence));
   set(CrashMacro::FieldTurbulenceSlope,
       Linear("field_turbulence_slope", "Noisiness slope", "/oct", -1.f,
              1.f, fit.fieldTurbulenceSlopePerOctave));
-  set(CrashMacro::FieldTurbulenceCentre,
-      Logarithmic("field_turbulence_centre", "Noisiness centre", "Hz",
-                  CrashModalMinimumFrequencyHz, 15000.f, fit.fieldTurbulenceCentreHz));
   set(CrashMacro::FieldPacketSpread,
       Linear("field_packet_spread", "Packet spread", "ERB", 0.f, 12.f,
              fit.fieldPacketSpreadErb));
@@ -75,14 +72,28 @@ std::array<CrashMacroDescriptor, CrashMacroCount> BuildDescriptors() {
       Linear("field_satellite_density", "Satellite density", "", 0.f, 1.f,
              fit.fieldSatelliteDensity));
   set(CrashMacro::FieldPhaseBandwidth,
-      Linear("field_phase_bandwidth", "Stochastic bandwidth", "ERB", 0.f, 4.f,
+      Linear("field_phase_bandwidth", "Phase blur", "ERB", 0.f, 4.f,
              fit.fieldPhaseBandwidthErb));
-  set(CrashMacro::FieldDriftDepth,
-      Linear("field_drift_depth", "Smooth drift depth (experimental)", "%",
-             0.f, 10.f, fit.fieldDriftDepthPercent));
-  set(CrashMacro::FieldDriftRate,
-      Logarithmic("field_drift_rate", "Smooth drift speed", "knots/s",
-                  .1f, 40.f, fit.fieldDriftKnotsPerSecond));
+  set(CrashMacro::FieldPhaseTilt,
+      Linear("field_phase_tilt", "Blur tilt (1 kHz pivot)", "oct/oct", -2.f, 2.f,
+             fit.fieldPhaseTilt));
+  set(CrashMacro::FieldDistribution,
+      Linear("field_distribution", "Ring character", "", 0.f, 3.f,
+             float(fit.fieldDistribution)));
+  set(CrashMacro::FieldDoubletSplit,
+      Linear("field_doublet_split", "Beat rate", "Hz", 0.f, 80.f,
+                  fit.fieldDoubletSplitHz));
+  set(CrashMacro::FieldBeatDepth,
+      Linear("field_beat_depth", "Beat depth", "", 0.f, 1.f, fit.fieldBeatDepth));
+  set(CrashMacro::FieldBeatRateTilt,
+      Linear("field_beat_rate_tilt", "Beat rate tilt", "oct/oct", -1.f, 1.f,
+             fit.fieldBeatRateTilt));
+  set(CrashMacro::FieldWanderHz,
+      Linear("field_wander_hz", "Pitch wander", "Hz",
+             0.f, 100.f, fit.fieldWanderDepthHz));
+  set(CrashMacro::FieldWanderRate,
+      Logarithmic("field_wander_rate", "Wander speed", "changes/s",
+                  .1f, 40.f, fit.fieldWanderKnotsPerSecond));
   set(CrashMacro::BodyExcitation,
       Logarithmic("body_excitation", "Body excitation", "x", .001f, 4.f,
                   fit.bodyExcitationGain));
@@ -93,35 +104,21 @@ std::array<CrashMacroDescriptor, CrashMacroCount> BuildDescriptors() {
       Linear("direct_gain", "Contact presence", "", 0.f, 2.f,
              fit.directGain));
 
-  const auto radiation = [&](const CrashMacro enabled, const CrashMacro low,
-                             const CrashMacro frequency, const CrashMacro gain,
-                             const CrashMacro high, const std::string &prefix,
-                             const bool enabledValue, const float lowValue,
-                             const float frequencyValue, const float gainValue,
-                             const float highValue) {
-    set(enabled, {prefix + "_radiation_enabled", "Enable radiation EQ", "",
-                  0.f, 1.f, enabledValue ? 1.f : 0.f,
-                  CrashMacroScale::Boolean});
-    set(low, Logarithmic(prefix + "_low_cut", "High-pass", "Hz", 10.f,
-                         1000.f, lowValue));
-    set(frequency, Logarithmic(prefix + "_colour_frequency",
-                               "Colour frequency", "Hz", 100.f, 18000.f,
-                               frequencyValue));
-    set(gain, Linear(prefix + "_colour_gain", "Colour gain", "dB", -18.f,
-                     18.f, gainValue));
-    set(high, Logarithmic(prefix + "_high_cut", "Low-pass", "Hz", 1000.f,
-                          22000.f, highValue));
-  };
-  radiation(CrashMacro::DirectRadiationEnabled, CrashMacro::DirectLowCut,
-            CrashMacro::DirectColourFrequency, CrashMacro::DirectColourGain,
-            CrashMacro::DirectHighCut, "direct", fit.directRadiationEnabled,
-            fit.directLowCutHz, fit.directColourFrequencyHz,
-            fit.directColourGainDb, fit.directHighCutHz);
-  radiation(CrashMacro::BodyRadiationEnabled, CrashMacro::BodyLowCut,
-            CrashMacro::BodyColourFrequency, CrashMacro::BodyColourGain,
-            CrashMacro::BodyHighCut, "body", fit.bodyRadiationEnabled,
-            fit.bodyLowCutHz, fit.bodyColourFrequencyHz,
-            fit.bodyColourGainDb, fit.bodyHighCutHz);
+  set(CrashMacro::OutputEqEnabled,
+      {"output_eq_enabled", "Enable final EQ", "", 0.f, 1.f,
+       fit.outputEqEnabled ? 1.f : 0.f, CrashMacroScale::Boolean});
+  set(CrashMacro::OutputLowCut,
+      Logarithmic("output_low_cut", "High-pass", "Hz", 10.f, 1000.f,
+                  fit.outputLowCutHz));
+  set(CrashMacro::OutputColourFrequency,
+      Logarithmic("output_colour_frequency", "Colour frequency", "Hz",
+                  100.f, 18000.f, fit.outputColourFrequencyHz));
+  set(CrashMacro::OutputColourGain,
+      Linear("output_colour_gain", "Colour gain", "dB", -18.f, 18.f,
+             fit.outputColourGainDb));
+  set(CrashMacro::OutputHighCut,
+      Logarithmic("output_high_cut", "Low-pass", "Hz", 1000.f, 22000.f,
+                  fit.outputHighCutHz));
 
   for (std::size_t interior = 0; interior < BodyDecayInteriorPointCount;
        ++interior) {
@@ -147,6 +144,10 @@ std::array<CrashMacroDescriptor, CrashMacroCount> BuildDescriptors() {
   }
 
   for (std::size_t point = 0; point < ResolvedModePointCount; ++point) {
+    result[Index(CrashMacro::ResolvedAllocationFirst) + point] = Linear(
+        "resolved_allocation_" + std::to_string(point),
+        "Sideband allocation " + std::to_string(point + 1), "x", 0.f, 4.f,
+        fit.fieldAllocationWeight[point]);
     result[Index(CrashMacro::ResolvedFrequencyFirst) + point] = Logarithmic(
         "resolved_frequency_" + std::to_string(point),
         "Resolved mode " + std::to_string(point + 1), "Hz", CrashModalMinimumFrequencyHz, 15000.f,
@@ -204,6 +205,8 @@ void ApplyResolvedPaint(CrashCymbalFitParameters &fit,
         ? 0.f : std::pow(10.f, level / 20.f);
     fit.fieldTurbulenceScale[mode] = ValueAt(
         values, Index(CrashMacro::ResolvedTurbulenceFirst) + mode);
+    fit.fieldAllocationWeight[mode] = ValueAt(
+        values, Index(CrashMacro::ResolvedAllocationFirst) + mode);
   }
 }
 
@@ -247,6 +250,7 @@ CrashCymbalFitParameters MetallicWorkbenchBaseFit() noexcept {
   // Instrument presets start from the documented DSP defaults. No fitted
   // crash, gong, ride, or hat state is allowed to leak into another preset.
   CrashCymbalFitParameters fit{};
+  fit.fieldDistribution = tfdsp::percussion::ModalPacketDistribution::PairedRing;
   fit.bloomSpectralDiffusion = true;
   fit.fieldRelaxedTurbulence = true;
   fit.bloomPhaseDiffusion = 0.f;
@@ -295,15 +299,19 @@ CrashCymbalFitParameters ApplyCrashMacros(
   fit.fieldTurbulence = Value(values, CrashMacro::FieldTurbulence);
   fit.fieldTurbulenceSlopePerOctave = Value(
       values, CrashMacro::FieldTurbulenceSlope);
-  fit.fieldTurbulenceCentreHz = Value(
-      values, CrashMacro::FieldTurbulenceCentre);
   fit.fieldPacketSpreadErb = Value(values, CrashMacro::FieldPacketSpread);
   fit.fieldSatelliteDensity = Value(
       values, CrashMacro::FieldSatelliteDensity);
   fit.fieldPhaseBandwidthErb =
       Value(values, CrashMacro::FieldPhaseBandwidth);
-  fit.fieldDriftDepthPercent = Value(values, CrashMacro::FieldDriftDepth);
-  fit.fieldDriftKnotsPerSecond = Value(values, CrashMacro::FieldDriftRate);
+  fit.fieldPhaseTilt = Value(values, CrashMacro::FieldPhaseTilt);
+  fit.fieldDistribution = static_cast<tfdsp::percussion::ModalPacketDistribution>(
+      int(std::round(Value(values, CrashMacro::FieldDistribution))));
+  fit.fieldDoubletSplitHz = Value(values, CrashMacro::FieldDoubletSplit);
+  fit.fieldBeatDepth = Value(values, CrashMacro::FieldBeatDepth);
+  fit.fieldBeatRateTilt = Value(values, CrashMacro::FieldBeatRateTilt);
+  fit.fieldWanderDepthHz = Value(values, CrashMacro::FieldWanderHz);
+  fit.fieldWanderKnotsPerSecond = Value(values, CrashMacro::FieldWanderRate);
   fit.bodyExcitationGain = Value(values, CrashMacro::BodyExcitation);
   fit.fieldGain = Value(values, CrashMacro::FieldGain);
   fit.directGain = Value(values, CrashMacro::DirectGain);
@@ -312,18 +320,12 @@ CrashCymbalFitParameters ApplyCrashMacros(
   ApplyResolvedPaint(fit, values);
   ApplyBodyDecay(fit, values);
 
-  fit.directRadiationEnabled =
-      Value(values, CrashMacro::DirectRadiationEnabled) >= .5f;
-  fit.directLowCutHz = Value(values, CrashMacro::DirectLowCut);
-  fit.directColourFrequencyHz = Value(values, CrashMacro::DirectColourFrequency);
-  fit.directColourGainDb = Value(values, CrashMacro::DirectColourGain);
-  fit.directHighCutHz = Value(values, CrashMacro::DirectHighCut);
-  fit.bodyRadiationEnabled =
-      Value(values, CrashMacro::BodyRadiationEnabled) >= .5f;
-  fit.bodyLowCutHz = Value(values, CrashMacro::BodyLowCut);
-  fit.bodyColourFrequencyHz = Value(values, CrashMacro::BodyColourFrequency);
-  fit.bodyColourGainDb = Value(values, CrashMacro::BodyColourGain);
-  fit.bodyHighCutHz = Value(values, CrashMacro::BodyHighCut);
+  fit.outputEqEnabled =
+      Value(values, CrashMacro::OutputEqEnabled) >= .5f;
+  fit.outputLowCutHz = Value(values, CrashMacro::OutputLowCut);
+  fit.outputColourFrequencyHz = Value(values, CrashMacro::OutputColourFrequency);
+  fit.outputColourGainDb = Value(values, CrashMacro::OutputColourGain);
+  fit.outputHighCutHz = Value(values, CrashMacro::OutputHighCut);
   return fit;
 }
 

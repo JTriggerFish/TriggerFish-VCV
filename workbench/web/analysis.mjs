@@ -103,7 +103,8 @@ export function stft(samples, sampleRate, options = {}) {
       peakDb = Math.max(peakDb, valueDb);
     }
   }
-  return { values, frames, bins, size, hop, sampleRate, floorDb, peakDb };
+  const noiseBandwidthHz = sampleRate * window.reduce((sum,w)=>sum+w*w,0) / (windowSum*windowSum);
+  return { values, frames, bins, size, hop, sampleRate, floorDb, peakDb, noiseBandwidthHz };
 }
 
 export function centeredErrorStatistics(values) {

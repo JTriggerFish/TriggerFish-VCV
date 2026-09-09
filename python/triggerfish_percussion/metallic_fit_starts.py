@@ -48,9 +48,8 @@ def metallic_starts(parameters, reference, rate):
                     values[f"resolved_level_{i}"] = -6.0
             values.update(
                 field_packet_spread=spread,
-                field_turbulence=0.65,
+                field_turbulence=0.65 * (1000 / 1200) ** 0.3,
                 field_turbulence_slope=0.3,
-                field_turbulence_centre=1200.0,
                 body_brightness=-6.0,
                 body_excitation_centre=1200.0,
             )

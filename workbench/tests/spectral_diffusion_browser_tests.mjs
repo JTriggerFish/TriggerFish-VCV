@@ -42,7 +42,67 @@ try {
       const row = key => document.querySelector('[data-fit-key="'+key+'"]');
       const ready = () => document.getElementById('status')?.textContent.startsWith('Ready');
       await wait(ready);
+      for (const key of ['field_phase_tilt','field_beat_rate_tilt','field_wander_hz',
+                         'impact_chirp_pitch','output_eq_enabled']) {
+        const control = row(key);
+        if (!control) throw Error('Missing visible control: '+key);
+        for(let parent=control.parentElement;parent;parent=parent.parentElement)
+          if(parent.tagName==='DETAILS'&&!parent.open) throw Error('Collapsed control: '+key);
+      }
+      if ([...document.querySelectorAll('summary')].some(s=>s.textContent.includes('Advanced')))
+        throw Error('Advanced controls must not be hidden');
+      const spreadHelp = row('field_packet_spread')?.dataset.tooltip;
+      if (!spreadHelp?.includes('spacing, not how many')) throw Error('Missing ear-first help');
+      // Keyboard help near the bottom must flip above the control, not clip.
+      const helpProbe = document.createElement('button');
+      helpProbe.dataset.tooltip = spreadHelp;
+      helpProbe.style.cssText = 'position:fixed;bottom:8px;right:8px;z-index:200';
+      document.body.append(helpProbe);
+      // Background CDP tabs do not consistently dispatch native focus events.
+      helpProbe.dispatchEvent(new FocusEvent('focusin', {bubbles:true}));
+      await wait(() => document.getElementById('workbench-tooltip')?.classList.contains('visible'));
+      const tip = document.getElementById('workbench-tooltip').getBoundingClientRect();
+      if (tip.top < 0 || tip.bottom > innerHeight || tip.right > innerWidth)
+        throw Error('Tooltip outside viewport');
+      document.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape'}));
+      helpProbe.remove();
+      const character = row('field_distribution').querySelector('select');
+      if (![...character.options].some(o => o.value === '3' && o.textContent === 'Paired ring'))
+        throw Error('Missing paired ring character');
+      character.value = '3';character.dispatchEvent(new Event('change'));
+      await new Promise(resolve=>setTimeout(resolve,200));await wait(ready);
+      const beat = row('field_doublet_split').querySelector('input');
+      if (beat.disabled) throw Error('Paired ring beat rate disabled');
+      for (const key of ['field_beat_depth','field_beat_rate_tilt'])
+        if (row(key)?.querySelector('input')?.disabled !== false)
+          throw Error('Missing active paired ring control: '+key);
+      const {beatRatePosition} = await import('./packet_layout_control.mjs');
+      beat.value = beatRatePosition(80,1.25);beat.dispatchEvent(new Event('input'));
+      await new Promise(resolve=>setTimeout(resolve,200));await wait(ready);
+      if (!row('field_doublet_split').querySelector('output').textContent.includes('1.25'))
+        throw Error('Slow beat rate loses precision');
+      for (const [key,expected] of [['field_beat_depth','0.300'],['field_beat_rate_tilt','0.250']]) {
+        const input=row(key).querySelector('input');
+        input.value=.9;input.dispatchEvent(new Event('input'));
+        await new Promise(resolve=>setTimeout(resolve,200));await wait(ready);
+        row(key).querySelector('input').dispatchEvent(new MouseEvent('dblclick',{bubbles:true}));
+        await new Promise(resolve=>setTimeout(resolve,200));await wait(ready);
+        if(!row(key).querySelector('output').textContent.includes(expected))
+          throw Error('Beat reset did not restore gentle default: '+key);
+      }
+      character.value = '0';character.dispatchEvent(new Event('change'));
+      await new Promise(resolve=>setTimeout(resolve,200));await wait(ready);
+      if (!row('field_doublet_split').querySelector('input').disabled)
+        throw Error('Inactive beat rate should be greyed out');
+      for (const key of ['field_beat_depth','field_beat_rate_tilt'])
+        if (!row(key).querySelector('input').disabled)
+          throw Error('Inactive paired ring control should be greyed out: '+key);
       const results=[];
+      character.value='2'; character.dispatchEvent(new Event('change'));
+      for(const key of ['field_beat_depth','field_beat_rate_tilt'])
+        if(row(key).querySelector('input').disabled) throw Error('Doublet control disabled: '+key);
+      if(!row('field_phase_tilt')?.dataset.tooltip.includes('1 kHz'))
+        throw Error('Missing blur balance guidance');
       for (const id of ['crash-standard','gong-standard','ride-standard','hihat-standard']) {
         const select=document.getElementById('instrument-calibration');
         if(![...select.options].some(o=>o.value===id)) throw Error('Missing '+id);
@@ -55,7 +115,7 @@ try {
           if(row(obsolete)) throw Error('Obsolete control visible: '+obsolete);
         if(!row('bloom_rate').textContent.includes('Diffusion strength') ||
            row('bloom_rate').textContent.includes('oct/s') ||
-           !row('field_turbulence').textContent.includes('Packet noisiness'))
+           !row('field_turbulence').textContent.includes('Noisiness at 1 kHz'))
           throw Error('Wrong model labels');
         results.push(id);
       }
@@ -85,6 +145,21 @@ try {
         presets.value='crash-standard';presets.dispatchEvent(new Event('change'));
         await new Promise(resolve=>setTimeout(resolve,200));await wait(ready);
       }
+      const timing=document.querySelector('[aria-label="Bloom timing meta"]');
+      const watched=['bloom_rate','body_brightness','body_excitation_centre'];
+      const original=watched.map(key=>row(key).querySelector('output').textContent);
+      timing.value=.5;timing.dispatchEvent(new Event('input'));
+      if(watched.some((key,i)=>row(key).querySelector('output').textContent===original[i]))
+        throw Error('Timing meta failed to refresh its underlying sliders');
+      timing.dispatchEvent(new MouseEvent('dblclick'));
+      if(watched.some((key,i)=>row(key).querySelector('output').textContent!==original[i]))
+        throw Error('Timing meta reset did not restore the captured patch');
+      timing.value=.3;timing.dispatchEvent(new Event('input'));
+      const brightness=row('body_brightness').querySelector('input');
+      brightness.value=.5;brightness.dispatchEvent(new Event('input'));
+      if(Number(timing.value)!==0) throw Error('Direct edit did not establish a new timing centre');
+      if(document.querySelectorAll('[data-fit-key="body_brightness"]').length!==1)
+        throw Error('Excitation controls duplicated between body and bloom');
       const {PercussionEngine}=await import('./engine.mjs');
       const {FitControls}=await import('./fit_controls.mjs');
       const engine=await PercussionEngine.create(44100,0);
@@ -92,6 +167,16 @@ try {
         state:{macros:engine.parameters.map(d=>d.defaultValue)},onChange:()=>{}});
       document.getElementById('modal-editor').replaceChildren();
       controls.buildResolvedEditor();
+      controls.resolvedEditor.select(0);
+      const allocationRow=document.querySelector('[data-fit-key="resolved_allocation_0"]');
+      if(!allocationRow || !document.getElementById('modal-readout').textContent.includes('/512 oscillators'))
+        throw Error('Missing sideband allocation control or pool readout');
+      allocationRow.querySelector('input').value=0;
+      allocationRow.querySelector('input').dispatchEvent(new Event('input'));
+      if(controls.value('resolved_allocation_0')!==0 ||
+         !document.querySelector('#modal-selection>b').textContent.includes('2 oscillators'))
+        throw Error('Default paired-centre allocation is not reflected in editor');
+      controls.resolvedEditor.select(null);
       const host=document.getElementById('modal-templates');
       if(!host.querySelector('details').open) throw Error('Generator is hidden');
       if(!host.querySelector('details').open ||
@@ -195,6 +280,69 @@ try {
   console.log(JSON.stringify(result.result.value));
   const shot=await call("Page.captureScreenshot",{format:"png"});
   await writeFile("build/modal-generator-review.png",Buffer.from(shot.data,"base64"));
+  await call("Runtime.evaluate", {expression:
+    "document.getElementById('dismiss-error').click(); document.getElementById('bloom-controls').scrollIntoView({block:'center'});"});
+  const timingShot=await call("Page.captureScreenshot",{format:"png"});
+  await writeFile("build/bloom-timing-review.png",Buffer.from(timingShot.data,"base64"));
+  await call("Runtime.evaluate", {expression:
+    "document.getElementById('field-turbulence-controls').scrollIntoView({block:'start'});"});
+  const modalShot=await call("Page.captureScreenshot",{format:"png"});
+  await writeFile("build/modal-controls-review.png",Buffer.from(modalShot.data,"base64"));
+  const eq = await call("Runtime.evaluate",{returnByValue:true,expression:`(() => {
+    const host=document.getElementById('output-eq-editor');
+    host.scrollIntoView({block:'center'});
+    const node=host.querySelector('[data-node="1"]');
+    if(!node)throw Error('Missing graphical EQ handle');
+    const b=node.getBoundingClientRect();return {x:b.x+b.width/2,y:b.y+b.height/2};
+  })()`});
+  const point=eq.result.value;
+  await call('Input.dispatchMouseEvent',{type:'mouseMoved',...point});
+  await call('Input.dispatchMouseEvent',{type:'mousePressed',...point,button:'left',clickCount:1});
+  await call('Input.dispatchMouseEvent',{type:'mouseMoved',x:point.x-25,y:point.y-12,buttons:1});
+  await call('Input.dispatchMouseEvent',{type:'mouseReleased',x:point.x-25,y:point.y-12,button:'left',clickCount:1});
+  const checked = await call('Runtime.evaluate',{returnByValue:true,expression:`(() => {
+    const input=document.querySelector('[data-fit-key="output_colour_gain"] input');
+    if(!(Number(input.value)>1))throw Error('Dragging EQ failed to update the visible value');
+    const svg=document.querySelector('#output-eq-editor svg');
+    if(!svg.querySelector('.eq-total')||svg.querySelectorAll('[data-node]').length!==3)
+      throw Error('Missing response curve / handles');
+    return {eqDrag:true,value:Number(input.value)};
+  })()`});
+  if(checked.exceptionDetails)throw Error(JSON.stringify(checked.exceptionDetails));
+  console.log(JSON.stringify(checked.result.value));
+  const eqShot=await call('Page.captureScreenshot',{format:'png'});
+  await writeFile('build/eq-controls-review.png',Buffer.from(eqShot.data,'base64'));
+  const liveCheck=await call('Runtime.evaluate',{awaitPromise:true,returnByValue:true,userGesture:true,
+    expression:`(async()=>{
+      const {LiveOutputSpectrum}=await import('./live_output_spectrum.mjs');
+      const context=new AudioContext({sampleRate:48000});
+      try {
+        const tap=new LiveOutputSpectrum(context), mute=context.createGain();
+        mute.gain.value=0;tap.node.connect(mute).connect(context.destination);
+        const oscillator=context.createOscillator(), level=context.createGain();
+        level.gain.value=.2;oscillator.connect(level).connect(tap.node);
+        oscillator.frequency.value=1000;oscillator.start();await context.resume();
+        const peak=a=>a.indexOf(Math.max(...a));
+        // Poll at the UI's rate: analyser smoothing advances when sampled, and
+        // one wall-clock sleep is not a guarantee of audio progress under load.
+        const settled=async frequency=>{
+          oscillator.frequency.value=frequency;
+          const target=64*Math.log(frequency/20)/Math.log(1000);
+          let bins=null;
+          for(let i=0;i<40;i++){
+            await new Promise(r=>setTimeout(r,50));bins=tap.read();
+            if(bins&&Math.abs(peak(bins)-target)<2)return bins;
+          }
+          throw Error('Live FFT failed at '+frequency+' Hz; peak='+
+            (bins?peak(bins):'none')+'; context='+context.state);
+        };
+        const low=await settled(1000), high=await settled(4000);
+        await context.suspend();if(tap.read()!==null)throw Error('Suspended FFT not cleared');
+        oscillator.stop();return {liveFft:true,lowBin:peak(low),highBin:peak(high),audible:false};
+      } finally {await context.close();}
+    })()`});
+  if(liveCheck.exceptionDetails)throw Error(JSON.stringify(liveCheck.exceptionDetails));
+  console.log(JSON.stringify(liveCheck.result.value));
 } catch (error) {
   console.error(error); process.exitCode=1;
 } finally {

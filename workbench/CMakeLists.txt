@@ -132,10 +132,20 @@ if(EMSCRIPTEN)
       COMMAND ${NODE_EXECUTABLE} ${CMAKE_CURRENT_LIST_DIR}/tests/decay_curve_geometry_tests.mjs)
     add_test(NAME triggerfish_workbench_diagnostic_audition_tests
       COMMAND ${NODE_EXECUTABLE} ${CMAKE_CURRENT_LIST_DIR}/tests/diagnostic_audition_tests.mjs)
+    add_test(NAME triggerfish_workbench_bloom_timing_tests
+      COMMAND ${NODE_EXECUTABLE} ${CMAKE_CURRENT_LIST_DIR}/tests/bloom_timing_tests.mjs)
+    add_test(NAME triggerfish_workbench_decay_hold_tests
+      COMMAND ${NODE_EXECUTABLE} ${CMAKE_CURRENT_LIST_DIR}/tests/decay_hold_tests.mjs)
+    add_test(NAME triggerfish_workbench_packet_allocation_tests
+      COMMAND ${NODE_EXECUTABLE} ${CMAKE_CURRENT_LIST_DIR}/tests/packet_allocation_tests.mjs)
     add_test(NAME triggerfish_workbench_state_tests
       COMMAND ${NODE_EXECUTABLE}
         ${CMAKE_CURRENT_LIST_DIR}/tests/state_tests.mjs
     )
+    add_test(NAME triggerfish_workbench_modal_surface_tests
+      COMMAND ${NODE_EXECUTABLE} ${CMAKE_CURRENT_LIST_DIR}/tests/import_modal_surface_tests.mjs)
+    add_test(NAME triggerfish_workbench_radiation_response_tests
+      COMMAND ${NODE_EXECUTABLE} ${CMAKE_CURRENT_LIST_DIR}/tests/radiation_response_tests.mjs)
     add_test(NAME triggerfish_workbench_patch_tests
       COMMAND ${NODE_EXECUTABLE}
         ${CMAKE_CURRENT_LIST_DIR}/tests/percussion_patch_tests.mjs

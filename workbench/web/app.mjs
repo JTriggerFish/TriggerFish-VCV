@@ -5,7 +5,7 @@ import { bindAnalysisControls } from "./analysis_controls.mjs";
 import { PercussionEngine } from "./engine.mjs";
 import { FitControls } from "./fit_controls.mjs";
 import {
-  calibrationParameterValues, calibrationPatch, calibrationEvent,
+  calibrationParameterValues, calibrationPatch, calibrationEvent, calibrationDisplayName,
 } from "./instrument_calibrations.mjs";
 import { KickControls } from "./kick_controls.mjs";
 import { MembraneControls } from "./membrane_controls.mjs";
@@ -115,6 +115,13 @@ function buildControls(resetValues = true) {
         ? SnareControls : KickControls;
   fitControls = new ControlType({
     descriptors: engine.parameters, state,
+    decayHold: {
+      read: () => ({parameters:state.macros.slice(), event:{...state.event},
+        sampleRate:state.reference?.sampleRate ?? 48000, recipeIndex:state.recipeIndex,
+        reference:state.reference?.id,
+        routing:recipeAdapter(state.recipeKey).routing(state.patch)}),
+      onError: reportError,
+    },
     onChange: () => scheduleRender(),
     onLevelReset: () => {
       state.macros[0] = engine.macros[0].defaultValue;
@@ -178,6 +185,7 @@ function analyzeReference() {
   pendingAnalysis.delete("reference");
   cacheReferenceSpectrum(key, cached);
   state.referenceSpectrum = cached;
+  fitControls?.refreshRadiation?.();
   view.setData("reference", cached);
   updateColourCeiling();
   setReadyIfIdle();
@@ -189,6 +197,7 @@ worker.onmessage = ({ data }) => {
   if (data.error) { setStatus(new Error(data.error)); return; }
   view.setData(data.kind, data.result);
   state[`${data.kind}Spectrum`] = data.result;
+  fitControls?.refreshRadiation?.();
   if (data.kind === "reference" && data.cacheKey) {
     cacheReferenceSpectrum(data.cacheKey, data.result);
     updateColourCeiling();
@@ -478,6 +487,14 @@ async function initialize() {
   bindSnapshotControls();
   renderSynthesis();
   setInterval(() => {
+    if(document.hidden || !fitControls?.eqEditors?.length)return;
+    const live=audition.readOutputSpectrum();
+    const changed=Boolean(live)||Boolean(state.liveEqHistogram);
+    state.liveEqHistogram=live;
+    state.liveEqSampleRate=live ? audition.sampleRate : null;
+    if(changed)fitControls.eqEditors.forEach(editor=>editor.background());
+  }, 50);
+  setInterval(() => {
     const latency = audition.latencyMs ? ` · ${audition.latencyMs.toFixed(0)} ms` : "";
     const underflows = audition.underflows ? ` · xruns ${audition.underflows}` : "";
     const output = Number.isFinite(audition.outputDb)
@@ -506,7 +523,7 @@ function bindCalibrationPresets() {
   const calibrations = referenceBrowser.calibrationPresets();
   select.replaceChildren(
     new Option("Choose a reference target…", ""),
-    ...calibrations.map(item => new Option(item.name, item.id)),
+    ...calibrations.map(item => new Option(calibrationDisplayName(item), item.id)),
   );
   select.onchange = async () => {
     const generation = ++selectionGeneration;
@@ -551,6 +568,7 @@ function bindCalibrationPresets() {
         performanceControls.paint();
         scheduleRender();
       }
+      byId("snapshot-name").value = calibrationDisplayName(calibration);
     } catch (error) {
       if (generation === selectionGeneration) setStatus(error);
     }

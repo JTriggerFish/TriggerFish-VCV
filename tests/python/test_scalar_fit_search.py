@@ -51,6 +51,17 @@ def test_tiny_budget_retains_valid_candidate():
     assert row["after"] <= row["before"]
 
 
+def test_bounded_derivative_free_fit_and_budget():
+    obj = search()
+    row = refine_scalar(
+        obj, {"gain": (0, 1), "pitch_hz": (20, 200)}, 180, method="Powell"
+    )
+    assert row["after"] < 1e-5
+    assert row["parameter_evaluations"] <= 180
+    assert row["solver"] == "Powell"
+    assert len(row["influence"]) == 2
+
+
 def test_outside_ui_bounds_rejected():
     with pytest.raises(ValueError, match="Bounds outside UI"):
         refine_scalar(search(), {"gain": (-1, 1)}, 10)
@@ -71,3 +82,16 @@ def test_descriptor_scales_allow_zero_hold_and_logarithmic_pitch():
     middle = box.unpack(np.array([0.5, 0.5]))
     assert middle["thump_hold_seconds"] == pytest.approx(0.04)
     assert middle["pitch_hz"] == pytest.approx(np.sqrt(20 * 200))
+
+
+@pytest.mark.parametrize("maximum", [30, 200, 4500, 15000])
+def test_log_coordinate_rounding_stays_inside_strict_api_bounds(maximum):
+    from triggerfish_percussion.fit_parameter_box import ParameterBox
+
+    box = ParameterBox(
+        {"value": 1},
+        {"value": (0.1, maximum)},
+        [dict(key="value", minimum=0.1, maximum=maximum, scale="logarithmic")],
+    )
+    assert 0.1 <= box.unpack(np.array([0.0]))["value"] <= maximum
+    assert 0.1 <= box.unpack(np.array([1.0]))["value"] <= maximum

@@ -1,7 +1,7 @@
-"""Four broad observation controls, not independent noisy modal-bar fits.
+"""Broad observation controls, not independent noisy modal-bar fits.
 
 Positive amplitudes interpolate in log frequency. This makes the actual output
-affine in the four coordinates and preserves a smooth, low-dimensional shape.
+affine in the coordinates and preserves a smooth, low-dimensional shape.
 Coordinates are fitting tools only: the result stores ordinary visible bars.
 """
 
@@ -114,7 +114,7 @@ def polish_coarse(search, knots=(120, 600, 3000, 15000)):
         search.parameters = candidate
     search.history.append(
         dict(
-            stage="four broad observation amplitudes",
+            stage=f"{len(knots)} broad observation amplitudes",
             knots_hz=list(knots),
             knots_db=(20 * np.log10(result.x)).tolist(),
             before=before,

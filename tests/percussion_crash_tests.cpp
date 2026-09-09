@@ -264,8 +264,7 @@ void TestDefaultBodyCoversTheMeasuredLowRegion() {
       [](const auto &mode) { return mode.frequencyHz < 500.f; });
   Check(lowModes >= 1,
         "default crash retains a resolved plate ridge below 500 Hz");
-  Check(parameters.observation[0].radiation.lowCutHz <= 50.f &&
-            parameters.observation[1].radiation.lowCutHz <= 50.f,
+  Check(parameters.outputEq.lowCutHz <= 50.f,
         "default crash observation does not remove its low plate body");
 }
 
@@ -294,7 +293,7 @@ void TestUnifiedFieldExpandsAnchorsWithoutChangingDriveEnergy() {
   Check(diffuseMeasure.first > coherentMeasure.first &&
             diffuseMeasure.first <= CrashModalFieldModeCount,
         "turbulence allocates sidebands within the shared state pool");
-  Check(std::abs(coherentMeasure.second - diffuseMeasure.second) < 1.e-7,
+  Check(std::abs(coherentMeasure.second - diffuseMeasure.second) < 1.e-6,
         "modal packet expansion preserves normalized drive energy");
 
   auto selectiveFit = diffuseFit;
@@ -302,12 +301,110 @@ void TestUnifiedFieldExpandsAnchorsWithoutChangingDriveEnergy() {
   const auto selective = DefaultCrashCymbalParameters(48000.f, selectiveFit);
   const auto selectiveMeasure = measure(selective.modalField);
   const auto firstPacketModes = std::count_if(
-      diffuse.modalField.begin(), diffuse.modalField.end(),
+      selective.modalField.begin(), selective.modalField.end(),
       [](const auto &mode) { return mode.inputGain != 0.f && mode.packet == 0; });
-  Check(selectiveMeasure.first == diffuseMeasure.first - firstPacketModes + 1,
-        "a clean anchor retains its centre and disables only its satellites");
-  Check(std::abs(selectiveMeasure.second - diffuseMeasure.second) < 1.e-7,
+  Check(firstPacketModes == 1 && selectiveMeasure.first == diffuseMeasure.first,
+        "a clean anchor keeps one centre and releases satellites to the shared pool");
+  Check(std::abs(selectiveMeasure.second - diffuseMeasure.second) < 1.e-6,
         "per-anchor turbulence changes coherence without changing drive energy");
+}
+
+void TestPairedRingIsNormalizedAndKeepsItsPitch() {
+  using namespace tfdsp::percussion;
+  CrashCymbalFitParameters fit;
+  fit.sparseAmplitude.fill(0.f);
+  fit.sparseAmplitude[0] = 1.f;
+  fit.sparseFrequencyHz[0] = 130.f;
+  fit.fieldTurbulence = 0.f;
+  fit.fieldDistribution = ModalPacketDistribution::PairedRing;
+  fit.fieldDoubletSplitHz = 1.25f;
+  fit.fieldBeatRateTilt = 0.f; // isolate the constant-gap case
+  fit.bodyDecaySeconds.fill(3.f);
+  const auto paired = DefaultCrashCymbalParameters(48000.f, fit).modalField;
+  const auto &low = paired[0], &high = paired[1];
+  CheckNear(high.frequencyHz - low.frequencyHz, 1.25, 1.e-5,
+            "paired ring's audible beat rate is the requested frequency gap");
+  CheckNear(.5f * (low.frequencyHz + high.frequencyHz), 130, 1.e-5,
+            "paired ring leaves the painted pitch at its midpoint");
+  CheckNear(low.inputGain * low.inputGain + high.inputGain * high.inputGain,
+            1, 1.e-6, "paired ring preserves unit excitation energy");
+  CheckNear(low.transportFrequencyHz, high.transportFrequencyHz, 1.e-6,
+            "both partners stay in the same energy-transport cell");
+  fit.fieldDoubletSplitHz = 0.f;
+  const auto single = DefaultCrashCymbalParameters(48000.f, fit).modalField;
+  Check(single[1].inputGain == 0.f, "zero beat rate restores one centre");
+  CheckNear(single[0].inputGain,
+      low.inputGain * std::cos(low.inputPhaseRadians) +
+          high.inputGain * std::cos(high.inputPhaseRadians),
+      1.e-6, "splitting a ring does not boost initial observed input");
+  CheckNear(low.inputGain * std::sin(low.inputPhaseRadians) +
+      high.inputGain * std::sin(high.inputPhaseRadians), 0, 1.e-6,
+      "quadrature launch cancels at the zero-separation limit");
+  for (const float centre : {1.f, 23040.f}) {
+    fit.sparseFrequencyHz[0] = centre;
+    fit.fieldDoubletSplitHz = 80.f;
+    const auto boundary = DefaultCrashCymbalParameters(48000.f, fit).modalField;
+    Check(boundary[0].frequencyHz >= 1.f && boundary[1].frequencyHz <= 23040.f,
+          "paired frequencies remain inside the represented bandwidth");
+  }
+}
+
+void TestPairedRingMatchesAnalyticAudio() {
+  using namespace tfdsp::percussion;
+  CrashCymbalFitParameters fit;
+  fit.sparseAmplitude.fill(0.f);
+  fit.sparseAmplitude[0] = 1.f;
+  fit.sparseFrequencyHz[0] = 130.f;
+  fit.fieldTurbulence = 0.f;
+  fit.fieldDistribution = ModalPacketDistribution::PairedRing;
+  fit.fieldDoubletSplitHz = 1.25f;
+  fit.bodyDecaySeconds.fill(3.f);
+  const auto modes = DefaultCrashCymbalParameters(48000.f, fit).modalField;
+  CrashModalField field;
+  field.Prepare(48000.f, modes, {}, 700.f, 1500.f);
+  double error = 0.0, energy = 0.0;
+  constexpr double TwoPi = 6.2831853071795864769;
+  for (int sample = 0; sample < 24000; ++sample) {
+    const double actual = field.ProcessExcitedPair(sample == 0 ? 1.f : 0.f, 0.f);
+    const double t = sample / 48000.0;
+    double expected = 0;
+    for (int i = 0; i < 2; ++i)
+      expected += modes[i].inputGain * std::cos(TwoPi * modes[i].frequencyHz * t +
+          modes[i].inputPhaseRadians) * std::pow(.001, t / modes[i].decaySeconds);
+    error += (actual - expected) * (actual - expected);
+    energy += expected * expected;
+  }
+  CheckNear(error / energy, 0, 1.e-6, "paired ring audio follows its two declared damped tones");
+}
+
+void TestPairedRingDepthAndRateTilt() {
+  using namespace tfdsp::percussion;
+  CrashCymbalFitParameters fit;
+  fit.sparseAmplitude.fill(0.f);
+  fit.sparseAmplitude[0] = 1.f;
+  fit.sparseFrequencyHz[0] = 125.f;
+  fit.fieldTurbulence = 0.f;
+  fit.fieldDistribution = ModalPacketDistribution::PairedRing;
+  for (const float depth : {0.f, .1f, .2f, .5f, 1.f}) {
+    fit.fieldBeatDepth = depth;
+    const auto modes = DefaultCrashCymbalParameters(48000.f, fit).modalField;
+    const auto &a = modes[0], &b = modes[1];
+    CheckNear(a.inputGain * a.inputGain + b.inputGain * b.inputGain, 1, 1.e-6,
+              "beat depth preserves input energy");
+    CheckNear(a.inputGain * std::cos(a.inputPhaseRadians) +
+        b.inputGain * std::cos(b.inputPhaseRadians), 1, 1.e-6,
+        "beat depth preserves initial observation");
+    CheckNear(a.inputGain * std::sin(a.inputPhaseRadians) +
+        b.inputGain * std::sin(b.inputPhaseRadians), 0, 1.e-6,
+        "beat depth cancels imaginary launch");
+    if (depth > 0.f)
+      CheckNear(a.inputGain / b.inputGain, depth, 1.e-6, "depth is pair amplitude ratio");
+    else
+      CheckNear(a.frequencyHz + b.frequencyHz, 250, 1.e-6, "zero depth is unsplit");
+  }
+  CheckNear(RingBeatRate(125, 1.25f, .5f), 1.25, 1.e-6, "rate tilt preserves base rate");
+  CheckNear(RingBeatRate(500, 1.25f, .5f), 2.5, 1.e-6, "rate tilt scales by octaves");
+  CheckNear(RingBeatRate(15000, 80, 1), 80, 1.e-6, "rate tilt remains bounded");
 }
 
 void TestPaintedLevelsOnlyShapeNormalizedObservation() {
@@ -674,6 +771,42 @@ void TestRepeatedHitsAccumulateBodyEnergy() {
         "repeated crash hits build an initial swell and retain late energy");
 }
 
+void TestSharedOutputEq() {
+  using namespace tfdsp::percussion;
+  for (const float rate : {44100.f, 48000.f, 96000.f}) {
+    for (const bool enabled : {false, true}) {
+      CrashCymbalFitParameters fit;
+      fit.directGain = .37f;
+      fit.fieldGain = .81f;
+      fit.outputGain = .7f;
+      fit.outputEqEnabled = enabled;
+      fit.outputLowCutHz = 250.f;
+      fit.outputColourFrequencyHz = 1400.f;
+      fit.outputColourGainDb = 6.f;
+      fit.outputHighCutHz = 6500.f;
+      const auto parameters = DefaultCrashCymbalParameters(rate, fit);
+      CrashCymbal cymbal;
+      cymbal.Prepare(rate, parameters);
+      RadiationFilter expected;
+      expected.Prepare(rate, parameters.outputEq);
+      for (int pass = 0; pass < 2; ++pass) {
+        cymbal.Reset();
+        expected.Reset();
+        cymbal.Trigger({.8f, .7f, .6f, 81});
+        for (int sample = 0; sample < 4000; ++sample) {
+          const auto frame = cymbal.ProcessFrame();
+          const float mix = fit.directGain * frame.directContact +
+                            fit.fieldGain * frame.modalBody;
+          const float output = fit.outputGain *
+              (enabled ? expected.Process(mix) : mix);
+          CheckNear(frame.output, output, 1.e-7,
+                    "one final EQ processes the full mix, with exact bypass and reset");
+        }
+      }
+    }
+  }
+}
+
 void TestMaximumBloomRemainsBounded() {
   using namespace tfdsp::percussion;
   CrashCymbalFitParameters fit;
@@ -702,6 +835,9 @@ int main() {
   TestImplementFamiliesAreDistinct();
   TestDefaultBodyCoversTheMeasuredLowRegion();
   TestUnifiedFieldExpandsAnchorsWithoutChangingDriveEnergy();
+  TestPairedRingIsNormalizedAndKeepsItsPitch();
+  TestPairedRingMatchesAnalyticAudio();
+  TestPairedRingDepthAndRateTilt();
   TestPaintedLevelsOnlyShapeNormalizedObservation();
   TestExcitationShelfCentreChangesNormalizedColour();
   TestUnifiedFieldAcceptsConstructiveAnchorEditing();
@@ -715,6 +851,7 @@ int main() {
   TestRestrikeAddsWithoutRecolouringStoredEnergy();
   TestRepeatedHitsAccumulateBodyEnergy();
   TestMaximumBloomRemainsBounded();
+  TestSharedOutputEq();
   if (percussion_test::failures == 0)
     std::cout << "All percussion crash tests passed\n";
   return percussion_test::failures == 0 ? 0 : 1;

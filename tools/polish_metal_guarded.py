@@ -45,8 +45,6 @@ def fit(args):
             seeds,
         )
         search.parameters = dict(saved["parameters"])
-        if args.exchange is not None:
-            search.parameters["field_exchange"] = args.exchange
         if args.cascade_min:
             search.parameters["bloom_rate"] = max(
                 args.cascade_min, search.parameters["bloom_rate"]
@@ -93,12 +91,9 @@ if __name__ == "__main__":
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--seed-offset", type=int, required=True)
     parser.add_argument("--cascade-min", type=float, default=0)
-    parser.add_argument("--exchange", type=float)
     args = parser.parse_args()
     if not 0 < args.seed_offset < 2**32:
         parser.error("Expected a nonzero 32-bit training seed offset")
     if not 0 <= args.cascade_min < 8:
         parser.error("Cascade minimum must be in [0, 8)")
-    if args.exchange is not None and not 0 <= args.exchange <= 1:
-        parser.error("Exchange must be in [0, 1]")
     fit(args)

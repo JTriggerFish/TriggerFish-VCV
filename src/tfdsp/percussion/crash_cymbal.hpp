@@ -51,7 +51,9 @@ private:
 
   ContactExciter contact_{};
   CrashModalField modalField_{};
-  ObservationModel<2> observation_{};
+  RadiationFilter outputEq_{};
+  float contactLevel_{};
+  float bodyLevel_{};
   ModalConstraintController modalConstraint_{};
   CrashCymbalParameters parameters_{};
   CrashModalField::Projection fieldProjection_{};

@@ -118,9 +118,10 @@ int main() {
         "metallic recipe exposes only active unified-model parameters");
   Check(ParameterIndex(metallic, "body_tone_wash") == UINT32_MAX &&
             ParameterIndex(metallic, "dense_mode_density") == UINT32_MAX &&
-            ParameterIndex(metallic, "direct_low_cut_q") == UINT32_MAX &&
-            ParameterIndex(metallic, "direct_colour_q") == UINT32_MAX &&
-            ParameterIndex(metallic, "body_high_cut_q") == UINT32_MAX,
+            ParameterIndex(metallic, "direct_low_cut") == UINT32_MAX &&
+            ParameterIndex(metallic, "body_low_cut") == UINT32_MAX &&
+            ParameterIndex(metallic, "output_low_cut") != UINT32_MAX &&
+            ParameterIndex(metallic, "output_high_cut_q") == UINT32_MAX,
         "legacy no-op metallic controls are absent from the recipe API");
   CheckPreparedRoundTrip(metallic, 0,
                          "prepared metallic recipe is sample-identical");

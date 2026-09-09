@@ -32,10 +32,11 @@ void TestTrajectory() {
 
 void TestEnergyAndPreparedReplay() {
   using Field = tfdsp::percussion::StochasticModalField<2>;
-  const Field::Parameters modes{{{700.f, 3.f, 1.f, 1.f, 0.f, 0.f},
+  Field::Parameters modes{{{700.f, 3.f, 1.f, 1.f, 0.f, 0.f},
                                 {8000.f, 3.f, .5f, 1.f, 0.f, 0.f}}};
+  for (auto &mode : modes) mode.exchangeAmount = 0.f;
   tfdsp::percussion::StochasticModalFieldControls controls{};
-  controls.driftDepthPercent = 10.f;
+  controls.driftDepthHz = 10.f;
   controls.driftKnotsPerSecond = 40.f;
   Field field, replay;
   field.Prepare(48000.f, modes, controls, 500.f, 5000.f);
@@ -60,8 +61,25 @@ void TestEnergyAndPreparedReplay() {
             "drift retains the declared T60");
 }
 
+void TestAbsoluteHz() {
+  SmoothModalDrift<3> drift;
+  drift.PrepareHz(48000.f, {125.f, 8000.f, .5f}, 1.f, .5f, 9);
+  std::array<double, 2> squared{};
+  constexpr float hzPerAngle = 48000.f / 6.28318530718f;
+  for (int sample=0; sample<480000; ++sample) {
+    for (std::size_t i=0; i<3; ++i) {
+      const float hz = drift.NextAngle(i)*hzPerAngle;
+      Check(std::abs(hz) <= (i==2 ? .5f : 1.f), "Hz wander and boundary remain bounded");
+      if (i<2) squared[i] += hz*hz;
+    }
+  }
+  Check(squared[0]>1000 && squared[1]>1000, "both bass and treble wander");
+  Check(squared[1]/squared[0]<4, "treble does not inherit fractional-frequency broadening");
+}
+
 int main() {
   TestTrajectory();
+  TestAbsoluteHz();
   TestEnergyAndPreparedReplay();
   SmoothModalDrift<1> drift;
   drift.Prepare(48000.f, {std::numeric_limits<float>::infinity()}, {1.f},

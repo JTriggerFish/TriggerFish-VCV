@@ -21,10 +21,7 @@ const TypeByNode = Object.fromEntries(
 
 function moduleForParameter(key) {
   if (key === "model_level_db") return "output";
-  if (key.startsWith("direct_radiation_") || key.startsWith("direct_low_") ||
-      key.startsWith("direct_high_") || key.startsWith("direct_colour_") ||
-      key.startsWith("body_radiation_") || key.startsWith("body_low_") ||
-      key.startsWith("body_high_") || key.startsWith("body_colour_")) {
+  if (key.startsWith("output_")) {
     return "observation";
   }
   if (key === "direct_gain" || key === "field_gain") return "observation";

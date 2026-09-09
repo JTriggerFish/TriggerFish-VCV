@@ -5,7 +5,7 @@ import {reportError} from "./error_banner.mjs";
 
 export function mountModalTemplates(parent, options) {
   const {capacity, minimumFrequency, maximumFrequency, apply,
-    defaultFamily = "membrane", open = false, noisiness = false} = options;
+    defaultFamily = "membrane", open = true, noisiness = false} = options;
   parent.innerHTML = `<details class="template-panel"><summary>Generate modes</summary>
     <div class="template-pitch"></div><div class="template-shape"></div>
     <div class="template-actions"><button type="button">Replace modes</button>

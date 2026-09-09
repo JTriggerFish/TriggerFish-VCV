@@ -48,20 +48,20 @@
   <text class="detail" x="610" y="278">new body force</text>
 
   <rect class="box inside" x="710" y="200" width="145" height="92"/>
-  <text class="label" x="782" y="228">Upward</text>
-  <text class="label" x="782" y="250">cascade</text>
+  <text class="label" x="782" y="228">Energy</text>
+  <text class="label" x="782" y="250">diffusion</text>
   <text class="detail" x="782" y="275">energy-dependent</text>
 
   <rect class="box inside" x="890" y="200" width="130" height="92"/>
-  <text class="label" x="955" y="232">Diffusion</text>
+  <text class="label" x="955" y="232">Coherence</text>
   <text class="detail" x="955" y="258">phase rotation</text>
-  <text class="detail" x="955" y="278">local exchange</text>
+  <text class="detail" x="955" y="278">pitch wander</text>
 
   <path class="innerFlow" d="M675 246 H710"/>
   <path class="innerFlow" d="M855 246 H890"/>
   <path class="innerFlow" d="M955 292 V350 H610 V292"/>
   <text class="detail" x="782" y="380">all development acts on the same complex modal state</text>
-  <text class="detail" x="782" y="404">cascade, phase rotation and exchange preserve energy</text>
+  <text class="detail" x="782" y="404">energy redistribution and phase motion; T60 supplies loss</text>
 
   <path class="flow" d="M450 300 H505"/>
   <text class="detail" x="477" y="289">body force</text>
@@ -69,7 +69,7 @@
   <rect class="box observe" x="1120" y="200" width="230" height="160"/>
   <text class="label" x="1235" y="236">Observation</text>
   <text class="detail" x="1235" y="265">direct/body gains</text>
-  <text class="detail" x="1235" y="287">static radiation filters</text>
+  <text class="detail" x="1235" y="287">mix → one final EQ</text>
   <line x1="1145" y1="310" x2="1325" y2="310" stroke="#356c58"/>
   <text class="detail" x="1235" y="338">mono output</text>
   <path class="flow" d="M1060 280 H1120"/>

@@ -75,10 +75,10 @@ public:
     packet_ = prepared.packet;
     frequencyHz_ = prepared.frequencyHz;
     band_ = prepared.band;
-    driftDepthPercent_ = prepared.driftDepthPercent;
+    driftDepthHz_ = prepared.driftDepthHz;
     driftKnotsPerSecond_ = prepared.driftKnotsPerSecond;
-    drift_.Prepare(sampleRate_, frequencyHz_, exchangeAmount_,
-                   driftDepthPercent_, driftKnotsPerSecond_, seed_ ^ 0x44524946u);
+    drift_.PrepareHz(sampleRate_, frequencyHz_,
+                    driftDepthHz_, driftKnotsPerSecond_, seed_ ^ 0x44524946u);
     excitationProjection_.fill(1.f);
     secondaryExcitationProjection_.fill(1.f);
     primaryProjectionEnergyNormalized_ = false;
@@ -167,7 +167,7 @@ public:
 private:
   StochasticModalFieldControls CurrentControls() const noexcept {
     return {maximumExchangeAngle_, seed_, cascadeParameters_,
-            driftDepthPercent_, driftKnotsPerSecond_};
+            driftDepthHz_, driftKnotsPerSecond_};
   }
 
   static float SafeProjection(const float value) noexcept {
@@ -346,7 +346,7 @@ private:
   ModalEnergyCascadeParameters cascadeParameters_{};
   DeterministicRandom random_{};
   SmoothModalDrift<ModeCount> drift_{};
-  float driftDepthPercent_{};
+  float driftDepthHz_{};
   float driftKnotsPerSecond_{8.f};
   ModalDampingGains damping_{};
   float sampleRate_{48000.f};

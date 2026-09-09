@@ -70,7 +70,6 @@ def fit(target, output, rounds, resume, cascade_min=0):
         baseline = dict(renderer.initial)
         if resume:
             search.parameters = dict(verify_candidate(renderer, resume)["parameters"])
-        search.parameters["field_relaxed_turbulence"] = 1
         if cascade_min:
             search.parameters["bloom_rate"] = max(
                 cascade_min, search.parameters["bloom_rate"]
@@ -79,15 +78,10 @@ def fit(target, output, rounds, resume, cascade_min=0):
         texture = dict(
             field_turbulence=(0.15, 2.5),
             field_turbulence_slope=(0, 1),
-            field_turbulence_centre=(500, 5000),
             field_phase_bandwidth=(0, 1.2),
             field_packet_spread=(0.5, 8),
-            field_exchange=(0, 0.8),
         )
-        # With I = level * (f / centre)**slope, centre and level form an
-        # exact nullspace. Keep the resumed patch's centre; fit level/slope.
-        if resume:
-            del texture["field_turbulence_centre"]
+        # Noisiness is a level at 1 kHz plus slope; no redundant centre fit.
         if cascade_min:
             # A user-auditioned character constraint, not inferred from the loss.
             # Compensate the excitation distribution before local refinement.
@@ -134,7 +128,6 @@ def fit(target, output, rounds, resume, cascade_min=0):
                                 (
                                     "field_turbulence",
                                     "field_turbulence_slope",
-                                    "field_turbulence_centre",
                                 ),
                                 contrast,
                             )
@@ -155,7 +148,6 @@ def fit(target, output, rounds, resume, cascade_min=0):
             )
             motion = dict(
                 bloom_rate=(max(0.02, cascade_min), 8),
-                bloom_phase_diffusion=(0, 1),
                 body_brightness=(-36, 18),
                 body_excitation_centre=(100, 5000),
             )

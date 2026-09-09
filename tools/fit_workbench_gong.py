@@ -121,11 +121,8 @@ def main():
             "body_excitation_centre": (300, 3000),
             "field_turbulence": (0.05, 1),
             "field_turbulence_slope": (0.05, 1),
-            "field_turbulence_centre": (600, 3500),
             "field_packet_spread": (0.1, 8),
             "field_phase_bandwidth": (0, 2),
-            "field_exchange": (0, 1),
-            "bloom_phase_diffusion": (0, 1),
         }
         if args.stage == "all":
             search.stage("transport and texture", dynamics, args.iterations)
@@ -146,8 +143,7 @@ def main():
                 "impact_tone_noise": (0, 0.8),
                 "impact_width": (0.5, 4),
                 "impact_chirp_pitch": (0.05, 0.4),
-                "body_high_cut": (6000, 22000),
-                "direct_high_cut": (1000, 6000),
+                "output_high_cut": (6000, 22000),
             },
             args.iterations,
         )

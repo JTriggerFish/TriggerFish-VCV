@@ -9,7 +9,7 @@ const chinaPreset = {
   body_brightness: 1.5,
   body_excitation_centre: 3000,
   field_turbulence_slope: .12,
-  field_turbulence_centre: 4000,
+  field_turbulence: .65*(1000/4000)**.12,
   body_decay_seconds_0: 2.8, body_decay_seconds_7: .35,
   body_decay_active_1: 0, body_decay_active_2: 0,
   body_decay_active_3: 0, body_decay_active_4: 0,

@@ -7,6 +7,8 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+pytest.importorskip("torch")
+
 spec = importlib.util.spec_from_file_location(
     "metal_refinement", Path(__file__).parents[2] / "tools/refine_metal_perceptual.py"
 )

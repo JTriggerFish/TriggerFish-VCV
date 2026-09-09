@@ -1027,6 +1027,22 @@ PYBIND11_MODULE(_triggerfish_dsp, module)
 		.def_readwrite("sparse_frequency_hz", &CrashFit::sparseFrequencyHz)
 		.def_readwrite("sparse_amplitude", &CrashFit::sparseAmplitude)
 		.def_readwrite("field_turbulence_scale", &CrashFit::fieldTurbulenceScale)
+		.def_readwrite("field_allocation_weight", &CrashFit::fieldAllocationWeight)
+		.def_property("field_distribution",
+			[](const CrashFit &fit) { return static_cast<int>(fit.fieldDistribution); },
+			[](CrashFit &fit, int value) {
+				if (value < 0 || value > 3)
+					throw std::invalid_argument("packet distribution must be 0..3");
+				fit.fieldDistribution = static_cast<tfdsp::percussion::ModalPacketDistribution>(value);
+			})
+		.def_readwrite("field_doublet_split_hz", &CrashFit::fieldDoubletSplitHz)
+		.def_readwrite("field_beat_depth", &CrashFit::fieldBeatDepth)
+		.def_readwrite("field_beat_rate_tilt", &CrashFit::fieldBeatRateTilt)
+		.def_readwrite("field_phase_tilt", &CrashFit::fieldPhaseTilt)
+		.def_readwrite("field_wander_depth_hz", &CrashFit::fieldWanderDepthHz)
+		.def_readwrite("field_wander_knots_per_second", &CrashFit::fieldWanderKnotsPerSecond)
+		.def_readwrite("field_relaxed_turbulence", &CrashFit::fieldRelaxedTurbulence)
+		.def_readwrite("bloom_spectral_diffusion", &CrashFit::bloomSpectralDiffusion)
 		.def_readwrite("sparse_tune", &CrashFit::sparseTune)
 		.def_readwrite("body_decay_frequency_hz", &CrashFit::bodyDecayFrequencyHz)
 		.def_readwrite("body_decay_seconds", &CrashFit::bodyDecaySeconds)
@@ -1045,8 +1061,6 @@ PYBIND11_MODULE(_triggerfish_dsp, module)
 		.def_readwrite("field_turbulence", &CrashFit::fieldTurbulence)
 		.def_readwrite("field_turbulence_slope_per_octave",
 			&CrashFit::fieldTurbulenceSlopePerOctave)
-		.def_readwrite("field_turbulence_centre_hz",
-			&CrashFit::fieldTurbulenceCentreHz)
 		.def_readwrite("field_packet_spread_erb", &CrashFit::fieldPacketSpreadErb)
 		.def_readwrite("field_satellite_density", &CrashFit::fieldSatelliteDensity)
 		.def_readwrite("field_phase_bandwidth_erb",
@@ -1068,20 +1082,13 @@ PYBIND11_MODULE(_triggerfish_dsp, module)
 			&CrashFit::contactMicroDensityScale)
 		.def_readwrite("direct_gain", &CrashFit::directGain)
 		.def_readwrite("output_gain", &CrashFit::outputGain)
-		.def_readwrite("direct_radiation_enabled",
-			&CrashFit::directRadiationEnabled)
-		.def_readwrite("direct_low_cut_hz", &CrashFit::directLowCutHz)
-		.def_readwrite("direct_colour_frequency_hz",
-			&CrashFit::directColourFrequencyHz)
-		.def_readwrite("direct_colour_gain_db", &CrashFit::directColourGainDb)
-		.def_readwrite("direct_high_cut_hz", &CrashFit::directHighCutHz)
-		.def_readwrite("body_radiation_enabled",
-			&CrashFit::bodyRadiationEnabled)
-		.def_readwrite("body_low_cut_hz", &CrashFit::bodyLowCutHz)
-		.def_readwrite("body_colour_frequency_hz",
-			&CrashFit::bodyColourFrequencyHz)
-		.def_readwrite("body_colour_gain_db", &CrashFit::bodyColourGainDb)
-		.def_readwrite("body_high_cut_hz", &CrashFit::bodyHighCutHz)
+		.def_readwrite("output_eq_enabled",
+			&CrashFit::outputEqEnabled)
+		.def_readwrite("output_low_cut_hz", &CrashFit::outputLowCutHz)
+		.def_readwrite("output_colour_frequency_hz",
+			&CrashFit::outputColourFrequencyHz)
+		.def_readwrite("output_colour_gain_db", &CrashFit::outputColourGainDb)
+		.def_readwrite("output_high_cut_hz", &CrashFit::outputHighCutHz)
 		.def_readwrite("velocity_brightness_db_per_octave",
 			&CrashFit::velocityBrightnessDbPerOctave);
 	module.def("render_crash", [](const py::ssize_t sampleCount,

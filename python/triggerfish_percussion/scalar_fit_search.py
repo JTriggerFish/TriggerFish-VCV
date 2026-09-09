@@ -11,12 +11,15 @@ class EvaluationBudget(Exception):
 
 
 class ScalarTrial:
-    def __init__(self, search, bounds, budget, step):
+    def __init__(self, search, bounds, budget, step, method="L-BFGS-B"):
         if budget < 1 or not 0 < step < 0.1:
             raise ValueError(
                 "Positive budget and small finite-difference step required"
             )
         self.search, self.bounds, self.budget, self.step = search, bounds, budget, step
+        if method not in ("L-BFGS-B", "Powell"):
+            raise ValueError("Unsupported scalar fitting method")
+        self.method = method
         self.box = ParameterBox(
             search.parameters, bounds, search.renderer.metadata["descriptors"]
         )
@@ -76,13 +79,19 @@ class ScalarTrial:
     def run(self):
         before = self.score(self.box.initial)
         try:
+            options = dict(maxiter=100, ftol=1e-9, gtol=1e-6, maxls=12)
+            if self.method == "Powell":
+                # Still record local sensitivity; do not use noisy finite
+                # differences as derivatives in the bounded line searches.
+                self.gradient(self.box.initial)
+                options = dict(maxiter=100, ftol=0.0005, xtol=0.005)
             result = minimize(
                 self.score,
                 self.box.initial,
-                method="L-BFGS-B",
-                jac=self.gradient,
+                method=self.method,
+                jac=self.gradient if self.method == "L-BFGS-B" else None,
                 bounds=[(0, 1)] * len(self.box.keys),
-                options=dict(maxiter=100, ftol=1e-9, gtol=1e-6, maxls=12),
+                options=options,
             )
             status = str(result.message)
         except EvaluationBudget:
@@ -99,7 +108,7 @@ class ScalarTrial:
             parameter_evaluations=len(self.cache),
             renders=self.search.evaluations,
             elapsed_seconds=time.perf_counter() - self.began,
-            solver="L-BFGS-B",
+            solver=self.method,
             status=status,
             bounds=self.bounds,
             difference_step_fraction=self.step,
@@ -117,6 +126,6 @@ class ScalarTrial:
         return record
 
 
-def refine_scalar(search, bounds, budget=1000, step=0.001):
+def refine_scalar(search, bounds, budget=1000, step=0.001, method="L-BFGS-B"):
     """Minimize the native scalar loss, not a rank-one least-squares surrogate."""
-    return ScalarTrial(search, bounds, budget, step).run()
+    return ScalarTrial(search, bounds, budget, step, method).run()

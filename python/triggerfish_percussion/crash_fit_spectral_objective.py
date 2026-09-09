@@ -37,10 +37,9 @@ TEMPORAL_PARAMETERS = (
     BoundedParameter("bloom_energy_acceleration", 0.0, 1.0),
     BoundedParameter("bloom_phase_diffusion", 0.0, 1.0),
     BoundedParameter("field_turbulence_slope_per_octave", -1.0, 1.0),
-    BoundedParameter("field_turbulence_centre_hz", 40.0, 15000.0),
-    BoundedParameter("body_colour_frequency_hz", 100.0, 18000.0),
-    BoundedParameter("body_colour_gain_db", -18.0, 18.0),
-    BoundedParameter("body_high_cut_hz", 1000.0, 22000.0),
+    BoundedParameter("output_colour_frequency_hz", 100.0, 18000.0),
+    BoundedParameter("output_colour_gain_db", -18.0, 18.0),
+    BoundedParameter("output_high_cut_hz", 1000.0, 22000.0),
 )
 
 

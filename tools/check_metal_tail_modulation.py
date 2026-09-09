@@ -1,8 +1,7 @@
 """Ablate turbulence mechanisms and measure tail-envelope modulation.
 
 The dB trend is removed for analysis only; WAVs retain their actual levels.
-Different exchange settings consume different random streams, so compare several
-seeds statistically, not waveform differences between nominally identical seeds.
+Compare several seeds statistically, not just one waveform difference.
 """
 
 import argparse
@@ -72,9 +71,7 @@ def run(args):
         )
         variants = {
             "reference": None,
-            "relaxed": {},
-            "classic": {"field_relaxed_turbulence": 0},
-            "exchange-off": {"field_exchange": 0},
+            "current": {},
             "half-phase": {
                 "field_phase_bandwidth": parameters["field_phase_bandwidth"] * 0.5
             },
@@ -85,11 +82,7 @@ def run(args):
         for label, changes in variants.items():
             rows = []
             for offset in ((0,) if changes is None else (0, 13001, 14009)):
-                patch = (
-                    dict(parameters, field_relaxed_turbulence=1, **(changes or {}))
-                    if changes is None or "field_relaxed_turbulence" not in changes
-                    else dict(parameters, **changes)
-                )
+                patch = dict(parameters, **(changes or {}))
                 samples = (
                     reference
                     if changes is None

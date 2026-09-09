@@ -1,10 +1,30 @@
 import { createCrashPatch } from "./metallic_plate_patch.mjs";
 import { validatePatch } from "./percussion_patch.mjs";
 import { recipeAdapter } from "./recipe_adapter.mjs";
+import { importModalSurface, importOutputEq } from "./import_modal_surface.mjs";
 
 const FitSchema = "triggerfish.percussion.fit/v1";
 const RendererApi = 1;
 const RendererAdapter = "percussion-recipe-v1";
+
+// Explicit import of the immediately preceding V1 surface. Expanded values
+// appear in the UI and the next save; unrelated missing controls still fail.
+function importBlurBalance(value, descriptors) {
+  if (value?.schema !== FitSchema || value.instrument?.recipe !== "metal.cymbal.v1" ||
+      !Array.isArray(value.instrument.nodes) ||
+      !descriptors.some(d => d.key === "field_phase_tilt")) return value;
+  const body = value.instrument.nodes.find(n => n.id === "body");
+  if (!body?.parameters || Object.hasOwn(body.parameters, "field_phase_tilt")) return value;
+  const copy = structuredClone(value);
+  const p = copy.instrument.nodes.find(n => n.id === "body").parameters;
+  p.field_phase_tilt = 0;
+  if (p.field_distribution === 2) {
+    // These controls were inactive in the old doublet layout.
+    p.field_beat_depth = 1;
+    p.field_beat_rate_tilt = 0;
+  }
+  return copy;
+}
 
 export function snapshotState(state, name = "Snapshot", descriptors = []) {
   const source = state.patch ?? createCrashPatch(descriptors, state.macros);
@@ -42,6 +62,9 @@ export function snapshotState(state, name = "Snapshot", descriptors = []) {
 }
 
 export function validateFit(value, descriptors = []) {
+  value = importBlurBalance(value, descriptors);
+  value = importModalSurface(value, descriptors);
+  value = importOutputEq(value, descriptors);
   const event = value?.controls?.event;
   const analysis = value?.controls?.analysis;
   const validReference = value?.reference === null ||

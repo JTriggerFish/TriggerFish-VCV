@@ -1,8 +1,15 @@
 import { ModalEditor } from "./modal_editor.mjs";
+import { MiniEqEditor } from "./mini_eq_editor.mjs";
 import { turbulenceIntensity } from "./turbulence_profile.mjs";
 import { mountModalTemplates } from "./modal_template_controls.mjs";
 import { DecayCurveEditor } from "./decay_curve_editor.mjs";
 import { expandedSizeMeta } from "./size_meta.mjs";
+import { mountBloomTiming } from "./bloom_timing_control.mjs";
+import { BloomTimingKeys } from "./bloom_timing_meta.mjs";
+import { mountPacketLayout, hasPairedRing, beatRatePosition, beatRateValue, ringBeatRate, beatDepthPosition, beatDepthValue } from "./packet_layout_control.mjs";
+import { packetAllocation } from "./packet_allocation.mjs";
+import { helpFor } from "./fit_control_help.mjs";
+import { mountDecayHold } from "./decay_hold_control.mjs";
 
 const clamp = (value, minimum, maximum) =>
   Math.max(minimum, Math.min(maximum, value));
@@ -39,7 +46,8 @@ const bloomRateDenormalized = (descriptor, position) => position < .01
 
 function valueText(descriptor, value) {
   let digits = 3;
-  if (descriptor.unit === "Hz") digits = value >= 1000 ? 0 : 1;
+  if (descriptor.key === "bloom_energy_acceleration" && value > 0 && value < .01) digits = 5;
+  if (descriptor.unit === "Hz") digits = value >= 1000 ? 0 : value < 10 ? 2 : 1;
   else if (descriptor.unit === "dB" || descriptor.unit === "dB/oct") digits = 1;
   else if (descriptor.unit === "s") digits = value < .1 ? 3 : 2;
   else if (descriptor.unit === "x" || descriptor.unit === "oct") digits = 2;
@@ -50,67 +58,16 @@ function valueText(descriptor, value) {
 const erb = frequency => 21.4 * Math.log10(1 + .00437 * frequency);
 const inverseErb = rate => (10 ** (rate / 21.4) - 1) / .00437;
 
-const ControlHelp = {
-  model_level_db: "Literal output gain in dB, with no hidden boost or loudness matching. Double-click restores the fixed default. Changing references never adjusts this control.",
-  direct_gain: "Amount of near-field contact heard directly before the cymbal body develops.",
-  impact_tone_noise: "Balances pitched stick ping against broadband contact noise.",
-  impact_width: "Scales contact duration. Short contacts are sharper; broad contacts suit softer implements.",
-  impact_chirp_pitch: "Frequency scale of the short coherent contact chirp; it does not retune the modal body.",
-  impact_noise_tilt: "Broad spectral tilt of the enveloped contact-noise burst.",
-  impact_micro_density: "Density of sub-perceptual micro-contacts within the struck or brushed gesture.",
-  velocity_brightness: "Additional body high-frequency excitation per octave as strike strength rises.",
-  bloom_rate: "Conservative energy redistribution down the spectral-density gradient, in either direction. Zero disables transfer. Strength is a diffusion coefficient, not a speed in octaves per second.",
-  bloom_energy_acceleration: "Energy-dependence exponent: 0 is linear diffusion; 0.5 is approximately proportional to energy density; 1 is quadratic. Every nonzero setting slows transfer as energy falls, with no constant leakage floor.",
-  body_excitation: "Amplitude gain of normalized contact impulses. 4x means four times drive amplitude (sixteen times isolated linear energy). Changes nonlinear diffusion, not just output volume.",
-  field_gain: "Output observation level of the unified modal body; it does not change stored body energy or bloom.",
-  body_brightness: "Slope of initial energy density above its centre. Frequency-cell widths keep clustered handles from collecting extra strike energy. The input vector has unit squared norm; actual delivered energy also depends on contact duration, modal frequencies and existing motion.",
-  body_excitation_centre: "Knee of the initial excitation shelf. Move it to seed low and low-mid modes without directly opening the high-frequency bloom.",
-  body_tune: "Common frequency ratio applied after the painted anchor frequencies.",
-  field_turbulence: "Packet noisiness: moves energy from the coherent centre into sidebands and increases their spread and stochastic bandwidth. Does not add an extra inter-packet energy transfer.",
-  field_turbulence_slope: "Frequency dependence of packet noisiness: positive keeps lower packets cleaner and broadens upper packets more. This also changes their excitation and damping response.",
-  field_turbulence_centre: "Frequency at which the global noisiness amount is specified. A pivot, not a crossover. At fixed slope, changing centre can be compensated by amount.",
-  field_packet_spread: "Sideband spread scale in ERB at unit packet noisiness. Actual width also depends on global and local noisiness.",
-  field_satellite_density: "Sampling density inside the packet widths. Allocates states from the shared pool without changing the prescribed packet energy budget or diffusion geometry. Fine waveform texture can still change.",
-  field_phase_bandwidth: "Rate of passive random phase decorrelation inside each modal packet; this is linewidth, not a fitted static phase offset.",
-  field_drift_depth: "Optional slow random frequency wander, weighted by packet noisiness. Zero disables it. Independent of spectral-energy transport; keep at zero while fitting the main dynamics.",
-  field_drift_rate: "Random target points per second, joined with smooth curves independently per mode. Not a periodic vibrato frequency. Has no effect when drift depth is zero.",
-};
-
-function helpFor(key) {
-  if (ControlHelp[key]) return ControlHelp[key];
-  if (key.startsWith("body_decay_seconds_")) {
-    return "T60 at this frequency knot; every unified modal packet shares the interpolated curve.";
-  }
-  if (key.startsWith("body_decay_frequency_")) {
-    return "Frequency location of this shared T60 knot.";
-  }
-  if (key.startsWith("resolved_frequency_")) {
-    return "Centre frequency of this constructive modal packet; this need not represent one measured physical eigenmode.";
-  }
-  if (key.startsWith("resolved_level_")) {
-    return "Relative observation prominence of this packet. It does not change strike energy; the exact minimum deactivates the handle.";
-  }
-  if (key.startsWith("resolved_turbulence_")) {
-    return "Local noisiness multiplier: zero keeps this packet coherent, one follows the global profile, and two doubles its noisiness intensity.";
-  }
-  if (key.endsWith("radiation_enabled")) {
-    return "Enable this static output-observation filter; it does not change stored body energy.";
-  }
-  if (key.includes("low_cut")) return "Static observation high-pass; it does not remove stored modal energy.";
-  if (key.includes("high_cut")) return "Static observation low-pass; it does not shorten modal decay.";
-  if (key.includes("colour_frequency")) return "Centre frequency of the observation colour bell.";
-  if (key.includes("colour_gain")) return "Boost or cut of the observation colour bell.";
-  if (key.includes("colour_q")) return "Bandwidth of the observation colour bell.";
-  return "Double-click the control to restore its declared default.";
-}
 
 export class FitControls {
-  constructor({ descriptors, state, onChange, onLevelReset }) {
+  constructor({ descriptors, state, onChange, onLevelReset, decayHold }) {
+    this.decayHold = decayHold;
     this.descriptors = descriptors;
     this.byKey = new Map(descriptors.map(item => [item.key, item]));
     this.state = state;
     this.onChange = onChange;
     this.onLevelReset = onLevelReset;
+    this.refreshers = new Map();
   }
 
   descriptor(key) {
@@ -129,10 +86,14 @@ export class FitControls {
     this.state.macros[descriptor.index] = clamp(
       value, descriptor.minimum, descriptor.maximum,
     );
+    if (BloomTimingKeys.includes(key)) this.bloomTiming?.rebase();
     this.onChange(key);
+    if (/^output_(low_cut|high_cut|colour_|eq_)/.test(key))
+      this.refreshRadiation();
   }
 
   refresh(key) {
+    if (this.refreshers.has(key)) return this.refreshers.get(key)();
     const descriptor = this.descriptor(key);
     const row = document.querySelector(`[data-fit-key="${key}"]`);
     if (!row) return;
@@ -141,7 +102,10 @@ export class FitControls {
   }
 
   build() {
+    this.eqEditors = [];
+    this.holdControl?.destroy();
     this.decayEditor?.destroy();
+    this.refreshers.clear();
     document.querySelectorAll("[data-fit-controls]").forEach(
       element => element.replaceChildren(),
     );
@@ -165,34 +129,132 @@ export class FitControls {
   }
 
   buildBloom() {
+    if (this.decayHold) this.holdControl = mountDecayHold(
+      document.getElementById("bloom-controls"), {
+        state: this.state, ...this.decayHold,
+        apply: values => {
+          const changed = this.descriptors.filter(d => values[d.index] !== this.state.macros[d.index]);
+          this.state.macros.splice(0, this.state.macros.length, ...values);
+          changed.forEach(d => this.refresh(d.key));
+          this.decayEditor?.refresh();
+          this.onChange("hold_decay");
+        },
+      });
+    this.bloomTiming = mountBloomTiming(document.getElementById("bloom-controls"), {
+      read: key => this.value(key), descriptors: this.descriptors,
+      apply: values => {
+        for (const [key, value] of Object.entries(values)) {
+          this.state.macros[this.descriptor(key).index] = value;
+          this.refresh(key);
+        }
+        this.onChange("bloom_timing_meta");
+      },
+    });
     this.slider("bloom_rate", "bloom-controls", {
       labels: ["off", "strong"],
       normalize: bloomRateNormalized, denormalize: bloomRateDenormalized,
     });
     this.slider("bloom_energy_acceleration", "bloom-controls", {
       labels: ["linear", "quadratic"],
+      normalize: (descriptor, value) => Math.cbrt(value),
+      denormalize: (descriptor, position) => position ** 3,
+    });
+    this.sliders("bloom-controls", ["body_brightness", "body_excitation_centre"], {
+      body_brightness: ["dark", "bright"],
     });
   }
 
   buildBodyModel() {
-    this.sliders("field-turbulence-controls", [
-      "body_excitation", "body_brightness", "body_excitation_centre",
-      "field_turbulence",
-      "field_turbulence_slope", "field_turbulence_centre",
-    ], {
-      field_gain: ["quiet", "loud"],
-      body_brightness: ["dark", "bright"],
+    this.sliders("field-tuning-controls", ["body_excitation", "body_tune"]);
+    this.buildPacketTexture();
+    this.buildBeatingControls();
+    this.buildPhaseMovement();
+    this.updateDoubletControl();
+  }
+
+  buildPacketTexture() {
+    this.slider("field_turbulence", "field-turbulence-controls", {
+      normalize: (d,v) => Math.log1p(v/.01)/Math.log1p(d.maximum/.01),
+      denormalize: (d,p) => .01*Math.expm1(p*Math.log1p(d.maximum/.01)),
+      afterInput: () => this.resolvedEditor?.refresh(),
+    });
+    this.sliders("field-turbulence-controls", ["field_turbulence_slope"], {
       field_turbulence: ["tonal", "noisy"],
       field_turbulence_slope: ["noisy lows", "noisy highs"],
     }, () => this.resolvedEditor?.refresh());
-    this.sliders("field-advanced-controls", [
-      "body_tune", "field_packet_spread", "field_satellite_density", "field_phase_bandwidth",
-      "field_drift_depth", "field_drift_rate",
-    ], {
-      field_packet_spread: ["tight", "broad"],
-      field_satellite_density: ["sparse", "dense"],
-      field_phase_bandwidth: ["coherent", "diffuse"],
+    const refreshLayout = mountPacketLayout(document.getElementById("field-turbulence-controls"), {
+      read: () => this.value("field_distribution"),
+      set: value => { this.setValue("field_distribution", value); this.updateDoubletControl(); },
+      reset: () => { this.setValue("field_distribution", this.descriptor("field_distribution").defaultValue); this.updateDoubletControl(); },
+    });
+    this.refreshers.set("field_distribution", refreshLayout);
+    this.sliders("field-turbulence-controls", [
+      "field_packet_spread", "field_satellite_density",
+    ], {}, () => this.resolvedEditor?.refresh());
+  }
+
+  buildBeatingControls() {
+    this.slider("field_doublet_split", "field-beating-controls", {
+      labels: ["still / slow", "fast shimmer"],
+      step: .0002,
+      normalize: (d, v) => beatRatePosition(d.maximum, v),
+      denormalize: (d, p) => beatRateValue(d.maximum, p),
+      afterInput: () => this.resolvedEditor?.refresh(),
+    });
+    this.slider("field_beat_depth", "field-beating-controls", {
+      labels: ["steady", "deep pulses"],
+      normalize: (_descriptor, value) => beatDepthPosition(value),
+      denormalize: (_descriptor, position) => beatDepthValue(position),
+      afterInput: () => this.resolvedEditor?.refresh(),
+    });
+    this.sliders("field-beating-controls", ["field_beat_rate_tilt"], {},
+      () => this.resolvedEditor?.refresh());
+  }
+
+  buildPhaseMovement() {
+    this.slider("field_phase_bandwidth", "field-blur-controls", {
+      labels: ["stable beating", "noise blur"],
+      normalize: (descriptor, value) => Math.sqrt(value / descriptor.maximum),
+      denormalize: (descriptor, position) => descriptor.maximum * position ** 2,
+    });
+    this.sliders("field-blur-controls", ["field_phase_tilt"], {
+      field_phase_tilt: ["blur bass", "blur treble"],
     }, () => this.resolvedEditor?.refresh());
+    this.slider("field_wander_hz", "field-drift-controls", {
+      normalize: (d,v) => Math.log1p(v/.1)/Math.log1p(d.maximum/.1),
+      denormalize: (d,p) => .1*Math.expm1(p*Math.log1p(d.maximum/.1)),
+    });
+    this.sliders("field-drift-controls", ["field_wander_rate"]);
+  }
+
+  destroy() {
+    this.holdControl?.destroy();
+    this.decayEditor?.destroy();
+    this.resolvedEditor?.destroy?.();
+  }
+
+  updateDoubletControl() {
+    const row = document.querySelector('[data-fit-key="field_doublet_split"]');
+    if (!row) return;
+    const layout = Math.round(this.value("field_distribution"));
+    const inactive = layout !== 2 && layout !== 3;
+    row.querySelector("input").disabled = inactive;
+    row.style.opacity = inactive ? ".45" : "1";
+    for (const key of ["field_beat_depth", "field_beat_rate_tilt"]) {
+      const pairedRow = document.querySelector(`[data-fit-key="${key}"]`);
+      if (!pairedRow) continue;
+      pairedRow.querySelector("input").disabled = inactive;
+      pairedRow.style.opacity = inactive ? ".45" : "1";
+    }
+    this.resolvedEditor?.refresh();
+  }
+
+  pairedRingReadout(point) {
+    if (this.value("field_beat_depth") === 0) return " · steady ring";
+    const frequency = point.frequency * this.value("body_tune");
+    const rate = ringBeatRate(frequency, this.value("field_doublet_split"),
+      this.value("field_beat_rate_tilt"));
+    return ` · paired ring, ${rate.toFixed(2)} Hz`;
   }
 
   applySizeMeta(position) {
@@ -220,12 +282,16 @@ export class FitControls {
     const title = document.createElement("span");
     title.textContent = descriptor.name;
     const input = document.createElement("input");
-    input.type = "range"; input.min = 0; input.max = 1; input.step = 1 / 500;
+    input.type = "range"; input.min = 0; input.max = 1; input.step = options.step ?? 1 / 500;
     const normalize = options.normalize ?? normalized;
     const denormalize = options.denormalize ?? denormalized;
     input.value = normalize(descriptor, this.value(key));
     const output = document.createElement("output");
     output.textContent = valueText(descriptor, this.value(key));
+    this.refreshers.set(key, () => {
+      input.value = normalize(descriptor, this.value(key));
+      output.textContent = valueText(descriptor, this.value(key));
+    });
     input.oninput = () => {
       const raw = denormalize(descriptor, Number(input.value));
       this.setValue(key, options.coerce ? options.coerce(raw) : raw);
@@ -265,11 +331,14 @@ export class FitControls {
     const maximumFrequency = curve.frequencies[0].maximum;
     const turbulence = this.descriptors.filter(item =>
       item.key.startsWith("resolved_turbulence_"));
+    const allocation = this.descriptors.filter(item =>
+      item.key.startsWith("resolved_allocation_"));
     const points = () => curve.frequencies.map((frequency, index) => {
       const level = this.state.macros[curve.levels[index].index];
       return {
         frequency: this.state.macros[frequency.index], level,
         turbulence: this.state.macros[turbulence[index].index],
+        allocation: this.state.macros[allocation[index].index],
         active: level > curve.levels[index].minimum + 1.e-3,
       };
     });
@@ -285,6 +354,7 @@ export class FitControls {
         this.state.macros[turbulence[index].index] = clamp(
           point.turbulence, turbulence[index].minimum, turbulence[index].maximum,
         );
+        this.state.macros[allocation[index].index] = clamp(point.allocation ?? 1, 0, 4);
       });
       this.onChange(changeKey);
     };
@@ -310,7 +380,10 @@ export class FitControls {
       this.slider(turbulence[inspected].key, "modal-selection", {
         afterInput: () => editor.refresh(),
       });
-      const names = ["Centre frequency", "Modal prominence", "Local noisiness"];
+      this.slider(allocation[inspected].key, "modal-selection", {
+        afterInput: () => editor.refresh(),
+      });
+      const names = ["Centre frequency", "Modal prominence", "Local noisiness", "Sideband allocation"];
       [...selection.querySelectorAll(".slider-row")].forEach((row, rowIndex) => {
         row.querySelector("span").textContent = names[rowIndex];
         if (index !== null) return;
@@ -324,11 +397,11 @@ export class FitControls {
       globalTurbulence: () => this.value("field_turbulence"),
       spectralTurbulence: frequency => turbulenceIntensity(frequency,
         this.value("field_turbulence"), this.value("field_turbulence_slope"),
-        this.value("field_turbulence_centre"), 1,
+        1000, 1,
         true),
       effectiveTurbulence: point => turbulenceIntensity(point.frequency,
         this.value("field_turbulence"), this.value("field_turbulence_slope"),
-        this.value("field_turbulence_centre"), point.turbulence,
+        1000, point.turbulence,
         true),
       packetSpread: () => this.value("field_packet_spread"),
       replace,
@@ -350,7 +423,19 @@ export class FitControls {
       },
       select: inspect,
       readout: text => {
-        document.getElementById("modal-readout").textContent = text;
+        const pool = packetAllocation(points(), this.value("field_satellite_density"),
+          point => turbulenceIntensity(point.frequency, this.value("field_turbulence"),
+            this.value("field_turbulence_slope"), 1000,
+            point.turbulence, true) * this.value("field_packet_spread"),
+          hasPairedRing(this.value("field_distribution"), this.value("field_doublet_split")));
+        document.getElementById("modal-readout").textContent = `${text} · ${pool.count}/512 oscillators`;
+        const title = document.querySelector("#modal-selection > b");
+        if (title && editor && editor.selected !== null) {
+          const count = pool.centresPerHandle + 2 * pool.pairs[editor.selected];
+          const ring = pool.centresPerHandle === 2
+            ? this.pairedRingReadout(points()[editor.selected]) : "";
+          title.textContent = `Selected modal anchor ${editor.selected + 1} · ≈${count} ${count === 1 ? "oscillator" : "oscillators"}${ring}`;
+        }
       },
     });
     // Preserve the shared guide controls across generator/control rebuilds.
@@ -363,7 +448,7 @@ export class FitControls {
       defaultFamily: "harmonic", open: true, noisiness: true,
       apply: generated => {
         const next = points().map((point, i) => generated[i]
-          ? {...point, ...generated[i]} : {...point, level:-72, active:false});
+          ? {...point, ...generated[i], allocation:1} : {...point, level:-72, active:false});
         replace(next, "modal_template"); editor.select(null); editor.refresh();
       },
     });
@@ -627,19 +712,18 @@ export class FitControls {
   }
 
   buildRadiation() {
-    this.sliders("direct-radiation", [
-      "direct_gain", "direct_low_cut", "direct_high_cut",
-    ]);
-    this.sliders("body-radiation", [
-      "field_gain", "body_low_cut", "body_high_cut",
-      "body_colour_frequency", "body_colour_gain",
-    ]);
-    for (const path of ["direct", "body"]) {
-      this.checkbox(`${path}_radiation_enabled`, `${path}-radiation-advanced`);
-    }
-    this.sliders("direct-radiation-advanced", [
-      "direct_colour_frequency", "direct_colour_gain",
-    ]);
+    this.sliders("observation-mix", ["direct_gain", "field_gain"]);
+    this.checkbox("output_eq_enabled", "output-eq-controls");
+    const editor = new MiniEqEditor(document.getElementById("output-eq-editor"), {
+      prefix:"output", state:this.state, read:key=>this.value(key),
+      set:(key,value)=>this.setValue(key,value), descriptor:key=>this.descriptor(key),
+    });
+    this.eqEditors.push(editor);
+    for(const key of editor.keys)this.refreshers.set(key,()=>editor.refresh());
+  }
+
+  refreshRadiation() {
+    this.eqEditors?.forEach(editor=>editor.refresh());
   }
 
   checkbox(key, parentId, onToggle) {
@@ -650,6 +734,7 @@ export class FitControls {
     label.dataset.tooltip = helpFor(key);
     const input = document.createElement("input");
     input.type = "checkbox"; input.checked = this.value(key) >= .5;
+    this.refreshers.set(key, () => { input.checked = this.value(key) >= .5; });
     input.onchange = () => {
       this.setValue(key, input.checked ? 1 : 0);
       onToggle?.(input.checked);

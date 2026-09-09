@@ -83,7 +83,7 @@ CrashCymbalFitParameters SingleMode(const float drive) {
   fit.bodyExcitationGain = drive;
   fit.fieldGain = fit.outputGain = 1;
   fit.directGain = 0;
-  fit.bodyRadiationEnabled = false;
+  fit.outputEqEnabled = false;
   fit.contactChirpGain = fit.contactNoiseGain = fit.contactMicroGain = 0;
   return fit;
 }

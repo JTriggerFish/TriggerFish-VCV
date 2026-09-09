@@ -9,6 +9,48 @@ using percussion_test::Check;
 using percussion_test::CheckNear;
 
 int main() {
+  for (std::size_t count : {1u, 2u, 3u, 15u, 16u}) {
+    for (float depth : {0.f, .1f, .3f, 1.f}) {
+      double energy = 0;
+      for (std::size_t pair = 0; pair < count; ++pair) {
+        const float scale = DoubletWeightScale(pair, count, depth);
+        energy += scale * scale;
+      }
+      CheckNear(energy, double(count), 2.e-6, "doublet depth preserves pair energy including odd counts");
+    }
+  }
+  {
+    CrashCymbalFitParameters fit;
+    const auto baseline = DefaultCrashCymbalParameters(48000, fit);
+    fit.fieldPhaseTilt = -1.f;
+    const auto tilted = DefaultCrashCymbalParameters(48000, fit);
+    for (std::size_t i = 0; i < baseline.modalField.size(); ++i) {
+      const auto &a = baseline.modalField[i], &b = tilted.modalField[i];
+      Check(a.frequencyHz == b.frequencyHz && a.inputGain == b.inputGain &&
+            a.outputGain == b.outputGain && a.decaySeconds == b.decaySeconds,
+            "blur colour leaves placement, damping and energy unchanged");
+      if (a.frequencyHz > 0 && a.inputGain != 0)
+        CheckNear(b.phaseBandwidthHz, a.phaseBandwidthHz * 1000.f / a.frequencyHz,
+                  std::max(.001, double(b.phaseBandwidthHz) * 1.e-5),
+                  "blur colour follows explicit 1 kHz pivot");
+    }
+  }
+  for (const auto layout : {ModalPacketDistribution::Scattered,
+       ModalPacketDistribution::Even, ModalPacketDistribution::Doublets}) {
+    for (const float centre : {1.f, 1000.f, 20000.f}) {
+      for (std::size_t pair = 0; pair < 100; ++pair) {
+        for (const float side : {-1.f, 1.f}) {
+          const float f = PacketSideFrequency(centre, 4, pair, side, layout, 6, .96f, 23040);
+          Check(f >= 1 && f <= 23040 && std::isfinite(f), "packet support bounded");
+        }
+      }
+    }
+  }
+  const float first = PacketSideFrequency(5000, 2, 0, 1,
+      ModalPacketDistribution::Doublets, 6, 1, 23040);
+  const float second = PacketSideFrequency(5000, 2, 1, 1,
+      ModalPacketDistribution::Doublets, 6, 1, 23040);
+  CheckNear(second - first, 6, .002, "doublet spacing is in Hz, not relative pitch");
   const auto at = [](float f, float local, bool relaxed) {
     return EvaluateTurbulence(f, 1.f, 1.f, 1000.f, local, relaxed);
   };
@@ -34,7 +76,6 @@ int main() {
       fit.fieldRelaxedTurbulence = true;
       fit.fieldTurbulence = level;
       fit.fieldTurbulenceSlopePerOctave = 1;
-      fit.fieldTurbulenceCentreHz = 1000;
       fit.fieldSatelliteDensity = density;
       fit.bloomRateOctavesPerSecond = 0;
       const auto parameters = DefaultCrashCymbalParameters(48000, fit);

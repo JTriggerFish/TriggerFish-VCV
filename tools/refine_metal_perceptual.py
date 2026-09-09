@@ -169,7 +169,6 @@ def fit(args):
                     field_turbulence_slope=(0, 1),
                     field_phase_bandwidth=(0, 1.2),
                     field_packet_spread=(0.2, 8),
-                    field_exchange=(0, 1),
                 ),
                 160,
             )
@@ -178,7 +177,6 @@ def fit(args):
                 f"round {turn+1}: transport",
                 dict(
                     bloom_rate=(max(0.01, args.cascade_min), 8),
-                    bloom_phase_diffusion=(0, 1),
                     body_brightness=(-36, 18),
                 ),
                 100,

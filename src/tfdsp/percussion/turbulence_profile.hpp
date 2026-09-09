@@ -24,7 +24,8 @@ inline TurbulenceResponse EvaluateTurbulence(float frequency, float level,
     const float intensity = std::clamp(spectral * local, 0.f, 1.f);
     return {intensity, .9f * intensity * intensity, intensity * intensity};
   }
-  const float intensity = std::clamp(finite(level), 0.f, 4.f) *
+  // At the fixed 1-kHz pivot, legacy centre/level combinations can reach 4000.
+  const float intensity = std::clamp(finite(level), 0.f, 4000.f) *
       std::exp2(slope * octaves) * local;
   // 90% satellite energy at intensity one; smoothly tends to 100%.
   const float fraction = -std::expm1(-2.302585092994f * intensity * intensity);

@@ -35,6 +35,19 @@ assert.equal(fit.renderer.api, 1);
 assert.equal(fit.controls.macros, undefined);
 assert.deepEqual(fitMacroValues(validateFit(fit, descriptors), descriptors), [-36, .8]);
 const roundTrip = validateFit(JSON.parse(JSON.stringify(fit)), descriptors);
+const withBlur = [...descriptors, {index:2,key:'field_phase_tilt',minimum:-2,maximum:2,defaultValue:0}];
+const importedBlur = validateFit(fit, withBlur);
+assert.deepEqual(fitMacroValues(importedBlur, withBlur), [-36,.8,0]);
+assert.equal(fit.instrument.nodes.find(n=>n.id==='body').parameters.field_phase_tilt, undefined,
+  'Import does not mutate the saved source');
+const oldDoubletDescriptors=[...descriptors,
+  {index:2,key:'field_distribution',minimum:0,maximum:3,defaultValue:3},
+  {index:3,key:'field_beat_depth',minimum:0,maximum:1,defaultValue:.3},
+  {index:4,key:'field_beat_rate_tilt',minimum:-1,maximum:1,defaultValue:.25}];
+const oldDoublet=snapshotState({...state,macros:[-36,.8,2,.3,.25]},'Old doublets',oldDoubletDescriptors);
+const newDoubletDescriptors=[...oldDoubletDescriptors,{...withBlur[2],index:5}];
+assert.deepEqual(fitMacroValues(validateFit(oldDoublet,newDoubletDescriptors),newDoubletDescriptors),
+  [-36,.8,2,1,0,0],'Old doublets explicitly retain equal partners and shared gap');
 assert.equal(roundTrip.reference.referenceGainDb, 42);
 assert.throws(() => validateFit({
   ...fit, reference: { ...fit.reference, referenceGainDb: Infinity },

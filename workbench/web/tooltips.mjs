@@ -39,15 +39,19 @@ export class Tooltips {
     this.popup.textContent = target.dataset.tooltip;
     target.setAttribute("aria-describedby", this.popup.id);
     const bounds = target.getBoundingClientRect();
-    const width = Math.min(320, window.innerWidth - 20);
+    const width = Math.min(360, window.innerWidth - 20);
     this.popup.style.maxWidth = `${width}px`;
-    this.popup.style.left = `${Math.max(10, Math.min(
-      bounds.left, window.innerWidth - width - 10,
-    ))}px`;
-    this.popup.style.top = `${Math.min(
-      window.innerHeight - 80, bounds.bottom + 7,
-    )}px`;
     this.popup.classList.add("visible");
+    const popup = this.popup.getBoundingClientRect();
+    this.popup.style.left = `${Math.max(10, Math.min(
+      bounds.left, window.innerWidth - popup.width - 10,
+    ))}px`;
+    const below = bounds.bottom + 7;
+    const top = below + popup.height <= window.innerHeight - 10
+      ? below : bounds.top - popup.height - 7;
+    this.popup.style.top = `${Math.max(10, Math.min(
+      window.innerHeight - popup.height - 10, top,
+    ))}px`;
   }
 
   hide() {
