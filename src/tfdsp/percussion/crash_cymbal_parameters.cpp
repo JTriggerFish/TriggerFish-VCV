@@ -333,7 +333,8 @@ CrashCymbalParameters DefaultCrashCymbalParameters(
       std::clamp(fit.bloomRateOctavesPerSecond, 0.f, 32.f),
       std::clamp(fit.bloomEnergyAcceleration, 0.f, 1.f),
       std::clamp(fit.bloomPhaseDiffusion, 0.f, 1.f),
-      ModalFieldSeed ^ 0x43415343u, fit.bloomSpectralDiffusion};
+      ModalFieldSeed ^ 0x43415343u, fit.bloomSpectralDiffusion,
+      std::clamp(fit.bloomEnergySensitivity, 0.f, 2.f)};
   result.outputEq = OutputEq(fit);
   return result;
 }

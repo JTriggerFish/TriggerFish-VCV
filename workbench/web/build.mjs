@@ -33,6 +33,7 @@ for (const name of [
   "modal_template_controls.mjs", "modal_template_fields.mjs", "kick_modal_controls.mjs", "turbulence_profile.mjs",
   "decay_curve_editor.mjs", "decay_curve_geometry.mjs", "tooltips.mjs",
   "bloom_timing_meta.mjs", "bloom_timing_control.mjs",
+  "bloom_timing_view.mjs", "bloom_control_scaling.mjs", "bloom_timing.css",
   "decay_hold_control.mjs", "decay_hold_worker.mjs", "decay_hold_measurement.mjs",
   "decay_hold_solver.mjs", "decay_hold_fit.mjs",
   "packet_layout_control.mjs", "fit_control_help.mjs", "mini_eq_editor.mjs", "radiation_response.mjs", "live_output_spectrum.mjs",

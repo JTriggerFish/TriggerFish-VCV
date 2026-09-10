@@ -35,6 +35,17 @@ assert.equal(fit.renderer.api, 1);
 assert.equal(fit.controls.macros, undefined);
 assert.deepEqual(fitMacroValues(validateFit(fit, descriptors), descriptors), [-36, .8]);
 const roundTrip = validateFit(JSON.parse(JSON.stringify(fit)), descriptors);
+const linkedDescriptors = [...descriptors,
+  {index:2,key:'bloom_energy_acceleration',minimum:0,maximum:1,defaultValue:.5}];
+const splitDescriptors = [...linkedDescriptors,
+  {index:3,key:'bloom_energy_sensitivity',minimum:0,maximum:2,defaultValue:1}];
+const linked = snapshotState({...state,macros:[-36,.8,.15]},'Linked',linkedDescriptors);
+const split = validateFit(linked,splitDescriptors);
+assert.deepEqual(fitMacroValues(split,splitDescriptors),[-36,.8,.15,.3]);
+assert.equal(linked.instrument.nodes.find(n=>n.id==='body').parameters.bloom_energy_sensitivity,undefined);
+split.instrument.nodes.find(n=>n.id==='body').parameters.bloom_energy_sensitivity=.8;
+assert.equal(fitMacroValues(validateFit(split,splitDescriptors),splitDescriptors)[3],.8,
+  'Existing independent energy sensitivity must not be relinked');
 const withBlur = [...descriptors, {index:2,key:'field_phase_tilt',minimum:-2,maximum:2,defaultValue:0}];
 const importedBlur = validateFit(fit, withBlur);
 assert.deepEqual(fitMacroValues(importedBlur, withBlur), [-36,.8,0]);

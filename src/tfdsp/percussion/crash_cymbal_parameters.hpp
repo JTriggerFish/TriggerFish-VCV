@@ -64,6 +64,7 @@ struct CrashCymbalFitParameters {
   // Intrinsic upward transport of energy already stored in the modal body.
   float bloomRateOctavesPerSecond{2.f};
   float bloomEnergyAcceleration{.7f};
+  float bloomEnergySensitivity{1.4f};
   float bloomPhaseDiffusion{.7f};
   bool bloomSpectralDiffusion{};
   // Visible gain between the contact body port and the nonlinear modal field.

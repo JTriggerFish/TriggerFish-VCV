@@ -98,6 +98,7 @@ def test_native_packet_surface_round_trip():
         field_wander_knots_per_second=0.5,
         field_relaxed_turbulence=True,
         bloom_spectral_diffusion=True,
+        bloom_energy_sensitivity=0.3,
         field_allocation_weight=(0.5,) * 32,
     )
     parameters = fit.native()
@@ -111,6 +112,7 @@ def test_native_packet_surface_round_trip():
         "field_wander_knots_per_second",
         "field_relaxed_turbulence",
         "bloom_spectral_diffusion",
+        "bloom_energy_sensitivity",
         "field_allocation_weight",
     ):
         np.testing.assert_allclose(getattr(parameters, key), getattr(fit, key))

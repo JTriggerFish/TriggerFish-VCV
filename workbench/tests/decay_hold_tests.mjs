@@ -8,6 +8,10 @@ const descriptors = [
   ['bloom_rate',0,16], ['bloom_energy_acceleration',0,1], ['model_level_db',-60,12],
 ].map(([key,minimum,maximum],index)=>({key,minimum,maximum,index}));
 const baseline=[4,1,2,.2,-20], edited=[4,1,2.5,.2,-20];
+assert.ok(!compensationCoordinates([...descriptors,
+  {key:'bloom_energy_sensitivity',index:5,minimum:0,maximum:2}],
+  [...baseline,.4],[...edited,.4]).some(x=>x.d.key==='bloom_energy_sensitivity'),
+  'Hold decay must not retune velocity sensitivity');
 assert.ok(Math.abs(leastSquaresStep([[1,0],[0,1]],[2,3])[0]+2)<.001);
 assert.deepEqual(compensationCoordinates(descriptors,baseline,edited).map(a=>a.d.index),[0,1,3]);
 assert.deepEqual(compensationCoordinates(descriptors,baseline,[4,1,2.5,.3,-20]).map(a=>a.d.index),[0,1]);

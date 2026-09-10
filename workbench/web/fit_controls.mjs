@@ -6,6 +6,7 @@ import { DecayCurveEditor } from "./decay_curve_editor.mjs";
 import { expandedSizeMeta } from "./size_meta.mjs";
 import { mountBloomTiming } from "./bloom_timing_control.mjs";
 import { BloomTimingKeys } from "./bloom_timing_meta.mjs";
+import { bloomRateNormalized, bloomRateDenormalized } from "./bloom_control_scaling.mjs";
 import { mountPacketLayout, hasPairedRing, beatRatePosition, beatRateValue, ringBeatRate, beatDepthPosition, beatDepthValue } from "./packet_layout_control.mjs";
 import { packetAllocation } from "./packet_allocation.mjs";
 import { helpFor } from "./fit_control_help.mjs";
@@ -32,21 +33,10 @@ function denormalized(descriptor, position) {
     (descriptor.maximum - descriptor.minimum);
 }
 
-const SlowestBloomRate = .01;
-
-const bloomRateNormalized = (descriptor, value) => {
-  if (value <= 0) return 0;
-  return clamp(.02 + .98 * Math.log(value / SlowestBloomRate) /
-    Math.log(descriptor.maximum / SlowestBloomRate), 0, 1);
-};
-
-const bloomRateDenormalized = (descriptor, position) => position < .01
-  ? 0 : SlowestBloomRate * (descriptor.maximum / SlowestBloomRate) **
-    ((position - .02) / .98);
-
 function valueText(descriptor, value) {
   let digits = 3;
-  if (descriptor.key === "bloom_energy_acceleration" && value > 0 && value < .01) digits = 5;
+  if (["bloom_energy_acceleration", "bloom_energy_sensitivity"].includes(descriptor.key)
+      && value > 0 && value < .01) digits = 5;
   if (descriptor.unit === "Hz") digits = value >= 1000 ? 0 : value < 10 ? 2 : 1;
   else if (descriptor.unit === "dB" || descriptor.unit === "dB/oct") digits = 1;
   else if (descriptor.unit === "s") digits = value < .1 ? 3 : 2;
@@ -55,8 +45,6 @@ function valueText(descriptor, value) {
   return `${Number(value).toFixed(digits)}${suffix}`;
 }
 
-const erb = frequency => 21.4 * Math.log10(1 + .00437 * frequency);
-const inverseErb = rate => (10 ** (rate / 21.4) - 1) / .00437;
 
 
 export class FitControls {
@@ -104,7 +92,10 @@ export class FitControls {
   build() {
     this.eqEditors = [];
     this.holdControl?.destroy();
+    this.bloomTiming?.destroy();
     this.decayEditor?.destroy();
+    this.resolvedEditor?.destroy();
+    this.modalTemplates?.destroy();
     this.refreshers.clear();
     document.querySelectorAll("[data-fit-controls]").forEach(
       element => element.replaceChildren(),
@@ -132,6 +123,7 @@ export class FitControls {
     if (this.decayHold) this.holdControl = mountDecayHold(
       document.getElementById("bloom-controls"), {
         state: this.state, ...this.decayHold,
+        mount: document.getElementById("bloom-hold-controls"),
         apply: values => {
           const changed = this.descriptors.filter(d => values[d.index] !== this.state.macros[d.index]);
           this.state.macros.splice(0, this.state.macros.length, ...values);
@@ -140,7 +132,7 @@ export class FitControls {
           this.onChange("hold_decay");
         },
       });
-    this.bloomTiming = mountBloomTiming(document.getElementById("bloom-controls"), {
+    this.bloomTiming = mountBloomTiming(document.getElementById("bloom-timing-controls"), {
       read: key => this.value(key), descriptors: this.descriptors,
       apply: values => {
         for (const [key, value] of Object.entries(values)) {
@@ -150,16 +142,21 @@ export class FitControls {
         this.onChange("bloom_timing_meta");
       },
     });
-    this.slider("bloom_rate", "bloom-controls", {
+    this.slider("bloom_rate", "bloom-diffusion-controls", {
       labels: ["off", "strong"],
       normalize: bloomRateNormalized, denormalize: bloomRateDenormalized,
     });
-    this.slider("bloom_energy_acceleration", "bloom-controls", {
-      labels: ["linear", "quadratic"],
+    this.slider("bloom_energy_acceleration", "bloom-diffusion-controls", {
+      labels: ["even", "concentrated"],
       normalize: (descriptor, value) => Math.cbrt(value),
       denormalize: (descriptor, position) => position ** 3,
     });
-    this.sliders("bloom-controls", ["body_brightness", "body_excitation_centre"], {
+    this.slider("bloom_energy_sensitivity", "bloom-diffusion-controls", {
+      labels: ["independent", "strong"],
+      normalize: (descriptor, value) => Math.sqrt(value / 2),
+      denormalize: (descriptor, position) => 2 * position ** 2,
+    });
+    this.sliders("bloom-excitation-controls", ["body_brightness", "body_excitation_centre"], {
       body_brightness: ["dark", "bright"],
     });
   }
@@ -229,8 +226,10 @@ export class FitControls {
 
   destroy() {
     this.holdControl?.destroy();
+    this.bloomTiming?.destroy();
     this.decayEditor?.destroy();
     this.resolvedEditor?.destroy?.();
+    this.modalTemplates?.destroy();
   }
 
   updateDoubletControl() {
@@ -410,7 +409,8 @@ export class FitControls {
         const index = next.findIndex(point => !point.active);
         if (index < 0) return null;
         next[index] = {
-          frequency, level: Math.max(level, -48), turbulence: 1, active: true,
+          frequency, level: Math.max(level, curve.levels[index].minimum + .1),
+          turbulence: 1, active: true,
         };
         replace(next, "modal_insert");
         return index;
@@ -440,10 +440,8 @@ export class FitControls {
     });
     // Preserve the shared guide controls across generator/control rebuilds.
     const guideToolbar = document.querySelector(".harmonic-toolbar");
-    const quickPresets = document.getElementById("modal-preset").parentElement;
     guideToolbar.remove();
-    quickPresets.remove();
-    const templates = mountModalTemplates(document.getElementById("modal-templates"), {
+    const templates = this.modalTemplates = mountModalTemplates(document.getElementById("modal-templates"), {
       capacity: curve.frequencies.length, minimumFrequency, maximumFrequency,
       defaultFamily: "harmonic", open: true, noisiness: true,
       apply: generated => {
@@ -452,7 +450,6 @@ export class FitControls {
         replace(next, "modal_template"); editor.select(null); editor.refresh();
       },
     });
-    document.querySelector("#modal-templates .template-pitch").append(quickPresets);
     const tools = { edit: "edit", level: "shape", paint: "paint" };
     const setTool = tool => {
       editor.setTool(tool);
@@ -478,12 +475,6 @@ export class FitControls {
         point.active = false;
       });
       replace(next, "modal_clear");
-      editor.select(null); editor.refresh();
-    };
-    document.getElementById("modal-preset").onchange = event => {
-      if (!event.target.value) return;
-      this.applyModalPreset(event.target.value, curve, turbulence);
-      event.target.value = "";
       editor.select(null); editor.refresh();
     };
     document.querySelector("#modal-templates .template-panel").append(guideToolbar);
@@ -518,51 +509,6 @@ export class FitControls {
     update();
   }
 
-  applyModalPreset(name, curve, turbulence) {
-    const count = curve.frequencies.length;
-    const levels = Array(count).fill(-72);
-    const frequencies = curve.frequencies.map(item => item.defaultValue);
-    const widths = turbulence.map(item => item.defaultValue);
-    if (name === "fitted") {
-      curve.levels.forEach((item, index) => { levels[index] = item.defaultValue; });
-    } else {
-      const definitions = {
-        even: {
-          active: 18, low: 120, high: 14500, centre: .58,
-          peak: -5, edge: -18,
-        },
-        low: {
-          active: 14, low: 70, high: 8500, centre: .42,
-          peak: -4, edge: -22,
-        },
-        shimmer: {
-          active: 20, low: 350, high: 15000, centre: .76,
-          peak: -3, edge: -20,
-        },
-      };
-      const preset = definitions[name];
-      if (!preset) return;
-      const first = erb(preset.low); const last = erb(preset.high);
-      for (let index = 0; index < preset.active; ++index) {
-        const position = index / Math.max(1, preset.active - 1);
-        frequencies[index] = inverseErb(first + position * (last - first));
-        const distance = Math.min(
-          1, Math.abs(position - preset.centre) /
-            Math.max(preset.centre, 1 - preset.centre),
-        );
-        levels[index] = preset.peak + distance *
-          (preset.edge - preset.peak);
-        widths[index] = name === "low" ? .65 :
-          name === "shimmer" ? 1.25 : 1;
-      }
-    }
-    for (let index = 0; index < count; ++index) {
-      this.state.macros[curve.frequencies[index].index] = frequencies[index];
-      this.state.macros[curve.levels[index].index] = levels[index];
-      this.state.macros[turbulence[index].index] = widths[index];
-    }
-    this.onChange(`modal_preset_${name}`);
-  }
 
   buildDecayEditor() {
     const parent = document.getElementById("decay-editor");

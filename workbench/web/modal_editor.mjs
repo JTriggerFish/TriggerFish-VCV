@@ -1,3 +1,5 @@
+import {reportError} from "./error_banner.mjs";
+
 const Svg = "http://www.w3.org/2000/svg";
 const Height = 300;
 const Plot = { left: 52, right: 18, top: 18, bottom: 32 };
@@ -41,9 +43,15 @@ export class ModalEditor {
     parent.append(this.svg);
     this.resizeObserver = new ResizeObserver(() => this.paint());
     this.resizeObserver.observe(parent);
-    requestAnimationFrame(() => this.paint());
+    this.initialFrame = requestAnimationFrame(() => this.paint());
     this.bind();
     this.paint();
+  }
+
+  destroy() {
+    cancelAnimationFrame(this.initialFrame);
+    this.resizeObserver.disconnect();
+    this.drag = null;
   }
 
   setTool(tool) {
@@ -187,10 +195,43 @@ export class ModalEditor {
     return turbulence * this.options.packetSpread();
   }
 
+  // Hit-test coordinates, not transient SVG nodes: painting replaces those
+  // between pointerdown and click. The SVG remains the stable event target.
+  hitHandle(position) {
+    const points = this.options.points(), radius = 8 * this.unitsPerPixel;
+    const selected = points[this.selected];
+    if (selected?.active && this.options.widthEnabled !== false) {
+      const spread = this.effectiveSpread(selected);
+      for (const direction of [-1, 1]) {
+        const x = this.x(inverseErb(erb(selected.frequency) + direction * spread));
+        const y = this.y(this.options.minimumLevel + .45 * (selected.level - this.options.minimumLevel));
+        if (spread > .025 && Math.hypot(position.x - x, position.y - y) <= radius)
+          return {index:this.selected, kind:"width"};
+      }
+    }
+    for (let index = points.length - 1; index >= 0; --index) {
+      const p = points[index];
+      if (!p.active || p.frequency < this.options.minimumFrequency || p.frequency > this.options.maximumFrequency) continue;
+      const x = this.x(p.frequency), y = this.y(p.level);
+      if (Math.hypot(position.x - x, position.y - y) <= radius ||
+          (Math.abs(position.x - x) <= 4 * this.unitsPerPixel &&
+           position.y >= y && position.y <= this.y(this.options.minimumLevel)))
+        return {index, kind:"centre"};
+    }
+    return null;
+  }
+
+  fullNotice() {
+    reportError(`All ${this.options.points().length} modal handles are in use. Delete a mode or generate fewer modes before adding another.`, "Modal editor");
+  }
+
   bind() {
     this.svg.addEventListener("pointermove", event => {
       this.hover = { ...this.eventPosition(event), shift: event.shiftKey,
         control: event.ctrlKey || event.metaKey };
+      const hit = this.tool === "edit" ? this.hitHandle(this.hover) : null;
+      this.svg.style.cursor = this.tool !== "edit" ? "crosshair" :
+        hit?.kind === "width" ? "ew-resize" : hit ? "grab" : "default";
       if (this.drag?.pointerId === event.pointerId) this.updateDrag(event);
       else this.paint();
     });
@@ -198,7 +239,10 @@ export class ModalEditor {
       if (!this.drag) { this.hover = null; this.paint(); }
     });
     this.svg.addEventListener("pointerdown", event => {
-      if (event.button !== 0 || event.target.closest(".modal-handle")) return;
+      if (event.button !== 0) return;
+      this.svg.focus({preventScroll:true});
+      const hit = this.hitHandle(this.eventPosition(event));
+      if (hit) return this.beginHandle(event, hit.index, hit.kind);
       if (this.tool === "edit") {
         this.selected = null;
         this.options.select(null);
@@ -213,13 +257,23 @@ export class ModalEditor {
       this.updateDrag(event);
     });
     this.svg.addEventListener("dblclick", event => {
-      if (event.target.closest(".modal-handle")) return;
+      if (this.tool !== "edit") return;
       event.preventDefault();
       const position = this.eventPosition(event);
+      const hit = this.hitHandle(position);
+      if (hit) {
+        if (hit.kind === "centre") {
+          this.options.remove(hit.index); this.select(null);
+        }
+        return;
+      }
+      if (position.x < Plot.left || position.x > this.width - Plot.right ||
+          position.y < Plot.top || position.y > Height - Plot.bottom) return;
       const index = this.options.insert(
         this.snapFrequency(this.frequency(position.x)), this.level(position.y),
       );
       if (index !== null) this.select(index);
+      else this.fullNotice();
     });
     const finish = event => {
       if (!this.drag || event.pointerId !== this.drag.pointerId) return;
@@ -359,6 +413,9 @@ export class ModalEditor {
       const occupied = points.some(point => point.active &&
         Math.abs(erb(point.frequency) - candidateErb) < placementRadius);
       const index = occupied ? -1 : points.findIndex(point => !point.active);
+      if (!occupied && index < 0 && !this.drag.fullNotified) {
+        this.drag.fullNotified = true; this.fullNotice();
+      }
       if (index >= 0) {
         points[index] = {
           frequency: candidateFrequency,
@@ -410,7 +467,8 @@ export class ModalEditor {
     const count = points.filter(point => point.active).length;
     this.options.readout(
       this.selected === null ? `${count}/${points.length} active modes` :
-        this.pointText(points[this.selected]),
+        this.pointText(points[this.selected]) +
+          (count === points.length ? ` · all ${count} handles in use` : ""),
     );
   }
 
@@ -510,14 +568,6 @@ export class ModalEditor {
       r: 6 * this.unitsPerPixel,
       class: `modal-node modal-handle${index === this.selected ? " selected" : ""}`,
     });
-    for (const handle of [bar, node]) {
-      handle.onpointerdown = event => this.beginHandle(event, index, "centre");
-      handle.ondblclick = event => {
-        event.preventDefault(); event.stopPropagation();
-        this.options.remove(index); this.selected = null;
-        this.options.select(null); this.paint();
-      };
-    }
     this.svg.append(bar, node);
     if (index === this.selected && spread > .025) {
       for (const direction of [-1, 1]) {
@@ -527,7 +577,6 @@ export class ModalEditor {
             .45 * (point.level - this.options.minimumLevel)),
           r: 5 * this.unitsPerPixel, class: "modal-wing modal-handle",
         });
-        wing.onpointerdown = event => this.beginHandle(event, index, "width");
         this.svg.append(wing);
       }
     }

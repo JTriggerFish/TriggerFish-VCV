@@ -28,7 +28,7 @@ export class KickModalControls {
       select:index=>this.inspect(index),
       readout:text=>{document.getElementById("kick-mode-readout").textContent=text;},
     });
-    mountModalTemplates(document.getElementById("kick-modal-templates"), {
+    this.templates = mountModalTemplates(document.getElementById("kick-modal-templates"), {
       capacity:16, minimumFrequency:20, maximumFrequency:15000,
       apply:generated=>this.replace(this.points().map((point,i)=>generated[i] ??
         {...point,level:-72,active:false})),
@@ -82,5 +82,5 @@ export class KickModalControls {
     });
   }
 
-  destroy() { this.editor.resizeObserver.disconnect(); }
+  destroy() { this.editor.destroy(); this.templates.destroy(); }
 }

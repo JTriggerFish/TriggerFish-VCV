@@ -213,8 +213,8 @@ try {
       count.value=16;count.dispatchEvent(new Event('input',{bubbles:true}));
       const formula=host.querySelector('[aria-label="Modal formula"]');
       formula.value='membrane';formula.dispatchEvent(new Event('change',{bubbles:true}));
-      if(count.max!=='16' || generate.disabled) throw Error('Membrane limit incorrect');
-      count.value=17;count.dispatchEvent(new Event('input',{bubbles:true}));
+      if(count.max!=='32' || generate.disabled) throw Error('Membrane limit incorrect');
+      count.value=33;count.dispatchEvent(new Event('input',{bubbles:true}));
       if(!generate.disabled) throw Error('Membrane silently truncated');
       formula.value='harmonic';formula.dispatchEvent(new Event('change'));
       hz.value=1000;hz.dispatchEvent(new Event('input',{bubbles:true}));
@@ -272,7 +272,7 @@ try {
       if(!document.getElementById('error-banner').hidden) throw Error('Dismiss failed');
       reportError(new Error('Example validation notice for visual review — this disposable tab only.'), 'Mode generator');
       host.scrollIntoView({block:'center'});
-      controls.resolvedEditor.resizeObserver.disconnect();engine.destroy();
+      controls.destroy();engine.destroy();
       return {ready:results,newModelOnly:true,harmonicGenerator:true,limits:true,
         noiseDifference:delta/energy,errorBanner:true,audioPlayed:false};
     })()`});

@@ -118,6 +118,7 @@ UNIFIED_CAUSAL_STAGES = (
             parameter("field_exchange", 0.0, 1.0),
             parameter("bloom_rate_octaves_per_second", 0.0, 16.0),
             parameter("bloom_energy_acceleration", 0.0, 1.0),
+            parameter("bloom_energy_sensitivity", 0.0, 2.0),
             parameter("bloom_phase_diffusion", 0.0, 1.0),
             parameter("output_colour_frequency_hz", 100.0, 18_000.0),
             parameter("output_colour_gain_db", -18.0, 18.0),
@@ -130,6 +131,7 @@ UNIFIED_CAUSAL_STAGES = (
         (
             parameter("bloom_rate_octaves_per_second", 0.0, 16.0),
             parameter("bloom_energy_acceleration", 0.0, 1.0),
+            parameter("bloom_energy_sensitivity", 0.0, 2.0),
             parameter("bloom_phase_diffusion", 0.0, 1.0),
             parameter("field_turbulence", 0.0, 1.0),
             parameter("field_turbulence_slope_per_octave", -1.0, 1.0),

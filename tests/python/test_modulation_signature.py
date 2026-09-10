@@ -54,3 +54,16 @@ def test_invalid_and_silent():
     assert all(r["depth"] == 0 for r in result["bands"])
     with pytest.raises(ValueError, match="no measurable"):
         excess_motion(result, result)
+
+
+def test_flutter_is_not_invisible_to_slow_beating_diagnostic():
+    t = np.arange(6 * 16000) / 16000
+    audio = (
+        (1 + 0.4 * np.cos(2 * np.pi * 30 * t))
+        * np.sin(2 * np.pi * 400 * t)
+        * np.exp(-t)
+    )
+    band = modulation_signature(audio, 16000)["bands"][2]
+    assert band["flutter_dominant_hz"] == 30
+    assert band["flutter_depth"] > 0.2
+    assert band["flutter_depth"] > 10 * band["depth"]

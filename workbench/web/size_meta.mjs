@@ -5,7 +5,7 @@ const clamp = (value, minimum, maximum) =>
 
 const chinaPreset = {
   impact_tone_noise: .62, impact_width: .65,
-  bloom_rate: 5, bloom_energy_acceleration: .55,
+  bloom_rate: 5, bloom_energy_acceleration: .55, bloom_energy_sensitivity: 1.1,
   body_brightness: 1.5,
   body_excitation_centre: 3000,
   field_turbulence_slope: .12,

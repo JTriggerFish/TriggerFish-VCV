@@ -62,6 +62,7 @@ export function snapshotState(state, name = "Snapshot", descriptors = []) {
 }
 
 export function validateFit(value, descriptors = []) {
+  value = importDiffusionSensitivity(value, descriptors);
   value = importBlurBalance(value, descriptors);
   value = importModalSurface(value, descriptors);
   value = importOutputEq(value, descriptors);
@@ -102,6 +103,20 @@ export function validateFit(value, descriptors = []) {
     throw new Error("invalid analysis settings");
   }
   return value;
+}
+
+// Expand the old linked exponent into two visible, independently saved values.
+export function importDiffusionSensitivity(value, descriptors) {
+  if (value?.instrument?.recipe !== "metal.cymbal.v1" ||
+      !descriptors.some(d => d.key === "bloom_energy_sensitivity")) return value;
+  const p = value.instrument.nodes?.find(n => n.id === "body")?.parameters;
+  if (!p || Object.hasOwn(p, "bloom_energy_sensitivity")) return value;
+  const n = p.bloom_energy_acceleration;
+  if (!Number.isFinite(n) || n < 0 || n > 1)
+    throw new Error("Invalid old diffusion nonlinearity");
+  const copy = structuredClone(value);
+  copy.instrument.nodes.find(n => n.id === "body").parameters.bloom_energy_sensitivity = 2 * n;
+  return copy;
 }
 
 export function fitParameterValues(fit, descriptors) {

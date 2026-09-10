@@ -42,6 +42,15 @@ try {
       if(!expected)throw Error('No fitted calibration for '+id);
       const selector=document.getElementById('instrument-calibration');
       selector.value=id; await selector.onchange();
+      if(expected.instrument.recipe==='metal.cymbal.v1') {
+        for(const [key,label] of [['bloom_energy_acceleration','Concentration dependence'],
+                                 ['bloom_energy_sensitivity','Energy sensitivity']]) {
+          const row=document.querySelector('[data-fit-key="'+key+'"]');
+          if(!row?.querySelector('input[type=range]') || !row.textContent.includes(label) ||
+             !row.dataset.tooltip || !row.getClientRects().length)
+            throw Error('Missing visible diffusion control/help: '+key);
+        }
+      }
       let captured;
       const create=URL.createObjectURL,click=HTMLAnchorElement.prototype.click;
       URL.createObjectURL=blob=>{captured=blob;return create.call(URL,blob);};

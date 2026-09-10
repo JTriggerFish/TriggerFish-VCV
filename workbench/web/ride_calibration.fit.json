@@ -203,7 +203,8 @@
           "resolved_allocation_29": 1,
           "resolved_allocation_30": 1,
           "resolved_allocation_31": 1,
-          "body_tune": 1
+          "body_tune": 1,
+          "bloom_energy_sensitivity": 2
         },
         "editor": {
           "x": 230,

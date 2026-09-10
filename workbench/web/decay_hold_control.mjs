@@ -1,15 +1,15 @@
 // Design-time assistance only. Accepted edits are ordinary visible parameters.
-const Keys = new Set(['bloom_rate', 'bloom_energy_acceleration',
+const Keys = new Set(['bloom_rate', 'bloom_energy_acceleration', 'bloom_energy_sensitivity',
   'body_brightness', 'body_excitation_centre', 'bloom_timing_meta']);
 const signature = value => JSON.stringify(value);
 
-export function mountDecayHold(parent, {state, read, apply, onError}) {
+export function mountDecayHold(parent, {state, read, apply, onError, mount = parent}) {
   const panel = document.createElement('div');
   panel.className = 'decay-hold';
   panel.innerHTML = `<label><input type="checkbox"> Hold decay</label>
     <button type="button" hidden>Cancel</button><div role="status"></div>`;
-  parent.append(panel);
-  panel.dataset.tooltip = 'After a Bloom edit, try to preserve the previous 1–6 second tail using the visible T60 knots and, unless you edited it, diffusion nonlinearity. The attack follows your edit. No gain matching or extra envelope. Large changes may not be compensable.';
+  mount.append(panel);
+  panel.dataset.tooltip = 'After a Bloom edit, try to preserve the previous 1–6 second tail using the visible T60 knots and, unless you edited it, concentration dependence. Energy sensitivity stays fixed so compensation does not change its velocity response. No gain matching or extra envelope. Large changes may not be compensable.';
   const toggle = panel.querySelector('input'), cancel = panel.querySelector('button');
   const status = panel.querySelector('[role=status]'), events = new AbortController();
   toggle.checked = state.holdDecayEnabled ??= true;
@@ -69,6 +69,6 @@ export function mountDecayHold(parent, {state, read, apply, onError}) {
   parent.addEventListener('pointercancel', () => stop('Cancelled.'), {signal:events.signal});
   toggle.onchange = () => { state.holdDecayEnabled = toggle.checked; stop(toggle.checked ? 'Ready for a Bloom edit.' : 'Off — decay controls stay fixed.'); };
   cancel.onclick = () => stop('Cancelled; your edit is unchanged.');
-  status.textContent = 'Release a Bloom control to compensate · may take a few seconds';
+  status.textContent = '';
   return {destroy() {stop(); events.abort();}};
 }

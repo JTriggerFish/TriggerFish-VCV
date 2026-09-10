@@ -312,19 +312,25 @@ if (testControls) {
       reset(model, Math.min(1, initial.model + 0.1));
       const modal = document.querySelector("#modal-editor svg");
       const modalCount = modal.querySelectorAll(".modal-bar").length;
-      modal.querySelector(".modal-bar").dispatchEvent(new MouseEvent(
-        "dblclick", { bubbles: true },
-      ));
+      const modalHandleBounds = modal.querySelector(".modal-node").getBoundingClientRect();
+      modal.dispatchEvent(new MouseEvent("dblclick", {
+        bubbles: true,
+        clientX: modalHandleBounds.left + modalHandleBounds.width / 2,
+        clientY: modalHandleBounds.top + modalHandleBounds.height / 2,
+      }));
       const modalDeleteWorked =
         modal.querySelectorAll(".modal-bar").length === modalCount - 1;
-      const modalPreset = document.getElementById("modal-preset");
-      modalPreset.value = "fitted";
-      modalPreset.dispatchEvent(new Event("change"));
+      modal.dispatchEvent(new MouseEvent("dblclick", {
+        bubbles:true, clientX:modalHandleBounds.left + modalHandleBounds.width / 2,
+        clientY:modalHandleBounds.top + modalHandleBounds.height / 2,
+      }));
       const modalRestoreWorked =
         modal.querySelectorAll(".modal-bar").length === modalCount;
+      // Deselect without changing the restored mode.
+      modal.dispatchEvent(new PointerEvent("pointerdown", {bubbles:true,button:0}));
       const modalSelection = document.getElementById("modal-selection");
       const persistentModalInspector =
-        modalSelection.querySelectorAll('input[type="range"]').length === 3 &&
+        modalSelection.querySelectorAll('input[type="range"]').length === 4 &&
         [...modalSelection.querySelectorAll('input[type="range"]')]
           .every(input => input.disabled) &&
         modalSelection.getClientRects().length > 0;

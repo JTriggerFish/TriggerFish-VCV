@@ -19,6 +19,7 @@ from triggerfish_percussion.workbench_renderer import WorkbenchRenderer
 from triggerfish_percussion.modal_texture_loss import ModalTextureLoss
 from triggerfish_percussion.reference_floor_mel import ReferenceFloorMel
 from triggerfish_percussion.low_mode_beating import LowModeBeating
+from triggerfish_percussion.modulation_signature import modulation_signature
 
 
 def review(target, directory, baseline_path, offsets, jtfs=False, floor_audit=False):
@@ -81,6 +82,8 @@ def review(target, directory, baseline_path, offsets, jtfs=False, floor_audit=Fa
                     texture=texture.score(samples),
                     peak_db=float(20 * np.log10(max(1e-15, abs(samples).max()))),
                 )
+                if seconds >= 6:
+                    row[label]["modulation"] = modulation_signature(samples, rate)
                 if scattering is not None:
                     row[label]["jtfs_below_8khz"] = scattering.score(samples)
                 if low_beating is not None:

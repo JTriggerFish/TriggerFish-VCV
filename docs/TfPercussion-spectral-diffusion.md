@@ -2,8 +2,8 @@
 
 The September 2026 [beating-packet refinement](TfPercussion-beating-packets.md)
 updates oscillator allocation/distributions and adds regional texture checks.
-The diffusion equation below is unchanged; the nonlinearity slider now has
-finer near-zero resolution. Historical calibration results below are not
+The diffusion control now separates concentration dependence from total-energy
+sensitivity. Historical calibration results below are not
 acceptance evidence for the changed packet allocator.
 
 Status: the **only metallic transfer law exposed by the workbench** while we
@@ -64,19 +64,33 @@ defines one reference energy $E_\mathrm{ref}$; it is independent of observation
 gain. With packet energy $e_i$ and frequency-cell width $w_i$:
 
 $$
-\rho_i = \frac{e_i}{E_\mathrm{ref}w_i},\qquad
+\rho_i = \frac{e_i}{E_\mathrm{ref}w_i},\quad
+s=\frac{\sum_i e_i}{E_\mathrm{ref}},\quad p_i=\frac{\rho_i}{s},\qquad
 g_{i+1/2}=\kappa\frac{x_{i+1/2}}{x_{i+1}-x_i}
-\left[\frac{\rho_i^2+\rho_i\rho_{i+1}+\rho_{i+1}^2}{3}\right]^a.
+s^b\left[\frac{p_i^2+p_ip_{i+1}+p_{i+1}^2}{3}\right]^a.
 $$
 
-Here $\kappa$ is the visible strength and $a$ is visible nonlinearity. At $a=1$
-the divided difference approximates the paper's quadratic conductivity; at zero
-it is linear diffusion (including an empty cell). Intermediate values vary the
-energy exponent: locally the conductivity scales approximately as $\rho^{2a}$.
-Every $a>0$ vanishes as energy vanishes. Unlike the previous arithmetic blend,
-there is no constant-conductivity floor leaking energy into quiet-strike wash.
-Only the $a=1$ endpoint is the paper's closure; the exponent interpolation and
-energy units are explicit constructive-model choices, not fitted material constants.
+Here $\kappa$ is **Diffusion strength**, $a\in[0,1]$ is **Concentration
+dependence**, and $b\in[0,2]$ is **Energy sensitivity**. A silent bank bypasses
+the solve; no division by zero or self-excitation occurs. Relative densities
+are used only to calculate conductance, never to normalize the audio or states.
+
+The old equation is recovered exactly algebraically at $b=2a$. In particular,
+$a=1,b=2$ gives the paper-inspired quadratic closure. The independent exponents
+are constructive controls, not a physical derivation. Existing workbench fits
+import with the explicit value $b=2a$, visible in the UI and saved JSON. There
+is no continuing link between the sliders. The historical JSON key
+`bloom_energy_acceleration` now names concentration dependence; the new key is
+`bloom_energy_sensitivity`.
+
+At $a=0$, spatial conductivity is independent of relative concentration,
+including at empty cells. At $b=0$, scaling all stored energies does not alter
+conductance. For $b>0$, conductivity vanishes as total energy vanishes. Holding
+spectral shape fixed, doubling oscillator amplitudes quadruples energy and
+multiplies conductivity by $4^b$. Excitation brightness and contact behaviour
+can still change with strike velocity when $b=0$. Transfer also follows the
+density gradient: this factorization does not make all perceptual effects
+independent, nor does it add a threshold, delay, gain or damping envelope.
 
 Cell faces are arithmetic midpoints between **painted, tuned packet centres**;
 the lower face is DC and the upper face extends half a neighbour spacing beyond
@@ -117,9 +131,13 @@ tonal low packet and high for the upper receiving packets.
 - **Diffusion strength:** `bloom_rate`; a coefficient in the stated
   coordinate/energy units, **not octaves per second**. Equal knob values do not
   imply equal audible transfer speed between laws.
-- **Diffusion nonlinearity:** `bloom_energy_acceleration`; zero is linear,
-  0.5 is approximately linear in energy density, and one is quadratic.
-  This changes energy dependence, not the strike-amplitude curve.
+- **Concentration dependence:** `bloom_energy_acceleration`; zero removes the
+  local-concentration factor, one gives quadratic dependence on relative density.
+  The cubic slider mapping gives fine adjustment near zero.
+- **Energy sensitivity:** `bloom_energy_sensitivity`; zero removes the overall
+  energy-speed dependency, one is proportional to total energy, two is quadratic.
+  This affects soft/hard and repeated-strike response, not input velocity gain.
+  Hold decay leaves this value fixed, even while compensating other controls.
 - **Packet noisiness:** `field_turbulence`; the smooth extended packet response
   is now the only response used by this recipe. It controls sideband share,
   spread and stochastic bandwidth, not another energy-transfer process.
@@ -132,6 +150,54 @@ packet broadening, and excludes both extra exchange mechanisms.
 
 All parameters remain serialized in JSON and exposed in the UI. No new hidden
 gain, per-mode damping multiplier or onset delay is introduced.
+
+### Bloom timing helper
+
+The **Bloom timing…** button opens an in-page popover. Its earlier/later slider
+shows before/current values and highlights the three ordinary sliders it moves.
+The surrounding section groups controls into **Energy transfer** and
+**Initial excitation**; the helper adds no DSP parameter.
+
+For a captured centre and a gesture $x\in[-1,1]$, diffusion strength is multiplied
+by $2^{-x}$, initial excitation tilt changes by $-6x$ dB/octave, and excitation
+centre is multiplied by $2^{-x/4}$. Values respect the ordinary control bounds.
+Positive $x$ therefore tends to start darker and redistribute more slowly.
+Neither concentration dependence nor energy sensitivity is changed. This is a
+relative starting-point gesture, not an exact onset-time guarantee or a delay.
+
+**Set centre here** captures the current three values without changing the sound.
+**Return to centre** (or double-clicking the slider) restores them. It does not
+undo T60 compensation already accepted by **Hold decay**. With Hold decay enabled,
+releasing the timing slider still runs the normal visible-parameter compensation;
+progress and the result appear beside/below the helper button. Escape or clicking
+outside closes the popover without undoing edits.
+
+`tools/check_bloom_timing_meta.py` renders the current gong and crash at earlier,
+centre and later, both at their saved energy sensitivity and at sensitivity one,
+without Hold decay. All four checked combinations move the 3–12 kHz half-energy
+time later. For the saved gong, high-band peaks are about 0.39/0.60/0.87 seconds.
+At sensitivity one the gong's initial attack can dominate the peak statistic,
+even though half-energy time still moves later; peak timing alone is insufficient.
+These are diagnostic checks of these presets, not universal monotonicity claims.
+The browser test checks exact parameter changes, live preview, reset, recentring,
+keyboard/light dismissal, viewport placement and cleanup on preset switching.
+
+### Split-control verification
+
+`percussion_spectral_diffusion_tests.cpp` checks the old two-cell analytic law
+at linked exponents, independent energy scaling, concentration influence,
+zero-energy silence, positivity and conservation from tiny to very large states.
+The existing frequency-grid and time-step convergence tests remain enabled.
+The extra runtime work is a total-energy reduction and one global power;
+the allocation-free, linear-time tridiagonal solve is unchanged.
+
+`tools/check_diffusion_control_split.py` compares the archived old gong render
+with its explicitly migrated settings and renders 0.25/0.5/1-strength strikes
+at energy exponents 0/1/2. The checked six-second gong render was bit-identical;
+that is a measured preset result, not a general bit-identity guarantee.
+The diagnostic archive is `build/diffusion-control-split`. Snapshot import
+tests verify that the new value is saved and never relinked after editing;
+browser checks cover the visible controls/help and all four metallic presets.
 
 Changing the painted frequency grid changes the discretization. Cell widths
 prevent the trivial serial-stage slowdown, but sparse and refined grids are not
@@ -159,7 +225,7 @@ surrogate implementation:
    contrast separately. The fixed floor is 70 dB below reference peak power.
    This is a diagnostic objective, not a claim of perceptual equivalence.
 3. **Search the actual controls.** Joint starts and finite-difference,
-   bounded trust-region steps fit diffusion strength **and nonlinearity**,
+   bounded trust-region steps fit diffusion strength, concentration and energy sensitivity,
    excitation tilt/knee, packet width/noisiness and two T60 endpoints.
    Positive wide-range controls use logarithmic solver coordinates.
    Fixed parameters and finite-difference influences are recorded.
@@ -220,8 +286,8 @@ still differ from the source; neither candidate is declared calibrated by ear.
 
 The modal editor's **Generate modes** panel provides **Series**, **Base note**,
 octave and an exact **Hz** field, with paired sliders/numeric inputs for count,
-falloff, level and local noisiness response. Alternative layouts are grouped
-in **Quick shape**, apart from the editing tools.
+falloff, level and local noisiness response. The old **Quick shape** menu and
+its ad-hoc layouts have been removed; use either explicit series as a starting point.
 The metallic generator/parameter API accept 1 Hz through 15 kHz; the modal
 display starts at 20 Hz. Lower modes are retained but not drawn at the edge.
 The engine's former hidden 20-Hz modal clamp is removed too. The editor uses
@@ -238,7 +304,7 @@ f_n = f_0 r_n\sqrt{1+(s u_n)^2},\qquad 0\le s\le1.
 $$
 
 Here $r_n=n$ for the harmonic series, or the tabulated membrane ratio; $n$ is
-the one-based mode index. **Harmonic core** $h$ (1–8, default 4) keeps the first
+the one-based mode index. **Protected low modes** $h$ (1–8, default 4) keeps the first
 $h$ modes unchanged. Above the core the multiplicative bend starts with zero
 slope and increasingly spreads the upper modes. For a membrane template the
 protected core retains membrane ratios, not integer harmonics. This is a
@@ -265,9 +331,13 @@ zero: response 1 follows the global packet controls, response 0 explicitly
 disables local broadening. This does not change any existing saved snapshot.
 
 The generator previews count/frequency extent and enforces the formula,
-capacity and frequency limits before applying. Harmonic layouts support up
-to 32 handles; the membrane template has 16 tabulated roots (the kick also
-has a 16-handle capacity). Invalid counts are rejected, not truncated.
+capacity and frequency limits before applying. Both series support up to 32
+handles; the membrane table contains the first 32 distinct circular-membrane
+Bessel roots, checked against SciPy, with the original first 16 unchanged.
+The kick editor still has a 16-handle capacity. Membrane roots are more closely
+spaced than integer harmonics: the 32nd is about 6.746 times the base frequency,
+not 32 times. Use upper-mode stretch to broaden that range if desired.
+Invalid counts are rejected, not truncated.
 Clipped observation levels and modes falling below the level floor are
 reported in the preview. The modal graph retains a usable minimum height.
 

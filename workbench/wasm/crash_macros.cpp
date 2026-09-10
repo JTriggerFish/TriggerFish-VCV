@@ -51,8 +51,11 @@ std::array<CrashMacroDescriptor, CrashMacroCount> BuildDescriptors() {
       Linear("bloom_rate", "Diffusion strength", "", 0.f, 16.f,
              fit.bloomRateOctavesPerSecond));
   set(CrashMacro::BloomEnergyAcceleration,
-      Linear("bloom_energy_acceleration", "Diffusion nonlinearity", "", 0.f,
+      Linear("bloom_energy_acceleration", "Concentration dependence", "", 0.f,
              1.f, fit.bloomEnergyAcceleration));
+  set(CrashMacro::BloomEnergySensitivity,
+      Linear("bloom_energy_sensitivity", "Energy sensitivity", "", 0.f,
+             2.f, fit.bloomEnergySensitivity));
   set(CrashMacro::BodyBrightness,
       Linear("body_brightness", "Initial excitation tilt", "dB/oct", -72.f, 24.f,
              fit.bodyTiltDbPerOctave));
@@ -256,6 +259,7 @@ CrashCymbalFitParameters MetallicWorkbenchBaseFit() noexcept {
   fit.bloomPhaseDiffusion = 0.f;
   fit.fieldExchange = 0.f;
   fit.bloomEnergyAcceleration = 1.f;
+  fit.bloomEnergySensitivity = 2.f;
   return fit;
 }
 
@@ -292,6 +296,7 @@ CrashCymbalFitParameters ApplyCrashMacros(
   fit.bloomRateOctavesPerSecond = Value(values, CrashMacro::BloomRate);
   fit.bloomEnergyAcceleration = Value(
       values, CrashMacro::BloomEnergyAcceleration);
+  fit.bloomEnergySensitivity = Value(values, CrashMacro::BloomEnergySensitivity);
 
   fit.bodyTiltDbPerOctave = Value(values, CrashMacro::BodyBrightness);
   fit.bodyExcitationCentreHz = Value(

@@ -17,7 +17,10 @@ export function templateField(parent, key, title, initial, min, max, step, slide
     };
     input.addEventListener("input", () => { range.value = input.value; });
     row.append(range);
-    input.setMaximum = value => { input.max = value; range.max = Math.max(min, value); };
+    input.setMaximum = value => {
+      input.max = value; range.max = Math.max(min, value);
+      range.value = input.value;
+    };
   }
   row.append(input); parent.append(row);
   const reset = () => {

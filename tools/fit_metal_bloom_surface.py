@@ -78,6 +78,7 @@ def run(args):
         bounds = dict(
             bloom_rate=(0.01, 16),
             bloom_energy_acceleration=(0, 1),
+            bloom_energy_sensitivity=(0, 2),
             body_brightness=(-48, 0),
             body_excitation_centre=(100, 2500),
             field_turbulence=(0.05, 2),
@@ -109,11 +110,12 @@ def run(args):
             )
         else:
             candidates = []
-            for i, u in enumerate(qmc.LatinHypercube(8, seed=2431).random(96)):
+            for i, u in enumerate(qmc.LatinHypercube(9, seed=2431).random(96)):
                 values = dict(
                     initial,
                     bloom_rate=float(0.03 * (16 / 0.03) ** u[0]),
                     bloom_energy_acceleration=float(u[1]),
+                    bloom_energy_sensitivity=float(2 * u[8]),
                     body_brightness=float(-6 - 36 * u[2]),
                     body_excitation_centre=float(100 * 20 ** u[3]),
                     field_phase_bandwidth=float(0.0001 * 500 ** u[4]),

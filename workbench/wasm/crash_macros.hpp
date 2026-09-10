@@ -61,6 +61,7 @@ enum class CrashMacro : std::size_t {
   FieldBeatDepth = ResolvedAllocationFirst + ResolvedModePointCount,
   FieldBeatRateTilt,
   FieldPhaseTilt,
+  BloomEnergySensitivity,
   Count
 };
 

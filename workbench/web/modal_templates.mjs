@@ -1,12 +1,16 @@
 // Design tools only: these write ordinary editable modes, never runtime rules.
-// Lowest 16 distinct roots j_(m,n) of J_m, divided by j_(0,1).
-// Generated offline with scipy.special.jn_zeros (m=0..11, n=1..8), sorted.
+// Lowest 32 distinct roots j_(m,n) of J_m, divided by j_(0,1).
+// Generated offline with scipy.special.jn_zeros (m=0..31, n=1..32), sorted.
 // Angular degeneracy is not duplicated; these are editable design handles.
 export const MembraneRatios = Object.freeze([
   1, 1.593340506, 2.135548787, 2.295417267,
   2.653066405, 2.917295455, 3.155464815, 3.500147490,
   3.598484674, 3.647451179, 4.058931883, 4.131738160,
   4.230439128, 4.601044534, 4.610051645, 4.831885263,
+  4.903280573, 5.083567174, 5.130768907, 5.412118430,
+  5.540398510, 5.553126477, 5.650842377, 5.976540222,
+  6.019355807, 6.152609172, 6.163136731, 6.208732131,
+  6.482735446, 6.528612452, 6.668996901, 6.746213300,
 ]);
 
 // C1-continuous bend above a protected low core. Independent of total count:
@@ -22,7 +26,7 @@ export function modalTemplateStretch({family = "harmonic", fundamental, count,
   topFrequency, harmonicCore = 4}) {
   if (![fundamental, count, topFrequency, harmonicCore].every(Number.isFinite) ||
       !["harmonic", "membrane"].includes(family) || fundamental <= 0 ||
-      !Number.isInteger(count) || count < 1 || count > (family === "membrane" ? 16 : 32) ||
+      !Number.isInteger(count) || count < 1 || count > 32 ||
       !Number.isInteger(harmonicCore) || harmonicCore < 1 || harmonicCore > 8)
     throw Error("Invalid stretch endpoint settings");
   const base = fundamental * stretchedRatio(family, count - 1, 0, harmonicCore);

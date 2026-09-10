@@ -49,15 +49,19 @@ public:
   void Process(const std::array<float, Capacity> &energy,
                std::array<float, Capacity> &result,
                const double referenceEnergy, const double step,
-               const double nonlinearity) noexcept {
+               const double concentration, const double energySensitivity) noexcept {
     std::copy_n(energy.begin(), packets_, result.begin());
     if (bins_ < 2 || !(step > 0) || !(referenceEnergy > 0)) return;
     std::fill_n(original_.begin(), bins_, 0.0);
     for (std::size_t i = 0; i < packets_; ++i)
       original_[bin_[i]] += double(energy[i]) / referenceEnergy;
+    double total = 0;
+    for (std::size_t i = 0; i < bins_; ++i) total += original_[i];
+    if (!(total > 0)) return;
     for (std::size_t i = 0; i < bins_; ++i)
       density_[i] = original_[i] / width_[i];
-    BuildConductance(step, std::clamp(nonlinearity, 0.0, 1.0));
+    BuildConductance(step, total, std::clamp(concentration, 0.0, 1.0),
+                     std::clamp(energySensitivity, 0.0, 2.0));
     Solve();
     for (std::size_t i = 0; i < packets_; ++i) {
       const auto bin = bin_[i];
@@ -89,19 +93,18 @@ private:
     return total > 0 ? packetReference_[packet] / total : 0.0;
   }
 
-  void BuildConductance(const double step, const double nonlinearity) noexcept {
+  void BuildConductance(const double step, const double total,
+                        const double concentration, const double sensitivity) noexcept {
+    // Separate total stored energy from spectral shape. Normalizing density
+    // here changes coefficients only: no oscillator energy is normalized.
+    const double activity = sensitivity == 0 ? 1.0 : std::pow(total, sensitivity);
+    const double inverseTotal = 1.0 / total;
     for (std::size_t i = 0; i+1 < bins_; ++i) {
-      const double a = density_[i], b = density_[i+1];
-      // Divided difference of rho^3/3: consistent rho^2 conductivity, including
-      // interfaces with zero density. At n=0 this becomes linear diffusion.
+      const double a = density_[i] * inverseTotal, b = density_[i+1] * inverseTotal;
       const double quadratic = (a*a + a*b + b*b) / 3.0;
-      // Interpolate the energy exponent, not a constant-conductivity floor.
-      // n=0 is linear diffusion; n=1 is the quadratic plate closure. Every
-      // n>0 vanishes with energy, so quiet strikes and late tails do not keep
-      // leaking into a wash at an unrelated, energy-independent rate.
-      const double conductivity = nonlinearity == 0 ? 1.0 :
-          nonlinearity == 1 ? quadratic : std::pow(quadratic, nonlinearity);
-      conductance_[i] = step * geometry_[i] * conductivity;
+      const double shape = concentration == 0 ? 1.0 :
+          concentration == 1 ? quadratic : std::pow(quadratic, concentration);
+      conductance_[i] = step * geometry_[i] * activity * shape;
     }
     conductance_[bins_ - 1] = 0.0;
   }

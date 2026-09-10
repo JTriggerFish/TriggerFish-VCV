@@ -4,6 +4,7 @@ import {templateField} from "./modal_template_fields.mjs";
 import {reportError} from "./error_banner.mjs";
 
 export function mountModalTemplates(parent, options) {
+  const events = new AbortController();
   const {capacity, minimumFrequency, maximumFrequency, apply,
     defaultFamily = "membrane", open = true, noisiness = false} = options;
   parent.innerHTML = `<details class="template-panel"><summary>Generate modes</summary>
@@ -19,11 +20,12 @@ export function mountModalTemplates(parent, options) {
   family.setAttribute("aria-label", "Modal formula");
   family.append(new Option("Harmonic", "harmonic"), new Option("Membrane", "membrane"));
   family.value = defaultFamily; formula.append(family); pitch.append(formula);
+  formula.dataset.tooltip = "Harmonic: integer multiples of the base pitch. Membrane: the natural inharmonic resonances of a circular drumhead. Its modes sit closer together, so the same count covers a smaller frequency range. Stretch can spread the upper modes.";
   const fields = {
     fundamental: templateField(pitch, "fundamental", "Hz", 55, minimumFrequency, maximumFrequency, "any", false),
     count: templateField(shape, "count", "Mode count", Math.min(16, capacity), 1, capacity, 1),
     stretch: templateField(shape, "stretch", "Upper-mode stretch", 0, 0, 1, .01),
-    harmonicCore: templateField(shape, "harmonicCore", "Harmonic core · modes", 4, 1, 8, 1),
+    harmonicCore: templateField(shape, "harmonicCore", "Protected low modes", 4, 1, 8, 1),
     rolloff: templateField(shape, "rolloff", "Falloff · dB/oct", 6, -12, 24, .5),
     level: templateField(shape, "level", "Top level · dB", 0, -60, 6, .5),
   };
@@ -41,7 +43,8 @@ export function mountModalTemplates(parent, options) {
     parent.dispatchEvent(new Event("template-pitch-change"));
     return points;
   };
-  pitch.addEventListener("input", preview); shape.addEventListener("input", preview);
+  pitch.addEventListener("input", preview, {signal:events.signal});
+  shape.addEventListener("input", preview, {signal:events.signal});
   family.onchange = preview;
   button.onclick = () => {
     const points = preview(); if (!points) return;
@@ -55,14 +58,11 @@ export function mountModalTemplates(parent, options) {
   parent.addEventListener("change", () => {
     preview();
     if (status.dataset.error === "true") reportError(status.textContent, "Mode generator");
-  });
+  }, {signal:events.signal});
   preview();
   return {get fundamentalHz() { return Number(fields.fundamental.value); },
-    onPitchChange: callback => parent.addEventListener("template-pitch-change", callback),
-    open: name => {
-    family.value = name; details.open = true; preview();
-    details.scrollIntoView({block:"nearest"});
-  }};
+    onPitchChange: callback => parent.addEventListener("template-pitch-change", callback, {signal:events.signal}),
+    destroy: () => events.abort()};
 }
 
 function previewTemplate({fields, family, options, status, button}) {
@@ -75,7 +75,7 @@ function previewTemplate({fields, family, options, status, button}) {
   try {
     if (!limit) throw Error(`Check base pitch (${options.minimumFrequency}–${options.maximumFrequency} Hz), stretch (0–1) and harmonic core (1–8).`);
     if (!Number.isInteger(values.count) || values.count < 1 || values.count > limit)
-      throw Error(`Choose 1–${limit} modes at this pitch/stretch (${family.value === "membrane" ? "16-root membrane formula" : "harmonic series"}; ${options.capacity} handles maximum).`);
+      throw Error(`Choose 1–${limit} modes at this pitch/stretch (${family.value === "membrane" ? "membrane series" : "harmonic series"}; ${options.capacity} handles maximum).`);
     for (const input of Object.values(fields)) {
       const invalid = !input.checkValidity(); input.setAttribute("aria-invalid", String(invalid));
       if (invalid) throw Error(`${input.getAttribute("aria-label")}: enter ${input.min}–${input.max}.`);

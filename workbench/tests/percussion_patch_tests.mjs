@@ -9,7 +9,16 @@ assert.ok(Math.abs(noteFrequency(11, 2) - 123.470825314) < 1e-8);
 const harmonicModes = modalTemplate({family:"harmonic", fundamental:100, count:3});
 assert.deepEqual(harmonicModes.map(point=>point.frequency), [100,200,300]);
 assert.equal(harmonicModes[1].level, -6);
-assert.throws(()=>modalTemplate({count:32}), /Only 16/);
+assert.equal(MembraneRatios.length,32);
+assert.equal(modalTemplate({count:32}).length,32);
+assert.ok(MembraneRatios.every((r,i)=>i===0||r>MembraneRatios[i-1]));
+assert.equal(MembraneRatios[16],4.903280573);
+assert.equal(MembraneRatios[31],6.746213300);
+assert.equal(modalTemplateLimit({family:"membrane",fundamental:55}),32);
+assert.equal(modalTemplateLimit({family:"membrane",fundamental:55,capacity:16}),16);
+const spectralValues = points => points.map(({centre,edge,...p})=>p);
+assert.deepEqual(spectralValues(modalTemplate({count:16})),
+  spectralValues(modalTemplate({count:32}).slice(0,16)));
 assert.equal(modalTemplate()[1].frequency, 55 * MembraneRatios[1]);
 assert.equal(modalTemplate({fundamental:10000, count:1}).length, 1);
 assert.throws(()=>modalTemplate({fundamental:10000}), /Only 1/);
@@ -29,7 +38,7 @@ assert.equal(modalTemplateLimit({family:"harmonic",fundamental:100,stretch:1}),2
 assert.throws(()=>modalTemplate({family:"harmonic",fundamental:100,count:27,stretch:1}),/Only 26/);
 for (const family of ["harmonic","membrane"]) {
   for (const harmonicCore of [1,4,8]) {
-    const options={family,fundamental:55,count:16,stretch:.7,harmonicCore};
+    const options={family,fundamental:20,count:32,stretch:.7,harmonicCore};
     const points=modalTemplate(options), plain=modalTemplate({...options,stretch:0});
     assert.deepEqual(points.slice(0,harmonicCore).map(p=>p.frequency),
       plain.slice(0,harmonicCore).map(p=>p.frequency));

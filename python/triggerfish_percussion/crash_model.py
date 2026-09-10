@@ -112,6 +112,7 @@ class CrashFit:
     body_excitation_centre_hz: float = 1000.0
     bloom_rate_octaves_per_second: float = 2.0
     bloom_energy_acceleration: float = 0.7
+    bloom_energy_sensitivity: float = 1.4
     bloom_phase_diffusion: float = 0.7
     body_excitation_gain: float = 1.0
     field_gain: float = 1.0

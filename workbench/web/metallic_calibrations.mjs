@@ -20,6 +20,7 @@ const GongV1 = {
   impact_chirp_pitch: .15,
   bloom_rate: .5,
   bloom_energy_acceleration: .8,
+  bloom_energy_sensitivity: 1.6,
   body_brightness: -56,
   body_excitation_centre: 1100,
   body_excitation: 1,

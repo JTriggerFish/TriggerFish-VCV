@@ -56,6 +56,8 @@ def modulation_signature(audio, rate):
         f, p = periodogram(relative, fs=200, window="hann", detrend=False)
         select = (f >= 0.5) & (f < 12)
         power = p[select]
+        flutter = (f >= 12) & (f < 80)
+        flutter_power = p[flutter]
         line_power = p[(f >= 1) & (f < 12)]
         lines.append(line_power / max(float(line_power.sum()), 1e-20))
         motion.append(
@@ -71,6 +73,11 @@ def modulation_signature(audio, rate):
                     np.sqrt(p[(f >= 0.5) & (f < 3)].sum() * (f[1] - f[0]))
                 ),
                 fast_depth=float(np.sqrt(p[(f >= 3) & (f < 12)].sum() * (f[1] - f[0]))),
+                flutter_depth=float(np.sqrt(flutter_power.sum() * (f[1] - f[0]))),
+                flutter_periodicity=float(
+                    flutter_power.max() / max(flutter_power.sum(), 1e-20)
+                ),
+                flutter_dominant_hz=float(f[flutter][np.argmax(flutter_power)]),
                 periodicity=float(power.max() / max(power.sum(), 1e-20)),
                 dominant_hz=float(f[select][np.argmax(power)]),
                 level=float(np.sqrt(np.mean(band[8000:72000] ** 2))),
@@ -94,6 +101,7 @@ def modulation_signature(audio, rate):
         common_line_strength=shared,
         mean_synchrony=float(np.mean(correlations)) if correlations else 0,
         max_synchrony=max(correlations, default=0),
+        ranges_hz=dict(slow=[0.5, 3], fast=[3, 12], flutter=[12, 80]),
         interpretation="Descriptive only; common bloom can also correlate bands",
     )
 

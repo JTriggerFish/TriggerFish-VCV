@@ -1055,6 +1055,7 @@ PYBIND11_MODULE(_triggerfish_dsp, module)
 			&CrashFit::bloomRateOctavesPerSecond)
 		.def_readwrite("bloom_energy_acceleration",
 			&CrashFit::bloomEnergyAcceleration)
+		.def_readwrite("bloom_energy_sensitivity", &CrashFit::bloomEnergySensitivity)
 		.def_readwrite("bloom_phase_diffusion", &CrashFit::bloomPhaseDiffusion)
 		.def_readwrite("body_excitation_gain", &CrashFit::bodyExcitationGain)
 		.def_readwrite("field_gain", &CrashFit::fieldGain)

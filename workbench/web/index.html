@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>TriggerFish Percussion Workbench</title>
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="bloom_timing.css">
   <script src="vendor/plotly.min.js"></script>
 </head>
 <body>
@@ -98,7 +99,13 @@
               <div id="impact-advanced-controls" data-fit-controls></div>
               <label data-tooltip="Temporal distribution of one contact gesture. This is most audible for a brush sweep; ordinary taps can remain near the default.">Gesture spread <input id="contact-spread" type="range" min="0" max="1" value="0.2" step="0.01"><output>0.20</output></label>
           </details>
-          <details open data-module-id="body"><summary data-tooltip="Initial excitation and conservative spectral-energy diffusion. The timing meta writes the visible controls beneath it.">Bloom · excitation &amp; diffusion</summary><div id="bloom-controls" data-fit-controls></div></details>
+          <details open data-module-id="body"><summary data-tooltip="Initial excitation and conservative spectral-energy diffusion. Bloom timing adjusts the visible controls together.">Bloom · excitation &amp; diffusion</summary>
+            <div id="bloom-controls">
+              <div class="bloom-tools"><div id="bloom-timing-controls" data-fit-controls></div><div id="bloom-hold-controls" data-fit-controls></div></div>
+              <fieldset><legend>Energy transfer</legend><div id="bloom-diffusion-controls" data-fit-controls></div></fieldset>
+              <fieldset><legend>Initial excitation</legend><div id="bloom-excitation-controls" data-fit-controls></div></fieldset>
+            </div>
+          </details>
           <details open data-module-id="body"><summary data-tooltip="High-level controls for the single stored stochastic modal field.">Modal body</summary>
             <fieldset><legend>Tuning &amp; drive</legend><div id="field-tuning-controls" data-fit-controls></div></fieldset>
             <fieldset><legend>Packet texture</legend><div id="field-turbulence-controls" data-fit-controls></div></fieldset>
@@ -217,7 +224,6 @@
             <button id="modal-tool-paint" aria-pressed="false" data-tooltip="Paint modal anchors continuously. Dragging activates available anchors and shapes nearby levels; Shift narrows the brush and Ctrl widens it.">Paint modes</button>
           </div>
           <label data-tooltip="Gaussian width for the Level brush and Paint modes tools.">Brush <input id="modal-brush" type="range" min="0.15" max="5" value="1" step="0.05"><output>1.00 ERB</output></label>
-          <label data-tooltip="Immediately replace the modal layout with an alternative starting shape. For a harmonic or membrane layout, choose Series and a base pitch, then Replace modes.">Quick shape <select id="modal-preset"><option value="">Choose…</option><option value="fitted">Model default modes</option><option value="even">Even ERB field</option><option value="low">Low cluster</option><option value="shimmer">High shimmer</option></select></label>
           <button id="modal-clear" data-tooltip="Deactivate every modal anchor. Double-click empty space to insert modes again.">Clear modes</button>
         </div>
         <div class="harmonic-toolbar" aria-label="Optional harmonic reference">
@@ -228,7 +234,7 @@
         </div>
         <div id="modal-templates"></div>
         <div id="modal-editor" data-fit-controls></div>
-        <div class="modal-gesture-help">Select &amp; shape: double-click to insert/remove, wheel or wing drag changes width · Prominence brush: reshape existing anchors · Paint modes: drag to create and shape</div>
+        <div class="modal-gesture-help">Select &amp; shape: double-click empty space to add, double-click a bar to remove · up to 32 handles · wheel or wing drag changes width · Prominence brush: reshape existing anchors · Paint modes: drag to create and shape</div>
         <div id="modal-selection" class="selection-controls" data-fit-controls></div>
       </section>
       <section class="modal-design" data-module-id="kick-resonance">

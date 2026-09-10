@@ -18,6 +18,7 @@ struct ModalEnergyCascadeParameters {
   float phaseDiffusion{};
   std::uint32_t seed{0x43415343u};
   bool spectralDiffusion{};
+  float energySensitivity{}; // Total-energy exponent for spectral diffusion only.
 };
 
 // Passive transport between frequency-ordered modal packets: the original
@@ -46,6 +47,8 @@ public:
         tfdsp::FiniteNormalOrZero(parameters.phaseDiffusion), 0.f, 1.f);
     seed_ = parameters.seed;
     spectralDiffusion_ = parameters.spectralDiffusion;
+    energySensitivity_ = std::clamp(
+        tfdsp::FiniteNormalOrZero(parameters.energySensitivity), 0.f, 2.f);
     BuildPackets(frequencyHz, inputGain, packet);
     if (spectralDiffusion_) PrepareDiffusion(inputGain);
     Reset();
@@ -115,7 +118,7 @@ private:
 
   void DiffuseEnergy() noexcept {
     diffusion_.Process(originalEnergy_, finalEnergy_, totalReferenceEnergy_,
-        double(rateOctavesPerSecond_) / sampleRate_, energyAcceleration_);
+        double(rateOctavesPerSecond_) / sampleRate_, energyAcceleration_, energySensitivity_);
     for (std::size_t i = 0; i < packetCount_; ++i) {
       const float arrival = std::max(0.f, finalEnergy_[i] - originalEnergy_[i]);
       receivedFraction_[i] = arrival / std::max(finalEnergy_[i], 1.e-20f);
@@ -330,6 +333,7 @@ private:
   float sampleRate_{48000.f};
   float rateOctavesPerSecond_{};
   float energyAcceleration_{};
+  float energySensitivity_{};
   float phaseDiffusion_{};
   float totalReferenceEnergy_{1.f};
   float lastTransferredEnergy_{};
