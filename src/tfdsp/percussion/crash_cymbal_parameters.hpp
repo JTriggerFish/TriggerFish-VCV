@@ -79,6 +79,7 @@ struct CrashCymbalFitParameters {
   bool fieldRelaxedTurbulence{};
   float fieldWanderDepthHz{};
   float fieldWanderKnotsPerSecond{.5f};
+  ModalMotionControls fieldMotion{};
   float fieldExchange{.35f};
   float contactDurationScale{1.f};
   float contactPulseGain{1.f};

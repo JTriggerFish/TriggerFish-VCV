@@ -146,3 +146,17 @@ assert.deepEqual(
 );
 
 console.log("workbench state tests passed");
+
+const motionDescriptors = [...descriptors,
+  {index:2,key:'field_motion_depth',minimum:0,maximum:1.5,defaultValue:0},
+  {index:3,key:'field_motion_rate',minimum:.1,maximum:200,defaultValue:40},
+  {index:4,key:'field_motion_sharing',minimum:0,maximum:1,defaultValue:.5}];
+const motionFit=validateFit(fit,motionDescriptors);
+assert.deepEqual(fitMacroValues(motionFit,motionDescriptors),[-36,.8,0,40,.5]);
+assert.equal(fit.instrument.nodes.find(n=>n.id==='body').parameters.field_motion_depth,undefined);
+const partial=structuredClone(motionFit);
+delete partial.instrument.nodes.find(n=>n.id==='body').parameters.field_motion_rate;
+assert.throws(()=>validateFit(partial,motionDescriptors),/parameter/);
+const changedMotion=structuredClone(motionFit);
+changedMotion.instrument.nodes.find(n=>n.id==='body').parameters.field_motion_depth=.8;
+assert.equal(fitMacroValues(validateFit(changedMotion,motionDescriptors),motionDescriptors)[2],.8);

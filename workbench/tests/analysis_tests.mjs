@@ -5,10 +5,15 @@ import {
 import { waveformEnvelope } from "../web/waveform_view.mjs";
 import { calibrateReference, setReferenceGain } from "../web/references.mjs";
 import {
-  alignedReferenceWindow, normalizationCeilingDb, wheelPanSeconds,
+  alignedReferenceWindow, normalizationCeilingDb, wheelPanSeconds, differenceColour,
 } from "../web/spectrogram.mjs";
 
 const impulseReal = new Float64Array(8);
+assert.deepEqual(differenceColour(0, 24), [0, 0, 0]);
+assert.deepEqual(differenceColour(-24, 24), [232, 180, 90]);
+assert.deepEqual(differenceColour(24, 24), [74, 208, 238]);
+assert.deepEqual(differenceColour(100, 24), differenceColour(24, 24));
+assert.ok(differenceColour(6, 24)[2] < differenceColour(12, 24)[2]);
 const rawReference = { sha256: "source", samples: new Float32Array([.001, -.002]) };
 const calibratedReference = calibrateReference(rawReference, 40);
 assert.equal(calibratedReference.sha256, rawReference.sha256);

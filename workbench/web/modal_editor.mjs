@@ -195,6 +195,18 @@ export class ModalEditor {
     return turbulence * this.options.packetSpread();
   }
 
+  packetFrequency(point, offset) {
+    return this.options.packetLayout?.() === 4
+      ? Math.max(1, point.frequency + offset * 24.7 * (1 + .00437 * point.frequency))
+      : inverseErb(erb(point.frequency) + offset);
+  }
+
+  packetDistance(point, frequency) {
+    return this.options.packetLayout?.() === 4
+      ? Math.abs(frequency - point.frequency) / (24.7 * (1 + .00437 * point.frequency))
+      : Math.abs(erb(frequency) - erb(point.frequency));
+  }
+
   // Hit-test coordinates, not transient SVG nodes: painting replaces those
   // between pointerdown and click. The SVG remains the stable event target.
   hitHandle(position) {
@@ -203,7 +215,7 @@ export class ModalEditor {
     if (selected?.active && this.options.widthEnabled !== false) {
       const spread = this.effectiveSpread(selected);
       for (const direction of [-1, 1]) {
-        const x = this.x(inverseErb(erb(selected.frequency) + direction * spread));
+        const x = this.x(this.packetFrequency(selected, direction * spread));
         const y = this.y(this.options.minimumLevel + .45 * (selected.level - this.options.minimumLevel));
         if (spread > .025 && Math.hypot(position.x - x, position.y - y) <= radius)
           return {index:this.selected, kind:"width"};
@@ -346,8 +358,7 @@ export class ModalEditor {
     const point = points[this.drag.index];
     if (!point) return;
     if (this.drag.kind === "width") {
-      const distance = Math.abs(erb(this.frequency(position.x)) -
-        erb(this.drag.point.frequency));
+      const distance = this.packetDistance(this.drag.point, this.frequency(position.x));
       const global = Math.max(
         .05, (this.options.spectralTurbulence?.(this.drag.point.frequency) ??
           this.options.globalTurbulence()) * this.options.packetSpread(),
@@ -406,6 +417,7 @@ export class ModalEditor {
       event.shiftKey ? .35 : 1;
     const sigma = this.brushErb * modifier;
     const target = this.level(position.y);
+    this.brushLevels(points, centre, sigma, target);
     if (this.drag.kind === "paint") {
       const candidateFrequency = this.snapFrequency(this.frequency(position.x));
       const candidateErb = erb(candidateFrequency);
@@ -426,14 +438,21 @@ export class ModalEditor {
         this.selected = index;
       }
     }
-    for (const point of points) {
-      if (!point.active) continue;
+  }
+
+  // Move the neighbourhood in one direction, relative to its nearest bar.
+  // Independent target-level interpolation raises valleys but erases peaks.
+  brushLevels(points, centre, sigma, target) {
+    const nearby = points.filter(point => point.active &&
+      Math.abs(erb(point.frequency) - centre) <= 3 * sigma);
+    if (!nearby.length) return;
+    const nearest = nearby.reduce((a, b) =>
+      Math.abs(erb(a.frequency) - centre) <= Math.abs(erb(b.frequency) - centre) ? a : b);
+    const change = target - nearest.level;
+    for (const point of nearby) {
       const distance = (erb(point.frequency) - centre) / sigma;
-      const weight = Math.exp(-.5 * distance * distance);
-      point.level = clamp(
-        point.level + .65 * weight * (target - point.level),
-        this.options.minimumLevel, this.options.maximumLevel,
-      );
+      point.level = clamp(point.level + .65 * Math.exp(-.5 * distance ** 2) * change,
+        this.options.minimumLevel, this.options.maximumLevel);
     }
   }
 
@@ -539,7 +558,6 @@ export class ModalEditor {
   }
 
   paintPacket(point, index) {
-    const centreErb = erb(point.frequency);
     const spread = this.effectiveSpread(point);
     if (spread > .025) {
       const sigma = Math.max(.08, .45 * spread);
@@ -549,10 +567,10 @@ export class ModalEditor {
         const envelope = Math.exp(-.5 * (offset / sigma) ** 2);
         const level = this.options.minimumLevel + envelope *
           (point.level - this.options.minimumLevel);
-        samples.push(`${this.x(inverseErb(centreErb + offset))},${this.y(level)}`);
+        samples.push(`${this.x(this.packetFrequency(point, offset))},${this.y(level)}`);
       }
-      const path = `${this.x(inverseErb(centreErb - 3 * sigma))},${this.y(this.options.minimumLevel)} ` +
-        samples.join(" ") + ` ${this.x(inverseErb(centreErb + 3 * sigma))},${this.y(this.options.minimumLevel)}`;
+      const path = `${this.x(this.packetFrequency(point, -3 * sigma))},${this.y(this.options.minimumLevel)} ` +
+        samples.join(" ") + ` ${this.x(this.packetFrequency(point, 3 * sigma))},${this.y(this.options.minimumLevel)}`;
       this.svg.append(element("polygon", {
         points: path,
         class: `modal-packet${index === this.selected ? " selected" : ""}`,
@@ -572,7 +590,7 @@ export class ModalEditor {
     if (index === this.selected && spread > .025) {
       for (const direction of [-1, 1]) {
         const wing = element("circle", {
-          cx: this.x(inverseErb(centreErb + direction * spread)),
+          cx: this.x(this.packetFrequency(point, direction * spread)),
           cy: this.y(this.options.minimumLevel +
             .45 * (point.level - this.options.minimumLevel)),
           r: 5 * this.unitsPerPixel, class: "modal-wing modal-handle",

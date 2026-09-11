@@ -4,6 +4,11 @@ The [low-ring beating investigation](TfPercussion-low-ring-beating.md) adds
 slow low-band modulation checks to crash audits. Upper-band texture scores
 alone do not assess slow modal beating.
 
+The [gong sizzle audit](TfPercussion-gong-sizzle-audit.md) demonstrates specific
+brightness/AM ambiguities in the recent **broad-envelope-only** gong fit. That
+special-purpose optimizer does not implement all of the richer validation
+criteria described below; its improved envelope score is not texture approval.
+
 ## Scope
 
 `python/triggerfish_percussion/` is the numerical layer used by fitting,

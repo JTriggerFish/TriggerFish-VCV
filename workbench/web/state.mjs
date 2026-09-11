@@ -62,6 +62,7 @@ export function snapshotState(state, name = "Snapshot", descriptors = []) {
 }
 
 export function validateFit(value, descriptors = []) {
+  value = importRidgeMotion(value, descriptors);
   value = importDiffusionSensitivity(value, descriptors);
   value = importBlurBalance(value, descriptors);
   value = importModalSurface(value, descriptors);
@@ -103,6 +104,21 @@ export function validateFit(value, descriptors = []) {
     throw new Error("invalid analysis settings");
   }
   return value;
+}
+
+// The preceding surface had no bounded phase movement. Expand only the complete
+// old triple, never silently repair a partially corrupted new fit.
+export function importRidgeMotion(value, descriptors) {
+  if (value?.instrument?.recipe !== "metal.cymbal.v1" ||
+      !descriptors.some(d => d.key === "field_motion_depth")) return value;
+  const keys = ["field_motion_depth", "field_motion_rate", "field_motion_sharing"];
+  const p = value.instrument.nodes?.find(n => n.id === "body")?.parameters;
+  if (!p || keys.some(k => Object.hasOwn(p, k))) return value;
+  const copy = structuredClone(value);
+  const parameters = copy.instrument.nodes.find(n => n.id === "body").parameters;
+  for (const key of keys) parameters[key] = descriptors.find(d => d.key === key).defaultValue;
+  parameters.field_motion_depth = 0;
+  return copy;
 }
 
 // Expand the old linked exponent into two visible, independently saved values.

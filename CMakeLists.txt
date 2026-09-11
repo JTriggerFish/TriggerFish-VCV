@@ -229,6 +229,10 @@ if(BUILD_TESTING)
 	add_test(NAME triggerfish_percussion_modal_drift_tests
 		COMMAND triggerfish_percussion_modal_drift_tests)
 
+	add_executable(triggerfish_percussion_modal_motion_tests tests/percussion_modal_motion_tests.cpp)
+	target_link_libraries(triggerfish_percussion_modal_motion_tests PRIVATE triggerfish_dsp)
+	add_test(NAME triggerfish_percussion_modal_motion_tests COMMAND triggerfish_percussion_modal_motion_tests)
+
 	add_executable(triggerfish_percussion_turbulence_tests tests/percussion_turbulence_tests.cpp)
 	target_link_libraries(triggerfish_percussion_turbulence_tests PRIVATE triggerfish_dsp)
 	add_test(NAME triggerfish_percussion_turbulence_tests COMMAND triggerfish_percussion_turbulence_tests)

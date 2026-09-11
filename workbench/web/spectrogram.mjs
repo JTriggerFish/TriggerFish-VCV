@@ -1,3 +1,5 @@
+import {overlaySpectrum, writeEdgeFraction} from "./spectrogram_history.mjs";
+
 const magma = [
   [0, 0, 4], [28, 16, 68], [79, 18, 123], [129, 37, 129],
   [181, 54, 122], [229, 80, 100], [251, 135, 97], [254, 194, 135],
@@ -13,11 +15,11 @@ function colour(stops, amount) {
     Math.round(value + mix * (stops[second][index] - value)));
 }
 
-function differenceColour(value, span) {
+export function differenceColour(value, span) {
   const amount = Math.max(-1, Math.min(1, value / span));
   return amount < 0
-    ? colour([[16, 48, 112], [238, 242, 245]], amount + 1)
-    : colour([[238, 242, 245], [154, 24, 54]], amount);
+    ? colour([[0, 0, 0], [232, 180, 90]], -amount)
+    : colour([[0, 0, 0], [74, 208, 238]], amount);
 }
 
 function timeLabel(seconds, span) {
@@ -38,7 +40,7 @@ function buildPalette(colourAt, size = 256) {
 
 const magmaPalette = buildPalette(amount => colour(magma, amount));
 const differencePalette = buildPalette(amount =>
-  differenceColour(2 * amount - 1, 1));
+  differenceColour(2 * amount - 1, 1), 257);
 
 export function wheelPanSeconds(
   deltaX, deltaY, deltaMode, width, height, timeSpan,
@@ -81,7 +83,7 @@ export class SpectrogramView {
   }
 
   setData(kind, data) {
-    this[kind] = data;
+    this[kind] = kind === "synthesis" ? overlaySpectrum(this.synthesis, data) : data;
     // The comparison colour domain belongs to the reference. Never let a
     // changed synthesis parameter re-normalize either half of the display.
     if (kind === "reference" && Number.isFinite(data?.peakDb)) {
@@ -185,7 +187,9 @@ export class SpectrogramView {
       : this.settings.mode === "synthesis"
         ? [["TriggerFish", "#68a7d8"]]
         : this.settings.mode === "difference"
-          ? [["TriggerFish − reference", "#e7e9ed"]]
+          ? [[`Reference stronger (−${this.settings.differenceDb} dB)`, "#e8b45a"],
+             ["Match · 0 dB", "#000000"],
+             [`Synth stronger (+${this.settings.differenceDb} dB)`, "#4ad0ee"]]
           : [["Reference", "#e8b45a"], ["TriggerFish", "#68a7d8"]];
     const context = this.context;
     context.font = `${11 * ratio}px sans-serif`;
@@ -304,6 +308,19 @@ export class SpectrogramView {
     context.fillText("Hz · log", 6 * ratio, 5 * ratio);
   }
 
+  #drawWriteEdge(width, height, ratio) {
+    const mode = this.settings.mode;
+    if (mode === "reference") return;
+    const fraction = writeEdgeFraction(this.synthesis, this.viewport, this.timeOffsets.synthesis);
+    if (fraction === null) return;
+    const split = this.settings.split;
+    const x = mode === "mirror" || mode === "vertical"
+      ? width * (split + (1 - split) * fraction) : width * fraction;
+    const top = mode === "horizontal" ? height * split : 0;
+    this.context.fillStyle = "rgba(180, 185, 190, .85)";
+    this.context.fillRect(Math.round(x), top, Math.max(1, ratio), height - top);
+  }
+
   draw() {
     const ratio = devicePixelRatio || 1;
     const width = Math.max(1, Math.round(this.canvas.clientWidth * ratio));
@@ -346,9 +363,11 @@ export class SpectrogramView {
             x, y, width, plotHeight,
           );
           palette = differencePalette;
-          colourIndex = Math.round(255 * (0.5 + 0.5 * Math.max(-1, Math.min(
+          colourIndex = Math.round(256 * (0.5 + 0.5 * Math.max(-1, Math.min(
             1, (synthesis - reference) / this.settings.differenceDb,
           ))));
+          // Unrendered preview tail is unknown, not missing synth energy.
+          if (this.synthesis?.incomplete && synthesisFrames[x] < 0) colourIndex = 128;
         } else {
           const source = this.#source(mode, x, y, width, plotHeight);
           const isReference = source[0] === this.reference;
@@ -380,6 +399,7 @@ export class SpectrogramView {
     }
     this.#drawLegend(width, ratio, divider);
     this.#drawTimeAxis(width, height, ratio, divider);
+    this.#drawWriteEdge(width, plotHeight, ratio);
   }
 
   #bindInteraction() {

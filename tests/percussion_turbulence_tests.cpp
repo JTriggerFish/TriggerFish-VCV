@@ -9,6 +9,37 @@ using percussion_test::Check;
 using percussion_test::CheckNear;
 
 int main() {
+  {
+    CrashCymbalFitParameters fit;
+    fit.sparseAmplitude.fill(0.f);
+    fit.sparseAmplitude[0] = 1.f;
+    fit.sparseFrequencyHz[0] = 8000.f;
+    fit.fieldDistribution = ModalPacketDistribution::PlateCloud;
+    fit.fieldTurbulence = 1.f;
+    fit.fieldTurbulenceSlopePerOctave = 0.f;
+    fit.fieldPacketSpreadErb = 4.f;
+    fit.fieldSatelliteDensity = 1.f;
+    const auto p = DefaultCrashCymbalParameters(48000.f, fit);
+    double energy = 0;
+    std::size_t active = 0;
+    for (const auto &m : p.modalField) {
+      if (m.inputGain == 0.f) continue;
+      ++active;
+      energy += double(m.inputGain)*m.inputGain;
+      Check(m.packet == 0 && m.transportFrequencyHz == 8000.f,
+            "one cloud handle owns all its side modes and transport coordinate");
+      Check(m.frequencyHz > 4000.f && m.frequencyHz < 12000.f,
+            "plate cloud keeps its wide, bounded support");
+    }
+    Check(active >= 510, "one handle can use the complete modal pool");
+    CheckNear(energy, 1., 3.e-6, "dense single cloud preserves normalized excitation");
+    const auto f = [](std::size_t pair) {
+      return PacketSideFrequency(8000.f, 4.f, pair, 1.f,
+          ModalPacketDistribution::PlateCloud, 2.f, 1.f, 23040.f);
+    };
+    CheckNear(f(1)-8000.f, .5f*(f(0)-8000.f), .002,
+              "plate cloud positions are linear in Hz, not logarithmic");
+  }
   for (std::size_t count : {1u, 2u, 3u, 15u, 16u}) {
     for (float depth : {0.f, .1f, .3f, 1.f}) {
       double energy = 0;
@@ -36,7 +67,8 @@ int main() {
     }
   }
   for (const auto layout : {ModalPacketDistribution::Scattered,
-       ModalPacketDistribution::Even, ModalPacketDistribution::Doublets}) {
+       ModalPacketDistribution::Even, ModalPacketDistribution::Doublets,
+       ModalPacketDistribution::PlateCloud}) {
     for (const float centre : {1.f, 1000.f, 20000.f}) {
       for (std::size_t pair = 0; pair < 100; ++pair) {
         for (const float side : {-1.f, 1.f}) {

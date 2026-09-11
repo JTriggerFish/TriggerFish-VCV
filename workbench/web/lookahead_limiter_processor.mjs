@@ -23,6 +23,7 @@ class LookaheadLimiter extends AudioWorkletProcessor {
     this.hold = 0;
     this.meterCounter = 0;
     this.inputPeak = 0;
+    this.intervalReductionDb = 0;
   }
 
   ensureChannels(count) {
@@ -77,6 +78,7 @@ class LookaheadLimiter extends AudioWorkletProcessor {
         peak = Math.max(peak, this.detectors[channel].process(value));
       }
       this.updateGain(peak);
+      this.intervalReductionDb = Math.min(this.intervalReductionDb, this.gainDb);
       this.inputPeak = Math.max(this.inputPeak, peak);
       const read = (this.write + 1) % this.ringSize;
       for (let channel = 0; channel < output.length; ++channel) {
@@ -86,10 +88,12 @@ class LookaheadLimiter extends AudioWorkletProcessor {
       if (++this.meterCounter >= 2048) {
         this.port.postMessage({
           reductionDb: this.gainDb,
+          intervalReductionDb: this.intervalReductionDb,
           inputPeakDb: 20 * Math.log10(Math.max(this.inputPeak, 1e-30)),
         });
         this.meterCounter = 0;
         this.inputPeak = 0;
+        this.intervalReductionDb = 0;
       }
     }
     return true;

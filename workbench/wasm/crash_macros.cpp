@@ -81,7 +81,7 @@ std::array<CrashMacroDescriptor, CrashMacroCount> BuildDescriptors() {
       Linear("field_phase_tilt", "Blur tilt (1 kHz pivot)", "oct/oct", -2.f, 2.f,
              fit.fieldPhaseTilt));
   set(CrashMacro::FieldDistribution,
-      Linear("field_distribution", "Ring character", "", 0.f, 3.f,
+      Linear("field_distribution", "Ring character", "", 0.f, 4.f,
              float(fit.fieldDistribution)));
   set(CrashMacro::FieldDoubletSplit,
       Linear("field_doublet_split", "Beat rate", "Hz", 0.f, 80.f,
@@ -97,6 +97,12 @@ std::array<CrashMacroDescriptor, CrashMacroCount> BuildDescriptors() {
   set(CrashMacro::FieldWanderRate,
       Logarithmic("field_wander_rate", "Wander speed", "changes/s",
                   .1f, 40.f, fit.fieldWanderKnotsPerSecond));
+  set(CrashMacro::FieldMotionDepth,
+      Linear("field_motion_depth", "Ridge movement", "rad", 0.f, 3.f, 0.f));
+  set(CrashMacro::FieldMotionRate,
+      Logarithmic("field_motion_rate", "Movement speed", "changes/s", .1f, 200.f, 40.f));
+  set(CrashMacro::FieldMotionSharing,
+      Linear("field_motion_sharing", "Packet sharing", "", 0.f, 1.f, .5f));
   set(CrashMacro::BodyExcitation,
       Logarithmic("body_excitation", "Body excitation", "x", .001f, 4.f,
                   fit.bodyExcitationGain));
@@ -317,6 +323,9 @@ CrashCymbalFitParameters ApplyCrashMacros(
   fit.fieldBeatRateTilt = Value(values, CrashMacro::FieldBeatRateTilt);
   fit.fieldWanderDepthHz = Value(values, CrashMacro::FieldWanderHz);
   fit.fieldWanderKnotsPerSecond = Value(values, CrashMacro::FieldWanderRate);
+  fit.fieldMotion = {Value(values, CrashMacro::FieldMotionDepth),
+                    Value(values, CrashMacro::FieldMotionRate),
+                    Value(values, CrashMacro::FieldMotionSharing)};
   fit.bodyExcitationGain = Value(values, CrashMacro::BodyExcitation);
   fit.fieldGain = Value(values, CrashMacro::FieldGain);
   fit.directGain = Value(values, CrashMacro::DirectGain);

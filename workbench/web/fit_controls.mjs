@@ -209,6 +209,8 @@ export class FitControls {
   }
 
   buildPhaseMovement() {
+    this.sliders("field-motion-controls", ["field_motion_depth", "field_motion_rate",
+      "field_motion_sharing"], {field_motion_sharing: ["individual", "together"]});
     this.slider("field_phase_bandwidth", "field-blur-controls", {
       labels: ["stable beating", "noise blur"],
       normalize: (descriptor, value) => Math.sqrt(value / descriptor.maximum),
@@ -236,7 +238,7 @@ export class FitControls {
     const row = document.querySelector('[data-fit-key="field_doublet_split"]');
     if (!row) return;
     const layout = Math.round(this.value("field_distribution"));
-    const inactive = layout !== 2 && layout !== 3;
+    const inactive = layout !== 2 && layout !== 3 && layout !== 4;
     row.querySelector("input").disabled = inactive;
     row.style.opacity = inactive ? ".45" : "1";
     for (const key of ["field_beat_depth", "field_beat_rate_tilt"]) {
@@ -403,6 +405,7 @@ export class FitControls {
         1000, point.turbulence,
         true),
       packetSpread: () => this.value("field_packet_spread"),
+      packetLayout: () => this.value("field_distribution"),
       replace,
       insert: (frequency, level) => {
         const next = points();

@@ -155,3 +155,43 @@ tom factory start peaks at -14.9 dBFS for a strength-0.8 strike. Reproduce with
 
 Subsequent fitting must use raw renders and explicit gains, never limiter output,
 per-hit normalization or a hidden restoration of the old boosts.
+
+## Browser limiter visibility and gong check — 10 September
+
+The safety limiter follows Master. Raw floating-point synthesis may exceed
+unity without clipping; that is not proof that the limiter is acting. Master
+is a browser monitor setting and is not stored in instrument fit snapshots.
+
+The toolbar now shows an amber gain-reduction meter for reductions of at least
+0.1 dB, holds recent reduction for one second, and retains the maximum until
+the reset button is clicked. The processor reports the greatest reduction in
+each reporting interval, not just the final sample. The meter is shared by
+reference and synth playback, and does not alter the instrument or plots.
+Previously only a small instantaneous text readout existed, with a warning
+above 3 dB and no retained maximum. No limiter gain law or latency changed.
+
+`tools/audit_fit_limiter.mjs fit.json output-directory` silently renders the
+snapshot through the current WASM adapter, then runs the actual browser
+limiter at Master −12 and 0 dB. It tests a single saved gesture and four
+half-second-spaced repetitions. It does not modify the snapshot or play audio.
+
+For the user snapshot **gong - cip ?** (`477215bd-6dc9-40ef-897b-15981756f73c`):
+
+| Saved gesture, 48 kHz | Master −12 dB | Master 0 dB |
+| --- | ---: | ---: |
+| Single-hit input sample peak | −3.08 dBFS | +8.92 dBFS |
+| Maximum gain reduction | 0 dB | 10.71 dB |
+| Four-hit maximum gain reduction | 0 dB | 10.71 dB |
+
+The open workbench showed Master −12 dB when checked, so the tested snapshot
+does not require limiter compression for its initial pitched sound. Its
+120/240 Hz handles are approximately 28/25 dB more prominent than the published
+gong; its shared bloom rate and energy sensitivity are also higher.
+
+A separate two-second controlled render halved Body excitation and multiplied
+the resulting samples by two **for the diagnostic only**. With the saved energy
+sensitivity, waveform relative RMS error was 0.264; with energy sensitivity
+zero in both compared renders, it was 2.5e−10. Reducing Model level by 12 dB and
+undoing that gain analytically differed by 3.8e−8. This distinguishes the
+declared energy-dependent diffusion from output clipping; it is not a
+perceptual quality score. The user snapshot and published gong were not changed.

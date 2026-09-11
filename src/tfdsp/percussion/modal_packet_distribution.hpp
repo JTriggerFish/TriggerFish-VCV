@@ -7,7 +7,7 @@
 
 namespace tfdsp::percussion {
 
-enum class ModalPacketDistribution { Scattered, Even, Doublets, PairedRing };
+enum class ModalPacketDistribution { Scattered, Even, Doublets, PairedRing, PlateCloud };
 
 // An explicit constructive law, not a physical claim about doublet splitting.
 // Zero tilt preserves a shared Hz gap; .5 doubles rate over two octaves.
@@ -19,7 +19,8 @@ inline float RingBeatRate(const float centre, const float baseHz,
 
 inline bool HasPairedRing(const ModalPacketDistribution layout,
                           const float splitHz) noexcept {
-  return layout == ModalPacketDistribution::PairedRing &&
+  return (layout == ModalPacketDistribution::PairedRing ||
+          layout == ModalPacketDistribution::PlateCloud) &&
       std::isfinite(splitHz) && splitHz > 0.f;
 }
 
@@ -57,6 +58,15 @@ inline float PacketRadius(std::size_t index) noexcept {
 inline float PacketSideFrequency(const float centre, const float spreadErb,
     const std::size_t pair, const float side, const ModalPacketDistribution layout,
     const float splitHz, const float jitter, const float maximumHz) noexcept {
+  if (layout == ModalPacketDistribution::PlateCloud) {
+    // A finite collection of stable resonances, approximately uniform per Hz.
+    // Width is the local ERB bandwidth times the existing spread control.
+    // Compress each side at boundaries instead of piling modes on a clamp.
+    const float width = spreadErb * 24.7f * (1.f + .00437f * centre);
+    const float room = side < 0 ? centre - 1.f : maximumHz - centre;
+    return centre + side * std::min(width, std::max(0.f, room)) *
+        PacketRadius(pair) * jitter;
+  }
   const bool doublets = layout == ModalPacketDistribution::Doublets;
   const float radius = doublets ? .05f + .9f * PacketRadius(pair / 2 + 1)
       : PacketRadius(pair);

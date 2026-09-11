@@ -1,4 +1,5 @@
 import { SafeAudition } from "./audio.mjs";
+import { paintLimiterMeter } from "./limiter_meter.mjs";
 import { reportError } from "./error_banner.mjs";
 import { mountDiagnosticAudition } from "./diagnostic_audition.mjs";
 import { bindAnalysisControls } from "./analysis_controls.mjs";
@@ -28,6 +29,7 @@ import {
 } from "./state.mjs";
 import { Tooltips } from "./tooltips.mjs";
 import { drawWaveform } from "./waveform_view.mjs";
+import { mountTextureTrials } from "./texture_trials.mjs";
 
 const byId = id => document.getElementById(id);
 new Tooltips();
@@ -78,7 +80,6 @@ let engine;
 let renderTimer;
 let renderGeneration = 0;
 let renderInFlight = false;
-let queuedRender = null;
 let fitControls;
 let referenceBrowser;
 let performanceControls;
@@ -147,14 +148,15 @@ function applyMembranePreset(key) {
   scheduleRender(false);
 }
 
-function analyze(kind, samples, sampleRate, cacheKey) {
+function analyze(kind, samples, sampleRate, cacheKey, preview = false, renderId) {
   const generation = ++generations[kind];
   pendingAnalysis.add(kind);
   setStatus(`Analyzing ${[...pendingAnalysis].join(" + ")}…`);
+  const copy = samples.slice();
   worker.postMessage({
-    generation, kind, samples: samples.slice(), sampleRate,
-    settings: state.analysis, cacheKey,
-  });
+    generation, kind, samples: copy, sampleRate,
+    settings: state.analysis, cacheKey, preview, renderId,
+  }, [copy.buffer]);
 }
 
 function referenceSpectrumKey(reference) {
@@ -205,19 +207,33 @@ worker.onmessage = ({ data }) => {
   setReadyIfIdle();
 };
 
-function scheduleRender(updateLive = true) {
+function invalidateRender() {
   clearTimeout(renderTimer);
+  renderTimer = undefined;
+  ++renderGeneration;
+  ++generations.synthesis;
+  pendingAnalysis.delete("synthesis");
+  renderWorker.postMessage({cancel: true});
+  renderInFlight = false;
+  state.synthesisCurrent = false;
+}
+
+function scheduleRender(updateLive = true) {
+  invalidateRender();
   if (updateLive) audition.setMacros(state.macros);
   setStatus("Rendering…");
   renderTimer = setTimeout(() => {
     renderTimer = undefined;
     renderSynthesis();
-  }, 220);
+  }, 60);
 }
 
 function renderSynthesis() {
   clearTimeout(renderTimer);
   renderTimer = undefined;
+  ++generations.synthesis;
+  pendingAnalysis.delete("synthesis");
+  state.synthesisCurrent = false;
   const sampleRate = state.reference?.sampleRate ?? 48000;
   const duration = byId("render-seconds").value;
   const seconds = duration === "reference"
@@ -225,11 +241,11 @@ function renderSynthesis() {
   const request = {
     generation: ++renderGeneration, recipeIndex: state.recipeIndex,
     sampleRate, seconds, parameters: [...state.macros],
+    previewFrames: Math.max(Math.ceil(.125 * sampleRate), state.analysis.size / 2 + state.analysis.hop),
     routing: recipeAdapter(state.recipeKey).routing(state.patch),
     event: { ...state.event },
   };
-  if (renderInFlight) queuedRender = request;
-  else dispatchRender(request);
+  dispatchRender(request);
 }
 
 function dispatchRender(request) {
@@ -238,28 +254,26 @@ function dispatchRender(request) {
 }
 
 renderWorker.onmessage = ({ data }) => {
-  renderInFlight = false;
-  if (data.generation === renderGeneration) {
-    if (data.error) {
-      setStatus(new Error(data.error));
-    }
-    else {
-      state.synthesis = data.samples;
-      analyze("synthesis", state.synthesis, data.sampleRate);
-      drawWaveform(state);
-      byId("render-time").textContent = `${data.elapsedMs.toFixed(0)} ms DSP`;
-    }
+  if (data.generation !== renderGeneration) return;
+  renderInFlight = Boolean(data.preview);
+  if (data.error) {
+    setStatus(new Error(data.error));
+    return;
   }
-  if (queuedRender) {
-    const request = queuedRender;
-    queuedRender = null;
-    dispatchRender(request);
-  } else setReadyIfIdle();
+  analyze("synthesis", data.samples, data.sampleRate, undefined, data.preview, data.generation);
+  if (!data.preview) {
+    state.synthesis = data.samples;
+    state.synthesisCurrent = true;
+    drawWaveform(state);
+  }
+  byId("render-time").textContent = data.preview
+    ? `Rendering ${(data.samples.length / data.sampleRate).toFixed(1)} / ${data.seconds.toFixed(1)} s…`
+    : `${data.elapsedMs.toFixed(0)} ms DSP · ${(1000 * data.seconds / data.elapsedMs).toFixed(1)}× real time`;
+  setReadyIfIdle();
 };
 
 function renderWorkerFailed(message) {
   renderInFlight = false;
-  queuedRender = null;
   setStatus(new Error(message));
 }
 function spectrumWorkerFailed(message) {
@@ -343,6 +357,8 @@ function renderSnapshotList() {
 }
 
 async function restore(item) {
+  // A cached snapshot must also cancel any older in-flight preview/render.
+  invalidateRender();
   const fit = item.fit;
   const sameSource = !fit.reference ||
     (fit.reference.sha256 && fit.reference.sha256 === state.reference?.sha256) ||
@@ -382,6 +398,7 @@ async function restore(item) {
   routingController.setPatch(state.patch);
   if (item.audio) {
     state.synthesis = item.audio.slice();
+    state.synthesisCurrent = true;
     analyze(
       "synthesis", state.synthesis, fit.reference?.sampleRate ??
         state.reference?.sampleRate ?? 48000,
@@ -446,6 +463,10 @@ async function initialize() {
   }, setReference, setStatus);
   await referenceBrowser.initialize();
   bindCalibrationPresets();
+  mountTextureTrials(byId("texture-trial"), async item => {
+    await restore(item);
+    byId("instrument-calibration").value = "gong-standard";
+  }, setStatus);
   byId("reference-files").onchange = async event => {
     try {
       const loaded = await readReferences(event.target.files);
@@ -494,7 +515,12 @@ async function initialize() {
     state.liveEqSampleRate=live ? audition.sampleRate : null;
     if(changed)fitControls.eqEditors.forEach(editor=>editor.background());
   }, 50);
+  byId("limiter-reset").onclick = () => {
+    audition.limiterMeter.reset();
+    paintLimiterMeter(byId("limiter-meter"), audition.limiterMeter.read());
+  };
   setInterval(() => {
+    paintLimiterMeter(byId("limiter-meter"), audition.limiterMeter.read());
     const latency = audition.latencyMs ? ` · ${audition.latencyMs.toFixed(0)} ms` : "";
     const underflows = audition.underflows ? ` · xruns ${audition.underflows}` : "";
     const output = Number.isFinite(audition.outputDb)
@@ -503,10 +529,9 @@ async function initialize() {
       ` · ${(audition.sampleRate / 1000).toFixed(1)} kHz` +
       ` · ${audition.state} · hits ${audition.triggerCount}`;
     const input = Number.isFinite(audition.inputPeakDb)
-      ? ` · pre ${audition.inputPeakDb.toFixed(1)} dBFS` : "";
-    const warning = audition.reduction < -3 ? " · LIMITING — lower monitor/model level" : "";
+      ? ` · limiter in ${audition.inputPeakDb.toFixed(1)} dBFS` : "";
     byId("limiter").textContent =
-      `Limiter ${audition.reduction.toFixed(1)} dB${input}${output}${warning}${latency}${live}${underflows}`;
+      `Audio${input}${output}${latency}${live}${underflows}`;
     byId("live-commit").textContent = audition.macroCommitPending
       ? `Preparing live DSP… ${audition.macroCommitElapsedMs.toFixed(0)} ms`
       : audition.macroCommitMs > 0
@@ -529,6 +554,7 @@ function bindCalibrationPresets() {
     const generation = ++selectionGeneration;
     const calibration = calibrations.find(item => item.id === select.value);
     if (!calibration) return;
+    byId("texture-trial").value = "";
     try {
       const recipe = engine.recipes.find(
         item => item.key === calibration.recipe);
@@ -580,12 +606,12 @@ function bindSnapshotControls() {
     const fit = snapshotState(
       state, byId("snapshot-name").value || "Candidate", engine.macros,
     );
-    state.snapshots.push({ fit, audio: state.synthesis?.slice() });
+    state.snapshots.push({ fit, audio: state.synthesisCurrent ? state.synthesis?.slice() : undefined });
     state.activeSnapshotId = fit.id; renderSnapshotList();
   };
   byId("save-fit").onclick = () => {
-    const active = state.snapshots.find(item => item.fit.id === state.activeSnapshotId);
-    downloadFit(active?.fit ?? snapshotState(
+    // Save the visible controls, including edits made after selecting a snapshot.
+    downloadFit(snapshotState(
       state, byId("snapshot-name").value, engine.macros,
     ));
   };

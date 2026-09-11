@@ -1,5 +1,8 @@
 // Ear-first guidance; implementation equations belong in the architecture docs.
 const ControlHelp = {
+  field_motion_depth: "Makes each ring shimmer while keeping its pitch anchored. Try 0.3–0.8 for gentle movement, 1–1.5 for stronger wings, or up to 3 for a much denser texture. Zero turns movement off. For a clear comparison, turn Phase blur off first. It adds no energy or separate decay.",
+  field_motion_rate: "How quickly the shimmer changes. Try 10–80 changes/s for breathing or flutter, and 80–200 for finer sizzle. Its timing varies rather than repeating like an LFO. Only matters with Ridge movement above zero.",
+  field_motion_sharing: "At Together, the tones inside each modal packet move together, preserving their internal beating. At Individual they move separately, making the beating more irregular. This mixes two bounded movements; the middle is a little gentler. Different packets always move independently.",
   field_phase_tilt: "Move the blur towards the bass or treble without moving pitches, spreading the packets or changing their energy. Negative values soften low rings while keeping the highs clearer; positive values do the opposite. The balance pivots at 1 kHz. Zero keeps the original blur profile; it is not equal blur at every frequency. Needs Phase blur above zero.",
   model_level_db: "Overall synth volume, without changing its character or bloom. Reference selection never adjusts it automatically. Double-click to return to the default level.",
   direct_gain: "How much of the initial stick, mallet or brush contact you hear alongside the ringing body. Raise for a closer, more immediate attack; lower for a body-led sound.",

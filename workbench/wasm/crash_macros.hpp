@@ -62,6 +62,9 @@ enum class CrashMacro : std::size_t {
   FieldBeatRateTilt,
   FieldPhaseTilt,
   BloomEnergySensitivity,
+  FieldMotionDepth,
+  FieldMotionRate,
+  FieldMotionSharing,
   Count
 };
 

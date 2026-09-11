@@ -15,7 +15,7 @@ if (wasm._tf_percussion_recipe_count() !== 4) {
 if (wasm.UTF8ToString(wasm._tf_percussion_recipe_key(1)) !==
     "drum.kick.v1") throw new Error("kick recipe is unavailable");
 if (wasm._tf_crash_route_count() !== 3) throw new Error("unexpected route count");
-if (wasm._tf_crash_macro_count() !== 181) throw new Error("unexpected macro count");
+if (wasm._tf_crash_macro_count() !== 184) throw new Error("unexpected macro count");
 if (wasm.UTF8ToString(wasm._tf_crash_macro_name(0)) !== "Model level") {
   throw new Error("macro metadata is unavailable");
 }
@@ -24,7 +24,7 @@ const frameCount = 8192;
 const outputPointer = wasm._malloc(frameCount * Float32Array.BYTES_PER_ELEMENT);
 const handle = wasm._tf_crash_create(48000);
 if (!handle || !outputPointer) throw new Error("renderer allocation failed");
-if (wasm._tf_percussion_parameter_count(handle) !== 181) {
+if (wasm._tf_percussion_parameter_count(handle) !== 184) {
   throw new Error("metallic recipe still exposes legacy no-op controls");
 }
 
@@ -119,6 +119,18 @@ wasm._tf_crash_macro_set(handle, driftIndex, 0);
 wasm._tf_crash_macro_commit(handle);
 const keys = Array.from({length:wasm._tf_crash_macro_count()}, (_,i) =>
   wasm.UTF8ToString(wasm._tf_crash_macro_key(i)));
+const motionIndex=keys.indexOf("field_motion_depth");
+const withoutMotion=renderShared(handle,63,128);
+if(motionIndex<0 || !wasm._tf_crash_macro_set(handle,motionIndex,3) ||
+   !wasm._tf_crash_macro_commit(handle) ||
+   !wasm._tf_percussion_export_prepared(handle,preparedPointer,preparedSize) ||
+   !wasm._tf_percussion_apply_prepared(restored,preparedPointer,preparedSize))
+  throw Error("Bounded movement preparation failed");
+const withMotion=renderShared(handle,63,128);
+if(equal(withoutMotion,withMotion) || !equal(withMotion,renderShared(restored,63,512)))
+  throw Error("Bounded movement is inactive or differs after prepared replay");
+wasm._tf_crash_macro_set(handle,motionIndex,0);
+wasm._tf_crash_macro_commit(handle);
 for (const removed of ["field_relaxed_turbulence","field_exchange",
     "bloom_spectral_diffusion","bloom_phase_diffusion"]) {
   if(keys.includes(removed)) throw Error("Obsolete control exposed: "+removed);

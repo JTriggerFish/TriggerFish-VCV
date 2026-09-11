@@ -1,6 +1,7 @@
 #pragma once
 
 #include "modal_energy_cascade.hpp"
+#include "bounded_modal_motion.hpp"
 #include "tfdsp/finite_audio.hpp"
 
 #include <algorithm>
@@ -32,6 +33,7 @@ struct StochasticModalFieldControls {
   ModalEnergyCascadeParameters cascade{};
   float driftDepthHz{};
   float driftKnotsPerSecond{8.f};
+  ModalMotionControls motion{};
 };
 
 template <std::size_t ModeCount> struct PreparedStochasticModalField {
@@ -61,6 +63,7 @@ template <std::size_t ModeCount> struct PreparedStochasticModalField {
   std::uint32_t activeModeCount{};
   float driftDepthHz{};
   float driftKnotsPerSecond{8.f};
+  ModalMotionControls motion{};
 };
 
 namespace detail {
@@ -123,6 +126,7 @@ PreparedStochasticModalField<ModeCount> PrepareStochasticModalField(
   result.cascade = controls.cascade;
   result.driftDepthHz = controls.driftDepthHz;
   result.driftKnotsPerSecond = controls.driftKnotsPerSecond;
+  result.motion = controls.motion;
   constexpr float TwoPi = 6.28318530717958647692f;
   for (std::size_t source = 0; source < ModeCount; ++source) {
     const float inputGain = detail::ModalInputGain(parameters[source].inputGain);

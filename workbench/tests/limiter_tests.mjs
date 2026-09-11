@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { LimiterMeter, paintLimiterMeter } from '../web/limiter_meter.mjs';
 
 globalThis.sampleRate = 48000;
 globalThis.AudioWorkletProcessor = class {
@@ -28,6 +29,40 @@ const peak = Math.max(...output.map(Math.abs));
 const peakIndex = output.findIndex(value => Math.abs(value) === peak);
 assert.ok(peak <= 10 ** (-1 / 20) + 1e-6, `unsafe peak ${peak}`);
 assert.equal(peakIndex, 64 + limiter.lookahead);
+
+// Report the interval maximum, not only gain at the last reporting sample.
+const metered = new Limiter(), messages = [];
+metered.port.postMessage = value => messages.push(value);
+process(metered, input);
+assert.equal(messages.length, 2);
+assert.ok(messages[0].intervalReductionDb < -6);
+assert.ok(messages[0].intervalReductionDb <= messages[0].reductionDb);
+assert.ok(messages[0].inputPeakDb > 6);
+
+const display = new LimiterMeter();
+display.ingest({ reductionDb: 0, intervalReductionDb: -.5 }, 100);
+assert.deepEqual(display.read(200), {active: true, recentDb: .5, maximumDb: .5});
+display.ingest({ reductionDb: 0, intervalReductionDb: 0 }, 300);
+assert.equal(display.read(1050).active, true);
+assert.deepEqual(display.read(1100), {active: false, recentDb: 0, maximumDb: .5});
+display.ingest({ reductionDb: -4 }, 1200);
+display.ingest({ reductionDb: NaN }, 1300);
+assert.equal(display.read(1300).maximumDb, 4);
+display.reset();
+assert.deepEqual(display.read(1400), {active: false, recentDb: 0, maximumDb: 0});
+
+const classes = new Set(), nodes = new Map();
+for (const key of ['.limiter-label', 'meter', 'output', 'button'])
+  nodes.set(key, {max: 24, setAttribute() {}});
+const element = { classList: {toggle(key, on) {on ? classes.add(key) : classes.delete(key);}},
+  querySelector(key) {return nodes.get(key);} };
+paintLimiterMeter(element, {active: true, recentDb: 10.7, maximumDb: 10.7});
+assert.equal(nodes.get('.limiter-label').textContent, 'LIMITING');
+assert.equal(nodes.get('meter').value, 10.7);
+assert.ok(classes.has('is-limiting'));
+paintLimiterMeter(element, {active: false, recentDb: 0, maximumDb: 10.7});
+assert.ok(!classes.has('is-limiting') && classes.has('has-limited'));
+assert.equal(nodes.get('button').textContent, 'Max 10.7 dB · reset');
 
 const unityLimiter = new Limiter();
 const quiet = new Float32Array(2048);

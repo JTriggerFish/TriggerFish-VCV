@@ -75,13 +75,16 @@ export function stft(samples, sampleRate, options = {}) {
   const window = windowSamples(options.window ?? "hann", size);
   const windowSum = window.reduce((sum, value) => sum + value, 0);
   const bins = size / 2 + 1;
-  const frames = Math.max(1, 1 + Math.ceil((samples.length - 1) / hop));
+  const firstFrame = options.firstFrame ?? 0;
+  const frames = options.frameCount ?? Math.max(1, 1 + Math.ceil((samples.length - 1) / hop));
+  if (!Number.isInteger(firstFrame) || firstFrame < 0 || !Number.isInteger(frames) || frames < 0)
+    throw new Error("invalid STFT frame range");
   const values = new Float32Array(frames * bins);
   const real = new Float64Array(size);
   const imaginary = new Float64Array(size);
   let peakDb = floorDb;
   for (let frame = 0; frame < frames; ++frame) {
-    const first = frame * hop - size / 2;
+    const first = (frame + firstFrame) * hop - size / 2;
     real.fill(0);
     imaginary.fill(0);
     for (let index = 0; index < size; ++index) {

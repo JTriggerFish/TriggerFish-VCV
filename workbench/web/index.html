@@ -53,6 +53,7 @@
   <nav class="toolbar">
     <label>Instrument <select id="instrument-recipe" aria-label="Synthesizer recipe"></select></label>
     <label class="calibration-picker" data-tooltip="Load a reference target and its current documented starting state."><strong>Reference targets</strong><select id="instrument-calibration" aria-label="Reference target"><option>Loading reference targets…</option></select></label>
+    <label data-tooltip="EQ-free gong comparisons: each loads its full editable settings and the same reference. Snapshot your edits first. No audio plays automatically.">Texture trials <select id="texture-trial" aria-label="Gong texture trials" disabled><option>Loading trials…</option></select></label>
     <select id="reference-corpus" aria-label="Reference instrument"><option>Loading corpus…</option></select>
     <select id="reference-articulation" aria-label="Reference articulation"></select>
     <label>Velocity <input id="reference-velocity" type="range"><output></output></label>
@@ -62,7 +63,13 @@
     <button id="stop">Stop</button>
     <label title="Manual source gain, shared across this corpus's velocity layers and saved with snapshots. No loudness matching. Double-click restores the corpus default.">Reference gain <input id="reference-gain" type="range" min="-120" max="120" value="0" step="0.5" disabled><output>0.0 dB</output></label>
     <label>Master <input id="master" type="range" min="-48" max="0" value="-12" step="0.5"><output>-12 dB</output></label>
-    <span id="limiter">Limiter 0.0 dB</span>
+    <div id="limiter-meter" title="Browser output protection, after Master. Amber shows gain reduction (not hard clipping), held for 1 second. Maximum stays until reset. Shared by reference and synth playback; not part of the instrument or spectrogram.">
+      <strong class="limiter-label">Limiter</strong>
+      <meter min="0" max="24" value="0" aria-label="Limiter gain reduction in dB"></meter>
+      <output>0.0 dB</output>
+      <button id="limiter-reset" type="button" aria-label="Reset maximum limiter gain reduction">Max 0.0 dB · reset</button>
+    </div>
+    <span id="limiter">Audio idle</span>
   </nav>
 
   <main>
@@ -113,6 +120,7 @@
             <p class="control-help">Rate is measured at 125 Hz. Depth controls how strongly the pairs pulse.</p>
             <div id="field-drift-controls" data-fit-controls></div></fieldset>
             <fieldset><legend>Phase blur · ring to wash</legend><div id="field-blur-controls" data-fit-controls></div></fieldset>
+            <fieldset><legend>Ridge movement · experiment</legend><div id="field-motion-controls" data-fit-controls></div></fieldset>
           </details>
         </div>
         <div class="control-column">
@@ -220,8 +228,8 @@
           <div class="modal-tool-group" aria-label="Editing mode">
             <span>Tool</span>
             <button id="modal-tool-edit" class="active" aria-pressed="true" data-tooltip="Select and move anchors. Drag a centre for frequency and level; drag a wing or Ctrl-drag to change its local noisiness width. Shift gives fine movement.">Select &amp; shape</button>
-            <button id="modal-tool-level" aria-pressed="false" data-tooltip="Shape the observation prominence of existing anchors with a Gaussian brush without creating new anchors.">Prominence brush</button>
-            <button id="modal-tool-paint" aria-pressed="false" data-tooltip="Paint modal anchors continuously. Dragging activates available anchors and shapes nearby levels; Shift narrows the brush and Ctrl widens it.">Paint modes</button>
+            <button id="modal-tool-level" aria-pressed="false" data-tooltip="Paint above a bar to raise it and its neighbours, or below to lower them. The effect fades toward the brush edges without flattening the surrounding shape. No new modes are created.">Prominence brush</button>
+            <button id="modal-tool-paint" aria-pressed="false" data-tooltip="Drag to add modes and adjust nearby bars together: above a bar raises the neighbourhood, below lowers it. Shift narrows the brush and Ctrl widens it.">Paint modes</button>
           </div>
           <label data-tooltip="Gaussian width for the Level brush and Paint modes tools.">Brush <input id="modal-brush" type="range" min="0.15" max="5" value="1" step="0.05"><output>1.00 ERB</output></label>
           <button id="modal-clear" data-tooltip="Deactivate every modal anchor. Double-click empty space to insert modes again.">Clear modes</button>

@@ -25,6 +25,7 @@ for (const name of [
   "hihat_calibration.fit.json",
   "crash_calibration.fit.json", "gong_calibration.fit.json",
   "ride_calibration.fit.json",
+  "texture_trials.mjs", "texture_trials.fit.json",
   "recipe_adapter.mjs", "routing_view.mjs", "kick_controls.mjs",
   "membrane_controls.mjs", "snare_controls.mjs",
   "routing_controller.mjs", "performance_controls.mjs",
@@ -40,10 +41,10 @@ for (const name of [
   "packet_allocation.mjs",
   "size_meta.mjs", "engine.mjs", "wasm_engine_core.mjs", "audio.mjs",
   "standby_renderer.mjs", "configuration_preparer.mjs", "diagnostic_audition.mjs",
-  "limiter_config.mjs", "true_peak_detector.mjs", "midi_input.mjs", "settings.mjs",
-  "references.mjs", "analysis.mjs", "analysis_worker.mjs",
-  "render_worker.mjs", "preparation_worker.mjs",
-  "spectrogram.mjs", "state.mjs", "import_modal_surface.mjs", "lookahead_limiter_processor.mjs",
+  "limiter_config.mjs", "limiter_meter.mjs", "true_peak_detector.mjs", "midi_input.mjs", "settings.mjs",
+  "references.mjs", "analysis.mjs", "analysis_worker.mjs", "progressive_stft.mjs",
+  "render_worker.mjs", "offline_render.mjs", "preparation_worker.mjs",
+  "spectrogram.mjs", "spectrogram_history.mjs", "state.mjs", "import_modal_surface.mjs", "lookahead_limiter_processor.mjs",
   "reference_browser.mjs", "percussion_audio_worklet_processor.mjs",
 ]) {
   await copyFile(join(source, name), join(output, name));

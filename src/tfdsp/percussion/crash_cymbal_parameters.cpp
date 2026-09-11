@@ -329,6 +329,7 @@ CrashCymbalParameters DefaultCrashCymbalParameters(
   result.modalFieldControls.seed = ModalFieldSeed ^ 0x4649454cu;
   result.modalFieldControls.driftDepthHz = fit.fieldWanderDepthHz;
   result.modalFieldControls.driftKnotsPerSecond = fit.fieldWanderKnotsPerSecond;
+  result.modalFieldControls.motion = fit.fieldMotion;
   result.modalFieldControls.cascade = {
       std::clamp(fit.bloomRateOctavesPerSecond, 0.f, 32.f),
       std::clamp(fit.bloomEnergyAcceleration, 0.f, 1.f),

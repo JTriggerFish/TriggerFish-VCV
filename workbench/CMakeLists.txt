@@ -138,6 +138,15 @@ if(EMSCRIPTEN)
       COMMAND ${NODE_EXECUTABLE} ${CMAKE_CURRENT_LIST_DIR}/tests/decay_hold_tests.mjs)
     add_test(NAME triggerfish_workbench_packet_allocation_tests
       COMMAND ${NODE_EXECUTABLE} ${CMAKE_CURRENT_LIST_DIR}/tests/packet_allocation_tests.mjs)
+    add_test(NAME triggerfish_workbench_modal_brush_tests
+      COMMAND ${NODE_EXECUTABLE} ${CMAKE_CURRENT_LIST_DIR}/tests/modal_brush_tests.mjs)
+    add_test(NAME triggerfish_workbench_spectrogram_history_tests
+      COMMAND ${NODE_EXECUTABLE} ${CMAKE_CURRENT_LIST_DIR}/tests/spectrogram_history_tests.mjs)
+    add_test(NAME triggerfish_workbench_progressive_stft_tests
+      COMMAND ${NODE_EXECUTABLE} ${CMAKE_CURRENT_LIST_DIR}/tests/progressive_stft_tests.mjs)
+    add_test(NAME triggerfish_workbench_offline_render_tests
+      COMMAND ${NODE_EXECUTABLE} ${CMAKE_CURRENT_LIST_DIR}/tests/offline_render_tests.mjs
+        $<TARGET_FILE:triggerfish_percussion_wasm>)
     add_test(NAME triggerfish_workbench_state_tests
       COMMAND ${NODE_EXECUTABLE}
         ${CMAKE_CURRENT_LIST_DIR}/tests/state_tests.mjs
@@ -167,6 +176,9 @@ if(EMSCRIPTEN)
     message(STATUS "Node was not found; the Wasm smoke test is unavailable")
   endif()
 else()
+  add_executable(triggerfish_modal_inspect
+    ${CMAKE_CURRENT_LIST_DIR}/tests/modal_inspect.cpp)
+  triggerfish_workbench_target(triggerfish_modal_inspect)
   add_executable(triggerfish_workbench_api_tests
     ${CMAKE_CURRENT_LIST_DIR}/tests/crash_api_tests.cpp
   )

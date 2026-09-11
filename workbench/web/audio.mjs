@@ -2,12 +2,14 @@ import { limiterLookaheadSeconds } from "./limiter_config.mjs";
 import { ConfigurationPreparer } from "./configuration_preparer.mjs";
 import { StandbyRenderer } from "./standby_renderer.mjs";
 import { LiveOutputSpectrum } from "./live_output_spectrum.mjs";
+import { LimiterMeter } from "./limiter_meter.mjs";
 
 export class SafeAudition {
   constructor(onStatus = () => {}) {
     this.onStatus = onStatus;
     this.masterDb = -12;
     this.reductionDb = 0;
+    this.limiterMeter = new LimiterMeter();
     this.inputPeakDb = -Infinity;
     this.triggerCount = 0;
     this.pendingMacros = [];
@@ -47,6 +49,7 @@ export class SafeAudition {
     );
     this.limiter.port.onmessage = event => {
       this.reductionDb = event.data.reductionDb;
+      this.limiterMeter.ingest(event.data);
       this.inputPeakDb = event.data.inputPeakDb;
     };
     this.master = new GainNode(this.context);
