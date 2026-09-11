@@ -11,6 +11,8 @@ import { mountPacketLayout, hasPairedRing, beatRatePosition, beatRateValue, ring
 import { packetAllocation } from "./packet_allocation.mjs";
 import { helpFor } from "./fit_control_help.mjs";
 import { mountDecayHold } from "./decay_hold_control.mjs";
+import { modalControlTitles, modalControlActivity, shimmerPosition, shimmerValue } from "./modal_control_presentation.mjs";
+import { decayPosition, decaySeconds } from "./decay_curve_geometry.mjs";
 
 const clamp = (value, minimum, maximum) =>
   Math.max(minimum, Math.min(maximum, value));
@@ -78,6 +80,7 @@ export class FitControls {
     this.onChange(key);
     if (/^output_(low_cut|high_cut|colour_|eq_)/.test(key))
       this.refreshRadiation();
+    this.updateControlActivity();
   }
 
   refresh(key) {
@@ -162,7 +165,8 @@ export class FitControls {
   }
 
   buildBodyModel() {
-    this.sliders("field-tuning-controls", ["body_excitation", "body_tune"]);
+    this.slider("body_excitation", "field-drive-controls");
+    this.slider("body_tune", "field-tuning-controls");
     this.buildPacketTexture();
     this.buildBeatingControls();
     this.buildPhaseMovement();
@@ -209,8 +213,13 @@ export class FitControls {
   }
 
   buildPhaseMovement() {
-    this.sliders("field-motion-controls", ["field_motion_depth", "field_motion_rate",
-      "field_motion_sharing"], {field_motion_sharing: ["individual", "together"]});
+    this.slider("field_motion_depth", "field-motion-controls", {
+      normalize: shimmerPosition, denormalize: shimmerValue, step: .0002,
+    });
+    this.slider("field_motion_rate", "field-motion-controls");
+    this.slider("field_motion_sharing", "field-sharing-controls", {
+      labels: ["independently", "together"],
+    });
     this.slider("field_phase_bandwidth", "field-blur-controls", {
       labels: ["stable beating", "noise blur"],
       normalize: (descriptor, value) => Math.sqrt(value / descriptor.maximum),
@@ -235,19 +244,17 @@ export class FitControls {
   }
 
   updateDoubletControl() {
-    const row = document.querySelector('[data-fit-key="field_doublet_split"]');
-    if (!row) return;
-    const layout = Math.round(this.value("field_distribution"));
-    const inactive = layout !== 2 && layout !== 3 && layout !== 4;
-    row.querySelector("input").disabled = inactive;
-    row.style.opacity = inactive ? ".45" : "1";
-    for (const key of ["field_beat_depth", "field_beat_rate_tilt"]) {
-      const pairedRow = document.querySelector(`[data-fit-key="${key}"]`);
-      if (!pairedRow) continue;
-      pairedRow.querySelector("input").disabled = inactive;
-      pairedRow.style.opacity = inactive ? ".45" : "1";
-    }
+    this.updateControlActivity();
     this.resolvedEditor?.refresh();
+  }
+
+  updateControlActivity() {
+    for (const [key, active] of Object.entries(modalControlActivity(key => this.value(key)))) {
+      const row = document.querySelector(`[data-fit-key="${key}"]`);
+      if (!row) continue;
+      row.querySelector("input").disabled = !active;
+      row.classList.toggle("control-inactive", !active);
+    }
   }
 
   pairedRingReadout(point) {
@@ -281,7 +288,7 @@ export class FitControls {
     row.dataset.fitKey = key;
     row.dataset.tooltip = options.help ?? helpFor(key);
     const title = document.createElement("span");
-    title.textContent = descriptor.name;
+    title.textContent = options.title ?? modalControlTitles[key] ?? descriptor.name;
     const input = document.createElement("input");
     input.type = "range"; input.min = 0; input.max = 1; input.step = options.step ?? 1 / 500;
     const normalize = options.normalize ?? normalized;
@@ -560,12 +567,8 @@ export class FitControls {
       maximumFrequency: decayMaximum,
       minimumLogSeconds: Math.log2(levels[0].minimum),
       maximumLogSeconds: Math.log2(levels[0].maximum),
-      yTicks: [
-        { value: Math.log2(.1), label: ".1 s" },
-        { value: 0, label: "1 s" },
-        { value: Math.log2(10), label: "10 s" },
-        { value: Math.log2(levels[0].maximum), label: `${levels[0].maximum} s` },
-      ],
+      yTicks: [.1, 1, 3, 10, levels[0].maximum].map(seconds =>
+        ({ value: Math.log2(seconds), label: `${seconds} s` })),
       points,
       setPoint: (slot, frequency, logSeconds) => {
         const next = points();
@@ -642,6 +645,9 @@ export class FitControls {
       parent.lastElementChild.querySelector("span").textContent = "Frequency";
     }
     this.slider(curve.levels[slot].key, "decay-selection", {
+      normalize: (d, value) => decayPosition(value, d.minimum, d.maximum),
+      denormalize: (d, position) => decaySeconds(position, d.minimum, d.maximum),
+      step: .0002,
       afterInput: () => editor.paint(),
     });
     parent.lastElementChild.querySelector("span").textContent = "T60";

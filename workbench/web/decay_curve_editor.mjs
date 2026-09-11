@@ -1,4 +1,4 @@
-import { svgPosition, decayDragDelta, shiftDecayPoints } from "./decay_curve_geometry.mjs";
+import { svgPosition, decayDragDelta, shiftDecayPoints, decayPosition, decaySeconds } from "./decay_curve_geometry.mjs";
 const Svg = "http://www.w3.org/2000/svg";
 const View = { width: 600, height: 220, left: 48, right: 18, top: 18, bottom: 34 };
 const clamp = (value, minimum, maximum) =>
@@ -66,8 +66,8 @@ export class DecayCurveEditor {
   }
 
   yPosition(logSeconds) {
-    const amount = (logSeconds - this.options.minimumLogSeconds) /
-      (this.options.maximumLogSeconds - this.options.minimumLogSeconds);
+    const amount = decayPosition(2 ** logSeconds,
+      2 ** this.options.minimumLogSeconds, 2 ** this.options.maximumLogSeconds);
     return View.height - View.bottom - amount *
       (View.height - View.top - View.bottom);
   }
@@ -77,8 +77,8 @@ export class DecayCurveEditor {
       (View.height - View.bottom - position) /
         (View.height - View.top - View.bottom), 0, 1,
     );
-    return this.options.minimumLogSeconds + amount *
-      (this.options.maximumLogSeconds - this.options.minimumLogSeconds);
+    return Math.log2(decaySeconds(amount,
+      2 ** this.options.minimumLogSeconds, 2 ** this.options.maximumLogSeconds));
   }
 
   eventPosition(event) {
@@ -170,20 +170,21 @@ export class DecayCurveEditor {
     const x = this.xPosition(point.x) + (position.x - this.drag.start.x) * (fine ? .1 : 1);
     const frequency = point.fixed ? point.x :
       this.constrainFrequency(point.slot, this.frequency(x));
-    this.options.setPoint(point.slot, frequency, clamp(point.y + this.dragDelta(position, fine),
+    this.options.setPoint(point.slot, frequency, clamp(point.y + this.dragDelta(position, fine, point.y),
       this.options.minimumLogSeconds, this.options.maximumLogSeconds));
     this.options.select(point.slot);
     this.paint();
   }
 
-  dragDelta(position, fine) {
+  dragDelta(position, fine, anchor) {
     return decayDragDelta(this.drag.start.y, position.y,
       this.options.minimumLogSeconds, this.options.maximumLogSeconds,
-      View.height - View.top - View.bottom, fine);
+      View.height - View.top - View.bottom, fine, anchor);
   }
 
   dragAll(position, fine = false) {
-    const points = shiftDecayPoints(this.options.points(), this.dragDelta(position, fine),
+    const original = this.options.points();
+    const points = shiftDecayPoints(original, this.dragDelta(position, fine, this.middleLevel(original)),
       this.options.minimumLogSeconds, this.options.maximumLogSeconds);
     this.options.replace(points, "body_decay_shift");
     this.paint();
@@ -209,13 +210,25 @@ export class DecayCurveEditor {
     this.paintGrid();
     const points = this.options.points();
     this.svg.append(element("polyline", {
-      points: points.map(point =>
-        `${this.xPosition(point.x)},${this.yPosition(point.y)}`).join(" "),
+      points: this.curveCoordinates(points),
       class: "editor-curve decay-curve",
     }));
     for (const point of points) this.paintPoint(point);
     this.paintAllHandle(points);
     this.options.readout?.(`${points.length}/8 knots`);
+  }
+
+  // Sample the real ERB/log-T60 interpolation under the nonlinear display scale.
+  curveCoordinates(points) {
+    return points.slice(1).flatMap((right, index) => {
+      const left = points[index], x = this.xPosition(left.x);
+      const span = this.xPosition(right.x) - x;
+      const steps = Math.max(1, Math.ceil(span / 3));
+      return Array.from({ length: steps + 1 }, (_, step) => {
+        const fraction = step / steps;
+        return `${x + span * fraction},${this.yPosition(left.y + fraction * (right.y - left.y))}`;
+      });
+    }).join(" ");
   }
 
   paintGrid() {
@@ -277,19 +290,20 @@ export class DecayCurveEditor {
     this.svg.append(node);
   }
 
-  paintAllHandle(points) {
-    const frequency = inverseErb(.5 * (
-      erb(this.minimumFrequency()) + erb(this.maximumFrequency())
-    ));
-    const rate = erb(frequency);
+  middleLevel(points) {
+    const rate = .5 * (erb(this.minimumFrequency()) + erb(this.maximumFrequency()));
     let right = 1;
     while (right < points.length && erb(points[right].x) < rate) ++right;
     right = Math.min(right, points.length - 1);
     const left = Math.max(0, right - 1);
     const span = erb(points[right].x) - erb(points[left].x);
     const amount = span > 1.e-6 ? (rate - erb(points[left].x)) / span : 0;
-    const level = points[left].y + amount * (points[right].y - points[left].y);
-    const x = this.xPosition(frequency); const y = this.yPosition(level);
+    return points[left].y + amount * (points[right].y - points[left].y);
+  }
+
+  paintAllHandle(points) {
+    const x = .5 * (View.left + this.width - View.right);
+    const y = this.yPosition(this.middleLevel(points));
     const handle = element("path", {
       d: `M ${x} ${y - 8} L ${x + 10} ${y} L ${x} ${y + 8} L ${x - 10} ${y} Z`,
       class: "decay-all-handle decay-handle",

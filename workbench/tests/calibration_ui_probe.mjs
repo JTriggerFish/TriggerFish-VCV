@@ -74,9 +74,9 @@ try {
       if(expected.instrument.recipe==='metal.cymbal.v1') {
         for(const [key,label] of [['bloom_energy_acceleration','Concentration dependence'],
                                  ['bloom_energy_sensitivity','Energy sensitivity'],
-                                 ['field_motion_depth','Ridge movement'],
-                                 ['field_motion_rate','Movement speed'],
-                                 ['field_motion_sharing','Packet sharing']]) {
+                                 ['field_motion_depth','Amount'],
+                                 ['field_motion_rate','Speed'],
+                                 ['field_motion_sharing','Shimmer moves together']]) {
           const row=document.querySelector('[data-fit-key="'+key+'"]');
           if(!row?.querySelector('input[type=range]') || !row.textContent.includes(label) ||
              !row.dataset.tooltip || !row.getClientRects().length)

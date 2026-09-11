@@ -38,7 +38,7 @@ for (const name of [
   "decay_hold_control.mjs", "decay_hold_worker.mjs", "decay_hold_measurement.mjs",
   "decay_hold_solver.mjs", "decay_hold_fit.mjs",
   "packet_layout_control.mjs", "fit_control_help.mjs", "mini_eq_editor.mjs", "radiation_response.mjs", "live_output_spectrum.mjs",
-  "packet_allocation.mjs",
+  "packet_allocation.mjs", "modal_control_presentation.mjs",
   "size_meta.mjs", "engine.mjs", "wasm_engine_core.mjs", "audio.mjs",
   "standby_renderer.mjs", "configuration_preparer.mjs", "diagnostic_audition.mjs",
   "limiter_config.mjs", "limiter_meter.mjs", "true_peak_detector.mjs", "midi_input.mjs", "settings.mjs",

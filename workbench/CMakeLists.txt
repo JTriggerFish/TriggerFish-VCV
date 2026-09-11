@@ -140,6 +140,8 @@ if(EMSCRIPTEN)
       COMMAND ${NODE_EXECUTABLE} ${CMAKE_CURRENT_LIST_DIR}/tests/packet_allocation_tests.mjs)
     add_test(NAME triggerfish_workbench_modal_brush_tests
       COMMAND ${NODE_EXECUTABLE} ${CMAKE_CURRENT_LIST_DIR}/tests/modal_brush_tests.mjs)
+    add_test(NAME triggerfish_workbench_modal_control_presentation_tests
+      COMMAND ${NODE_EXECUTABLE} ${CMAKE_CURRENT_LIST_DIR}/tests/modal_control_presentation_tests.mjs)
     add_test(NAME triggerfish_workbench_spectrogram_history_tests
       COMMAND ${NODE_EXECUTABLE} ${CMAKE_CURRENT_LIST_DIR}/tests/spectrogram_history_tests.mjs)
     add_test(NAME triggerfish_workbench_progressive_stft_tests
