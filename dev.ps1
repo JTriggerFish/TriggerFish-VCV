@@ -552,6 +552,7 @@ switch ($Command) {
                 tests/python/test_fit_reference.py tests/python/test_reference_onset_audit.py `
                 tests/python/test_metallic_candidate_audit.py `
                 tests/python/test_fit_objective.py tests/python/test_instrument_fit_plots.py `
+                tests/python/test_crash_shimmer_refinement.py tests/python/test_saved_sequence_bridge.py `
                 --basetemp build/pytest-fit-temp
             if ($LASTEXITCODE -ne 0) { throw "Fitting tests failed with exit code $LASTEXITCODE." }
         }

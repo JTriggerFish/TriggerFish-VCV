@@ -85,10 +85,16 @@ function snapshot(request) {
 function renderSequence(request) {
   const seconds = request.seconds ?? 3;
   const hits = request.hits ?? [];
-  if (!(seconds > 0 && seconds <= 30) || hits.length > 256)
+  if (!(seconds > 0 && seconds <= 30) || !Array.isArray(hits) || hits.length > 256)
     throw new Error("Invalid sequence duration or hit count");
+  if (request.fit && request.parameters)
+    throw new Error("Provide a saved fit or parameter overrides, not both");
+  const fit = request.fit ? validateFit(request.fit, engine.parameters) : null;
+  const values = fit ? fitMacroValues(fit, engine.parameters) : parameters(request.parameters);
+  const voice = fit?.instrument ?? patch;
+  const gesture = fit?.controls.event ?? event;
   engine.reset();
-  engine.setConfiguration(parameters(request.parameters), recipeAdapter(patch.recipe).routing(patch));
+  engine.setConfiguration(values, recipeAdapter(voice.recipe).routing(voice));
   const samples = new Float32Array(Math.round(seconds * engine.sampleRate));
   let cursor = 0;
   for (const hit of hits) {
@@ -96,7 +102,7 @@ function renderSequence(request) {
     if (!Number.isFinite(frame) || frame < cursor || frame >= samples.length)
       throw new Error("Sequence hits must be ordered and within the render");
     if (frame > cursor) engine.processTo(samples, cursor, frame - cursor);
-    engine.trigger({ ...event, ...hit });
+    engine.trigger({ ...gesture, ...hit });
     cursor = frame;
   }
   if (cursor < samples.length) engine.processTo(samples, cursor, samples.length - cursor);

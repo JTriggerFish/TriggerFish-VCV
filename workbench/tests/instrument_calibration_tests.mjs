@@ -86,7 +86,7 @@ for (const id of ["crash-standard", "ride-standard", "gong-standard", "hihat-sta
   assert.deepEqual(values,Object.values(parameters));
   assert.deepEqual(calibrationPatch(target,surface,values,null),fit.instrument);
   // Reviewed shared curves may have interior points; this is not a DSP limit.
-  const reviewedKnots = id === "crash-standard" ? []
+  const reviewedKnots = id === "crash-standard" ? [3000]
     : id === "ride-standard" ? [700] : [];
   for (let knot=1;knot<=6;++knot) {
     const active = knot <= reviewedKnots.length;
