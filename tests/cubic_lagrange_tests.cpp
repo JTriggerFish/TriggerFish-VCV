@@ -1,4 +1,4 @@
-#include "percussion_test_support.hpp"
+#include "dsp_test_support.hpp"
 
 #include "tfdsp/cubic_fractional_delay.hpp"
 #include "tfdsp/cubic_lagrange_interpolator.hpp"
@@ -9,8 +9,8 @@
 
 namespace {
 
-using percussion_test::Check;
-using percussion_test::CheckNear;
+using dsp_test::Check;
+using dsp_test::CheckNear;
 
 void TestCubicPolynomialIsExact() {
   for (float delay = 2.f; delay <= 30.f; delay += .125f) {
@@ -69,7 +69,7 @@ int main() {
   TestCubicPolynomialIsExact();
   TestIntegerBoundaryContinuity();
   TestInvalidInputsAreSafe();
-  if (percussion_test::failures == 0)
+  if (dsp_test::failures == 0)
     std::cout << "All cubic Lagrange tests passed\n";
-  return percussion_test::failures == 0 ? 0 : 1;
+  return dsp_test::failures == 0 ? 0 : 1;
 }

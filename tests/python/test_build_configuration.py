@@ -1,7 +1,5 @@
 from pathlib import Path
 import re
-import subprocess
-import sys
 import tomllib
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -72,8 +70,3 @@ def test_rack_and_default_cmake_builds_do_not_require_python_analysis():
     assert "python/triggerfish_percussion" not in makefile
     assert re.search(r'option\(TRIGGERFISH_BUILD_PYTHON\s+"[^"]+"\s+OFF\)', cmake)
     assert "if(TRIGGERFISH_BUILD_PYTHON)" in cmake
-
-
-def test_percussion_package_import_does_not_load_scipy():
-    script = "import triggerfish_percussion, sys; assert 'scipy' not in sys.modules"
-    subprocess.run([sys.executable, "-c", script], check=True, cwd=ROOT)

@@ -21,32 +21,10 @@ param(
         "smoke-unison",
         "smoke-scene-pack4",
         "test",
-        "test-percussion",
-        "test-workbench-api",
-        "test-workbench-wasm",
-        "test-workbench-browser",
-        "test-kick-workbench",
-        "audit-workbench-starts",
-        "fit-crash-start",
-        "fit-gong-start",
-        "fit-kick-start",
-        "fit-instruments",
-        "polish-instruments",
-        "diagnose-kick",
-        "compare-kick-losses",
-        "test-perceptual-losses",
-        "test-gong-report",
-        "test-fit-report",
-        "build-workbench",
-        "serve-workbench",
         "benchmark-er",
         "benchmark-reverb",
         "benchmark-electric-piano",
-        "benchmark-percussion",
-        "benchmark-workbench",
         "python-test",
-        "test-fitting-tools",
-        "test-kick-architecture",
         "shell",
         "rack-dep",
         "rack-build",
@@ -76,7 +54,6 @@ $msysRoot = Get-ConfiguredPath "MSYS2_ROOT" "C:\msys64"
 $rackSdk = Get-ConfiguredPath "RACK_SDK_DIR" (Join-Path $devRoot "Rack-SDK")
 $rackRuntime = Get-ConfiguredPath "RACK_RUNTIME_DIR" (Join-Path $devRoot "Rack2")
 $rackSource = Get-ConfiguredPath "RACK_SOURCE_DIR" (Join-Path $devRoot "Rack-src")
-$emsdkRoot = Get-ConfiguredPath "EMSDK_ROOT" (Join-Path $devRoot "emsdk")
 $msysShell = Join-Path $msysRoot "msys2_shell.cmd"
 $msysBash = Join-Path $msysRoot "usr\bin\bash.exe"
 function Resolve-RackExecutable {
@@ -245,14 +222,6 @@ switch ($Command) {
             if ($LASTEXITCODE -ne 0) {
                 throw "TfElectricPiano panel generation failed with exit code $LASTEXITCODE."
             }
-            foreach ($moduleName in @("TfRideCymbal", "TfHiHat")) {
-                & uv run python tools/svg_text_to_paths.py `
-                    "res-src/$moduleName.svg" "res/$moduleName.svg" `
-                    --font $panelFont
-                if ($LASTEXITCODE -ne 0) {
-                    throw "$moduleName panel generation failed with exit code $LASTEXITCODE."
-                }
-            }
             & uv run python tools/svg_text_to_paths.py `
                 "res-src/TfReverb.svg" "res/TfReverb.svg" `
                 --font $panelFont
@@ -317,179 +286,6 @@ switch ($Command) {
     "test" {
         Invoke-Mingw "cd '$repoMsys' && cmake -S . -B build/dsp-tests -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DTRIGGERFISH_BUILD_PYTHON=OFF && cmake --build build/dsp-tests -j$Jobs && ctest --test-dir build/dsp-tests --output-on-failure"
     }
-    "test-percussion" {
-        Invoke-Mingw "cd '$repoMsys' && cmake -S . -B build/dsp-tests -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DTRIGGERFISH_BUILD_PYTHON=OFF && cmake --build build/dsp-tests -j$Jobs && ctest --test-dir build/dsp-tests --output-on-failure -R 'percussion|cubic_lagrange'"
-    }
-    "test-workbench-api" {
-        Invoke-Mingw "cd '$repoMsys' && cmake -S workbench -B build/workbench-api -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build build/workbench-api -j$Jobs && ctest --test-dir build/workbench-api --output-on-failure"
-    }
-    "test-workbench-wasm" {
-        $emsdkEnvironment = Join-Path $emsdkRoot "emsdk_env.ps1"
-        $ninja = Join-Path $msysRoot "mingw64\bin\ninja.exe"
-        Assert-Path $emsdkEnvironment "Emscripten SDK environment script"
-        Assert-Path $ninja "MinGW Ninja"
-        . $emsdkEnvironment
-        Invoke-Mingw "cd '$repoMsys' && cmake -S workbench -B build/workbench-api -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build build/workbench-api -j$Jobs && ctest --test-dir build/workbench-api --output-on-failure"
-        Push-Location $repoRoot
-        try {
-            & emcmake cmake -S workbench -B build/workbench-wasm -G Ninja `
-                -DCMAKE_BUILD_TYPE=Release `
-                "-DCMAKE_MAKE_PROGRAM=$ninja"
-            if ($LASTEXITCODE -ne 0) {
-                throw "WebAssembly workbench configuration failed with exit code $LASTEXITCODE."
-            }
-            & cmake --build build/workbench-wasm --parallel $Jobs
-            if ($LASTEXITCODE -ne 0) {
-                throw "WebAssembly workbench build failed with exit code $LASTEXITCODE."
-            }
-            & ctest --test-dir build/workbench-wasm --output-on-failure
-            if ($LASTEXITCODE -ne 0) {
-                throw "WebAssembly workbench tests failed with exit code $LASTEXITCODE."
-            }
-            & $env:EMSDK_PYTHON workbench/tests/compare_signatures.py `
-                --native build/workbench-api/triggerfish_workbench_signature.exe `
-                --node $env:EMSDK_NODE `
-                --wasm-test workbench/tests/wasm_smoke.mjs `
-                --module build/workbench-wasm/triggerfish-percussion.mjs
-            if ($LASTEXITCODE -ne 0) {
-                throw "Native/WebAssembly comparison failed with exit code $LASTEXITCODE."
-            }
-        }
-        finally {
-            Pop-Location
-        }
-    }
-    { $_ -in "test-workbench-browser", "test-kick-workbench" } {
-        & $PSCommandPath -Command build-workbench -Jobs $Jobs
-        if ($LASTEXITCODE -ne 0) {
-            throw "Workbench site build failed with exit code $LASTEXITCODE."
-        }
-        $emsdkEnvironment = Join-Path $emsdkRoot "emsdk_env.ps1"
-        Assert-Path $emsdkEnvironment "Emscripten SDK environment script"
-        . $emsdkEnvironment
-        Push-Location $repoRoot
-        try {
-            if ($Command -eq "test-kick-workbench") {
-                & $env:EMSDK_NODE workbench/tests/kick_ui_probe.mjs
-            } else {
-                & $env:EMSDK_NODE workbench/tests/browser_probe.mjs `
-                    http://127.0.0.1:9223 build/workbench-browser.png `
-                    --reload --controls --trigger
-            }
-            if ($LASTEXITCODE -ne 0) {
-                throw "Workbench browser probe failed with exit code $LASTEXITCODE."
-            }
-        }
-        finally {
-            Pop-Location
-        }
-    }
-    "audit-workbench-starts" {
-        & $PSCommandPath -Command build-workbench -Jobs $Jobs
-        if ($LASTEXITCODE -ne 0) {
-            throw "Workbench site build failed with exit code $LASTEXITCODE."
-        }
-        $emsdkEnvironment = Join-Path $emsdkRoot "emsdk_env.ps1"
-        Assert-Path $emsdkEnvironment "Emscripten SDK environment script"
-        Assert-Path (Join-Path $repoRoot "build\workbench-wasm\site") "Built percussion workbench"
-        . $emsdkEnvironment
-        Push-Location $repoRoot
-        try {
-            & $env:EMSDK_NODE tools/audit_percussion_starts.mjs `
-                build/workbench-wasm/site http://127.0.0.1:8765
-            if ($LASTEXITCODE -ne 0) {
-                throw "Percussion reference-start audit failed with exit code $LASTEXITCODE."
-            }
-        }
-        finally {
-            Pop-Location
-        }
-    }
-    "fit-crash-start" {
-        Push-Location $repoRoot
-        try {
-            & uv run python tools/fit_crash_cymbal.py `
-                --cells-manifest build/cymbal-calibration/references/private-corpus-a-crash-v1/cells-oh-dyn-v2/cells.json `
-                --fit-cell "edge v096 r01" `
-                --output build/cymbal-calibration/unified-field-start-v1 `
-                --maximum-evaluations 1200 `
-                --workers $Jobs `
-                --fit-policy first-100ms-tradeoff `
-                --skip-influence
-            if ($LASTEXITCODE -ne 0) {
-                throw "Unified crash starting fit failed with exit code $LASTEXITCODE."
-            }
-        }
-        finally {
-            Pop-Location
-        }
-    }
-    { $_ -in "fit-gong-start", "fit-kick-start", "fit-instruments", "polish-instruments", "test-kick-architecture", "diagnose-kick", "compare-kick-losses" } {
-        & $PSCommandPath -Command build-workbench -Jobs $Jobs
-        if ($LASTEXITCODE -ne 0) { throw "Workbench build failed." }
-        $emsdkEnvironment = Join-Path $emsdkRoot "emsdk_env.ps1"
-        Assert-Path $emsdkEnvironment "Emscripten SDK environment script"
-        . $emsdkEnvironment
-        $python = Join-Path $repoRoot ".venv\Scripts\python.exe"
-        Assert-Path $python "Development Python environment; run dev.ps1 python-test first"
-        Push-Location $repoRoot
-        try {
-            $fitScript = switch ($Command) {
-                "fit-kick-start" { "tools/fit_workbench_kick.py" }
-                "fit-instruments" { "tools/fit_workbench_instruments.py" }
-                "polish-instruments" { "tools/polish_workbench_fit.py" }
-                "diagnose-kick" { "tools/diagnose_workbench_kick.py" }
-                "compare-kick-losses" { "tools/compare_kick_losses.py" }
-                "test-kick-architecture" { "tools/test_kick_architecture.py" }
-                default { "tools/fit_workbench_gong.py" }
-            }
-            & $python $fitScript
-            if ($LASTEXITCODE -ne 0) { throw "Workbench search failed with exit code $LASTEXITCODE." }
-        }
-        finally { Pop-Location }
-    }
-    { $_ -in "test-gong-report", "test-fit-report" } {
-        $emsdkEnvironment = Join-Path $emsdkRoot "emsdk_env.ps1"
-        Assert-Path $emsdkEnvironment "Emscripten SDK environment script"
-        . $emsdkEnvironment
-        Push-Location $repoRoot
-        try {
-            & $env:EMSDK_NODE workbench/tests/report_probe.mjs
-            if ($LASTEXITCODE -ne 0) { throw "Fit report checks failed." }
-        }
-        finally { Pop-Location }
-    }
-    "build-workbench" {
-        $emsdkEnvironment = Join-Path $emsdkRoot "emsdk_env.ps1"
-        $ninja = Join-Path $msysRoot "mingw64\bin\ninja.exe"
-        Assert-Path $emsdkEnvironment "Emscripten SDK environment script"
-        Assert-Path $ninja "MinGW Ninja"
-        . $emsdkEnvironment
-        Push-Location $repoRoot
-        try {
-            & emcmake cmake -S workbench -B build/workbench-wasm -G Ninja `
-                -DCMAKE_BUILD_TYPE=Release `
-                "-DCMAKE_MAKE_PROGRAM=$ninja"
-            if ($LASTEXITCODE -ne 0) {
-                throw "WebAssembly workbench configuration failed with exit code $LASTEXITCODE."
-            }
-            & cmake --build build/workbench-wasm `
-                --target triggerfish_workbench_site --parallel $Jobs
-            if ($LASTEXITCODE -ne 0) {
-                throw "WebAssembly workbench build failed with exit code $LASTEXITCODE."
-            }
-        }
-        finally {
-            Pop-Location
-        }
-    }
-    "serve-workbench" {
-        $python = Join-Path $repoRoot ".venv\Scripts\python.exe"
-        $site = Join-Path $repoRoot "build\workbench-wasm\site"
-        Assert-Path $python "Repository Python environment"
-        Assert-Path $site "Built percussion workbench"
-        & $python tools/serve_percussion_workbench.py $site --port 8765
-    }
     "benchmark-er" {
         Invoke-Mingw "cd '$repoMsys' && cmake -S . -B build/dsp-tests -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DTRIGGERFISH_BUILD_PYTHON=OFF && cmake --build build/dsp-tests --target triggerfish_early_reflections_benchmark -j$Jobs && ./build/dsp-tests/triggerfish_early_reflections_benchmark.exe"
     }
@@ -498,65 +294,6 @@ switch ($Command) {
     }
     "benchmark-electric-piano" {
         Invoke-Mingw "cd '$repoMsys' && cmake -S . -B build/dsp-tests -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DTRIGGERFISH_BUILD_PYTHON=OFF && cmake --build build/dsp-tests --target triggerfish_electric_piano_benchmark -j$Jobs && ./build/dsp-tests/triggerfish_electric_piano_benchmark.exe"
-    }
-    "benchmark-percussion" {
-        Invoke-Mingw "cd '$repoMsys' && cmake -S . -B build/dsp-tests -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DTRIGGERFISH_BUILD_PYTHON=OFF && cmake --build build/dsp-tests --target triggerfish_percussion_benchmark -j$Jobs && ./build/dsp-tests/triggerfish_percussion_benchmark.exe"
-    }
-    "benchmark-workbench" {
-        & $PSCommandPath -Command build-workbench -Jobs $Jobs
-        if ($LASTEXITCODE -ne 0) {
-            throw "Workbench build failed with exit code $LASTEXITCODE."
-        }
-        $emsdkEnvironment = Join-Path $emsdkRoot "emsdk_env.ps1"
-        Assert-Path $emsdkEnvironment "Emscripten SDK environment script"
-        . $emsdkEnvironment
-        Push-Location $repoRoot
-        try {
-            & $env:EMSDK_NODE workbench/tests/performance_probe.mjs `
-                build/workbench-wasm/site/engine.mjs
-            if ($LASTEXITCODE -ne 0) {
-                throw "Workbench benchmark failed with exit code $LASTEXITCODE."
-            }
-        }
-        finally {
-            Pop-Location
-        }
-    }
-    "test-perceptual-losses" {
-        $python = Join-Path $repoRoot ".venv\Scripts\python.exe"
-        Assert-Path $python "Optional analysis Python environment"
-        & $python -c "import torch, auraloss, librosa, wavespin"
-        if ($LASTEXITCODE -ne 0) { throw "Install the optional perceptual-fit dependency group first." }
-        & $python -m pytest tests/python/test_perceptual_fit_losses.py `
-            tests/python/test_scalar_fit_search.py --basetemp build/pytest-perceptual-temp
-        if ($LASTEXITCODE -ne 0) { throw "Perceptual loss tests failed." }
-    }
-    "test-fitting-tools" {
-        $python = Join-Path $repoRoot ".venv\Scripts\python.exe"
-        Assert-Path $python "Development Python environment; run dev.ps1 python-test first"
-        Push-Location $repoRoot
-        try {
-            & $python -m pytest tests/python/test_trajectory_fit_loss.py `
-                tests/python/test_short_drum_fit_loss.py tests/python/test_smooth_drum_fit_loss.py `
-                tests/python/test_drum_balance_loss.py `
-                tests/python/test_band_region_audit.py `
-                tests/python/test_region_spectrum_audit.py `
-                tests/python/test_ridge_balance_loss.py tests/python/test_fit_rerender.py `
-                tests/python/test_scalar_fit_search.py `
-                tests/python/test_workbench_search.py tests/python/test_workbench_fit_baseline.py `
-                tests/python/test_workbench_global_search.py tests/python/test_fit_provenance.py `
-                tests/python/test_modal_fit_initialization.py tests/python/test_power_envelope.py `
-                tests/python/test_metallic_fit_loss.py tests/python/test_metallic_balance_loss.py `
-                tests/python/test_observation_fit_basis.py tests/python/test_torch_metallic_loss.py `
-                tests/python/test_observation_energy_gate.py `
-                tests/python/test_fit_reference.py tests/python/test_reference_onset_audit.py `
-                tests/python/test_metallic_candidate_audit.py `
-                tests/python/test_fit_objective.py tests/python/test_instrument_fit_plots.py `
-                tests/python/test_crash_shimmer_refinement.py tests/python/test_saved_sequence_bridge.py `
-                --basetemp build/pytest-fit-temp
-            if ($LASTEXITCODE -ne 0) { throw "Fitting tests failed with exit code $LASTEXITCODE." }
-        }
-        finally { Pop-Location }
     }
     "python-test" {
         $previousPath = $env:Path

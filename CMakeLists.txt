@@ -18,15 +18,6 @@ add_library(triggerfish_dsp STATIC
 	src/tfseq_voicing.cpp
 	src/tfseq_voicing.hpp
 	src/tfdsp/sampleRate.cpp
-	src/tfdsp/percussion/compact_kick.cpp
-	src/tfdsp/percussion/compact_kick_parameters.cpp
-	src/tfdsp/percussion/kick_voice_parameters.cpp
-	src/tfdsp/percussion/crash_cymbal.cpp
-	src/tfdsp/percussion/crash_cymbal_parameters.cpp
-	src/tfdsp/percussion/membrane_drum.cpp
-	src/tfdsp/percussion/membrane_drum_parameters.cpp
-	src/tfdsp/percussion/wire_rack.cpp
-	src/tfdsp/percussion/snare_drum.cpp
 	src/tfdsp/early_reflections.hpp
 	src/tfdsp/event_merge.hpp
 	src/tfdsp/early_reflections_worker.cpp
@@ -66,8 +57,6 @@ if(EXISTS "${RACK_SDK_DIR}/include/rack.hpp")
 		src/Tf303Oscillator.cpp
 		src/Tf4072VoiceCore.cpp
 		src/TfElectricPiano.cpp
-		src/TfRideCymbal.cpp
-		src/TfHiHat.cpp
 		src/TfWavefoldOscillator.cpp
 		src/TfUnisonOscillator.cpp
 		src/TfScenePack4.cpp
@@ -131,150 +120,12 @@ if(BUILD_TESTING)
 	add_test(NAME triggerfish_reverb_realtime_tests
 		COMMAND triggerfish_reverb_realtime_tests)
 
-	add_executable(triggerfish_percussion_delay_tests
-		tests/percussion_delay_tests.cpp)
-	target_link_libraries(triggerfish_percussion_delay_tests PRIVATE
-		triggerfish_dsp)
-	add_test(NAME triggerfish_percussion_delay_tests
-		COMMAND triggerfish_percussion_delay_tests)
-
 	add_executable(triggerfish_cubic_lagrange_tests
 		tests/cubic_lagrange_tests.cpp)
 	target_link_libraries(triggerfish_cubic_lagrange_tests PRIVATE
 		triggerfish_dsp)
 	add_test(NAME triggerfish_cubic_lagrange_tests
 		COMMAND triggerfish_cubic_lagrange_tests)
-
-	add_executable(triggerfish_percussion_frequency_shift_tests
-		tests/percussion_frequency_shift_tests.cpp)
-	target_link_libraries(triggerfish_percussion_frequency_shift_tests PRIVATE
-		triggerfish_dsp)
-	add_test(NAME triggerfish_percussion_frequency_shift_tests
-		COMMAND triggerfish_percussion_frequency_shift_tests)
-
-	add_executable(triggerfish_percussion_contact_tests
-		tests/percussion_contact_tests.cpp)
-	target_link_libraries(triggerfish_percussion_contact_tests PRIVATE
-		triggerfish_dsp)
-	add_test(NAME triggerfish_percussion_contact_tests
-		COMMAND triggerfish_percussion_contact_tests)
-	add_executable(triggerfish_percussion_gain_tests tests/percussion_gain_tests.cpp)
-	target_link_libraries(triggerfish_percussion_gain_tests PRIVATE triggerfish_dsp)
-	add_test(NAME triggerfish_percussion_gain_tests COMMAND triggerfish_percussion_gain_tests)
-
-	add_executable(triggerfish_percussion_control_tests
-		tests/percussion_control_tests.cpp)
-	target_link_libraries(triggerfish_percussion_control_tests PRIVATE
-		triggerfish_dsp)
-	add_test(NAME triggerfish_percussion_control_tests
-		COMMAND triggerfish_percussion_control_tests)
-
-	add_executable(triggerfish_percussion_fm_tests
-		tests/percussion_fm_tests.cpp)
-	target_link_libraries(triggerfish_percussion_fm_tests PRIVATE
-		triggerfish_dsp)
-	add_test(NAME triggerfish_percussion_fm_tests
-		COMMAND triggerfish_percussion_fm_tests)
-
-	add_executable(triggerfish_percussion_kick_tests
-		tests/percussion_kick_tests.cpp)
-	target_link_libraries(triggerfish_percussion_kick_tests PRIVATE
-		triggerfish_dsp)
-	add_test(NAME triggerfish_percussion_kick_tests
-		COMMAND triggerfish_percussion_kick_tests)
-
-	add_executable(triggerfish_percussion_membrane_tests
-		tests/percussion_membrane_tests.cpp)
-	target_link_libraries(triggerfish_percussion_membrane_tests PRIVATE
-		triggerfish_dsp)
-	add_test(NAME triggerfish_percussion_membrane_tests
-		COMMAND triggerfish_percussion_membrane_tests)
-	add_executable(triggerfish_percussion_wire_tests
-		tests/percussion_wire_tests.cpp)
-	target_link_libraries(triggerfish_percussion_wire_tests PRIVATE
-		triggerfish_dsp)
-	add_test(NAME triggerfish_percussion_wire_tests
-		COMMAND triggerfish_percussion_wire_tests)
-	add_executable(triggerfish_percussion_snare_tests
-		tests/percussion_snare_tests.cpp)
-	target_link_libraries(triggerfish_percussion_snare_tests PRIVATE
-		triggerfish_dsp)
-	add_test(NAME triggerfish_percussion_snare_tests
-		COMMAND triggerfish_percussion_snare_tests)
-
-	add_executable(triggerfish_percussion_micro_contact_tests
-		tests/percussion_micro_contact_tests.cpp)
-	target_link_libraries(triggerfish_percussion_micro_contact_tests PRIVATE
-		triggerfish_dsp)
-	add_test(NAME triggerfish_percussion_micro_contact_tests
-		COMMAND triggerfish_percussion_micro_contact_tests)
-
-	add_executable(triggerfish_percussion_resonator_tests
-		tests/percussion_resonator_tests.cpp)
-	target_link_libraries(triggerfish_percussion_resonator_tests PRIVATE
-		triggerfish_dsp)
-	add_test(NAME triggerfish_percussion_resonator_tests
-		COMMAND triggerfish_percussion_resonator_tests)
-
-	add_executable(triggerfish_percussion_modal_tests
-		tests/percussion_modal_tests.cpp)
-	target_link_libraries(triggerfish_percussion_modal_tests PRIVATE
-		triggerfish_dsp)
-	add_test(NAME triggerfish_percussion_modal_tests
-		COMMAND triggerfish_percussion_modal_tests)
-
-	add_executable(triggerfish_percussion_modal_drift_tests
-		tests/percussion_modal_drift_tests.cpp)
-	target_link_libraries(triggerfish_percussion_modal_drift_tests PRIVATE triggerfish_dsp)
-	add_test(NAME triggerfish_percussion_modal_drift_tests
-		COMMAND triggerfish_percussion_modal_drift_tests)
-
-	add_executable(triggerfish_percussion_modal_motion_tests tests/percussion_modal_motion_tests.cpp)
-	target_link_libraries(triggerfish_percussion_modal_motion_tests PRIVATE triggerfish_dsp)
-	add_test(NAME triggerfish_percussion_modal_motion_tests COMMAND triggerfish_percussion_modal_motion_tests)
-
-	add_executable(triggerfish_percussion_turbulence_tests tests/percussion_turbulence_tests.cpp)
-	target_link_libraries(triggerfish_percussion_turbulence_tests PRIVATE triggerfish_dsp)
-	add_test(NAME triggerfish_percussion_turbulence_tests COMMAND triggerfish_percussion_turbulence_tests)
-	add_executable(triggerfish_percussion_packet_coordinates_tests tests/percussion_packet_coordinates_tests.cpp)
-	add_executable(triggerfish_percussion_spectral_diffusion_tests tests/percussion_spectral_diffusion_tests.cpp)
-	target_link_libraries(triggerfish_percussion_spectral_diffusion_tests PRIVATE triggerfish_dsp)
-	add_test(NAME triggerfish_percussion_spectral_diffusion_tests COMMAND triggerfish_percussion_spectral_diffusion_tests)
-	target_link_libraries(triggerfish_percussion_packet_coordinates_tests PRIVATE triggerfish_dsp)
-	add_test(NAME triggerfish_percussion_packet_coordinates_tests COMMAND triggerfish_percussion_packet_coordinates_tests)
-
-	add_executable(triggerfish_percussion_dispersion_tests
-		tests/percussion_dispersion_tests.cpp)
-	target_link_libraries(triggerfish_percussion_dispersion_tests PRIVATE
-		triggerfish_dsp)
-	add_test(NAME triggerfish_percussion_dispersion_tests
-		COMMAND triggerfish_percussion_dispersion_tests)
-
-	add_executable(triggerfish_percussion_radiation_tests
-		tests/percussion_radiation_tests.cpp)
-	target_link_libraries(triggerfish_percussion_radiation_tests PRIVATE
-		triggerfish_dsp)
-	add_test(NAME triggerfish_percussion_radiation_tests
-		COMMAND triggerfish_percussion_radiation_tests)
-
-	add_executable(triggerfish_percussion_observation_tests
-		tests/percussion_observation_tests.cpp)
-	target_link_libraries(triggerfish_percussion_observation_tests PRIVATE
-		triggerfish_dsp)
-	add_test(NAME triggerfish_percussion_observation_tests
-		COMMAND triggerfish_percussion_observation_tests)
-
-	add_executable(triggerfish_percussion_crash_tests
-		tests/percussion_crash_tests.cpp)
-	target_link_libraries(triggerfish_percussion_crash_tests PRIVATE
-		triggerfish_dsp)
-	add_test(NAME triggerfish_percussion_crash_tests
-		COMMAND triggerfish_percussion_crash_tests)
-
-	add_executable(triggerfish_percussion_benchmark EXCLUDE_FROM_ALL
-		tests/percussion_benchmark.cpp)
-	target_link_libraries(triggerfish_percussion_benchmark PRIVATE
-		triggerfish_dsp)
 
 	add_executable(triggerfish_early_reflections_tests
 		tests/early_reflections_tests.cpp)

@@ -23,10 +23,6 @@ Circuit-modelled sound generators and processors, plus pitch utilities for VCV R
     <td align="center"><a href="#wavefold-oscillator"><img src="doc/TfWavefoldOscillator.png" height="260" alt="Wavefold Oscillator module"><br><strong>Wavefold Oscillator</strong></a></td>
   </tr>
   <tr>
-    <td align="center"><a href="#ride-cymbal-and-hi-hat"><img src="doc/TfRideCymbal.png" height="260" alt="Ride Cymbal module"><br><strong>Ride Cymbal</strong></a></td>
-    <td align="center"><a href="#ride-cymbal-and-hi-hat"><img src="doc/TfHiHat.png" height="260" alt="Hi-Hat module"><br><strong>Hi-Hat</strong></a></td>
-  </tr>
-  <tr>
     <td align="center"><a href="#unison-oscillator"><img src="doc/TfUnisonOscillator.png" height="260" alt="Unison Oscillator module"><br><strong>Unison Oscillator</strong></a></td>
     <td align="center"><a href="#scene-pack-4"><img src="doc/TfScenePack4.png" height="260" alt="Scene Pack 4 module"><br><strong>Scene Pack 4</strong></a></td>
     <td align="center"><a href="#room-reverb"><img src="doc/TfReverb.png" height="260" alt="Room Reverb module"><br><strong>Room Reverb</strong></a></td>
@@ -50,8 +46,6 @@ Circuit-modelled sound generators and processors, plus pitch utilities for VCV R
 | 303 Voice Core | Fully polyphonic, with independent filter, envelope, accent, and VCA state; mono controls are broadcast | Channel count of `IN`, up to 16 |
 | 4072 Voice Core | Fully polyphonic, with independent filter, dual-envelope, and VCA state; mono controls are broadcast | Widest connected input, up to 16 |
 | Electric Piano | Sixteen independent modal tine/pickup note channels, sixteen internal release-tail slots, and one shared nonlinear amplifier | Widest pitch, gate, or velocity input, up to 16; `DIRECT POLY` preserves the originating channels |
-| Ride Cymbal | Development shell; synthesis is intentionally disabled during the DSP rebuild | Silent stereo output |
-| Hi-Hat | Development shell; synthesis resumes after the ride component library is validated | Silent stereo output |
 | Wavefold Oscillator | Fully polyphonic, with independent oscillator, folder, and resampling state; mono controls are broadcast | Widest connected input, up to 16 |
 | Unison Oscillator | Fully polyphonic, with an independent oscillator stack and drift state per channel; mono controls are broadcast | Widest connected input, up to 16 |
 | Scene Pack 4 | Concatenates four mono/poly source bundles in jack order | One polyphonic audio output, up to 8 channels |
@@ -196,19 +190,6 @@ recovery, and vibrato remain at host rate. High resonator modes
 taper smoothly before Nyquist. Live timbre controls use short smoothing; Decay
 uses a slower transition and staggered control-rate
 coefficient updates so polyphonic adjustment remains continuous and inexpensive.
-
-### Ride Cymbal and Hi-Hat
-
-Ride Cymbal and Hi-Hat currently preserve their panels, parameter IDs, ports,
-and Rack model registrations as development shells. Their previous synthesis
-engines and model-specific tests were removed so the replacement cannot inherit
-unvalidated assumptions. Both modules intentionally output silence.
-
-Development now starts with one ride and a frozen real-reference matrix. DSP
-primitives will be added individually with analytic and numerical-reference
-tests, then composed into a ride graph and calibrated before the hi-hat model is
-resumed. The design and quality requirements are recorded in the
-[percussion synthesis architecture](docs/TfPercussion-synthesis-architecture.md).
 
 ### Slop and Slop 4
 
