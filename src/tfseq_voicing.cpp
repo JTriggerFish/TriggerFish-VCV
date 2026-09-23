@@ -171,13 +171,16 @@ ToneSet ApplyRecipe(const ToneSet &pool, const ChordValue &chord,
     std::array<std::size_t, MaximumPolyphony> order{};
     for (std::size_t index = 0; index < pool.count; ++index)
       order[index] = index;
-    std::stable_sort(
+    std::sort(
         order.begin(), order.begin() + pool.count,
         [&](const std::size_t left, const std::size_t right) {
           const auto &additionOrder =
               chord.altered ? AlteredAdditionOrder : recipe.additionOrder;
-          return DegreeRank(pool.tones[left], additionOrder, false) <
-                 DegreeRank(pool.tones[right], additionOrder, false);
+          const int leftRank = DegreeRank(pool.tones[left], additionOrder, false);
+          const int rightRank = DegreeRank(pool.tones[right], additionOrder, false);
+          // Preserve formula order for equal ranks without stable_sort's
+          // temporary heap buffer on the audio thread.
+          return leftRank != rightRank ? leftRank < rightRank : left < right;
         });
     for (std::size_t position = 0;
          position < pool.count && selected.count < target; ++position) {
@@ -263,6 +266,11 @@ void ConsiderCandidate(const std::array<int, MaximumPolyphony> &candidate,
     return;
   const auto score = ScoreCandidate(candidate, count, previous, previousCount,
                                     registerTarget, recipeRank);
+  // Keep the voicing midpoint within half an octave of the written register.
+  // Motion may choose inversions inside this fixed window, but must not pull
+  // each successive loop towards another octave. registerDistance is doubled.
+  if (score.registerDistance > 12)
+    return;
   if (best.count == 0 || score.tuple() < bestScore.tuple()) {
     bestScore = score;
     best.count = count;

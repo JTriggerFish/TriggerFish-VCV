@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 
-project(TriggerFishDSP VERSION 2.5.4 LANGUAGES CXX)
+project(TriggerFishDSP VERSION 2.5.5 LANGUAGES CXX)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 17)
@@ -87,6 +87,46 @@ if(BUILD_TESTING)
 	target_link_libraries(triggerfish_dsp_tests PRIVATE triggerfish_dsp)
 	add_test(NAME triggerfish_dsp_tests COMMAND triggerfish_dsp_tests)
 
+	add_executable(triggerfish_finite_audio_tests tests/finite_audio_tests.cpp)
+	target_link_libraries(triggerfish_finite_audio_tests PRIVATE triggerfish_dsp)
+	add_test(NAME triggerfish_finite_audio_tests
+		COMMAND triggerfish_finite_audio_tests)
+
+	add_executable(triggerfish_electric_piano_voice_tests
+		tests/electric_piano_voice_tests.cpp)
+	target_link_libraries(triggerfish_electric_piano_voice_tests PRIVATE
+		triggerfish_dsp)
+	add_test(NAME triggerfish_electric_piano_voice_tests
+		COMMAND triggerfish_electric_piano_voice_tests)
+
+	add_executable(triggerfish_electric_piano_amplifier_tests
+		tests/electric_piano_amplifier_tests.cpp)
+	target_link_libraries(triggerfish_electric_piano_amplifier_tests PRIVATE
+		triggerfish_dsp)
+	add_test(NAME triggerfish_electric_piano_amplifier_tests
+		COMMAND triggerfish_electric_piano_amplifier_tests)
+
+	add_executable(triggerfish_electric_piano_realtime_tests
+		tests/electric_piano_realtime_tests.cpp)
+	target_link_libraries(triggerfish_electric_piano_realtime_tests PRIVATE
+		triggerfish_dsp)
+	add_test(NAME triggerfish_electric_piano_realtime_tests
+		COMMAND triggerfish_electric_piano_realtime_tests)
+
+	add_executable(triggerfish_reverb_realtime_tests
+		tests/reverb_realtime_tests.cpp)
+	target_link_libraries(triggerfish_reverb_realtime_tests PRIVATE
+		triggerfish_dsp)
+	add_test(NAME triggerfish_reverb_realtime_tests
+		COMMAND triggerfish_reverb_realtime_tests)
+
+	add_executable(triggerfish_cubic_lagrange_tests
+		tests/cubic_lagrange_tests.cpp)
+	target_link_libraries(triggerfish_cubic_lagrange_tests PRIVATE
+		triggerfish_dsp)
+	add_test(NAME triggerfish_cubic_lagrange_tests
+		COMMAND triggerfish_cubic_lagrange_tests)
+
 	add_executable(triggerfish_early_reflections_tests
 		tests/early_reflections_tests.cpp)
 	target_link_libraries(triggerfish_early_reflections_tests PRIVATE
@@ -145,6 +185,11 @@ if(BUILD_TESTING)
 		triggerfish_dsp)
 	add_test(NAME triggerfish_text_sequencer_tests
 		COMMAND triggerfish_text_sequencer_tests)
+	add_executable(triggerfish_sequencer_pitch_tests
+		tests/sequencer_pitch_tests.cpp)
+	target_link_libraries(triggerfish_sequencer_pitch_tests PRIVATE triggerfish_dsp)
+	add_test(NAME triggerfish_sequencer_pitch_tests
+		COMMAND triggerfish_sequencer_pitch_tests)
 
 	add_executable(triggerfish_transport_tests tests/transport_tests.cpp)
 	target_link_libraries(triggerfish_transport_tests PRIVATE triggerfish_dsp)

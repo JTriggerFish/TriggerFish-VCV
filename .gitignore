@@ -8,6 +8,7 @@
 .pytest_cache/
 .cache/
 __pycache__/
+node_modules/
 *.egg-info/
 .idea/
 

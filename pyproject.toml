@@ -4,7 +4,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "triggerfish-vcv-dsp"
-version = "2.5.4"
+version = "2.5.5"
 description = "Development bindings and tests for TriggerFish VCV DSP models"
 requires-python = ">=3.11"
 dependencies = ["numpy>=2.0"]
@@ -16,13 +16,10 @@ dev = [
     "nbstripout>=0.9.1",
     "pre-commit>=4.0",
     "pytest>=8.0",
+    "plotly>=6.0",
     "scipy>=1.14",
 ]
 reverb = ["scipy>=1.14", "torch>=2.7"]
-
-[project.optional-dependencies]
-analysis = ["matplotlib>=3.9", "scipy>=1.14"]
-
 [tool.scikit-build]
 cmake.args = ["-DTRIGGERFISH_BUILD_PYTHON=ON", "-DBUILD_TESTING=OFF"]
 build-dir = "build/python/{wheel_tag}"

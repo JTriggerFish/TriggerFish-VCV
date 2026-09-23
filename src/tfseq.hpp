@@ -281,14 +281,15 @@ struct Scale {
 };
 
 struct Sequence {
+  enum class PercussionVoice { None, Ride, HiHat };
   std::uint64_t stableId = 0;
   std::string name;
   SourceSpan nameSpan;
   double subdivisionBeats = 1.0;
   float glideBeats = 0.25f;
   Scale scale;
-  // A chord key is an explicit transposition anchor and piece of harmonic
-  // metadata. It never changes the meaning of an explicitly named chord root.
+  // A key anchors transposition and supplies the scale tonic when no explicit
+  // tonic is written. Explicitly named chord roots retain their own meaning.
   bool hasKey = false;
   int keyPitchClass = 0;
   VoicingStyle voicing = VoicingStyle::Basic;
@@ -300,6 +301,10 @@ struct Sequence {
   // pitchTimeline supplies held values and articulation supplies independent
   // attacks. Single pitches and chords use this same representation.
   bool separateRhythm = false;
+  // Percussion lanes use the ordinary trigger/velocity/CV outputs but do not
+  // require a meaningless pitch lane. The enum preserves author intent for
+  // editors, diagnostics, and future dedicated routing.
+  PercussionVoice percussionVoice = PercussionVoice::None;
   std::vector<ScalarItem> octave;
   std::vector<ArticulationStep> articulation;
   std::vector<ScalarItem> velocity;

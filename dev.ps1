@@ -22,6 +22,8 @@ param(
         "smoke-scene-pack4",
         "test",
         "benchmark-er",
+        "benchmark-reverb",
+        "benchmark-electric-piano",
         "python-test",
         "shell",
         "rack-dep",
@@ -287,6 +289,12 @@ switch ($Command) {
     "benchmark-er" {
         Invoke-Mingw "cd '$repoMsys' && cmake -S . -B build/dsp-tests -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DTRIGGERFISH_BUILD_PYTHON=OFF && cmake --build build/dsp-tests --target triggerfish_early_reflections_benchmark -j$Jobs && ./build/dsp-tests/triggerfish_early_reflections_benchmark.exe"
     }
+    "benchmark-reverb" {
+        Invoke-Mingw "cd '$repoMsys' && cmake -S . -B build/dsp-tests -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DTRIGGERFISH_BUILD_PYTHON=OFF && cmake --build build/dsp-tests --target triggerfish_room_reverb_benchmark -j$Jobs && ./build/dsp-tests/triggerfish_room_reverb_benchmark.exe"
+    }
+    "benchmark-electric-piano" {
+        Invoke-Mingw "cd '$repoMsys' && cmake -S . -B build/dsp-tests -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DTRIGGERFISH_BUILD_PYTHON=OFF && cmake --build build/dsp-tests --target triggerfish_electric_piano_benchmark -j$Jobs && ./build/dsp-tests/triggerfish_electric_piano_benchmark.exe"
+    }
     "python-test" {
         $previousPath = $env:Path
         $previousGenerator = [Environment]::GetEnvironmentVariable("CMAKE_GENERATOR", "Process")
@@ -299,9 +307,11 @@ switch ($Command) {
             $env:CMAKE_GENERATOR = "Ninja"
             $env:CMAKE_C_COMPILER = Join-Path $mingwBin "gcc.exe"
             $env:CMAKE_CXX_COMPILER = Join-Path $mingwBin "g++.exe"
-            & uv sync --group dev --python 3.13 --reinstall-package triggerfish-vcv-dsp
+            # Rebuild the native bindings without removing optional analysis
+            # packages: otherwise installed integration tests silently disappear.
+            & uv sync --inexact --group dev --python 3.13 --reinstall-package triggerfish-vcv-dsp
             if ($LASTEXITCODE -ne 0) { throw "uv sync failed with exit code $LASTEXITCODE." }
-            & uv run pytest
+            & uv run --no-sync pytest --basetemp build/pytest-temp
             if ($LASTEXITCODE -ne 0) { throw "pytest failed with exit code $LASTEXITCODE." }
         }
         finally {

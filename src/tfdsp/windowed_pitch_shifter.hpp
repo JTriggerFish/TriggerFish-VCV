@@ -1,5 +1,7 @@
 #pragma once
 
+#include "finite_audio.hpp"
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -94,10 +96,10 @@ private:
     if (buffer_.empty())
       return 0.f;
 
-    float filtered = std::isfinite(input) ? input : 0.f;
+    float filtered = FiniteNormalOrZero(input);
     for (auto &filter : antiAlias_)
       filtered = filter.Process(filtered);
-    buffer_[writeIndex_] = filtered;
+    buffer_[writeIndex_] = FiniteNormalOrZero(filtered);
 
     float output = 0.f;
     float windowSum = 0.f;
@@ -130,7 +132,7 @@ private:
     if (!render)
       return 0.f;
     output /= std::max(windowSum, 1.e-6f);
-    return std::isfinite(output) ? output : 0.f;
+    return FiniteNormalOrZero(output);
   }
   static constexpr float Pi = 3.14159265358979323846f;
   static constexpr float MinimumDelaySamples = 4.f;
@@ -163,7 +165,9 @@ private:
       const float output = b0 * input + z1;
       z1 = b1 * input - a1 * output + z2;
       z2 = b2 * input - a2 * output;
-      return output;
+      z1 = FiniteNormalOrZero(z1);
+      z2 = FiniteNormalOrZero(z2);
+      return FiniteNormalOrZero(output);
     }
 
     void Reset() noexcept { z1 = z2 = 0.f; }

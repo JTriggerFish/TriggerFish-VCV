@@ -783,6 +783,47 @@ void TestMixAndOutputLevelLaws() {
   }
 }
 
+void TestRoomReverbAtEverySupportedRate() {
+  for (const double sampleRate : {44'100.0, 48'000.0, 88'200.0,
+                                  96'000.0, 192'000.0}) {
+    tfdsp::RoomReverb reverb;
+    reverb.SetSampleRate(sampleRate);
+    tfdsp::RoomReverbControls controls;
+    tfdsp::RoomReverb::SourcePositions positions{};
+    positions[0] = tfdsp::reverb_defaults::Source;
+    bool finite = true;
+    const auto count = static_cast<std::size_t>(sampleRate * .02);
+    for (std::size_t sample = 0; sample < count; ++sample) {
+      tfdsp::RoomReverb::InputFrame input{};
+      input[0] = sample == 0 ? 1.f : 0.f;
+      const auto output = reverb.Process(input, positions, 1, controls);
+      finite = finite && std::isfinite(output.direct[0]) &&
+               std::isfinite(output.direct[1]) &&
+               std::isfinite(output.wet[0]) && std::isfinite(output.wet[1]);
+    }
+    Check(finite, "room reverb remains finite at every supported sample rate");
+  }
+}
+
+void TestRoomReverbFlushesSubnormals() {
+  tfdsp::RoomReverb reverb;
+  tfdsp::RoomReverbControls controls;
+  tfdsp::RoomReverb::SourcePositions positions{};
+  positions[0] = tfdsp::reverb_defaults::Source;
+  bool exactSilence = true;
+  for (std::size_t sample = 0; sample < 8192; ++sample) {
+    tfdsp::RoomReverb::InputFrame input{};
+    if (sample == 0)
+      input[0] = std::numeric_limits<float>::denorm_min();
+    const auto output = reverb.Process(input, positions, 1, controls);
+    exactSilence = exactSilence && output.direct[0] == 0.f &&
+                   output.direct[1] == 0.f && output.wet[0] == 0.f &&
+                   output.wet[1] == 0.f;
+  }
+  Check(exactSilence,
+        "complete room-reverb direct, ER and tail paths flush subnormals");
+}
+
 } // namespace
 
 int main() {
@@ -804,5 +845,7 @@ int main() {
   TestDiffusionModulationAndShimmerSweeps();
   TestWidthLevelAndFilterSweeps();
   TestMixAndOutputLevelLaws();
+  TestRoomReverbAtEverySupportedRate();
+  TestRoomReverbFlushesSubnormals();
   std::cout << "Room reverb tests passed\n";
 }

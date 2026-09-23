@@ -22,7 +22,7 @@ constexpr const char *Grammar = R"PEG(
   RhythmDefContinuation <- H Pipeline (H Pipeline)* H Comment? LineEnd
 
   Sequence    <- H Identifier H '=' H 'sequence' H '{' H Comment? Newline
-                 (ChordsLane / NotesLane / RhythmLane / ScalarLane / CvLane / SettingLine /
+                 (ChordsLane / NotesLane / RhythmLane / PercussionLane / ScalarLane / CvLane / SettingLine /
                   BodyContinuation / BlankLine)*
                  H '}' H Comment? LineEnd SequenceContinuation*
   Play        <- H 'play' S Identifier H Comment? LineEnd
@@ -35,6 +35,8 @@ constexpr const char *Grammar = R"PEG(
   RhythmLane   <- H RhythmLaneName S
                   (RhythmPattern (H Pipeline)* H Comment? LineEnd /
                    RhythmReference (H Pipeline)* H Comment? LineEnd)
+  PercussionLane <- H PercussionLaneName S RhythmPattern
+                    (H Pipeline)* H Comment? LineEnd
   ScalarLane   <- H ScalarLaneName S ScalarPattern (H Pipeline)* H Comment? LineEnd
   CvLane       <- H CvLaneName S (EnvelopeSource / ScalarPattern)
                   (H Pipeline)* H Comment? LineEnd
@@ -42,6 +44,7 @@ constexpr const char *Grammar = R"PEG(
   NotesLaneName  <- < 'notes' >
   ChordsLaneName <- < 'chords' >
   RhythmLaneName <- < 'rhythm' >
+  PercussionLaneName <- < 'ride' / 'hihat' >
   ScalarLaneName <- < 'octave' / 'velocity' / 'vel' /
                       'duration' / 'dur' / 'gate' / 'slide' / 'ratchet' /
                       'offset' >
@@ -587,6 +590,11 @@ Lane ReadLane(const Ast &node, Diagnostic &diagnostic) {
                  FirstChildNamed(node, "RhythmReference"))
       lane.rhythmReference =
           AstToken(FirstChildNamed(reference, "Identifier"));
+  } else if (node->name == "PercussionLane") {
+    lane.kind = Lane::Kind::Percussion;
+    lane.name = AstToken(FirstChildNamed(node, "PercussionLaneName"));
+    lane.pattern =
+        ReadRhythmPattern(FirstChildNamed(node, "RhythmPattern"));
   } else if (node->name == "CvLane") {
     lane.kind = Lane::Kind::Cv;
     lane.name = AstToken(FirstChildNamed(node, "CvLaneName"));
@@ -663,7 +671,7 @@ SequenceDefinition ReadSequence(const Ast &node, Diagnostic &diagnostic) {
   sequence.name = AstToken(FirstChildNamed(node, "Identifier"));
   for (const auto &child : node->nodes) {
     if (child->name == "NotesLane" || child->name == "ChordsLane" ||
-        child->name == "RhythmLane" ||
+        child->name == "RhythmLane" || child->name == "PercussionLane" ||
         child->name == "ScalarLane" ||
         child->name == "CvLane" || child->name == "SettingLine")
       sequence.lanes.push_back(ReadLane(child, diagnostic));

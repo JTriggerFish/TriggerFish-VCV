@@ -42,7 +42,7 @@ def test_macos_10_9_sources_avoid_unavailable_libcxx_entry_points():
         ("std::visit", r"\bstd::visit\b"),
     )
     offenders = []
-    for pattern in ("*.cpp", "*.h", "*.hpp"):
+    for pattern in ("*.cpp", "*.h", "*.hpp", "*.inl"):
         for path in (ROOT / "src").rglob(pattern):
             source = path.read_text(encoding="utf-8")
             for name, pattern in unavailable:
@@ -62,3 +62,11 @@ def test_ci_builds_with_pinned_vcv_compatible_libcxx_headers():
     assert "is unavailable: introduced in macOS 10.13" in workflow
     assert "std::any_cast<int>" in workflow
     assert "std::visit" in workflow
+
+
+def test_rack_and_default_cmake_builds_do_not_require_python_analysis():
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    cmake = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
+    assert "python/triggerfish_percussion" not in makefile
+    assert re.search(r'option\(TRIGGERFISH_BUILD_PYTHON\s+"[^"]+"\s+OFF\)', cmake)
+    assert "if(TRIGGERFISH_BUILD_PYTHON)" in cmake

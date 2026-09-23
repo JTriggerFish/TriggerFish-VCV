@@ -1,4 +1,8 @@
+#include "tfdsp/cubic_fractional_delay.hpp"
+#include "tfdsp/cubic_fractional_delay_bank.hpp"
 #include "tfdsp/late_reverb.hpp"
+#include "tfdsp/multiband_decay_filter.hpp"
+#include "tfdsp/multiband_decay_filter_bank.hpp"
 #include "tfdsp/windowed_pitch_shifter.hpp"
 
 #include <algorithm>
@@ -19,6 +23,119 @@ void Check(const bool condition, const std::string &message) {
   if (!condition) {
     std::cerr << "FAIL: " << message << '\n';
     std::exit(EXIT_FAILURE);
+  }
+}
+
+void TestDecayFilterRejectsInvalidT60() {
+  tfdsp::MultibandDecayFilter filter;
+  filter.Prepare(48000.0);
+  const float infinity = std::numeric_limits<float>::infinity();
+  Check(std::abs(filter.Process(.75f, .01f, infinity, infinity, infinity) -
+                 .75f) < 1.e-6f,
+        "positive-infinite T60 remains the explicit lossless setting");
+  filter.Reset();
+  const float nan = std::numeric_limits<float>::quiet_NaN();
+  Check(filter.Process(.75f, .01f, nan, nan, nan) == 0.f,
+        "NaN T60 cannot silently enable lossless feedback");
+  filter.Reset();
+  Check(filter.Process(.75f, .01f, -infinity, -infinity, -infinity) == 0.f,
+        "negative-infinite T60 cannot silently enable lossless feedback");
+  filter.Reset();
+  Check(filter.Process(std::numeric_limits<float>::denorm_min(), .01f,
+                       1.f, 1.f, 1.f) == 0.f,
+        "reverb decay filter flushes subnormal state to exact silence");
+}
+
+void TestDecayFilterBankMatchesScalarFilters() {
+  constexpr std::size_t LineCount = 16;
+  using Bank = tfdsp::MultibandDecayFilterBank<LineCount>;
+  std::array<tfdsp::MultibandDecayFilter, LineCount> scalar{};
+  Bank bank;
+  for (auto &filter : scalar)
+    filter.Prepare(ReverbTestSampleRate);
+  bank.Prepare(ReverbTestSampleRate);
+  for (std::size_t sample = 0; sample < 4096; ++sample) {
+    Bank::Frame input{};
+    Bank::Frame pathSeconds{};
+    for (std::size_t line = 0; line < LineCount; ++line) {
+      input[line] = .2f * std::sin(.013f * static_cast<float>(
+                                      sample * (line + 1)));
+      pathSeconds[line] = .002f + .0003f * static_cast<float>(line) +
+                          (sample > 2048 ? .0001f : 0.f);
+    }
+    const auto output = bank.Process(input, pathSeconds, 1.7f, 1.1f, .43f);
+    for (std::size_t line = 0; line < LineCount; ++line)
+      Check(output[line] == scalar[line].Process(
+                                  input[line], pathSeconds[line], 1.7f, 1.1f,
+                                  .43f),
+            "decay-filter bank matches scalar filter exactly");
+  }
+}
+
+void TestFractionalDelayBankMatchesScalarDelays() {
+  constexpr std::size_t LineCount = 16;
+  constexpr std::size_t Capacity = 257;
+  using Bank = tfdsp::CubicFractionalDelayBank<LineCount>;
+  std::array<tfdsp::CubicFractionalDelay, LineCount> scalar{};
+  Bank bank;
+  for (auto &delay : scalar)
+    delay.Prepare(Capacity);
+  bank.Prepare(Capacity);
+  for (std::size_t sample = 0; sample < 2048; ++sample) {
+    Bank::Frame input{};
+    Bank::Frame delaySamples{};
+    for (std::size_t line = 0; line < LineCount; ++line) {
+      input[line] = .2f * std::sin(.017f * static_cast<float>(
+                                      sample * (line + 1)));
+      delaySamples[line] = 2.25f + 11.7f * static_cast<float>(line) +
+                           .2f * std::sin(.003f * static_cast<float>(sample));
+    }
+    const auto output = bank.Read(delaySamples);
+    for (std::size_t line = 0; line < LineCount; ++line)
+      Check(output[line] == scalar[line].Read(delaySamples[line]),
+            "fractional-delay bank matches scalar delay exactly");
+    bank.Push(input);
+    for (std::size_t line = 0; line < LineCount; ++line)
+      scalar[line].Push(input[line]);
+  }
+}
+
+void TestCompleteLatePathsFlushSubnormals() {
+  const float denormal = std::numeric_limits<float>::denorm_min();
+  tfdsp::WindowedPitchShifter shifter;
+  shifter.Prepare(48000.0);
+  bool shifterSilent = true;
+  for (std::size_t sample = 0; sample < 8192; ++sample)
+    shifterSilent = shifterSilent &&
+        shifter.Process(sample == 0 ? denormal : 0.f) == 0.f;
+  Check(shifterSilent,
+        "windowed pitch shifter flushes subnormal filter and delay state");
+
+  tfdsp::LateReverb reverb;
+  tfdsp::LateReverbControls controls;
+  controls.shimmer = 1.f;
+  bool reverbSilent = true;
+  for (std::size_t sample = 0; sample < 8192; ++sample) {
+    const auto output = reverb.Process(sample == 0 ? denormal : 0.f, controls);
+    reverbSilent = reverbSilent && output[0] == 0.f && output[1] == 0.f;
+  }
+  Check(reverbSilent,
+        "complete late-reverb feedback and shimmer paths flush subnormals");
+}
+
+void TestLateReverbAtEverySupportedRate() {
+  for (const double sampleRate : {44'100.0, 48'000.0, 88'200.0,
+                                  96'000.0, 192'000.0}) {
+    tfdsp::LateReverb reverb;
+    reverb.SetSampleRate(sampleRate);
+    tfdsp::LateReverbControls controls;
+    bool finite = true;
+    const auto count = static_cast<std::size_t>(sampleRate * .08);
+    for (std::size_t sample = 0; sample < count; ++sample) {
+      const auto output = reverb.Process(sample == 0 ? 1.f : 0.f, controls);
+      finite = finite && std::isfinite(output[0]) && std::isfinite(output[1]);
+    }
+    Check(finite, "late reverb remains finite at every supported sample rate");
   }
 }
 
@@ -1373,6 +1490,11 @@ void DiagnoseSmoke303ImpulseResponse() {
 } // namespace
 
 int main() {
+  TestDecayFilterRejectsInvalidT60();
+  TestDecayFilterBankMatchesScalarFilters();
+  TestFractionalDelayBankMatchesScalarDelays();
+  TestCompleteLatePathsFlushSubnormals();
+  TestLateReverbAtEverySupportedRate();
   TestVelvetFeedbackMatrixIsParaunitaryAndDense();
   TestVelvetFractionalModulationPreservesTheStaticPath();
   TestLateReverbFlavourSelectionAndTransition();

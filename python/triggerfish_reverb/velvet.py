@@ -17,7 +17,9 @@ LINE_COUNT = 16
 WALL_COUNT = 6
 VELVET_STAGE_COUNT = 2
 SPEED_OF_SOUND = 343.0
-REFERENCE_ROOM_DIMENSIONS_METRES = (7.09929574, 9.35414347, 4.38178046)
+# VFM delay scaling uses reverb_defaults::RoomDimensionsMetres (MediumHall),
+# not the geometric midpoint of the Space control.
+REFERENCE_ROOM_DIMENSIONS_METRES = (9.35009902, 12.51345042, 5.23644647)
 
 MAIN_DELAY_RATIO = (
     0.5668773,
@@ -204,11 +206,18 @@ class DifferentiableVelvetReverb(nn.Module):
         self.signs.copy_(signs)
         self.raw_main_ratios.zero_()
 
-    def transform(self, index: int) -> Tensor:
-        """Return the exact fixed signed-Hadamard transform used by C++."""
+    def transform(self, index: int, diffusion: float = 1.0) -> Tensor:
+        """Static signed butterfly transform, including the runtime mix angle."""
         if not 0 <= index <= VELVET_STAGE_COUNT:
             raise IndexError("transform index is outside the current topology")
-        return self.signs[index].unsqueeze(-1) * self.hadamard[self.permutations[index]]
+        x = min(1.0, max(0.0, diffusion))
+        angle = math.pi / 16 + x * x * (3 - 2 * x) * (3 * math.pi / 16)
+        cosine, sine = math.cos(angle), math.sin(angle)
+        butterfly = self.raw_main_ratios.new_tensor([[cosine, sine], [sine, -cosine]])
+        matrix = butterfly
+        for _ in range(3):
+            matrix = torch.kron(butterfly, matrix)
+        return self.signs[index].unsqueeze(-1) * matrix[self.permutations[index]]
 
     def _control_tensors(
         self, controls: tuple[VelvetControls, ...]
@@ -325,9 +334,9 @@ class DifferentiableVelvetReverb(nn.Module):
         batch = len(controls)
         frequency_count = frequencies_hz.numel()
         result = (
-            self.transform(0)
+            torch.stack([self.transform(0, control.diffusion) for control in controls])
             .to(self.complex_dtype)
-            .reshape(1, 1, LINE_COUNT, LINE_COUNT)
+            .reshape(batch, 1, LINE_COUNT, LINE_COUNT)
         )
         result = result.expand(batch, frequency_count, -1, -1)
         stage_samples = self.velvet_delay_samples(controls)
@@ -342,8 +351,10 @@ class DifferentiableVelvetReverb(nn.Module):
                     frequencies_hz, samples / self.sample_rate, controls
                 )
             result = diagonal.unsqueeze(-1) * result
-            transform = self.transform(stage + 1).to(self.complex_dtype)
-            result = torch.einsum("ij,bfjk->bfik", transform, result)
+            transform = torch.stack(
+                [self.transform(stage + 1, control.diffusion) for control in controls]
+            ).to(self.complex_dtype)
+            result = torch.einsum("bij,bfjk->bfik", transform, result)
         return result
 
     def response(

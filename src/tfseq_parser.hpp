@@ -79,7 +79,7 @@ struct Pattern {
 };
 
 struct Lane {
-  enum class Kind { Notes, Chords, Rhythm, Scalar, Cv, Setting };
+  enum class Kind { Notes, Chords, Rhythm, Percussion, Scalar, Cv, Setting };
   Token name;
   Pattern pattern;
   std::vector<Token> envelopeArguments;

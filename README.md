@@ -4,7 +4,7 @@ Circuit-modelled sound generators and processors, plus pitch utilities for VCV R
 
 [![CI](https://github.com/JTriggerFish/TriggerFish-VCV/actions/workflows/ci.yml/badge.svg)](https://github.com/JTriggerFish/TriggerFish-VCV/actions/workflows/ci.yml)
 
-[Release notes for 2.5.4](docs/releases/2.5.4.md)
+[Release notes for 2.5.5](docs/releases/2.5.5.md)
 
 <table>
   <tr>
@@ -598,8 +598,9 @@ Double-click selects a word and triple-click selects a complete row. Rack
 requires every module to be exactly one 3U row high, but the module context
 menu's Editor section offers 22, 30, and 38 HP widths and the complete heatmap
 selection. New modules default to 30 HP, and the chosen width is saved with the
-patch. The Examples section can load the Acid bassline, Slow bassline, and
-Descending arpeggio programs into the editor. Loading an example participates
+patch. The Examples section can load the Acid bassline, Slow bassline,
+Descending arpeggio, Jazz ride, and Jazz hi-hat programs into the editor.
+Loading an example participates
 in Rack undo; evaluate it with Ctrl+`.` when ready. The editor uses a thin outer
 margin and a compact right-side I/O strip at every width.
 

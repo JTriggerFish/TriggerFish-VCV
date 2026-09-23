@@ -1,7 +1,10 @@
 #pragma once
 
+#include "finite_audio.hpp"
+
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <stdexcept>
 
 namespace tfdsp {
@@ -36,12 +39,16 @@ public:
                 const float lowT60, const float midT60,
                 const float highT60) noexcept {
     UpdateGains(pathSeconds, lowT60, midT60, highT60);
-    lowState_ += lowAlpha_ * (input - lowState_);
-    belowHighState_ += highAlpha_ * (input - belowHighState_);
+    const float safeInput = FiniteNormalOrZero(input);
+    lowState_ += lowAlpha_ * (safeInput - lowState_);
+    belowHighState_ += highAlpha_ * (safeInput - belowHighState_);
+    lowState_ = FiniteNormalOrZero(lowState_);
+    belowHighState_ = FiniteNormalOrZero(belowHighState_);
     const float low = lowState_;
     const float mid = belowHighState_ - lowState_;
-    const float high = input - belowHighState_;
-    return lowGain_ * low + midGain_ * mid + highGain_ * high;
+    const float high = safeInput - belowHighState_;
+    return FiniteNormalOrZero(
+        lowGain_ * low + midGain_ * mid + highGain_ * high);
   }
 
 private:
@@ -61,8 +68,10 @@ private:
 
   static float GainForT60(const float pathSeconds,
                           const float t60) noexcept {
-    if (!std::isfinite(t60))
+    if (t60 == std::numeric_limits<float>::infinity())
       return 1.f;
+    if (!std::isfinite(pathSeconds) || !std::isfinite(t60))
+      return 0.f;
     return std::pow(10.f, -3.f * std::max(pathSeconds, 0.f) /
                               std::max(t60, 1.e-4f));
   }
