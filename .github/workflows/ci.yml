@@ -156,6 +156,28 @@ jobs:
       - name: Run C++ tests
         run: ctest --test-dir build/tests --output-on-failure
 
+  sequencer-sanitizers:
+    name: Sequencer address and undefined-behavior checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Configure instrumented sequencer tests
+        run: >-
+          cmake -S . -B build/sequencer-sanitizers
+          -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON
+          -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined,float-cast-overflow -fno-omit-frame-pointer"
+      - name: Build sequencer tests
+        run: >-
+          cmake --build build/sequencer-sanitizers --parallel 2 --target
+          triggerfish_text_sequencer_tests triggerfish_sequencer_pitch_tests
+          triggerfish_sequencer_cv_tests
+      - name: Run sequencer tests with sanitizers
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+        run: ctest --test-dir build/sequencer-sanitizers -R sequencer --output-on-failure
+
   python-tests:
     runs-on: ubuntu-latest
     steps:

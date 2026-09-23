@@ -439,6 +439,12 @@ struct RuntimeEvent {
   bool legatoToNext = false;
   double timingOffsetBeats = 0.0;
   double timingOffsetMilliseconds = 0.0;
+  // Immutable source for CV knots between note events. The output detaches
+  // from it before its owning program can be retired on a live edit.
+  const Sequence *cvSequence = nullptr;
+  double cvOriginBeat = 0.0;
+  std::uint64_t cvCycle = 0;
+  std::uint64_t cvSeed = 1;
   std::array<float, CvLaneCount> cvValue{};
   std::array<float, CvLaneCount> cvTarget{};
   std::array<CvInterpolation, CvLaneCount> cvInterpolation{
