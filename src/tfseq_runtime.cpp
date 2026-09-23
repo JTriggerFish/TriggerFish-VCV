@@ -1,4 +1,5 @@
 #include "tfseq.hpp"
+#include "tfseq_cv.hpp"
 #include "tfseq_voicing.hpp"
 
 #include <algorithm>
@@ -112,6 +113,21 @@ double LaneRate(const std::vector<Transform> &transforms, std::uint64_t cycle,
       result *= transform.number;
   }
   return std::isfinite(result) && result > 0.0 ? result : 1.0;
+}
+
+double LanePhase(double beat, double rate) noexcept {
+  return std::min(std::max(0.0, beat * rate),
+                  std::numeric_limits<double>::max());
+}
+
+std::uint64_t PhaseRandomKey(double phase) noexcept {
+  // Test the endpoints before converting: double(INT64_MAX) rounds upward
+  // to 2^63, so clamping to that double still permits an undefined conversion.
+  if (phase >= static_cast<double>(std::numeric_limits<std::int64_t>::max()))
+    return static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max());
+  if (phase <= static_cast<double>(std::numeric_limits<std::int64_t>::min()))
+    return static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::min());
+  return static_cast<std::uint64_t>(static_cast<std::int64_t>(phase));
 }
 
 struct SwingSettings {
@@ -510,11 +526,11 @@ double Scalar(const std::vector<ScalarItem> &items, std::uint64_t &cursor,
     return item.isDefault ? fallback
                           : SampleScalarItem(item, seed, randomKey, salt);
   } else if (phaseRate) {
-    const double whole = std::max(
-        0.0, std::floor(scoreBeat * LaneRate(transforms, cycle, seed)));
+    const double whole =
+        std::floor(LanePhase(scoreBeat, LaneRate(transforms, cycle, seed)));
     position = static_cast<std::uint64_t>(
         std::fmod(whole, static_cast<double>(items.size())));
-    randomKey = static_cast<std::uint64_t>(whole);
+    randomKey = PhaseRandomKey(whole);
   } else {
     randomKey = cursor;
     position = cursor++;
@@ -532,7 +548,9 @@ double Scalar(const std::vector<ScalarItem> &items, std::uint64_t &cursor,
 
 struct CvSample {
   float value = 0.f;
+  float from = 0.f;
   float target = 0.f;
+  double beginBeat = 0.0;
   double targetBeat = 0.0;
   SourceSpan span;
 };
@@ -604,7 +622,7 @@ CvSample SampleCv(const std::vector<ScalarItem> &items,
     return sample;
   }
   const double rate = LaneRate(transforms, cycle, seed);
-  const double phase = std::max(0.0, cycleBeat * rate);
+  const double phase = LanePhase(cycleBeat, rate);
   const auto base = static_cast<std::size_t>(
       std::fmod(std::floor(phase), static_cast<double>(items.size())));
   auto at = [&](std::size_t distance, bool backward) -> const ScalarItem & {
@@ -626,24 +644,22 @@ CvSample SampleCv(const std::vector<ScalarItem> &items,
       break;
     }
   }
-  if (previousDistance == items.size())
+  if (previousDistance == items.size()) {
+    sample.targetBeat = std::numeric_limits<double>::infinity();
     return sample;
+  }
   const auto &previous = at(previousDistance, true);
   auto randomKey = [cycle](double knot) {
-    const auto bounded = std::clamp(
-        knot, static_cast<double>(std::numeric_limits<std::int64_t>::min()),
-        static_cast<double>(std::numeric_limits<std::int64_t>::max()));
-    return static_cast<std::uint64_t>(static_cast<std::int64_t>(bounded)) ^
-           MixRandom(cycle);
+    return PhaseRandomKey(knot) ^ MixRandom(cycle);
   };
   const double previousPhase =
       std::floor(phase) - static_cast<double>(previousDistance);
   const double previousValue =
       SampleScalarItem(previous, seed, randomKey(previousPhase), salt);
   sample.value = static_cast<float>(previousValue);
+  sample.from = sample.value;
+  sample.beginBeat = scoreBeat + (previousPhase - phase) / rate;
   sample.target = sample.value;
-  if (interpolation == CvInterpolation::Step)
-    return sample;
 
   std::size_t nextDistance = items.size();
   for (std::size_t distance = 1; distance <= items.size(); ++distance) {
@@ -657,10 +673,15 @@ CvSample SampleCv(const std::vector<ScalarItem> &items,
   const auto &next = at(nextDistance, false);
   const double nextPhase =
       std::floor(phase) + static_cast<double>(nextDistance);
+  sample.targetBeat = scoreBeat + (nextPhase - phase) / rate;
+  if (interpolation == CvInterpolation::Step)
+    return sample;
   const double nextValue =
       SampleScalarItem(next, seed, randomKey(nextPhase), salt);
   sample.target = static_cast<float>(nextValue);
-  double amount = (phase - previousPhase) / (nextPhase - previousPhase);
+  double amount = nextPhase > previousPhase
+                      ? (phase - previousPhase) / (nextPhase - previousPhase)
+                      : 0.0;
   amount = std::clamp(amount, 0.0, 1.0);
   if (interpolation == CvInterpolation::Smooth)
     amount = amount * amount * (3.0 - 2.0 * amount);
@@ -668,7 +689,6 @@ CvSample SampleCv(const std::vector<ScalarItem> &items,
     amount = std::pow(amount, power);
   sample.value =
       static_cast<float>(previousValue + (nextValue - previousValue) * amount);
-  sample.targetBeat = scoreBeat + (nextPhase - phase) / rate;
   return sample;
 }
 
@@ -737,6 +757,19 @@ std::size_t PreparedVoiceCount(const PitchItem &item,
 }
 
 } // namespace
+
+void CvLanePlayer::refresh(double beat) noexcept {
+  const auto lane = static_cast<std::size_t>(CvCursorLane(lane_));
+  const auto sample = SampleCv(
+      sequence_->cv[lane_], sequence_->transforms[lane], LaneAlignment::Free, 0,
+      0, 0, {}, beat, beat - originBeat_, 0.0, interpolation_, power_, cycle_,
+      seed_, 0x9000 + lane_ * 0x100);
+  value_ = sample.value;
+  from_ = sample.from;
+  target_ = sample.target;
+  beginBeat_ = sample.beginBeat;
+  endBeat_ = sample.targetBeat;
+}
 
 double SchedulingLookaheadBeats(const CompiledProgram &program,
                                 bool periodKnown, double periodSamples,
@@ -1166,10 +1199,14 @@ StepEvents Runtime::next(double beat) noexcept {
   std::size_t legatoToNextVoiceCount = 0;
   bool nextPitchEntrySlides = false;
   std::size_t nextPitchTimelineIndex = std::numeric_limits<std::size_t>::max();
-  if (step && !sequence->articulation.empty()) {
+  const bool restartsRhythm = sequence->separateRhythm && completesNotesPass;
+  if (step && !sequence->articulation.empty() &&
+      (!restartsRhythm || nextPassSameSequence)) {
     const auto stepCount = sequence->articulation.size();
-    std::uint64_t nextCursor = state.articulation;
-    std::uint64_t nextCycle = cycle;
+    // Separate rhythms restart at the note-phrase boundary even when that
+    // boundary falls midway through their own pattern.
+    std::uint64_t nextCursor = restartsRhythm ? 0 : state.articulation;
+    std::uint64_t nextCycle = cycle + (restartsRhythm ? 1 : 0);
     for (std::size_t checked = 0; checked < stepCount; ++checked) {
       if (nextCursor % stepCount == 0) {
         if (!sequence->separateRhythm && !nextPassSameSequence)
@@ -1187,12 +1224,12 @@ StepEvents Runtime::next(double beat) noexcept {
       if (!StepIsPresent(nextStep, nextCycle, seed))
         continue;
       if (!nextStep.atoms.empty()) {
-        const auto nextArticulationCursor = nextCursor % stepCount;
-        const auto randomCursor =
-            nextArticulationCursor == 0 ? stepCount : nextArticulationCursor;
+        // Direct patterns retain their articulation cursor across passes.
+        // Use that same cursor for prediction and playback; reducing it modulo
+        // the pattern length redraws probability decisions after the first lap.
         const auto nextKind =
             EffectiveArticulation(nextStep.atoms.front(),
-                                  randomCursor ^ MixRandom(nextCycle), 0, seed);
+                                  nextCursor ^ MixRandom(nextCycle), 0, seed);
         legatoToNext = nextKind == ArticulationKind::Tie ||
                        nextKind == ArticulationKind::Slide;
         if (nextKind == ArticulationKind::Slide &&
@@ -1325,6 +1362,10 @@ StepEvents Runtime::next(double beat) noexcept {
           sequence->cvPower[cvIndex], cycle, seed, 0x9000 + cvIndex * 0x100);
     }
     auto applyControls = [&](RuntimeEvent &event) {
+      event.cvSequence = sequence;
+      event.cvOriginBeat = atomBeat - cycleBeat;
+      event.cvCycle = cycle;
+      event.cvSeed = seed;
       if (offsetMilliseconds)
         event.timingOffsetMilliseconds += offset;
       else
@@ -1790,6 +1831,7 @@ StepEvents Runtime::next(double beat) noexcept {
     ApplyTimingOffsets(output.events[index], timingTransforms, cycle, seed,
                        onsetIndex);
     const double beatShift = output.events[index].beat - originalBeat;
+    output.events[index].cvOriginBeat += beatShift;
     for (auto &targetBeat : output.events[index].cvTargetBeat)
       targetBeat += beatShift;
   }

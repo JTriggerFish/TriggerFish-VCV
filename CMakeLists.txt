@@ -10,6 +10,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 add_library(triggerfish_dsp STATIC
 	src/tfseq_compiler.cpp
 	src/tfseq.hpp
+	src/tfseq_cv.hpp
 	src/tfseq_editor.hpp
 	src/tfseq_parser.cpp
 	src/tfseq_parser.hpp
@@ -190,6 +191,9 @@ if(BUILD_TESTING)
 	target_link_libraries(triggerfish_sequencer_pitch_tests PRIVATE triggerfish_dsp)
 	add_test(NAME triggerfish_sequencer_pitch_tests
 		COMMAND triggerfish_sequencer_pitch_tests)
+	add_executable(triggerfish_sequencer_cv_tests tests/sequencer_cv_tests.cpp)
+	target_link_libraries(triggerfish_sequencer_cv_tests PRIVATE triggerfish_dsp)
+	add_test(NAME triggerfish_sequencer_cv_tests COMMAND triggerfish_sequencer_cv_tests)
 
 	add_executable(triggerfish_transport_tests tests/transport_tests.cpp)
 	target_link_libraries(triggerfish_transport_tests PRIVATE triggerfish_dsp)

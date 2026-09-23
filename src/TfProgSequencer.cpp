@@ -1,5 +1,6 @@
 #include "plugin.hpp"
 #include "tfseq.hpp"
+#include "tfseq_cv.hpp"
 #include "tfseq_editor.hpp"
 #include "tfseq_envelope.hpp"
 #include "tfseq_parser.hpp"
@@ -202,13 +203,7 @@ struct TfProgSequencer : Module {
   struct CvOutputState {
     float value = 0.f;
     float output = 0.f;
-    float from = 0.f;
-    float target = 0.f;
-    double beginBeat = 0.0;
-    double endBeat = 0.0;
-    float power = 1.f;
-    bool initialized = false;
-    tfseq::CvInterpolation interpolation = tfseq::CvInterpolation::Step;
+    tfseq::CvLanePlayer lane;
     tfseq::CvEnvelopeSpec envelopeSpec;
     tfseq::CvEnvelopeEngine envelope;
     float envelopePeak = 0.f;
@@ -509,6 +504,10 @@ struct TfProgSequencer : Module {
       return;
     const bool restartOnActivation = (pending & PendingRestartBit) != 0;
     auto *previousProgram = activeProgram;
+    // CV players may scan their immutable lane at the next knot. Drop those
+    // references before the old program is handed back for UI reclamation.
+    for (auto &state : cvOutputs)
+      state.lane.detach();
     const bool preservePhase =
         !restartOnActivation && previousProgram && activationRuntimeValid;
     activeProgram = candidate;
@@ -640,6 +639,7 @@ struct TfProgSequencer : Module {
     target.scheduleOrder = nextScheduleOrder++;
     const double absoluteShift = absoluteBeat - sourceEvent.beat;
     target.beat = absoluteBeat;
+    target.cvOriginBeat += absoluteShift;
     for (auto &targetBeat : target.cvTargetBeat)
       targetBeat += absoluteShift;
     if (periodKnown && periodSamples > 0.0 &&
@@ -647,6 +647,7 @@ struct TfProgSequencer : Module {
       const double millisecondShift = target.timingOffsetMilliseconds * 0.001 *
                                       sampleRateHz / periodSamples;
       target.beat += millisecondShift;
+      target.cvOriginBeat += millisecondShift;
       for (auto &targetBeat : target.cvTargetBeat)
         targetBeat += millisecondShift;
     }
@@ -743,29 +744,13 @@ struct TfProgSequencer : Module {
     if (event.voice == 0) {
       for (std::size_t index = 0; index < cvOutputs.size(); ++index) {
         auto &state = cvOutputs[index];
-        state.interpolation = event.cvInterpolation[index];
-        state.power = event.cvPower[index];
+        state.lane.setEvent(event, index);
         state.envelopeSpec = event.cvEnvelope[index];
         if (tfseq::CvEnvelopeTriggers(event.kind)) {
           state.envelopePeak = tfseq::CvEnvelopePeak(
               state.envelopeSpec, event.velocity, event.accent > 0.f);
           state.envelopeTriggerPending = true;
         }
-        if (state.interpolation == tfseq::CvInterpolation::Step) {
-          state.value = event.cvValue[index];
-          state.from = state.value;
-          state.target = state.value;
-          state.beginBeat = event.beat;
-          state.endBeat = event.beat;
-        } else {
-          if (!state.initialized)
-            state.value = event.cvValue[index];
-          state.from = state.value;
-          state.target = event.cvTarget[index];
-          state.beginBeat = event.beat;
-          state.endBeat = std::max(event.beat, event.cvTargetBeat[index]);
-        }
-        state.initialized = true;
       }
     }
     if (event.kind == tfseq::EventKind::Rest) {
@@ -1053,19 +1038,7 @@ struct TfProgSequencer : Module {
     }
 
     for (auto &state : cvOutputs) {
-      if (state.interpolation == tfseq::CvInterpolation::Step ||
-          state.endBeat <= state.beginBeat) {
-        state.value = state.target;
-      } else {
-        float amount = static_cast<float>((phase - state.beginBeat) /
-                                          (state.endBeat - state.beginBeat));
-        amount = std::clamp(amount, 0.f, 1.f);
-        if (state.interpolation == tfseq::CvInterpolation::Smooth)
-          amount = amount * amount * (3.f - 2.f * amount);
-        else if (state.interpolation == tfseq::CvInterpolation::Power)
-          amount = std::pow(amount, state.power);
-        state.value = state.from + (state.target - state.from) * amount;
-      }
+      state.value = state.lane.process(phase);
       if (scoreRunning) {
         const double beatDelta =
             periodKnown && periodSamples > 0.0 ? 1.0 / periodSamples : 0.0;

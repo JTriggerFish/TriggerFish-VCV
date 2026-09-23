@@ -988,8 +988,9 @@ independently.
 ## CV1, CV2, and CV3
 
 CV lanes use volts and follow score time, including rests, ties, and `?`
-misses. A `??` miss contributes no score time. Ratchets share their parent's CV
-sample.
+misses. A `??` miss contributes no score time. Free CV lanes advance through
+their control points even between long notes; notes and ratchets do not restart
+their interpolation curves. Aligned CV lanes share their parent's sample.
 
 ```text
 notes 1 2 3 4

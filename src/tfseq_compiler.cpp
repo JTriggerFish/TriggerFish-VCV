@@ -211,7 +211,7 @@ bool ParseRegisterSuffix(std::string &text, bool &hasOctave, int &octave,
 }
 
 bool ParseNoteName(const std::string &text, std::size_t &cursor,
-                   int &pitchClass) {
+                   int &pitchClass, int *registerCarry = nullptr) {
   if (cursor >= text.size() ||
       !std::isupper(static_cast<unsigned char>(text[cursor])))
     return false;
@@ -222,6 +222,8 @@ bool ParseNoteName(const std::string &text, std::size_t &cursor,
     semitone += text[cursor++] == '#' ? 1 : -1;
   }
   pitchClass = ((semitone % 12) + 12) % 12;
+  if (registerCarry)
+    *registerCarry = (semitone - pitchClass) / 12;
   return true;
 }
 
@@ -233,8 +235,11 @@ bool ParseAbsoluteNote(const std::string &source, PitchValue &value) {
       !parsed.hasOctave)
     return false;
   std::size_t cursor = 0;
-  if (!ParseNoteName(text, cursor, parsed.pitchClass) || cursor != text.size())
+  int registerCarry = 0;
+  if (!ParseNoteName(text, cursor, parsed.pitchClass, &registerCarry) ||
+      cursor != text.size())
     return false;
+  parsed.octaveOffset = SaturatingIntAdd(parsed.octaveOffset, registerCarry);
   parsed.absolute = true;
   value = parsed;
   return true;
@@ -249,14 +254,16 @@ bool ParseBareNamedPitch(const Token &token, PitchValue &value) {
     return false;
   std::size_t cursor = 0;
   int pitchClass = 0;
-  if (!ParseNoteName(text, cursor, pitchClass) || cursor != text.size())
+  int registerCarry = 0;
+  if (!ParseNoteName(text, cursor, pitchClass, &registerCarry) ||
+      cursor != text.size())
     return false;
   value = {};
   value.absolute = true;
   value.pitchClass = pitchClass;
   value.hasOctave = hasOctave;
   value.octave = octave;
-  value.octaveOffset = octaveOffset;
+  value.octaveOffset = SaturatingIntAdd(octaveOffset, registerCarry);
   value.span = token.span;
   return true;
 }
@@ -270,9 +277,13 @@ bool ParseTonic(const std::string &source, Scale &scale) {
       octaveOffset != 0)
     return false;
   std::size_t cursor = 0;
-  if (!ParseNoteName(text, cursor, scale.tonicSemitone) ||
+  int registerCarry = 0;
+  if (!ParseNoteName(text, cursor, scale.tonicSemitone, &registerCarry) ||
       cursor != text.size())
     return false;
+  // Preserve the letter's octave: Cb4 is B3 and B#4 is C5. Key metadata
+  // deliberately uses pitch classes only; pitched tonics retain this carry.
+  scale.tonicSemitone += registerCarry * 12;
   if (hasOctave)
     scale.tonicOctave = octave;
   return true;
@@ -392,8 +403,10 @@ bool ParseJazzChord(const Token &token,
   }
   std::size_t cursor = 0;
   int root = 0;
-  if (!ParseNoteName(main, cursor, root))
+  int registerCarry = 0;
+  if (!ParseNoteName(main, cursor, root, &registerCarry))
     return false;
+  octaveOffset = SaturatingIntAdd(octaveOffset, registerCarry);
 
   enum class Triad { Major, Minor, Diminished, Augmented, Sus2, Sus4 };
   Triad triad = Triad::Major;
@@ -1947,6 +1960,26 @@ bool ParseScalars(const syntax::Pattern &pattern,
         return false;
       }
     }
+    // These lanes are eventually stored in float-valued output events. A
+    // finite double can still overflow there, including a random distribution
+    // whose centre fits but whose possible samples do not.
+    if (!item.isDefault &&
+        (lane.rfind("cv", 0) == 0 || lane == "gate" || lane == "slide")) {
+      double low = validationLow;
+      double high = validationHigh;
+      if (item.randomDistribution == ScalarItem::RandomDistribution::Normal) {
+        low -= NormalDeviationLimit * item.randomSecond;
+        high += NormalDeviationLimit * item.randomSecond;
+      }
+      low = std::clamp(low, item.randomMinimum, item.randomMaximum);
+      high = std::clamp(high, item.randomMinimum, item.randomMaximum);
+      const double limit = std::numeric_limits<float>::max();
+      if (low < -limit || high > limit) {
+        diagnostic = Error(source.span,
+                           lane + " exceeds finite output precision");
+        return false;
+      }
+    }
     for (std::size_t repetition = 0; repetition < repetitions; ++repetition)
       items.push_back(item);
   }
@@ -2594,7 +2627,7 @@ bool ParseCvPipelines(const std::vector<syntax::Pipeline> &pipelines,
     } else if (mode.text == "power" && pipeline.arguments.size() == 2) {
       double power = 0.0;
       if (!ParseNumber(pipeline.arguments[1].text, power) || power <= 0.0 ||
-          !std::isfinite(power)) {
+          power > std::numeric_limits<float>::max()) {
         diagnostic = Error(pipeline.arguments[1].span,
                            "interp power requires a positive finite exponent");
         return false;
