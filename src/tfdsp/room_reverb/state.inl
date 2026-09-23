@@ -137,4 +137,3 @@ private:
   DirectGains directGains_{};
   DirectGains directGainSteps_{};
   bool directGainsInitialized_{};
-

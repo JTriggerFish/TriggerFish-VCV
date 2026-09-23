@@ -141,4 +141,3 @@
     if (balanceTransitionPhase_ >= 1.f)
       currentTailSend_ = targetTailSend_;
   }
-

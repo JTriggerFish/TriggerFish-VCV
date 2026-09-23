@@ -3680,10 +3680,11 @@ play shifted
   }
 
   const auto &altChord = sequence.notes[3].values.front();
-  std::array<int, tfseq::MaximumPolyphony> flatContext{4, 8, 10, 13};
+  // Keep these contexts inside the rootless register window around C4.
+  std::array<int, tfseq::MaximumPolyphony> flatContext{-8, -4, -2, 1};
   const auto flat = tfseq::RealizeChordVoicing(
       altChord, tfseq::VoicingStyle::Rootless4Notes, 0, flatContext, 4);
-  std::array<int, tfseq::MaximumPolyphony> sharpContext{4, 8, 10, 15};
+  std::array<int, tfseq::MaximumPolyphony> sharpContext{-8, -4, -2, 3};
   const auto sharp = tfseq::RealizeChordVoicing(
       altChord, tfseq::VoicingStyle::Rootless4Notes, 0, sharpContext, 4);
   auto hasClass = [](const tfseq::VoicingResult &voicing, const int wanted) {

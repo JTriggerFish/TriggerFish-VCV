@@ -213,4 +213,3 @@
 		double vertical{};
 		double radial{};
 	};
-

@@ -3357,6 +3357,11 @@ CompileResult CompileDocument(const syntax::Document &document) {
       }
     }
 
+    // A written key also supplies the scale-degree centre unless an explicit
+    // tonic overrides it. Resolve after all lanes so source order is irrelevant.
+    if (sequence.hasKey && seenLanes.count("tonic") == 0)
+      sequence.scale.tonicSemitone = sequence.keyPitchClass;
+
     if (sequence.articulation.empty()) {
       result.diagnostic =
           Error(sequence.nameSpan,

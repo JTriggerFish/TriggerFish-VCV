@@ -272,4 +272,3 @@
 				std::log(std::max(1.0e-12, f1Multiplier)));
 		return beamDecay * std::exp(logMultiplier);
 	}
-

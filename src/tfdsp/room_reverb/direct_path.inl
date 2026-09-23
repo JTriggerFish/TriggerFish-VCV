@@ -154,4 +154,3 @@
       preDelayTransitionPhase_ = 0.f;
     }
   }
-

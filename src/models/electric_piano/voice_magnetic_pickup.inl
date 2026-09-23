@@ -185,4 +185,3 @@
 		return 2.0 * (static_cast<double>(noiseState_) /
 			static_cast<double>(UINT32_MAX)) - 1.0;
 	}
-

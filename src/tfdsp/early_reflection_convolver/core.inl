@@ -232,4 +232,3 @@ private:
     if (historyWriteIndex_ == maximumPartitions_)
       historyWriteIndex_ = 0;
   }
-

@@ -234,4 +234,3 @@
 		keyHeld_ = true;
 		energy_ = 1.0;
 	}
-

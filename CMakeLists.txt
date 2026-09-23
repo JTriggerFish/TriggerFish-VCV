@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 
-project(TriggerFishDSP VERSION 2.5.4 LANGUAGES CXX)
+project(TriggerFishDSP VERSION 2.5.5 LANGUAGES CXX)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 17)
@@ -185,6 +185,11 @@ if(BUILD_TESTING)
 		triggerfish_dsp)
 	add_test(NAME triggerfish_text_sequencer_tests
 		COMMAND triggerfish_text_sequencer_tests)
+	add_executable(triggerfish_sequencer_pitch_tests
+		tests/sequencer_pitch_tests.cpp)
+	target_link_libraries(triggerfish_sequencer_pitch_tests PRIVATE triggerfish_dsp)
+	add_test(NAME triggerfish_sequencer_pitch_tests
+		COMMAND triggerfish_sequencer_pitch_tests)
 
 	add_executable(triggerfish_transport_tests tests/transport_tests.cpp)
 	target_link_libraries(triggerfish_transport_tests PRIVATE triggerfish_dsp)

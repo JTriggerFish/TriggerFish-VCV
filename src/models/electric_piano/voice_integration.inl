@@ -218,4 +218,3 @@
 				if (!modeActive_[index])
 					modes_[index] = {};
 	}
-

@@ -244,4 +244,3 @@ private:
 		double realCoefficient = 1.0;
 		double imaginaryCoefficient{};
 	};
-

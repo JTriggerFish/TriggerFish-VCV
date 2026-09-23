@@ -283,4 +283,3 @@ public:
 			outputGain * (std::isfinite(left) ? left : 0.0),
 			outputGain * (std::isfinite(right) ? right : 0.0)};
 	}
-

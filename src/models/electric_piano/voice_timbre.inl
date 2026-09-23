@@ -194,4 +194,3 @@
 		cachedMechanics_ = mechanics;
 		timbreDirty_ = false;
 	}
-

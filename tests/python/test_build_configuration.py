@@ -42,7 +42,7 @@ def test_macos_10_9_sources_avoid_unavailable_libcxx_entry_points():
         ("std::visit", r"\bstd::visit\b"),
     )
     offenders = []
-    for pattern in ("*.cpp", "*.h", "*.hpp"):
+    for pattern in ("*.cpp", "*.h", "*.hpp", "*.inl"):
         for path in (ROOT / "src").rglob(pattern):
             source = path.read_text(encoding="utf-8")
             for name, pattern in unavailable:

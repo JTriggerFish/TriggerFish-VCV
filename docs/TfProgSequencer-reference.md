@@ -359,7 +359,7 @@ Settings do not cycle:
 | `subdiv` | note value of an unsuffixed note | `4n` |
 | `tonic` | tonal centre and optional default octave | `C@4` |
 | `scale` | scale used by degrees and Roman chords | `major` |
-| `key` | written key used by `transpose_key` | none |
+| `key` | written key for scale degrees and `transpose_key`; explicit `tonic` overrides the degree centre | none |
 | `voicing` | automatic Jazz-chord voicing recipe | `basic` |
 | `glide` | default slide time in beats or note values | `16n` |
 
@@ -451,14 +451,19 @@ changes = sequence {
 }
 ```
 
-`key` records the progression's written transposition anchor; it does not
-infer harmony, constrain chord roots, or make a chord diatonic. `Dm9` always
-has D as its written root. `transpose_key D` on a sequence written with
+`key` sets the scale-degree centre and records the progression's written
+transposition anchor. For example, `key D`, `scale dorian`, and `chords i`
+produce D minor (D F A). An explicit `tonic` overrides that degree centre and
+can also set its octave, regardless of the order of the settings. Without
+either setting, the degree centre is C4.
+
+Named chord roots keep their written meaning: `Dm9` always
+has D as its root. `transpose_key D` on a sequence written with
 `key C` shifts every realized pitch up two semitones. A target key chooses the
 nearest chromatic interval (an exact tritone goes upward); octave transforms
-remain explicit. `transpose_key` is a compile error without `key`. `tonic` and
-`scale` remain the pitch system for scale degrees and Roman chords, so a fast
-sequence of ii-V changes never needs a second synchronized centre lane.
+remain explicit. `transpose_key` is a compile error without `key`. Roman
+numerals select their roots from the active scale; their case and suffix still
+determine chord quality rather than automatically harmonizing the scale.
 
 #### Automatic voicing recipes
 
@@ -473,7 +478,13 @@ sequence of ii-V changes never needs a second synchronized centre lane.
 The first `basic` chord uses the obvious root-position stack. Later automatic
 chords choose inversions by shortest ordered semitone motion, then smallest
 individual leap, stationary voices, register, and a deterministic recipe
-order. Automatic voices never cross.
+order. Automatic voices never cross. Candidate midpoints stay within six
+semitones of the recipe's target: six semitones above the written root for
+`basic`, or two below it for rootless recipes. This fixed window prevents
+repeated progressions from drifting into other octaves. A chord's `@octave`,
+relative register marks, the Octave lane, and pitch transforms move the window;
+they do not pin every voice to root position. Use explicit pitches such as
+`(C@4 E@4 G@4)` when exact voicings are required.
 
 The engine tries to retain the previous note count when the next formula has
 enough useful tones. It protects thirds, sevenths, written upper extensions,
@@ -571,7 +582,7 @@ duration, articulation, probability, subdivision, and ratchet syntax applies.
 
 ### Ride and hi-hat sequences
 
-`ride` and `hihat` are pitch-free event lanes for the TriggerFish cymbal
+`ride` and `hihat` are pitch-free event lanes for triggering percussion
 modules. They use the existing rhythm alphabet: `x` is a hit, `~` is a rest,
 and `_` extends the preceding event. This is distinct from `x3` in a pitched
 `notes` lane, where `x` is the ghost-note prefix on degree 3.
@@ -590,15 +601,12 @@ jazz_ride = sequence {
 play jazz_ride
 ```
 
-The ordinary Trigger and Velocity outputs connect to HIT and STRENGTH. A useful
-patching convention is CV1 to LOCATION, CV2 to HARDNESS, and CV3 to MUTE on Ride
-or PEDAL on Hi-Hat. These are not special lane types; CV outputs retain their
-general-purpose voltage semantics. A cymbal sequence needs no `notes`, `chords`,
-or separate `rhythm` lane and cannot combine one with its percussion lane.
-
-The cymbal HIT jack accepts either Trigger or Gate. Tip and mallet modes strike
-on the rising edge. In brush mode a Trigger creates a finite swish while a held
-Gate sustains the brush gesture.
+Connect Trigger to the percussion module's trigger input and Velocity to its
+velocity input when available. CV1-CV3 can control timbre, decay, or other
+parameters according to that module's voltage ranges. These outputs retain
+their general-purpose voltage semantics. A percussion sequence needs no
+`notes`, `chords`, or separate `rhythm` lane and cannot combine one with its
+percussion lane. TriggerFish Elements does not include a cymbal sound module.
 
 ### Reusable rhythmic gestures
 

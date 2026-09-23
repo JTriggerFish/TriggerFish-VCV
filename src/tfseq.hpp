@@ -288,8 +288,8 @@ struct Sequence {
   double subdivisionBeats = 1.0;
   float glideBeats = 0.25f;
   Scale scale;
-  // A chord key is an explicit transposition anchor and piece of harmonic
-  // metadata. It never changes the meaning of an explicitly named chord root.
+  // A key anchors transposition and supplies the scale tonic when no explicit
+  // tonic is written. Explicitly named chord roots retain their own meaning.
   bool hasKey = false;
   int keyPitchClass = 0;
   VoicingStyle voicing = VoicingStyle::Basic;

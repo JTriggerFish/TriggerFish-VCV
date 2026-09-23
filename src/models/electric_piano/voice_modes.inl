@@ -220,4 +220,3 @@
 		cachedDamped_ = damped;
 		coefficientsDirty_ = false;
 	}
-

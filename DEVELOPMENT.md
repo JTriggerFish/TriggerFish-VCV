@@ -293,9 +293,9 @@ execution counts, and transient metadata before commit. Run all checks with:
 uv run pre-commit run --all-files
 ```
 
-For interactive analysis with SciPy and Matplotlib:
+For interactive analysis with SciPy and Plotly:
 
 ```text
-uv sync --locked --group dev --extra analysis --python 3.13
+uv sync --locked --group dev --python 3.13
 uv run python
 ```

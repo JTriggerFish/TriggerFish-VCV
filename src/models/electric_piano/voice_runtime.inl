@@ -293,4 +293,3 @@
 		return {field.vertical, field.radial * HorizontalFieldScale * horizontal /
 			std::max(1.0e-9, radial)};
 	}
-

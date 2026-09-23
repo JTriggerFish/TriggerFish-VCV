@@ -127,4 +127,3 @@ public:
 		horizontalVelocityInterpolator_->Reset();
 		pickupDecimator_->Reset();
 	}
-
