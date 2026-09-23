@@ -147,11 +147,44 @@ void oversizedCvValuesAreRejected() {
     }
   }
 }
+
+void verySlowCvRatesKeepFiniteInterpolation() {
+  const std::string tinyRate = "." + std::string(307, '0') + "1";
+  for (const std::string mode : {"linear", "smooth", "power 2"}) {
+    for (const std::string knots : {". . 4 0", ". . 0 4 ."}) {
+      auto compiled = tfseq::Compile(program("subdiv 1n\nnotes 1\ncv1 " +
+                                             knots + " |> interp " + mode +
+                                             " |> rate " + tinyRate));
+      check(bool(compiled), "very slow CV fixture compiles");
+      if (!compiled)
+        continue;
+      tfseq::Runtime runtime;
+      runtime.setProgram(compiled.program.get());
+      const auto event = runtime.next(0.0).events[0];
+      tfseq::CvLanePlayer player;
+      player.setEvent(event, 0);
+      check(std::isfinite(event.cvValue[0]) &&
+                std::abs(player.process(0.0) - event.cvValue[0]) < 1.e-5f &&
+                std::abs(player.process(1.0) - event.cvValue[0]) < 1.e-5f,
+            "slow curves retain their value when knot times overflow");
+      // No new note event: rendering must still advance in the lane's phase.
+      const double largeBeat = 5.e307;
+      tfseq::Runtime reference;
+      reference.setProgram(compiled.program.get());
+      reference.next(0.0);
+      const float expected = reference.next(largeBeat).events[0].cvValue[0];
+      check(std::isfinite(expected) &&
+                std::abs(player.process(largeBeat) - expected) < 1.e-5f,
+            "slow cached interpolation advances without infinite-time ratios");
+    }
+  }
+}
 } // namespace
 
 int main() {
   cvPhaseIsIndependentOfNoteDensity();
   defaultsAlignmentTimingAndLifetime();
   oversizedCvValuesAreRejected();
+  verySlowCvRatesKeepFiniteInterpolation();
   return failures ? EXIT_FAILURE : EXIT_SUCCESS;
 }

@@ -44,7 +44,11 @@ public:
     if (interpolation_ == CvInterpolation::Step || endBeat_ <= beginBeat_) {
       value_ = target_;
     } else {
-      double amount = (beat - beginBeat_) / (endBeat_ - beginBeat_);
+      // Measure progress in lane phase. Very slow rates can put the knot
+      // times beyond finite score time even when the phase ratio is ordinary.
+      double amount = amountAtSample_;
+      if (phaseSpan_ > 0.0)
+        amount += (beat - sampleBeat_) * phaseRate_ / phaseSpan_;
       amount = std::clamp(amount, 0.0, 1.0);
       if (interpolation_ == CvInterpolation::Smooth)
         amount = amount * amount * (3.0 - 2.0 * amount);
@@ -68,6 +72,10 @@ private:
   float target_ = 0.f;
   double beginBeat_ = 0.0;
   double endBeat_ = 0.0;
+  double sampleBeat_ = 0.0;
+  double amountAtSample_ = 0.0;
+  double phaseRate_ = 1.0;
+  double phaseSpan_ = 0.0;
   float power_ = 1.f;
   CvInterpolation interpolation_ = CvInterpolation::Step;
 };

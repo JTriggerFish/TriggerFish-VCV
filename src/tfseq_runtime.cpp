@@ -552,6 +552,9 @@ struct CvSample {
   float target = 0.f;
   double beginBeat = 0.0;
   double targetBeat = 0.0;
+  double amount = 0.0;
+  double phaseRate = 1.0;
+  double phaseSpan = 0.0;
   SourceSpan span;
 };
 
@@ -683,6 +686,9 @@ CvSample SampleCv(const std::vector<ScalarItem> &items,
                       ? (phase - previousPhase) / (nextPhase - previousPhase)
                       : 0.0;
   amount = std::clamp(amount, 0.0, 1.0);
+  sample.amount = amount;
+  sample.phaseRate = rate;
+  sample.phaseSpan = nextPhase - previousPhase;
   if (interpolation == CvInterpolation::Smooth)
     amount = amount * amount * (3.0 - 2.0 * amount);
   else if (interpolation == CvInterpolation::Power)
@@ -769,6 +775,10 @@ void CvLanePlayer::refresh(double beat) noexcept {
   target_ = sample.target;
   beginBeat_ = sample.beginBeat;
   endBeat_ = sample.targetBeat;
+  sampleBeat_ = beat;
+  amountAtSample_ = sample.amount;
+  phaseRate_ = sample.phaseRate;
+  phaseSpan_ = sample.phaseSpan;
 }
 
 double SchedulingLookaheadBeats(const CompiledProgram &program,
