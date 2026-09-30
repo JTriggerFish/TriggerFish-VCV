@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 
-project(TriggerFishDSP VERSION 2.5.5 LANGUAGES CXX)
+project(TriggerFishDSP VERSION 2.5.6 LANGUAGES CXX)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 17)
@@ -92,6 +92,11 @@ if(BUILD_TESTING)
 	target_link_libraries(triggerfish_finite_audio_tests PRIVATE triggerfish_dsp)
 	add_test(NAME triggerfish_finite_audio_tests
 		COMMAND triggerfish_finite_audio_tests)
+
+	add_executable(triggerfish_tb303_automation_tests tests/tb303_automation_tests.cpp)
+	target_link_libraries(triggerfish_tb303_automation_tests PRIVATE triggerfish_dsp)
+	add_test(NAME triggerfish_tb303_automation_tests
+		COMMAND triggerfish_tb303_automation_tests)
 
 	add_executable(triggerfish_electric_piano_voice_tests
 		tests/electric_piano_voice_tests.cpp)

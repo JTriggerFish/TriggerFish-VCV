@@ -64,6 +64,7 @@ struct Tf303VoiceCore : Module
 	std::array<tfdsp::Tb303Articulation, PORT_MAX_CHANNELS> articulations{};
 	std::array<tfdsp::Tb303Vca, PORT_MAX_CHANNELS> vcasX2{};
 	std::array<tfdsp::Tb303Vca, PORT_MAX_CHANNELS> vcasX4{};
+	tfdsp::Tb303ResonanceControl resonanceControl;
 
 	// 0 = 2x, 1 = 4x. Four-times is the quality-first default; 2x roughly
 	// doubles throughput and remains useful for large polyphonic patches.
@@ -146,6 +147,7 @@ struct Tf303VoiceCore : Module
 
 	void SetSampleRate(float sampleRate)
 	{
+		resonanceControl.SetSampleRate(sampleRate);
 		for (int channel = 0; channel < PORT_MAX_CHANNELS; ++channel)
 		{
 			filtersX2[channel]->SetSampleRate(sampleRate);
@@ -160,6 +162,7 @@ struct Tf303VoiceCore : Module
 
 	void ResetDsp()
 	{
+		resonanceControl.Reset();
 		for (int channel = 0; channel < PORT_MAX_CHANNELS; ++channel)
 		{
 			filtersX2[channel]->Reset();
@@ -205,7 +208,8 @@ struct Tf303VoiceCore : Module
 		const float cutoffKnob = params[CUTOFF].getValue();
 		const float cvAmount = params[CV_AMOUNT].getValue();
 		const float fmAmount = params[FM_AMOUNT].getValue();
-		const float resonanceKnob = params[RESONANCE].getValue();
+		const double resonanceKnob = resonanceControl.ProcessKnob(
+			params[RESONANCE].getValue());
 		const float resonanceAmount = params[RES_AMOUNT].getValue();
 		const float envelopeAmount = params[ENV_AMOUNT].getValue();
 		const double normalDecay = std::pow(10.0,
@@ -243,8 +247,8 @@ struct Tf303VoiceCore : Module
 			const float gate = inputs[GATE_INPUT].getPolyVoltage(channel);
 
 			const float finiteAudio = std::isfinite(audio) ? audio : 0.0f;
-			const double resonance = resonanceKnob + resonanceAmount *
-				(std::isfinite(resonanceCv) ? resonanceCv / 10.0f : 0.0f);
+			const double resonance = tfdsp::Tb303ResonanceControl::Modulate(
+				resonanceKnob, resonanceAmount, resonanceCv);
 			const auto envelope = articulations[channel].Step(gate, accent,
 				resonance, normalDecay, accentDecay, vcaDecay);
 			// The Q9/R64/R65 bias makes Env Mod scale the envelope around an
