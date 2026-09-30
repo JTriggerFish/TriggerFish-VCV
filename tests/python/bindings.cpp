@@ -1127,6 +1127,28 @@ PYBIND11_MODULE(_triggerfish_dsp, module)
 	}, py::arg("audio"), py::arg("base_control"), py::arg("accent_control"),
 		py::arg("sample_rate") = 48000.0);
 
+	module.def("tb303_resonance_control", [](py::array_t<double,
+		py::array::c_style | py::array::forcecast> knob,
+		py::array_t<double, py::array::c_style | py::array::forcecast> cv,
+		double amount, double sampleRate)
+	{
+		const auto knobInfo = knob.request();
+		RequireSameSize(knobInfo, cv.request(), "knob", "cv");
+		if (!std::isfinite(sampleRate) || sampleRate <= 0.0)
+			throw std::invalid_argument("sample_rate must be positive and finite");
+		py::array_t<double> result(knobInfo.shape[0]);
+		auto output = result.mutable_unchecked<1>();
+		auto knobValues = knob.unchecked<1>();
+		auto cvValues = cv.unchecked<1>();
+		tfdsp::Tb303ResonanceControl control;
+		control.SetSampleRate(sampleRate);
+		for (py::ssize_t i = 0; i < knobInfo.shape[0]; ++i)
+			output(i) = control.Modulate(control.ProcessKnob(knobValues(i)),
+				amount, cvValues(i));
+		return result;
+	}, py::arg("knob"), py::arg("cv"), py::arg("amount") = 1.0,
+		py::arg("sample_rate") = 48000.0);
+
 	module.def("tb303_articulation", [](py::array_t<double, py::array::c_style | py::array::forcecast> gate,
 		py::array_t<double, py::array::c_style | py::array::forcecast> accent,
 		py::array_t<double, py::array::c_style | py::array::forcecast> resonance,

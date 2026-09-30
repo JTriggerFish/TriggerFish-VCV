@@ -33,6 +33,17 @@ frequency modulation. Patching `VCA CV` replaces the internal volume envelope;
 its amount knob scales the external 0--10 V signal. The VCA accent pulse remains
 active with either control source.
 
+`LP OUT` is taken before the VCA, so neither volume-envelope decay nor VCA CV
+changes its level. The VCA CV amount knob scales the selected internal or
+external volume source. VCA Decay controls decay/sustain during a high gate;
+gate-off release timing is determined by the articulation mode.
+
+The shared Resonance knob is smoothed once per Rack sample with a 5 ms
+one-pole time constant, including updates from host automation and parameter
+mappers. Its first sample uses the loaded setting directly. Per-channel
+resonance CV is added after this smoothing, preserving audio-rate modulation;
+the combined control is then reconstructed at the filter's internal rate.
+
 The panel also exposes selected Devil Fish extensions: up to 66.6 times the
 stock input drive, doubled resonance feedback, separate normal and accented
 filter-envelope decays, variable volume-envelope decay or sustain, linear

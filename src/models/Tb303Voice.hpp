@@ -9,6 +9,53 @@
 namespace tfdsp
 {
 
+// Host automation and parameter mappers can bypass Rack's mouse smoothing.
+// Smooth the shared knob once per host sample, before adding each voice's CV.
+class Tb303ResonanceControl
+{
+public:
+	void SetSampleRate(double sampleRate)
+	{
+		if (std::isfinite(sampleRate) && sampleRate > 0.0)
+			_coefficient = -std::expm1(-1.0 / (sampleRate * TimeConstantSeconds));
+	}
+
+	void Reset()
+	{
+		_initialized = false;
+		_value = 0.0;
+	}
+
+	double ProcessKnob(double target)
+	{
+		target = std::isfinite(target) ? std::clamp(target, 0.0, 1.0) : 0.0;
+		if (!_initialized)
+		{
+			// Loading a patch starts at its saved setting without a startup sweep.
+			_value = target;
+			_initialized = true;
+		}
+		else
+		{
+			_value += _coefficient * (target - _value);
+			if (std::abs(target - _value) < 1.0e-12)
+				_value = target;
+		}
+		return _value;
+	}
+
+	static double Modulate(double knob, double amount, double cvVolts)
+	{
+		return knob + amount * (std::isfinite(cvVolts) ? cvVolts / 10.0 : 0.0);
+	}
+
+private:
+	static constexpr double TimeConstantSeconds = 0.005;
+	double _coefficient{-std::expm1(-1.0 / (48000.0 * TimeConstantSeconds))};
+	double _value{};
+	bool _initialized{};
+};
+
 class Tb303AccentSweep
 {
 public:

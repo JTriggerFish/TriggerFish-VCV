@@ -4,7 +4,7 @@ Circuit-modelled sound generators and processors, plus pitch utilities for VCV R
 
 [![CI](https://github.com/JTriggerFish/TriggerFish-VCV/actions/workflows/ci.yml/badge.svg)](https://github.com/JTriggerFish/TriggerFish-VCV/actions/workflows/ci.yml)
 
-[Release notes for 2.5.5](docs/releases/2.5.5.md)
+[Release notes for 2.5.6](docs/releases/2.5.6.md)
 
 <table>
   <tr>
@@ -331,22 +331,38 @@ individual drift processes; common drift and hum are shared across channels.
 
 303 Voice Core is a circuit-modelled TB-303 voice back end. It includes the
 four-stage diode ladder, coupling and resonance networks, filter and volume
-envelopes, accent path, and BA662-style OTA VCA. `LP OUT` exposes the filter directly;
-`VCA OUT` provides the complete articulated signal.
+envelopes, accent path, and BA662-style OTA VCA. Patch an oscillator or another
+audio source into `IN`, then choose the output for the signal path you need:
+
+| Output | Signal path | Amplitude control |
+|---|---|---|
+| `LP OUT` | `IN` → filter | Filter-only output; VCA Decay, VCA CV, and its amount knob do not affect this output. |
+| `VCA OUT` | `IN` → filter → VCA | Internal volume envelope or external VCA CV, plus the additive accent response. |
 
 - **Cutoff** spans 10 Hz to 20 kHz. `1V/OCT` tracks directly, while `EXP CV`
   provides a second exponential input with an attenuverter.
 - **FM** applies bipolar, AC-coupled linear cutoff modulation. **Res** modulates
   resonance, and **Res Range** selects the stock or extended feedback range.
+  The Resonance knob uses short smoothing for mouse, host automation, and
+  parameter mapping. The resonance CV input retains audio-rate response.
 - **Drive** sets the level entering the nonlinear ladder. **Bass** continuously
   restores low-frequency response lost in the original coupling network.
 - `GATE` drives the internal filter and volume envelopes. `ACC` adds the accent
-  response. The five envelope controls set filter depth, normal and accented
-  decay, accent amount, and VCA decay/sustain.
+  response. **Env** sets filter-envelope depth; **Normal Decay** and
+  **Accent Decay** set filter-envelope timing. These are separate from volume.
+- **VCA Decay** controls the internal volume envelope while `GATE` is high:
+  0–50% sets the exponential decay time constant from 16 ms to 3.5 s;
+  50–100% raises the sustain level
+  from zero to full. When the gate falls, the envelope follows its short release
+  in the selected articulation mode. This knob does not set release time, and
+  short gates can mask changes to long decay settings.
 - **Accent Sweep** provides Off, Fast, Normal, and Slow responses. Normal is the
   stock setting; Fast and Slow extend the timing in the spirit of Devil Fish.
-- Patching `VCA CV` replaces the internal volume envelope. Its attenuator controls
-  the external 0–10 V signal, while accent remains additive.
+- With `VCA CV` unpatched, send a gate to `GATE` to trigger the internal volume
+  envelope and listen through `VCA OUT`. Patching `VCA CV` instead supplies an
+  external 0–10 V volume control, replacing that envelope; **VCA Decay** then
+  has no effect on volume. The **VCA CV amount** knob scales whichever volume
+  source is selected. Accent remains additive in either case.
 
 > **Level warning:** Bass is an extended boost control. With high resonance,
 > large Bass settings can exceed Rack's nominal audio range and clip downstream
